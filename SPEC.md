@@ -158,6 +158,51 @@ Everything is a **Cell**:
 | `→!` | Send | Send message | ❌ PLACEHOLDER |
 | `←?` | Receive | Receive message | ❌ PLACEHOLDER |
 
+### Data Structures (15) - CRITICAL FOR METAPROGRAMMING
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `⊙≔` | Define leaf | Define simple structure | 🎯 NEXT |
+| `⊙` | Create leaf | Create leaf instance | 🎯 NEXT |
+| `⊙→` | Get field | Access structure field | 🎯 NEXT |
+| `⊙←` | Set field | Update structure field | 🎯 NEXT |
+| `⊙?` | Type check | Check structure type | 🎯 NEXT |
+| `⊚≔` | Define node | Define recursive structure (ADT) | 🎯 NEXT |
+| `⊚` | Create node | Create node instance | 🎯 NEXT |
+| `⊚→` | Get field | Access node field | 🎯 NEXT |
+| `⊚?` | Variant check | Check type and variant | 🎯 NEXT |
+| `⊝≔` | Define graph | Define graph structure | 🎯 NEXT |
+| `⊝` | Create graph | Create graph instance | 🎯 NEXT |
+| `⊝⊕` | Add node | Add node to graph | 🎯 NEXT |
+| `⊝⊗` | Add edge | Add edge to graph | 🎯 NEXT |
+| `⊝→` | Query graph | Query graph structure | 🎯 NEXT |
+| `⊝?` | Graph check | Check graph type | 🎯 NEXT |
+
+**Structure Syntax:**
+```scheme
+; Leaf structure (non-recursive)
+(⊙≔ Point :x :y)
+(≔ p (⊙ Point #3 #4))
+(⊙→ p :x)  ; → #3
+
+; Node structure (recursive ADT)
+(⊚≔ List [:Nil] [:Cons :head :tail])
+(≔ l (⊚ List :Cons #1 (⊚ List :Nil)))
+
+; Graph structure
+(⊝≔ Graph :nodes :edges)
+(≔ g (⊝ Graph ∅ ∅))
+(≔ g (⊝⊕ g node-data))
+(≔ g (⊝⊗ g from-id to-id label))
+```
+
+**Why Data Structures Matter:**
+- Foundation for pattern matching (can't match without knowing structure)
+- CFG/DFG are graph structures (first-class values)
+- Enable type-safe metaprogramming
+- AI can reason about data shape
+
+See `DATA_STRUCTURES.md` for complete specification.
+
 ### Documentation (3) - Auto-generated for user functions
 | Symbol | Type | Meaning | Status |
 |--------|------|---------|--------|

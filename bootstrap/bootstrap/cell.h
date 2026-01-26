@@ -21,7 +21,9 @@ typedef enum {
     CELL_PAIR,           /* ⟨a b⟩ - cons cell */
     CELL_LAMBDA,         /* λ - closure */
     CELL_BUILTIN,        /* Built-in primitive */
-    CELL_ERROR           /* ⚠ - error value */
+    CELL_ERROR,          /* ⚠ - error value */
+    CELL_STRUCT,         /* ⊙/⊚ - user-defined structure */
+    CELL_GRAPH           /* ⊝ - graph structure (CFG/DFG/etc) */
 } CellType;
 
 /* Linear Type Flags */
@@ -41,6 +43,22 @@ typedef enum {
     CAP_SEND    = 1 << 3,  /* Can send across actors */
     CAP_SHARE   = 1 << 4   /* Can share between threads */
 } CapabilityFlags;
+
+/* Structure Kinds */
+typedef enum {
+    STRUCT_LEAF,    /* ⊙ - Simple data (non-recursive) */
+    STRUCT_NODE,    /* ⊚ - Recursive data (ADT with variants) */
+    STRUCT_GRAPH    /* ⊝ - Graph data (specialized) */
+} StructKind;
+
+/* Graph Types */
+typedef enum {
+    GRAPH_GENERIC,   /* User-defined graph */
+    GRAPH_CFG,       /* ⌂⟿ - Control Flow Graph */
+    GRAPH_DFG,       /* ⌂⇝ - Data Flow Graph */
+    GRAPH_CALL,      /* ⌂⊚ - Call Graph */
+    GRAPH_DEP        /* ⌂⊙ - Dependency Graph */
+} GraphType;
 
 /* Forward declaration */
 typedef struct Cell Cell;
@@ -85,6 +103,20 @@ struct Cell {
             const char* message;  /* Error message */
             Cell* data;           /* Associated data */
         } error;
+        struct {
+            StructKind kind;      /* LEAF, NODE, or GRAPH */
+            Cell* type_tag;       /* :Point, :List, :Tree, etc */
+            Cell* variant;        /* :Nil, :Cons, etc (for ADTs) or NULL */
+            Cell* fields;         /* Alist of (field . value) pairs */
+        } structure;
+        struct {
+            GraphType graph_type; /* CFG, DFG, CALL, DEP, or GENERIC */
+            Cell* nodes;          /* List of node cells */
+            Cell* edges;          /* List of edge cells ⟨from to label⟩ */
+            Cell* metadata;       /* Additional properties (alist) */
+            Cell* entry;          /* Entry point (for CFG) or NULL */
+            Cell* exit;           /* Exit point (for CFG) or NULL */
+        } graph;
     } data;
 };
 
@@ -97,6 +129,8 @@ Cell* cell_cons(Cell* car, Cell* cdr);
 Cell* cell_lambda(Cell* env, Cell* body, int arity);
 Cell* cell_builtin(void* fn);
 Cell* cell_error(const char* message, Cell* data);
+Cell* cell_struct(StructKind kind, Cell* type_tag, Cell* variant, Cell* fields);
+Cell* cell_graph(GraphType graph_type, Cell* nodes, Cell* edges, Cell* metadata);
 
 /* Cell accessors */
 double cell_get_number(Cell* c);
@@ -125,6 +159,8 @@ bool cell_is_pair(Cell* c);
 bool cell_is_lambda(Cell* c);
 bool cell_is_atom(Cell* c);
 bool cell_is_error(Cell* c);
+bool cell_is_struct(Cell* c);
+bool cell_is_graph(Cell* c);
 
 /* Error accessors */
 const char* cell_error_message(Cell* c);
@@ -132,6 +168,27 @@ Cell* cell_error_data(Cell* c);
 
 /* Equality */
 bool cell_equal(Cell* a, Cell* b);
+
+/* Structure accessors */
+StructKind cell_struct_kind(Cell* c);
+Cell* cell_struct_type_tag(Cell* c);
+Cell* cell_struct_variant(Cell* c);
+Cell* cell_struct_fields(Cell* c);
+Cell* cell_struct_get_field(Cell* c, Cell* field_name);
+
+/* Graph accessors */
+GraphType cell_graph_type(Cell* c);
+Cell* cell_graph_nodes(Cell* c);
+Cell* cell_graph_edges(Cell* c);
+Cell* cell_graph_metadata(Cell* c);
+Cell* cell_graph_entry(Cell* c);
+Cell* cell_graph_exit(Cell* c);
+
+/* Graph mutators (return new graph) */
+Cell* cell_graph_add_node(Cell* graph, Cell* node);
+Cell* cell_graph_add_edge(Cell* graph, Cell* from, Cell* to, Cell* label);
+Cell* cell_graph_set_entry(Cell* graph, Cell* entry);
+Cell* cell_graph_set_exit(Cell* graph, Cell* exit);
 
 /* Printing */
 void cell_print(Cell* c);

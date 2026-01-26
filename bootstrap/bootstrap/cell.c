@@ -83,6 +83,36 @@ Cell* cell_error(const char* message, Cell* data) {
     return c;
 }
 
+Cell* cell_struct(StructKind kind, Cell* type_tag, Cell* variant, Cell* fields) {
+    Cell* c = cell_alloc(CELL_STRUCT);
+    c->data.structure.kind = kind;
+    c->data.structure.type_tag = type_tag;
+    c->data.structure.variant = variant;
+    c->data.structure.fields = fields;
+
+    if (type_tag) cell_retain(type_tag);
+    if (variant) cell_retain(variant);
+    if (fields) cell_retain(fields);
+
+    return c;
+}
+
+Cell* cell_graph(GraphType graph_type, Cell* nodes, Cell* edges, Cell* metadata) {
+    Cell* c = cell_alloc(CELL_GRAPH);
+    c->data.graph.graph_type = graph_type;
+    c->data.graph.nodes = nodes ? nodes : cell_nil();
+    c->data.graph.edges = edges ? edges : cell_nil();
+    c->data.graph.metadata = metadata ? metadata : cell_nil();
+    c->data.graph.entry = NULL;
+    c->data.graph.exit = NULL;
+
+    cell_retain(c->data.graph.nodes);
+    cell_retain(c->data.graph.edges);
+    cell_retain(c->data.graph.metadata);
+
+    return c;
+}
+
 /* Cell accessors */
 double cell_get_number(Cell* c) {
     assert(c->type == CELL_ATOM_NUMBER);
@@ -140,6 +170,18 @@ void cell_release(Cell* c) {
             case CELL_ERROR:
                 free((void*)c->data.error.message);
                 cell_release(c->data.error.data);
+                break;
+            case CELL_STRUCT:
+                cell_release(c->data.structure.type_tag);
+                cell_release(c->data.structure.variant);
+                cell_release(c->data.structure.fields);
+                break;
+            case CELL_GRAPH:
+                cell_release(c->data.graph.nodes);
+                cell_release(c->data.graph.edges);
+                cell_release(c->data.graph.metadata);
+                cell_release(c->data.graph.entry);
+                cell_release(c->data.graph.exit);
                 break;
             default:
                 break;
@@ -219,6 +261,14 @@ bool cell_is_error(Cell* c) {
     return c && c->type == CELL_ERROR;
 }
 
+bool cell_is_struct(Cell* c) {
+    return c && c->type == CELL_STRUCT;
+}
+
+bool cell_is_graph(Cell* c) {
+    return c && c->type == CELL_GRAPH;
+}
+
 /* Error accessors */
 const char* cell_error_message(Cell* c) {
     assert(c->type == CELL_ERROR);
@@ -228,6 +278,188 @@ const char* cell_error_message(Cell* c) {
 Cell* cell_error_data(Cell* c) {
     assert(c->type == CELL_ERROR);
     return c->data.error.data;
+}
+
+/* Structure accessors */
+StructKind cell_struct_kind(Cell* c) {
+    assert(c->type == CELL_STRUCT);
+    return c->data.structure.kind;
+}
+
+Cell* cell_struct_type_tag(Cell* c) {
+    assert(c->type == CELL_STRUCT);
+    return c->data.structure.type_tag;
+}
+
+Cell* cell_struct_variant(Cell* c) {
+    assert(c->type == CELL_STRUCT);
+    return c->data.structure.variant;
+}
+
+Cell* cell_struct_fields(Cell* c) {
+    assert(c->type == CELL_STRUCT);
+    return c->data.structure.fields;
+}
+
+Cell* cell_struct_get_field(Cell* c, Cell* field_name) {
+    assert(c->type == CELL_STRUCT);
+    assert(cell_is_symbol(field_name));
+
+    /* Search in alist of fields */
+    Cell* fields = c->data.structure.fields;
+    while (fields && !cell_is_nil(fields)) {
+        Cell* pair = cell_car(fields);  /* (field . value) */
+        Cell* fname = cell_car(pair);
+        if (cell_equal(fname, field_name)) {
+            return cell_cdr(pair);  /* Return value */
+        }
+        fields = cell_cdr(fields);
+    }
+
+    /* Field not found */
+    return NULL;
+}
+
+/* Graph accessors */
+GraphType cell_graph_type(Cell* c) {
+    assert(c->type == CELL_GRAPH);
+    return c->data.graph.graph_type;
+}
+
+Cell* cell_graph_nodes(Cell* c) {
+    assert(c->type == CELL_GRAPH);
+    return c->data.graph.nodes;
+}
+
+Cell* cell_graph_edges(Cell* c) {
+    assert(c->type == CELL_GRAPH);
+    return c->data.graph.edges;
+}
+
+Cell* cell_graph_metadata(Cell* c) {
+    assert(c->type == CELL_GRAPH);
+    return c->data.graph.metadata;
+}
+
+Cell* cell_graph_entry(Cell* c) {
+    assert(c->type == CELL_GRAPH);
+    return c->data.graph.entry;
+}
+
+Cell* cell_graph_exit(Cell* c) {
+    assert(c->type == CELL_GRAPH);
+    return c->data.graph.exit;
+}
+
+/* Graph mutators (return modified graph - immutable style) */
+Cell* cell_graph_add_node(Cell* graph, Cell* node) {
+    assert(graph->type == CELL_GRAPH);
+
+    /* Create new node list with node prepended */
+    Cell* new_nodes = cell_cons(node, graph->data.graph.nodes);
+
+    /* Create new graph with updated nodes */
+    Cell* new_graph = cell_graph(
+        graph->data.graph.graph_type,
+        new_nodes,
+        graph->data.graph.edges,
+        graph->data.graph.metadata
+    );
+
+    /* Copy entry/exit if they exist */
+    if (graph->data.graph.entry) {
+        new_graph->data.graph.entry = graph->data.graph.entry;
+        cell_retain(new_graph->data.graph.entry);
+    }
+    if (graph->data.graph.exit) {
+        new_graph->data.graph.exit = graph->data.graph.exit;
+        cell_retain(new_graph->data.graph.exit);
+    }
+
+    cell_release(new_nodes);  /* cell_graph retained it */
+    return new_graph;
+}
+
+Cell* cell_graph_add_edge(Cell* graph, Cell* from, Cell* to, Cell* label) {
+    assert(graph->type == CELL_GRAPH);
+
+    /* Create edge as ⟨from ⟨to label⟩⟩ */
+    Cell* edge = cell_cons(from, cell_cons(to, label));
+
+    /* Create new edge list with edge prepended */
+    Cell* new_edges = cell_cons(edge, graph->data.graph.edges);
+
+    /* Create new graph with updated edges */
+    Cell* new_graph = cell_graph(
+        graph->data.graph.graph_type,
+        graph->data.graph.nodes,
+        new_edges,
+        graph->data.graph.metadata
+    );
+
+    /* Copy entry/exit */
+    if (graph->data.graph.entry) {
+        new_graph->data.graph.entry = graph->data.graph.entry;
+        cell_retain(new_graph->data.graph.entry);
+    }
+    if (graph->data.graph.exit) {
+        new_graph->data.graph.exit = graph->data.graph.exit;
+        cell_retain(new_graph->data.graph.exit);
+    }
+
+    cell_release(edge);
+    cell_release(new_edges);
+    return new_graph;
+}
+
+Cell* cell_graph_set_entry(Cell* graph, Cell* entry) {
+    assert(graph->type == CELL_GRAPH);
+
+    /* Create new graph with entry set */
+    Cell* new_graph = cell_graph(
+        graph->data.graph.graph_type,
+        graph->data.graph.nodes,
+        graph->data.graph.edges,
+        graph->data.graph.metadata
+    );
+
+    if (new_graph->data.graph.entry) {
+        cell_release(new_graph->data.graph.entry);
+    }
+    new_graph->data.graph.entry = entry;
+    if (entry) cell_retain(entry);
+
+    if (graph->data.graph.exit) {
+        new_graph->data.graph.exit = graph->data.graph.exit;
+        cell_retain(new_graph->data.graph.exit);
+    }
+
+    return new_graph;
+}
+
+Cell* cell_graph_set_exit(Cell* graph, Cell* exit) {
+    assert(graph->type == CELL_GRAPH);
+
+    /* Create new graph with exit set */
+    Cell* new_graph = cell_graph(
+        graph->data.graph.graph_type,
+        graph->data.graph.nodes,
+        graph->data.graph.edges,
+        graph->data.graph.metadata
+    );
+
+    if (new_graph->data.graph.exit) {
+        cell_release(new_graph->data.graph.exit);
+    }
+    new_graph->data.graph.exit = exit;
+    if (exit) cell_retain(exit);
+
+    if (graph->data.graph.entry) {
+        new_graph->data.graph.entry = graph->data.graph.entry;
+        cell_retain(new_graph->data.graph.entry);
+    }
+
+    return new_graph;
 }
 
 /* Equality */
@@ -248,6 +480,19 @@ bool cell_equal(Cell* a, Cell* b) {
         case CELL_PAIR:
             return cell_equal(a->data.pair.car, b->data.pair.car) &&
                    cell_equal(a->data.pair.cdr, b->data.pair.cdr);
+        case CELL_STRUCT:
+            /* Structures equal if same type, variant, and fields */
+            return cell_equal(a->data.structure.type_tag, b->data.structure.type_tag) &&
+                   cell_equal(a->data.structure.variant, b->data.structure.variant) &&
+                   cell_equal(a->data.structure.fields, b->data.structure.fields);
+        case CELL_GRAPH:
+            /* Graphs equal if same type and structure (deep comparison) */
+            return a->data.graph.graph_type == b->data.graph.graph_type &&
+                   cell_equal(a->data.graph.nodes, b->data.graph.nodes) &&
+                   cell_equal(a->data.graph.edges, b->data.graph.edges);
+        case CELL_LAMBDA:
+        case CELL_BUILTIN:
+        case CELL_ERROR:
         default:
             return false;
     }
@@ -292,6 +537,54 @@ void cell_print(Cell* c) {
                 printf(":");
                 cell_print(c->data.error.data);
             }
+            break;
+        case CELL_STRUCT:
+            /* Print structure as (⊙/⊚ Type :variant fields) */
+            if (c->data.structure.kind == STRUCT_LEAF) {
+                printf("⊙");
+            } else if (c->data.structure.kind == STRUCT_NODE) {
+                printf("⊚");
+            } else {
+                printf("⊝");
+            }
+            printf("[");
+            cell_print(c->data.structure.type_tag);
+            if (c->data.structure.variant && !cell_is_nil(c->data.structure.variant)) {
+                printf(" ");
+                cell_print(c->data.structure.variant);
+            }
+            if (c->data.structure.fields && !cell_is_nil(c->data.structure.fields)) {
+                printf(" ");
+                cell_print(c->data.structure.fields);
+            }
+            printf("]");
+            break;
+        case CELL_GRAPH:
+            /* Print graph as (⊝ type nodes:N edges:E) */
+            printf("⊝[");
+            switch (c->data.graph.graph_type) {
+                case GRAPH_CFG: printf("CFG"); break;
+                case GRAPH_DFG: printf("DFG"); break;
+                case GRAPH_CALL: printf("CallGraph"); break;
+                case GRAPH_DEP: printf("DepGraph"); break;
+                default: printf("Graph"); break;
+            }
+
+            /* Count nodes and edges */
+            int node_count = 0, edge_count = 0;
+            Cell* n = c->data.graph.nodes;
+            while (n && !cell_is_nil(n)) {
+                node_count++;
+                n = cell_cdr(n);
+            }
+            Cell* e = c->data.graph.edges;
+            while (e && !cell_is_nil(e)) {
+                edge_count++;
+                e = cell_cdr(e);
+            }
+
+            printf(" N:%d E:%d", node_count, edge_count);
+            printf("]");
             break;
     }
 }
