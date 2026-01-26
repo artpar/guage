@@ -1,0 +1,17 @@
+; Lambda Calculus Tests
+
+; Test: Identity function
+(≔ id (λ (x) x))
+(⊨ (⌜ :identity) #42 (id #42))
+
+; Test: Const function
+(≔ const (λ (x) (λ (y) x)))
+(⊨ (⌜ :const) #10 ((const #10) #20))
+
+; Test: Arithmetic in lambda
+(≔ add1 (λ (x) (⊕ x 1)))
+(⊨ (⌜ :add1) #42 (add1 #41))
+
+; Test: Multiplication in lambda
+(≔ double (λ (x) (⊗ x #2)))
+(⊨ (⌜ :double) #42 (double #21))

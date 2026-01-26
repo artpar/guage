@@ -1,0 +1,35 @@
+; Core Guage Tests
+
+; Lambda - Identity
+(≔ id (λ (x) x))
+(⊢ (≟ (id #42) #42) ok)
+
+; Lambda - Const
+(≔ const (λ (x) (λ (y) x)))
+(⊢ (≟ ((const #10) #20) #10) ok)
+
+; Arithmetic
+(⊢ (≟ (⊕ #2 #3) #5) ok)
+(⊢ (≟ (⊖ #10 #3) #7) ok)
+(⊢ (≟ (⊗ #6 #7) #42) ok)
+(⊢ (≟ (⊘ #84 #2) #42) ok)
+
+; Lambda with arithmetic
+(≔ add1 (λ (x) (⊕ x #1)))
+(⊢ (≟ (add1 #41) #42) ok)
+
+; Nested arithmetic in lambda
+(≔ double (λ (x) (⊗ x #2)))
+(⊢ (≟ (double #21) #42) ok)
+
+; Comparisons
+(⊢ (≡ #42 #42) ok)
+(⊢ (¬ (≡ #42 #43)) ok)
+
+; Booleans
+(⊢ (∧ #t #t) ok)
+(⊢ (¬ (∧ #t #f)) ok)
+
+; Conditionals
+(⊢ (≟ (? #t #42 #0) #42) ok)
+(⊢ (≟ (? #f #0 #42) #42) ok)

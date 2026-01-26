@@ -1,0 +1,24 @@
+; Basic functionality tests
+
+; Identity function
+(≔ id (λ (x) x))
+(⊢ (≟ (id #42) #42) :identity)
+
+; Const function
+(≔ const (λ (x) (λ (y) x)))
+(⊢ (≟ ((const #10) #20) #10) :const)
+
+; Addition
+(⊢ (≟ (⊕ #2 #3) #5) :add)
+
+; Nested lambda
+(≔ add1 (λ (x) (⊕ x #1)))
+(⊢ (≟ (add1 #41) #42) :lambda-with-prim)
+
+; Type introspection
+(⊢ (≟ (⊙ #42) :number) :typeof)
+(⊢ (≟ (⊙ id) :lambda) :typeof-lambda)
+
+; Arity
+(≔ f2 (λ (x y) (⊕ x y)))
+(⊢ (≟ (⧉ f2) #2) :arity)

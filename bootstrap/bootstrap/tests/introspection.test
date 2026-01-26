@@ -1,0 +1,21 @@
+; Introspection Tests
+
+; Type-of tests
+(⊨ (⌜ :typeof-number) :number (⊙ #42))
+(⊨ (⌜ :typeof-bool) :bool (⊙ #t))
+(⊨ (⌜ :typeof-nil) :nil (⊙ ∅))
+
+; Lambda introspection
+(≔ f1 (λ (x) x))
+(≔ f2 (λ (x y) (⊕ x y)))
+(≔ f3 (λ (a b c) (⊗ a (⊕ b c))))
+
+(⊨ (⌜ :typeof-lambda) :lambda (⊙ f1))
+(⊨ (⌜ :arity-1) #1 (⧉ f1))
+(⊨ (⌜ :arity-2) #2 (⧉ f2))
+(⊨ (⌜ :arity-3) #3 (⧉ f3))
+
+; Deep equality
+(⊨ (⌜ :eq-numbers) #t (≟ #42 #42))
+(⊨ (⌜ :eq-bools) #t (≟ #t #t))
+(⊨ (⌜ :neq-numbers) #f (≟ #42 #43))
