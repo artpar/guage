@@ -18,12 +18,92 @@ Everything is a **Cell**:
 | `·` | Application | Apply function | ✅ DONE |
 | `0 1 2...` | Variable ref | De Bruijn index | ✅ DONE |
 
-### Metaprogramming (3)
+### Metaprogramming Core (3)
 | Symbol | Type | Meaning | Status |
 |--------|------|---------|--------|
 | `⌜` | `α → ⌜α⌝` | Quote (code→data) | ✅ DONE |
 | `⌞` | `⌜α⌝ → α` | Eval (data→code) | ❌ PLACEHOLDER |
 | `≔` | Binding | Definition | ✅ DONE |
+
+### Pattern Matching (3) - CRITICAL FOR METAPROGRAMMING
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `∇` | Pattern match | Destructure with patterns | 🎯 NEXT |
+| `≗` | `α → β → 𝔹` | Structural equality | 🎯 NEXT |
+| `_` | Pattern | Wildcard (match anything) | 🎯 NEXT |
+
+**Pattern Syntax:**
+```scheme
+(∇ expr
+  [pattern₁ expr₁]
+  [pattern₂ expr₂]
+  ...)
+
+; Patterns:
+; - Numbers: #42
+; - Symbols: :foo
+; - Nil: ∅
+; - Pairs: (⟨⟩ a b)
+; - Wildcard: _
+```
+
+**Example:**
+```scheme
+(≔ length (λ (lst)
+  (∇ lst
+    [∅ #0]
+    [(⟨⟩ _ tail) (⊕ #1 (length tail))])))
+```
+
+### Macro System (5) - HYGIENIC CODE TRANSFORMATION
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `⧉` | Macro def | Define structural macro | ⏳ PLANNED |
+| `⧈` | Macro params | Macro parameter list | ⏳ PLANNED |
+| `` ` `` | Backquote | Quote with holes | ⏳ PLANNED |
+| `,` | Unquote | Evaluate in quote | ⏳ PLANNED |
+| `,@` | Splice | Splice list elements | ⏳ PLANNED |
+
+**Macro Syntax:**
+```scheme
+(⧉ name (⧈ (param₁ param₂ ...)
+  `(template with ,param₁ and ,param₂)))
+
+; Usage: (name arg₁ arg₂)
+; Expands at compile-time
+```
+
+**Example:**
+```scheme
+(⧉ when (⧈ (condition body)
+  `(? ,condition ,body ∅)))
+
+; (when (> x #0) (⊕ x #1))
+; Expands to: (? (> x #0) (⊕ x #1) ∅)
+```
+
+### Generic Programming (3) - PARAMETRIC POLYMORPHISM
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `⊳` | Generic param | Type/value parameter | ⏳ PLANNED |
+| `⊲` | Instantiate | Apply generic | ⏳ PLANNED |
+| `⊧` | Constraint | Type satisfies trait | ⏳ PLANNED |
+
+**Generic Syntax:**
+```scheme
+(≔ identity (λ (⊳ T) (λ (x : T) x)))
+
+; Instantiate: (⊲ identity ℕ)
+; With constraint: (λ (⊳ T : (⊧ Ord)) ...)
+```
+
+**Example:**
+```scheme
+(≔ max (λ (⊳ T : (⊧ Ord)) (λ (a : T) (λ (b : T)
+  (? (> a b) a b)))))
+
+((⊲ max ℕ) #5 #10)  ; → #10
+```
 
 ### Type Constructors (9) - COMPILE TIME ONLY
 | Symbol | Type | Meaning |
@@ -85,6 +165,14 @@ Everything is a **Cell**:
 | `⌂∈` | `:symbol → string` | Get type signature | ✅ DONE |
 | `⌂≔` | `:symbol → list` | Get dependencies | ✅ DONE |
 
+### Control/Data Flow (4) - Auto-generated first-class graphs
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `⌂⟿` | `:symbol → CFG` | Get control flow graph | 🎯 NEXT |
+| `⌂⇝` | `:symbol → DFG` | Get data flow graph | 🎯 NEXT |
+| `⌂⊚` | `:symbol → CallGraph` | Get call graph | 🎯 NEXT |
+| `⌂⊙` | `:symbol → DepGraph` | Get dependency graph | 🎯 NEXT |
+
 **Auto-Documentation System:**
 - Every user function gets automatic documentation via **recursive composition**
 - Extracts dependencies from function body
@@ -98,33 +186,102 @@ Everything is a **Cell**:
 2. α → 𝔹 - Returns boolean (comparisons, predicates)
 3. α → β - Generic polymorphic (fallback)
 
-Example:
+**Auto-Generated Graphs (First-Class Citizens):**
+
+1. **⌂⟿ Control Flow Graph (CFG)**
+   - Nodes: Basic blocks (sequences without branches)
+   - Edges: Control flow (?, recursion, function calls)
+   - Shows all possible execution paths
+   - Identifies unreachable code
+   - Used for: Optimization, dead code elimination
+
+2. **⌂⇝ Data Flow Graph (DFG)**
+   - Nodes: Operations (⊕, ⊗, ?, λ, etc)
+   - Edges: Data dependencies (producer → consumer)
+   - Shows value flow through computation
+   - Identifies unused values
+   - Used for: Optimization, const folding, CSE
+
+3. **⌂⊚ Call Graph**
+   - Nodes: Functions
+   - Edges: Function calls
+   - Shows caller/callee relationships
+   - Identifies recursion cycles
+   - Used for: Inlining, optimization order
+
+4. **⌂⊙ Dependency Graph**
+   - Nodes: Definitions (≔)
+   - Edges: Symbol dependencies
+   - Shows declaration order requirements
+   - Identifies circular dependencies
+   - Used for: Compilation order, module resolution
+
+Example (documentation form):
 ```scheme
-(≔ ! (λ (n) (? (≡ n #0) #1 (⊗ n (! (⊖ n #1))))))
+(≔ ! (λ (𝕩) (? (≡ 𝕩 #0) #1 (⊗ 𝕩 (! (⊖ 𝕩 #1))))))
 ```
+
+Example (De Bruijn form - what actually runs):
+```scheme
+(≔ ! (λ (? (≡ 0 #0) #1 (⊗ 0 (! (⊖ 0 #1))))))
+```
+
 Auto-prints:
 ```
 📝 ! :: ℕ → ℕ
-   if equals the argument and 0 then 1 else multiply the argument and apply ! to subtract the argument and 1
+   if equals 𝕩 and 0 then 1 else multiply 𝕩 and apply ! to subtract 𝕩 and 1
    Dependencies: ?, ≡, ⌜, ⊗, !, ⊖
 ```
 
 More examples:
 ```scheme
-(≔ double (λ (x) (⊗ x #2)))
-📝 double :: ℕ → ℕ
-   multiply the argument and 2
+; Documentation form
+(≔ ⊗2 (λ (𝕩) (⊗ 𝕩 #2)))
+📝 ⊗2 :: ℕ → ℕ
+   multiply 𝕩 and 2
 
-(≔ is-zero (λ (x) (≡ x #0)))
-📝 is-zero :: α → 𝔹
-   equals the argument and 0
+; De Bruijn form (actual)
+(≔ ⊗2 (λ (⊗ 0 #2)))
+
+; Documentation form
+(≔ ≡0 (λ (𝕩) (≡ 𝕩 #0)))
+📝 ≡0 :: α → 𝔹
+   equals 𝕩 and 0
+
+; De Bruijn form (actual)
+(≔ ≡0 (λ (≡ 0 #0)))
 ```
 
 Query docs:
 ```scheme
-(⌂ (⌜ !))      ; → :if equals the argument and 0...
+(⌂ (⌜ !))      ; → :if equals 𝕩 and 0...
 (⌂∈ (⌜ !))     ; → :ℕ → ℕ
 (⌂≔ (⌜ !))     ; → ⟨:? ⟨:≡ ⟨:⌜ ...⟩⟩⟩
+```
+
+Query graphs:
+```scheme
+(⌂⟿ (⌜ !))     ; → Control flow graph
+; CFG:
+;   [entry] → [≡ 𝕩 #0]
+;   [≡ 𝕩 #0] --true--> [return #1]
+;   [≡ 𝕩 #0] --false--> [⊗ 𝕩 (! (⊖ 𝕩 #1))]
+;   [⊗ 𝕩 (! (⊖ 𝕩 #1))] → [recursive call !]
+;   [recursive call !] → [exit]
+
+(⌂⇝ (⌜ !))     ; → Data flow graph
+; DFG:
+;   𝕩 → [≡ with #0]
+;   𝕩 → [⊖ with #1] → [! recursive] → [⊗ with 𝕩]
+;   [⊗] → return
+
+(⌂⊚ (⌜ !))     ; → Call graph
+; CallGraph:
+;   ! → {?, ≡, ⊗, ⊖, !}  ; Calls itself (recursion)
+
+(⌂⊙ (⌜ !))     ; → Dependency graph
+; DepGraph:
+;   ! ← {?, ≡, ⌜, ⊗, ⊖}  ; Depends on these primitives
 ```
 
 ### Comparison & Logic (4)
@@ -174,9 +331,19 @@ Query docs:
 
 ### De Bruijn Indices Only
 Variables are referenced by index, not name:
-- `λ.0` - identity function (λx.x)
-- `λ.λ.1` - const function (λx.λy.x)
-- `λ.λ.λ.(2 0 (1 0))` - compose (λf.λg.λx.f(g x))
+- `(λ 0)` - identity function
+- `(λ (λ 1))` - const function
+- `(λ (λ (λ (2 (1 0)))))` - compose
+
+**Parameter naming:**
+- At runtime: De Bruijn indices (0, 1, 2...) - NO NAMES
+- In documentation: Mathematical symbols for clarity
+  - `ƒ`, `𝕘`, `𝕙` - functions
+  - `𝕩`, `𝕪`, `𝕫` - values
+  - `⊙`, `◁`, `▷` - list elements
+  - `⊡` - accumulator
+
+**NO ENGLISH:** Not even single letters like `x`, `n`, `f`, `lst`
 
 ### S-Expression Syntax
 ```
