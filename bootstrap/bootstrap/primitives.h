@@ -91,4 +91,7 @@ Cell* primitives_init(void);
 /* Lookup primitive by symbol */
 Cell* primitives_lookup(Cell* env, const char* sym);
 
+/* Lookup primitive by name (returns NULL if not found) */
+const Primitive* primitive_lookup_by_name(const char* name);
+
 #endif /* GUAGE_PRIMITIVES_H */

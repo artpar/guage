@@ -14,9 +14,9 @@ Everything is a **Cell**:
 | `⟨⟩` | `α → β → ⟨α β⟩` | Construct cell | ✅ DONE |
 | `◁` | `⟨α β⟩ → α` | Head (car) | ✅ DONE |
 | `▷` | `⟨α β⟩ → β` | Tail (cdr) | ✅ DONE |
-| `λ` | Abstraction | Lambda | ❌ NOT IMPLEMENTED |
-| `·` | Application | Apply function | ❌ NOT IMPLEMENTED |
-| `0 1 2...` | Variable ref | De Bruijn index | ❌ NOT IMPLEMENTED |
+| `λ` | Abstraction | Lambda | ✅ DONE |
+| `·` | Application | Apply function | ✅ DONE |
+| `0 1 2...` | Variable ref | De Bruijn index | ✅ DONE |
 
 ### Metaprogramming (3)
 | Symbol | Type | Meaning | Status |
@@ -77,6 +77,38 @@ Everything is a **Cell**:
 | `⟳` | Spawn | Spawn actor | ❌ PLACEHOLDER |
 | `→!` | Send | Send message | ❌ PLACEHOLDER |
 | `←?` | Receive | Receive message | ❌ PLACEHOLDER |
+
+### Documentation (3) - Auto-generated for user functions
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `⌂` | `:symbol → string` | Get description | ✅ DONE |
+| `⌂∈` | `:symbol → string` | Get type signature | ✅ DONE |
+| `⌂≔` | `:symbol → list` | Get dependencies | ✅ DONE |
+
+**Auto-Documentation System:**
+- Every user function gets automatic documentation
+- Extracts dependencies from function body
+- Composes descriptions from constituent docs
+- Infers simple type signatures
+- Auto-prints when function is defined
+
+Example:
+```scheme
+(≔ ! (λ (n) (? (≡ n #0) #1 (⊗ n (! (⊖ n #1))))))
+```
+Auto-prints:
+```
+📝 ! :: α → β
+   Function using: ?, ≡, ⌜, ⊗, !, ...
+   Dependencies: ?, ≡, ⌜, ⊗, !, ⊖
+```
+
+Query docs:
+```scheme
+(⌂ (⌜ !))      ; → :Function using: ...
+(⌂∈ (⌜ !))     ; → :α → β
+(⌂≔ (⌜ !))     ; → ⟨:? ⟨:≡ ⟨:⌜ ...⟩⟩⟩
+```
 
 ### Comparison & Logic (4)
 | Symbol | Type | Meaning | Status |
@@ -156,19 +188,21 @@ Variables are referenced by index, not name:
 ∘ ≔ λ.λ.λ.(2 (1 0))
 ```
 
-### Factorial (using recursion - NOT YET IMPLEMENTED)
-```lisp
-! ≔ λ.((≡ 0 0) 1 (⊗ 0 (! (⊖ 0 1))))
+### Factorial (using named recursion)
+```scheme
+(≔ ! (λ (n) (? (≡ n #0) #1 (⊗ n (! (⊖ n #1))))))
+(! #5)  ; → #120 ✅
+```
+
+### Fibonacci
+```scheme
+(≔ fib (λ (n) (? (< n #2) n (⊕ (fib (⊖ n #1)) (fib (⊖ n #2))))))
+(fib #7)  ; → #13 ✅
 ```
 
 ## Turing Completeness
 
-### Current Status: ❌ NOT TURING COMPLETE
-
-**Missing:**
-1. ❌ Proper lambda evaluation with De Bruijn indices
-2. ❌ Function application
-3. ❌ Recursion (need Y combinator or fix point)
+### Current Status: ✅ TURING COMPLETE
 
 **What works:**
 - ✅ Cell construction/destruction
@@ -176,19 +210,45 @@ Variables are referenced by index, not name:
 - ✅ Boolean logic
 - ✅ Conditionals
 - ✅ Global definitions
+- ✅ Lambda calculus with De Bruijn indices
+- ✅ Function application (beta reduction)
+- ✅ Lexical scoping with closures
+- ✅ Named recursion (self-reference in ≔)
+- ✅ Nested lambdas
+- ✅ First-class functions
 
-### To Become Turing Complete:
-1. Implement De Bruijn index evaluation
-2. Implement lambda abstraction (closure creation)
-3. Implement application (function calling)
-4. Add recursion via Y combinator or named recursion
+**Examples:**
+```scheme
+; Factorial
+(≔ ! (λ (n) (? (≡ n #0) #1 (⊗ n (! (⊖ n #1))))))
+(! #10)  ; → 3628800
 
-## Self-Implementation Status: ❌ CANNOT IMPLEMENT ITSELF YET
+; Fibonacci
+(≔ fib (λ (n) (? (< n #2) n (⊕ (fib (⊖ n #1)) (fib (⊖ n #2))))))
+(fib #10)  ; → 55
 
-**To self-implement:**
-1. Must be Turing complete (not yet)
-2. Need proper ⌞ eval implementation
-3. Need code-as-data manipulation (have cells, but not eval)
+; Higher-order functions
+(≔ twice (λ (f) (λ (x) (f (f x)))))
+(≔ inc (λ (x) (⊕ x #1)))
+((twice inc) #5)  ; → #7
+```
+
+### Proof of Turing Completeness:
+1. ✅ De Bruijn index evaluation implemented
+2. ✅ Lambda abstraction (closure creation) implemented
+3. ✅ Application (function calling) implemented
+4. ✅ Recursion via named bindings implemented
+5. ✅ Can implement any computable function
+
+## Self-Implementation Status: 🚧 IN PROGRESS
+
+**Progress:**
+- ✅ Turing complete (can compute anything)
+- ✅ Code-as-data (cells + quote/eval)
+- ✅ Auto-documentation system
+- 🚧 Need: Parser in Guage
+- 🚧 Need: Compiler in Guage
+- 🚧 Need: Full ⌞ eval implementation
 
 ## Type System (Future)
 

@@ -1,6 +1,7 @@
 #ifndef GUAGE_EVAL_H
 #define GUAGE_EVAL_H
 
+#include <stddef.h>
 #include "cell.h"
 
 /* Evaluator
@@ -12,10 +13,21 @@
  * - Quote/eval metaprogramming
  */
 
+/* Documentation for user-defined functions */
+typedef struct FunctionDoc {
+    char* name;                    /* Function name */
+    char* description;             /* Auto-generated description */
+    char* type_signature;          /* Inferred type signature */
+    char** dependencies;           /* Array of dependency names */
+    size_t dependency_count;       /* Number of dependencies */
+    struct FunctionDoc* next;      /* Linked list */
+} FunctionDoc;
+
 /* Evaluation context */
 typedef struct {
     Cell* env;          /* Current environment */
     Cell* primitives;   /* Primitive bindings */
+    FunctionDoc* user_docs;  /* User function documentation */
 } EvalContext;
 
 /* Create new evaluation context */
@@ -32,5 +44,11 @@ void eval_define(EvalContext* ctx, const char* name, Cell* value);
 
 /* Lookup variable */
 Cell* eval_lookup(EvalContext* ctx, const char* name);
+
+/* Find user function documentation by name (for primitives to use) */
+FunctionDoc* eval_find_user_doc(const char* name);
+
+/* Set current eval context (for primitives to access user docs) */
+void eval_set_current_context(EvalContext* ctx);
 
 #endif /* GUAGE_EVAL_H */

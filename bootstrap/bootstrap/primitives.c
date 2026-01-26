@@ -1,4 +1,5 @@
 #include "primitives.h"
+#include "eval.h"
 #include <stdio.h>
 #include <assert.h>
 #include <math.h>
@@ -393,8 +394,13 @@ Cell* prim_doc_get(Cell* args) {
         }
     }
 
-    /* TODO: Look up in user function registry */
-    return cell_symbol("Undocumented user function");
+    /* Look up in user function registry */
+    FunctionDoc* doc = eval_find_user_doc(sym);
+    if (doc && doc->description) {
+        return cell_symbol(doc->description);
+    }
+
+    return cell_symbol(":no-documentation");
 }
 
 /* ⌂∈ - Get type signature for symbol */
@@ -409,17 +415,38 @@ Cell* prim_doc_type(Cell* args) {
         }
     }
 
-    /* TODO: Look up in user function registry */
-    return cell_symbol("Unknown type");
+    /* Look up in user function registry */
+    FunctionDoc* doc = eval_find_user_doc(sym);
+    if (doc && doc->type_signature) {
+        return cell_symbol(doc->type_signature);
+    }
+
+    return cell_symbol(":unknown-type");
 }
 
 /* ⌂≔ - Get dependencies for symbol */
 Cell* prim_doc_deps(Cell* args) {
     Cell* name = arg1(args);
-    (void)name;
+    const char* sym = cell_get_symbol(name);
 
     /* Primitives have no dependencies */
-    /* TODO: Extract dependencies for user functions */
+    const Primitive* prim = primitive_lookup_by_name(sym);
+    if (prim) {
+        return cell_nil();
+    }
+
+    /* Look up user function dependencies */
+    FunctionDoc* doc = eval_find_user_doc(sym);
+    if (doc) {
+        /* Build list of dependencies */
+        Cell* result = cell_nil();
+        for (int i = (int)doc->dependency_count - 1; i >= 0; i--) {
+            Cell* dep_sym = cell_symbol(doc->dependencies[i]);
+            result = cell_cons(dep_sym, result);
+        }
+        return result;
+    }
+
     return cell_nil();
 }
 
@@ -511,6 +538,16 @@ static Primitive primitives[] = {
 
     {NULL, NULL, 0, {NULL, NULL}}
 };
+
+/* Look up primitive by name (returns NULL if not found) */
+const Primitive* primitive_lookup_by_name(const char* name) {
+    for (int i = 0; primitives[i].name != NULL; i++) {
+        if (strcmp(primitives[i].name, name) == 0) {
+            return &primitives[i];
+        }
+    }
+    return NULL;
+}
 
 /* Initialize primitive environment */
 Cell* primitives_init(void) {
