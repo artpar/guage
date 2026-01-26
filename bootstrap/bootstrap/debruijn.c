@@ -75,19 +75,13 @@ Cell* debruijn_convert_list(Cell* list, NameContext* ctx) {
 
 /* Convert expression from named to De Bruijn indices */
 Cell* debruijn_convert(Cell* expr, NameContext* ctx) {
-    /* Self-evaluating literals */
-    if (cell_is_number(expr) || cell_is_bool(expr) || cell_is_nil(expr)) {
-        cell_retain(expr);
-        return expr;
-    }
-
     /* Symbol - convert to index if bound, keep as symbol if free */
     if (cell_is_symbol(expr)) {
         const char* name = cell_get_symbol(expr);
         int index = debruijn_lookup(name, ctx);
 
         if (index >= 0) {
-            /* Bound variable - convert to De Bruijn index */
+            /* Bound variable - convert to De Bruijn index (unwrapped number) */
             return cell_number((double)index);
         } else {
             /* Free variable (primitive or global) - keep as symbol */
@@ -96,12 +90,26 @@ Cell* debruijn_convert(Cell* expr, NameContext* ctx) {
         }
     }
 
+    /* Number literals - wrap in quote to distinguish from De Bruijn indices */
+    if (cell_is_number(expr)) {
+        Cell* quote_sym = cell_symbol("⌜");
+        Cell* result = cell_cons(quote_sym, cell_cons(expr, cell_nil()));
+        cell_release(quote_sym);
+        return result;
+    }
+
+    /* Other self-evaluating literals */
+    if (cell_is_bool(expr) || cell_is_nil(expr)) {
+        cell_retain(expr);
+        return expr;
+    }
+
     /* Pair (function application or special form) */
     if (cell_is_pair(expr)) {
         Cell* first = cell_car(expr);
         Cell* rest = cell_cdr(expr);
 
-        /* Check for lambda - convert with extended context */
+        /* Check for nested lambda - convert in extended context */
         if (cell_is_symbol(first)) {
             const char* sym = cell_get_symbol(first);
 
@@ -128,17 +136,17 @@ Cell* debruijn_convert(Cell* expr, NameContext* ctx) {
                 /* Convert body with extended context */
                 Cell* converted_body = debruijn_convert(body_expr, new_ctx);
 
-                /* Keep original lambda structure: (λ (params) converted_body) */
-                /* This way it can be re-evaluated properly */
-                Cell* lambda_sym = cell_symbol("λ");
-                Cell* result = cell_cons(lambda_sym,
+                /* Create a CONVERTED lambda marker: (:λ-converted (params) body) */
+                /* This tells eval.c not to convert again */
+                Cell* marker = cell_symbol(":λ-converted");
+                Cell* result = cell_cons(marker,
                                         cell_cons(params,
                                                  cell_cons(converted_body, cell_nil())));
 
                 /* Cleanup */
                 context_free(new_ctx);
                 free(param_names);
-                cell_release(lambda_sym);
+                cell_release(marker);
                 cell_release(converted_body);
 
                 return result;

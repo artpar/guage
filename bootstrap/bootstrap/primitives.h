@@ -65,10 +65,24 @@ Cell* prim_spawn(Cell* args);          /* ⟳ - spawn actor */
 Cell* prim_send(Cell* args);           /* →! - send message */
 Cell* prim_receive(Cell* args);        /* ←? - receive message */
 
+/* Documentation primitives */
+Cell* prim_doc_get(Cell* args);        /* ⌂ - get documentation */
+Cell* prim_doc_type(Cell* args);       /* ⌂∈ - get type signature */
+Cell* prim_doc_deps(Cell* args);       /* ⌂≔ - get dependencies */
+Cell* prim_doc_source(Cell* args);     /* ⌂⊛ - get source code */
+
+/* Primitive documentation structure */
+typedef struct {
+    const char* description;     /* What this primitive does */
+    const char* type_signature;  /* Type signature */
+} PrimitiveDoc;
+
 /* Environment for primitives */
 typedef struct {
     const char* name;
     Cell* (*fn)(Cell*);
+    int arity;                   /* Number of arguments (-1 for variadic) */
+    PrimitiveDoc doc;            /* MANDATORY documentation */
 } Primitive;
 
 /* Initialize primitive environment */

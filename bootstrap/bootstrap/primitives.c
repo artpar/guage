@@ -377,70 +377,139 @@ Cell* prim_receive(Cell* args) {
     return cell_nil();
 }
 
+/* Forward declaration */
+static Primitive primitives[];
+/* Documentation primitives */
+
+/* ⌂ - Get documentation for symbol */
+Cell* prim_doc_get(Cell* args) {
+    Cell* name = arg1(args);
+    const char* sym = cell_get_symbol(name);
+
+    /* Look up in primitives table */
+    for (int i = 0; primitives[i].name != NULL; i++) {
+        if (strcmp(primitives[i].name, sym) == 0) {
+            return cell_symbol(primitives[i].doc.description);
+        }
+    }
+
+    /* TODO: Look up in user function registry */
+    return cell_symbol("Undocumented user function");
+}
+
+/* ⌂∈ - Get type signature for symbol */
+Cell* prim_doc_type(Cell* args) {
+    Cell* name = arg1(args);
+    const char* sym = cell_get_symbol(name);
+
+    /* Look up in primitives table */
+    for (int i = 0; primitives[i].name != NULL; i++) {
+        if (strcmp(primitives[i].name, sym) == 0) {
+            return cell_symbol(primitives[i].doc.type_signature);
+        }
+    }
+
+    /* TODO: Look up in user function registry */
+    return cell_symbol("Unknown type");
+}
+
+/* ⌂≔ - Get dependencies for symbol */
+Cell* prim_doc_deps(Cell* args) {
+    Cell* name = arg1(args);
+    (void)name;
+
+    /* Primitives have no dependencies */
+    /* TODO: Extract dependencies for user functions */
+    return cell_nil();
+}
+
+/* ⌂⊛ - Get source code for symbol */
+Cell* prim_doc_source(Cell* args) {
+    Cell* name = arg1(args);
+    const char* sym = cell_get_symbol(name);
+
+    /* Primitives are built-in */
+    for (int i = 0; primitives[i].name != NULL; i++) {
+        if (strcmp(primitives[i].name, sym) == 0) {
+            return cell_symbol("<primitive>");
+        }
+    }
+
+    /* TODO: Return actual source for user functions */
+    return cell_nil();
+}
+
 /* Primitive table - PURE SYMBOLS ONLY */
+/* Primitive table - PURE SYMBOLS ONLY
+ * EVERY primitive MUST have documentation */
 static Primitive primitives[] = {
     /* Core Lambda Calculus */
-    {"⟨⟩", prim_cons},
-
-    {"◁", prim_car},
-    {"▷", prim_cdr},
+    {"⟨⟩", prim_cons, 2, {"Construct pair from two values", "α → β → ⟨α β⟩"}},
+    {"◁", prim_car, 1, {"Get first element of pair (head)", "⟨α β⟩ → α"}},
+    {"▷", prim_cdr, 1, {"Get second element of pair (tail)", "⟨α β⟩ → β"}},
 
     /* Metaprogramming */
-    {"⌜", prim_quote},
-    {"⌞", prim_eval},
+    {"⌜", prim_quote, 1, {"Quote expression (prevent evaluation)", "α → α"}},
+    {"⌞", prim_eval, 1, {"Evaluate expression as code", "α → β"}},
 
     /* Comparison & Logic */
-    {"≡", prim_equal},
-    {"≢", prim_not_equal},
-    {"∧", prim_and},
-    {"∨", prim_or},
-    {"¬", prim_not},
+    {"≡", prim_equal, 2, {"Test if two values are equal", "α → α → 𝔹"}},
+    {"≢", prim_not_equal, 2, {"Test if two values are not equal", "α → α → 𝔹"}},
+    {"∧", prim_and, 2, {"Logical AND of two booleans", "𝔹 → 𝔹 → 𝔹"}},
+    {"∨", prim_or, 2, {"Logical OR of two booleans", "𝔹 → 𝔹 → 𝔹"}},
+    {"¬", prim_not, 1, {"Logical NOT of boolean", "𝔹 → 𝔹"}},
 
     /* Arithmetic */
-    {"⊕", prim_add},
-    {"⊖", prim_sub},
-    {"⊗", prim_mul},
-    {"⊘", prim_div},
-    {"<", prim_lt},
-    {">", prim_gt},
-    {"≤", prim_le},
-    {"≥", prim_ge},
+    {"⊕", prim_add, 2, {"Add two numbers", "ℕ → ℕ → ℕ"}},
+    {"⊖", prim_sub, 2, {"Subtract second number from first", "ℕ → ℕ → ℕ"}},
+    {"⊗", prim_mul, 2, {"Multiply two numbers", "ℕ → ℕ → ℕ"}},
+    {"⊘", prim_div, 2, {"Divide first number by second", "ℕ → ℕ → ℕ"}},
+    {"<", prim_lt, 2, {"Test if first number less than second", "ℕ → ℕ → 𝔹"}},
+    {">", prim_gt, 2, {"Test if first number greater than second", "ℕ → ℕ → 𝔹"}},
+    {"≤", prim_le, 2, {"Test if first number less than or equal to second", "ℕ → ℕ → 𝔹"}},
+    {"≥", prim_ge, 2, {"Test if first number greater than or equal to second", "ℕ → ℕ → 𝔹"}},
 
     /* Type predicates */
-    {"ℕ?", prim_is_number},
-    {"𝔹?", prim_is_bool},
-    {":?", prim_is_symbol},
-    {"∅?", prim_is_nil},
-    {"⟨⟩?", prim_is_pair},
-    {"#?", prim_is_atom},
+    {"ℕ?", prim_is_number, 1, {"Test if value is a number", "α → 𝔹"}},
+    {"𝔹?", prim_is_bool, 1, {"Test if value is a boolean", "α → 𝔹"}},
+    {":?", prim_is_symbol, 1, {"Test if value is a symbol", "α → 𝔹"}},
+    {"∅?", prim_is_nil, 1, {"Test if value is nil", "α → 𝔹"}},
+    {"⟨⟩?", prim_is_pair, 1, {"Test if value is a pair", "α → 𝔹"}},
+    {"#?", prim_is_atom, 1, {"Test if value is an atom", "α → 𝔹"}},
 
     /* Debug & Error Handling */
-    {"⚠", prim_error_create},
-    {"⚠?", prim_is_error},
-    {"⊢", prim_assert},
-    {"⟲", prim_trace},
+    {"⚠", prim_error_create, 2, {"Create error value", ":symbol → α → ⚠"}},
+    {"⚠?", prim_is_error, 1, {"Test if value is an error", "α → 𝔹"}},
+    {"⊢", prim_assert, 2, {"Assert condition is true, error otherwise", "𝔹 → :symbol → 𝔹 | ⚠"}},
+    {"⟲", prim_trace, 1, {"Print value for debugging and return it", "α → α"}},
 
     /* Self-Introspection */
-    {"⊙", prim_type_of},
-    {"⧉", prim_arity},
-    {"⊛", prim_source},
+    {"⊙", prim_type_of, 1, {"Get type of value as symbol", "α → :symbol"}},
+    {"⧉", prim_arity, 1, {"Get arity of lambda", "λ → ℕ"}},
+    {"⊛", prim_source, 1, {"Get source code of lambda", "λ → expression"}},
 
     /* Testing */
-    {"≟", prim_deep_equal},
-    {"⊨", prim_test_case},
+    {"≟", prim_deep_equal, 2, {"Deep equality test (recursive)", "α → α → 𝔹"}},
+    {"⊨", prim_test_case, 3, {"Run test case: name, expected, actual", ":symbol → α → α → 𝔹 | ⚠"}},
 
-    /* Effects */
-    {"⟪⟫", prim_effect_block},
-    {"↯", prim_effect_handle},
-    {"⤴", prim_effect_pure},
-    {"≫", prim_effect_bind},
+    /* Effects (placeholder) */
+    {"⟪⟫", prim_effect_block, 1, {"Effect computation block", "effect → α"}},
+    {"↯", prim_effect_handle, 2, {"Handle effect with handler", "effect → handler → α"}},
+    {"⤴", prim_effect_pure, 1, {"Lift pure value into effect", "α → effect"}},
+    {"≫", prim_effect_bind, 2, {"Sequence effects", "effect → (α → effect) → effect"}},
 
-    /* Actors */
-    {"⟳", prim_spawn},
-    {"→!", prim_send},
-    {"←?", prim_receive},
+    /* Actors (placeholder) */
+    {"⟳", prim_spawn, 1, {"Spawn new actor", "behavior → actor"}},
+    {"→!", prim_send, 2, {"Send message to actor", "actor → message → ()"}},
+    {"←?", prim_receive, 0, {"Receive message (blocks)", "() → message"}},
 
-    {NULL, NULL}
+    /* Documentation primitives */
+    {"⌂", prim_doc_get, 1, {"Get documentation for symbol", ":symbol → string"}},
+    {"⌂∈", prim_doc_type, 1, {"Get type signature for symbol", ":symbol → string"}},
+    {"⌂≔", prim_doc_deps, 1, {"Get dependencies for symbol", ":symbol → [symbols]"}},
+    {"⌂⊛", prim_doc_source, 1, {"Get source code for symbol", ":symbol → expression"}},
+
+    {NULL, NULL, 0, {NULL, NULL}}
 };
 
 /* Initialize primitive environment */

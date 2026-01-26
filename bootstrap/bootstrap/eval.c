@@ -255,10 +255,48 @@ static Cell* eval_internal(EvalContext* ctx, Cell* env, Cell* expr) {
                 assert(cell_is_symbol(name));
                 const char* name_str = cell_get_symbol(name);
 
+                /* Check if value_expr is a lambda - enable named recursion */
+                bool is_lambda = false;
+                if (cell_is_pair(value_expr)) {
+                    Cell* first_val = cell_car(value_expr);
+                    if (cell_is_symbol(first_val)) {
+                        const char* sym_val = cell_get_symbol(first_val);
+                        is_lambda = (strcmp(sym_val, "λ") == 0);
+                    }
+                }
+
+                /* For lambdas, pre-bind name to nil to enable self-reference */
+                if (is_lambda) {
+                    Cell* placeholder = cell_nil();
+                    eval_define(ctx, name_str, placeholder);
+                    cell_release(placeholder);
+                }
+
+                /* Evaluate the value (lambda will see name in environment) */
                 Cell* value = eval_internal(ctx, env, value_expr);
+
+                /* Define/redefine the name with the actual value */
                 eval_define(ctx, name_str, value);
 
                 return value;
+            }
+
+            /* :λ-converted - already converted nested lambda */
+            if (strcmp(sym, ":λ-converted") == 0) {
+                /* Parse: (:λ-converted (param1 param2 ...) converted_body) */
+                Cell* params = cell_car(rest);
+                Cell* converted_body = cell_car(cell_cdr(rest));
+
+                /* Body is already converted, don't convert again */
+                int arity = list_length(params);
+
+                /* Closure env: use indexed env if we're in a lambda, empty if top-level */
+                Cell* closure_env = env_is_indexed(env) ? env : cell_nil();
+
+                /* Create lambda cell with closure environment */
+                Cell* lambda = cell_lambda(closure_env, converted_body, arity);
+
+                return lambda;
             }
 
             /* λ - lambda */

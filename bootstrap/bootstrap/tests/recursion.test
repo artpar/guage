@@ -1,0 +1,43 @@
+; Recursion Tests
+
+; Simple recursive factorial
+(≔ ! (λ (n)
+  (? (≡ n #0)
+     #1
+     (⊗ n (! (⊖ n #1))))))
+
+; Test factorial
+(! #0)
+(! #1)
+(! #2)
+(! #3)
+(! #4)
+(! #5)
+(! #6)
+
+; Recursive fibonacci
+(≔ fib (λ (n)
+  (? (< n #2)
+     n
+     (⊕ (fib (⊖ n #1)) (fib (⊖ n #2))))))
+
+; Test fibonacci
+(fib #0)
+(fib #1)
+(fib #2)
+(fib #3)
+(fib #4)
+(fib #5)
+(fib #6)
+(fib #7)
+
+; Recursive sum
+(≔ sum (λ (n)
+  (? (≡ n #0)
+     #0
+     (⊕ n (sum (⊖ n #1))))))
+
+; Test sum
+(sum #0)
+(sum #5)
+(sum #10)
