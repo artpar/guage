@@ -86,11 +86,17 @@ Everything is a **Cell**:
 | `⌂≔` | `:symbol → list` | Get dependencies | ✅ DONE |
 
 **Auto-Documentation System:**
-- Every user function gets automatic documentation
+- Every user function gets automatic documentation via **recursive composition**
 - Extracts dependencies from function body
-- Composes descriptions from constituent docs
-- Infers simple type signatures
+- **Recursively composes** human-readable descriptions from AST structure
+- Infers **most specific** type signatures (strongest typing first)
 - Auto-prints when function is defined
+- Generates **inverse of code execution** - natural language from code
+
+**Type Inference (Strongest First):**
+1. ℕ → ℕ - Uses only arithmetic (⊕, ⊖, ⊗, ⊘)
+2. α → 𝔹 - Returns boolean (comparisons, predicates)
+3. α → β - Generic polymorphic (fallback)
 
 Example:
 ```scheme
@@ -98,15 +104,26 @@ Example:
 ```
 Auto-prints:
 ```
-📝 ! :: α → β
-   Function using: ?, ≡, ⌜, ⊗, !, ...
+📝 ! :: ℕ → ℕ
+   if equals the argument and 0 then 1 else multiply the argument and apply ! to subtract the argument and 1
    Dependencies: ?, ≡, ⌜, ⊗, !, ⊖
+```
+
+More examples:
+```scheme
+(≔ double (λ (x) (⊗ x #2)))
+📝 double :: ℕ → ℕ
+   multiply the argument and 2
+
+(≔ is-zero (λ (x) (≡ x #0)))
+📝 is-zero :: α → 𝔹
+   equals the argument and 0
 ```
 
 Query docs:
 ```scheme
-(⌂ (⌜ !))      ; → :Function using: ...
-(⌂∈ (⌜ !))     ; → :α → β
+(⌂ (⌜ !))      ; → :if equals the argument and 0...
+(⌂∈ (⌜ !))     ; → :ℕ → ℕ
 (⌂≔ (⌜ !))     ; → ⟨:? ⟨:≡ ⟨:⌜ ...⟩⟩⟩
 ```
 
