@@ -1,0 +1,27 @@
+; Structure Primitives Tests - Phase 2C Week 1
+
+; Define Point structure
+(⊙≔ (⌜ :Point) (⌜ :x) (⌜ :y))
+
+; Create point instance
+(≔ p1 (⊙ (⌜ :Point) #3 #4))
+
+; Test field access
+(⊨ (⌜ :point-x) #3 (⊙→ p1 (⌜ :x)))
+(⊨ (⌜ :point-y) #4 (⊙→ p1 (⌜ :y)))
+
+; Define Rectangle structure
+(⊙≔ (⌜ :Rectangle) (⌜ :width) (⌜ :height) (⌜ :color))
+
+; Create rectangle instance
+(≔ r1 (⊙ (⌜ :Rectangle) #10 #20 (⌜ :blue)))
+
+; Test rectangle fields
+(⊨ (⌜ :rect-width) #10 (⊙→ r1 (⌜ :width)))
+(⊨ (⌜ :rect-height) #20 (⊙→ r1 (⌜ :height)))
+(⊨ (⌜ :rect-color) (⌜ :blue) (⊙→ r1 (⌜ :color)))
+
+; Create another point
+(≔ p2 (⊙ (⌜ :Point) #7 #8))
+(⊨ (⌜ :point2-x) #7 (⊙→ p2 (⌜ :x)))
+(⊨ (⌜ :point2-y) #8 (⊙→ p2 (⌜ :y)))

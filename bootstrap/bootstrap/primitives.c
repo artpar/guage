@@ -378,6 +378,178 @@ Cell* prim_receive(Cell* args) {
     return cell_nil();
 }
 
+/* ============ Structure Primitives ============ */
+
+/* Need access to eval context for type registry */
+extern EvalContext* eval_get_current_context(void);
+
+/* ⊙≔ - Define leaf structure type
+ * Args: type_tag (symbol) followed by field names (symbols)
+ * Example: (⊙≔ :Point :x :y)
+ * Returns: type_tag
+ */
+Cell* prim_struct_define_leaf(Cell* args) {
+    if (!cell_is_pair(args)) {
+        return cell_error("⊙≔ requires at least a type tag", cell_nil());
+    }
+
+    Cell* type_tag = arg1(args);
+    if (!cell_is_symbol(type_tag)) {
+        return cell_error("⊙≔ type tag must be a symbol", type_tag);
+    }
+
+    /* Collect field names from remaining args */
+    Cell* fields = cell_nil();
+    Cell* rest = cell_cdr(args);
+    while (cell_is_pair(rest)) {
+        Cell* field = cell_car(rest);
+        if (!cell_is_symbol(field)) {
+            cell_release(fields);
+            return cell_error("⊙≔ field names must be symbols", field);
+        }
+        cell_retain(field);
+        fields = cell_cons(field, fields);
+        rest = cell_cdr(rest);
+    }
+
+    /* Reverse fields to preserve order */
+    Cell* reversed = cell_nil();
+    while (cell_is_pair(fields)) {
+        Cell* field = cell_car(fields);
+        cell_retain(field);
+        reversed = cell_cons(field, reversed);
+        Cell* next = cell_cdr(fields);
+        cell_release(fields);
+        fields = next;
+    }
+
+    /* Create schema: ⟨:leaf fields⟩ */
+    Cell* kind_tag = cell_symbol(":leaf");
+    Cell* schema = cell_cons(kind_tag, reversed);
+
+    /* Register in type registry */
+    EvalContext* ctx = eval_get_current_context();
+    eval_register_type(ctx, type_tag, schema);
+
+    /* Return the type tag */
+    cell_retain(type_tag);
+    return type_tag;
+}
+
+/* ⊙ - Create leaf structure instance
+ * Args: type_tag followed by field values
+ * Example: (⊙ :Point #3 #4)
+ * Returns: struct cell
+ */
+Cell* prim_struct_create(Cell* args) {
+    if (!cell_is_pair(args)) {
+        return cell_error("⊙ requires type tag", cell_nil());
+    }
+
+    Cell* type_tag = arg1(args);
+    if (!cell_is_symbol(type_tag)) {
+        return cell_error("⊙ type tag must be a symbol", type_tag);
+    }
+
+    /* Lookup type schema */
+    EvalContext* ctx = eval_get_current_context();
+    Cell* schema = eval_lookup_type(ctx, type_tag);
+    if (!schema) {
+        return cell_error("⊙ undefined type", type_tag);
+    }
+
+    /* Extract field names from schema: ⟨:leaf fields⟩ */
+    if (!cell_is_pair(schema)) {
+        cell_release(schema);
+        return cell_error("⊙ invalid schema", type_tag);
+    }
+
+    Cell* field_names = cell_cdr(schema);  /* Skip :leaf tag */
+
+    /* Collect field values from args */
+    Cell* rest = cell_cdr(args);  /* Skip type tag */
+    Cell* field_pairs = cell_nil();
+
+    Cell* names = field_names;
+    while (cell_is_pair(names) && cell_is_pair(rest)) {
+        Cell* field_name = cell_car(names);
+        Cell* field_value = cell_car(rest);
+
+        /* Create (name . value) pair */
+        cell_retain(field_name);
+        cell_retain(field_value);
+        Cell* pair = cell_cons(field_name, field_value);
+        field_pairs = cell_cons(pair, field_pairs);
+
+        names = cell_cdr(names);
+        rest = cell_cdr(rest);
+    }
+
+    /* Check we got all fields */
+    if (cell_is_pair(names)) {
+        cell_release(schema);
+        cell_release(field_pairs);
+        return cell_error("⊙ not enough field values", type_tag);
+    }
+    if (cell_is_pair(rest)) {
+        cell_release(schema);
+        cell_release(field_pairs);
+        return cell_error("⊙ too many field values", type_tag);
+    }
+
+    /* Reverse field_pairs to preserve order */
+    Cell* reversed = cell_nil();
+    while (cell_is_pair(field_pairs)) {
+        Cell* pair = cell_car(field_pairs);
+        cell_retain(pair);
+        reversed = cell_cons(pair, reversed);
+        Cell* next = cell_cdr(field_pairs);
+        cell_release(field_pairs);
+        field_pairs = next;
+    }
+
+    /* Create structure cell */
+    cell_retain(type_tag);
+    Cell* result = cell_struct(STRUCT_LEAF, type_tag, NULL, reversed);
+
+    cell_release(schema);
+    return result;
+}
+
+/* ⊙→ - Get field value from leaf structure
+ * Args: struct, field_name
+ * Example: (⊙→ point :x)
+ * Returns: field value
+ */
+Cell* prim_struct_get_field(Cell* args) {
+    if (!cell_is_pair(args)) {
+        return cell_error("⊙→ requires struct and field name", cell_nil());
+    }
+
+    Cell* structure = arg1(args);
+    if (!cell_is_struct(structure)) {
+        return cell_error("⊙→ first arg must be struct", structure);
+    }
+
+    Cell* rest = cell_cdr(args);
+    if (!cell_is_pair(rest)) {
+        return cell_error("⊙→ requires field name", cell_nil());
+    }
+
+    Cell* field_name = cell_car(rest);
+    if (!cell_is_symbol(field_name)) {
+        return cell_error("⊙→ field name must be symbol", field_name);
+    }
+
+    /* Use existing accessor */
+    Cell* value = cell_struct_get_field(structure, field_name);
+    if (!value) {
+        return cell_error("⊙→ field not found", field_name);
+    }
+
+    return value;
+}
+
 /* Forward declaration */
 static Primitive primitives[];
 /* Documentation primitives */
@@ -535,6 +707,11 @@ static Primitive primitives[] = {
     {"⌂∈", prim_doc_type, 1, {"Get type signature for symbol", ":symbol → string"}},
     {"⌂≔", prim_doc_deps, 1, {"Get dependencies for symbol", ":symbol → [symbols]"}},
     {"⌂⊛", prim_doc_source, 1, {"Get source code for symbol", ":symbol → expression"}},
+
+    /* Structure primitives - Leaf (⊙) */
+    {"⊙≔", prim_struct_define_leaf, -1, {"Define leaf structure type with field names", ":symbol → [:symbol] → :symbol"}},
+    {"⊙", prim_struct_create, -1, {"Create structure instance with field values", ":symbol → [α] → ⊙"}},
+    {"⊙→", prim_struct_get_field, 2, {"Get field value from structure", "⊙ → :symbol → α"}},
 
     {NULL, NULL, 0, {NULL, NULL}}
 };

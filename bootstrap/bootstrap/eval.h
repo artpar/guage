@@ -28,6 +28,7 @@ typedef struct {
     Cell* env;          /* Current environment */
     Cell* primitives;   /* Primitive bindings */
     FunctionDoc* user_docs;  /* User function documentation */
+    Cell* type_registry;     /* Type definitions (alist: type_tag -> schema) */
 } EvalContext;
 
 /* Create new evaluation context */
@@ -50,5 +51,13 @@ FunctionDoc* eval_find_user_doc(const char* name);
 
 /* Set current eval context (for primitives to access user docs) */
 void eval_set_current_context(EvalContext* ctx);
+
+/* Get current eval context (for primitives to access type registry) */
+EvalContext* eval_get_current_context(void);
+
+/* Type registry operations */
+void eval_register_type(EvalContext* ctx, Cell* type_tag, Cell* schema);
+Cell* eval_lookup_type(EvalContext* ctx, Cell* type_tag);
+bool eval_has_type(EvalContext* ctx, Cell* type_tag);
 
 #endif /* GUAGE_EVAL_H */

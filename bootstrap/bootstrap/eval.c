@@ -212,6 +212,11 @@ void eval_set_current_context(EvalContext* ctx) {
     g_current_context = ctx;
 }
 
+/* Get current eval context (for primitives) */
+EvalContext* eval_get_current_context(void) {
+    return g_current_context;
+}
+
 /* Find user function documentation (for primitives) */
 FunctionDoc* eval_find_user_doc(const char* name) {
     if (!g_current_context) return NULL;
@@ -663,6 +668,7 @@ EvalContext* eval_context_new(void) {
     ctx->env = cell_nil();
     ctx->primitives = primitives_init();
     ctx->user_docs = NULL;  /* Initialize doc list */
+    ctx->type_registry = cell_nil();  /* Initialize type registry */
     return ctx;
 }
 
@@ -686,6 +692,7 @@ static void doc_free_all(FunctionDoc* head) {
 void eval_context_free(EvalContext* ctx) {
     cell_release(ctx->env);
     cell_release(ctx->primitives);
+    cell_release(ctx->type_registry);
     doc_free_all(ctx->user_docs);
     free(ctx);
 }
@@ -1074,4 +1081,79 @@ static Cell* eval_internal(EvalContext* ctx, Cell* env, Cell* expr) {
 Cell* eval(EvalContext* ctx, Cell* expr) {
     eval_set_current_context(ctx);  /* Set global context for primitives */
     return eval_internal(ctx, ctx->env, expr);
+}
+
+/* ============ Type Registry Operations ============ */
+
+/* Register a type definition in the type registry
+ * type_tag: symbol like :Point, :List, :Tree
+ * schema: structure definition (fields, variants, etc)
+ */
+void eval_register_type(EvalContext* ctx, Cell* type_tag, Cell* schema) {
+    assert(cell_is_symbol(type_tag));
+
+    /* Check if type already exists - overwrite if so */
+    Cell* existing = eval_lookup_type(ctx, type_tag);
+    if (existing) {
+        cell_release(existing);
+        /* Remove old entry by rebuilding registry without it */
+        Cell* new_registry = cell_nil();
+        Cell* current = ctx->type_registry;
+        while (cell_is_pair(current)) {
+            Cell* binding = cell_car(current);
+            if (cell_is_pair(binding)) {
+                Cell* tag = cell_car(binding);
+                if (!cell_equal(tag, type_tag)) {
+                    cell_retain(binding);
+                    new_registry = cell_cons(binding, new_registry);
+                }
+            }
+            current = cell_cdr(current);
+        }
+        cell_release(ctx->type_registry);
+        ctx->type_registry = new_registry;
+    }
+
+    /* Add new binding */
+    cell_retain(type_tag);
+    cell_retain(schema);
+    Cell* binding = cell_cons(type_tag, schema);
+    ctx->type_registry = cell_cons(binding, ctx->type_registry);
+}
+
+/* Lookup a type definition in the type registry
+ * Returns schema or NULL if not found
+ */
+Cell* eval_lookup_type(EvalContext* ctx, Cell* type_tag) {
+    assert(cell_is_symbol(type_tag));
+
+    Cell* current = ctx->type_registry;
+    while (cell_is_pair(current)) {
+        Cell* binding = cell_car(current);
+        if (cell_is_pair(binding)) {
+            Cell* tag = cell_car(binding);
+            if (cell_equal(tag, type_tag)) {
+                Cell* schema = cell_cdr(binding);
+                cell_retain(schema);
+                return schema;
+            }
+        }
+        current = cell_cdr(current);
+    }
+
+    return NULL;
+}
+
+/* Check if a type is registered
+ * Returns true if type_tag exists in registry
+ */
+bool eval_has_type(EvalContext* ctx, Cell* type_tag) {
+    assert(cell_is_symbol(type_tag));
+
+    Cell* schema = eval_lookup_type(ctx, type_tag);
+    if (schema) {
+        cell_release(schema);
+        return true;
+    }
+    return false;
 }

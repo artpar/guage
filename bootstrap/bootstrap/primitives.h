@@ -71,6 +71,11 @@ Cell* prim_doc_type(Cell* args);       /* ⌂∈ - get type signature */
 Cell* prim_doc_deps(Cell* args);       /* ⌂≔ - get dependencies */
 Cell* prim_doc_source(Cell* args);     /* ⌂⊛ - get source code */
 
+/* Structure primitives */
+Cell* prim_struct_define_leaf(Cell* args);  /* ⊙≔ - define leaf type */
+Cell* prim_struct_create(Cell* args);       /* ⊙ - create struct instance */
+Cell* prim_struct_get_field(Cell* args);    /* ⊙→ - get field value */
+
 /* Primitive documentation structure */
 typedef struct {
     const char* description;     /* What this primitive does */

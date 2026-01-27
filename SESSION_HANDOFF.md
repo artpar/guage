@@ -4,7 +4,7 @@
 
 Started **Phase 2C: Data Structures as First-Class Citizens**. Extended cell system to support user-defined structures (⊙, ⊚, ⊝) and compiler-generated graphs (CFG, DFG, CallGraph, DepGraph). This is a **critical prerequisite** for pattern matching - you can't match on structures without knowing what structures are.
 
-**Status:** Week 1 (Days 1-2) complete, ready for Days 3-4
+**Status:** Week 1 (Days 1-3) complete, ready for Days 4-7
 **Duration:** ~2 hours
 **Major Outcomes:**
 1. Cell infrastructure extended with CELL_STRUCT and CELL_GRAPH types
@@ -618,11 +618,94 @@ Week 1 Days 3-4 should take ~4-6 hours.
 
 ---
 
-**Session Summary:** Extended cell system with structures and graphs. Foundation complete for data structures as first-class citizens. Realized data structures must come BEFORE pattern matching. Created comprehensive specification and 3-week implementation plan.
+## Day 3 Update: Type Registry & First Primitives
 
-**Next Session:** Week 1, Day 3 - Design and implement type registry.
+### Completed Features (Day 3)
 
-**Status:** Week 1 (Days 1-2) complete. Ready for Days 3-4.
+**1. Type Registry Infrastructure**
+- Added `type_registry` field to `EvalContext`
+- Implemented registry operations:
+  - `eval_register_type()` - Store type schemas
+  - `eval_lookup_type()` - Retrieve type schemas
+  - `eval_has_type()` - Check existence
+- Added `eval_get_current_context()` for primitive access
+- Proper reference counting for all registry operations
+
+**2. Leaf Structure Primitives (3/5 complete)**
+Implemented:
+- ✅ **⊙≔** Define leaf type: `(⊙≔ (⌜ :Point) (⌜ :x) (⌜ :y))`
+- ✅ **⊙** Create instance: `(⊙ (⌜ :Point) #3 #4)`
+- ✅ **⊙→** Get field: `(⊙→ p (⌜ :x))`
+
+Remaining:
+- ⏳ **⊙←** Update field (immutable)
+- ⏳ **⊙?** Type check
+
+**3. Test Suite**
+- Created `tests/structures.test`
+- 8 tests, all passing ✅
+- Tests Point and Rectangle structures
+- Validates field definition, creation, and access
+
+### Technical Implementation
+
+**Schema Format:**
+```scheme
+; Stored in registry as:
+:Point → ⟨:leaf ⟨:x ⟨:y ∅⟩⟩⟩
+```
+
+**Struct Format:**
+```scheme
+; Created instances:
+⊙[::Point ⟨⟨::x #3⟩ ⟨⟨::y #4⟩ ∅⟩⟩]
+```
+
+**Files Modified:**
+- `eval.h` - Added type registry fields and functions
+- `eval.c` - Implemented registry operations (70 lines)
+- `primitives.h` - Added structure primitive declarations
+- `primitives.c` - Implemented 3 primitives (150 lines)
+- `tests/structures.test` - New test file
+
+**Build Status:**
+- ✅ Compiles cleanly
+- ✅ No warnings (except pre-existing)
+- ✅ All tests pass (8/8)
+- ✅ No memory leaks
+
+### Updated Checklist
+
+Days 1-2:
+- [x] Cell infrastructure complete
+- [x] CELL_STRUCT and CELL_GRAPH implemented
+- [x] Reference counting working
+- [x] Equality and printing working
+
+Day 3:
+- [x] Type registry designed and implemented
+- [x] Registry operations working
+- [x] First 3 structure primitives working
+- [x] Test suite created and passing
+- [x] Code compiles cleanly
+- [x] Memory safe
+
+Day 4 (Next):
+- [ ] Implement ⊙← (update field)
+- [ ] Implement ⊙? (type check)
+- [ ] Add more test cases
+- [ ] Documentation for primitives
+
+---
+
+**Session Summary:**
+- Week 1 Days 1-2: Cell infrastructure with CELL_STRUCT and CELL_GRAPH
+- Week 1 Day 3: Type registry + 3 working structure primitives (⊙≔, ⊙, ⊙→)
+- Ready to complete remaining leaf primitives, then move to node structures (⊚)
+
+**Next Session:** Week 1, Day 4 - Complete leaf primitives (⊙← and ⊙?), then start node primitives (⊚).
+
+**Status:** Week 1 (Days 1-3) complete. Ready for Days 4-7.
 
 **Prepared by:** Claude Sonnet 4.5
 **Date:** 2026-01-27
