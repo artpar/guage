@@ -19,9 +19,10 @@ This document provides a comprehensive reference for all standard library functi
 6. [List Building](#list-building) (2 functions)
 7. [Extended List Operations](#extended-list-operations) (6 functions)
 8. [Math Utilities](#math-utilities) (6 functions)
-9. [Option/Result Types](#optionresult-types) (22 functions)
+9. [String Manipulation](#string-manipulation) (5 functions)
+10. [Option/Result Types](#optionresult-types) (22 functions)
 
-**Total Functions: 50+**
+**Total Functions: 55+**
 
 ---
 
@@ -355,6 +356,122 @@ This document provides a comprehensive reference for all standard library functi
 (↧↧ (⟨⟩ #3 (⟨⟩ #7 (⟨⟩ #2 (⟨⟩ #9 ∅)))))
 ; → #2
 ```
+
+---
+
+## String Manipulation
+
+See `stdlib/string.scm` for implementation. This is a simplified first version focusing on essential operations.
+
+### ≈⊙? (is-whitespace)
+**Type:** `:symbol → 𝔹`
+**Description:** Check if character symbol is whitespace (space, tab, newline, carriage return)
+**Complexity:** O(1)
+
+**Example:**
+```scheme
+(≈⊙? :  )   ; → #t (space)
+(≈⊙? :\t)   ; → #t (tab)
+(≈⊙? :a)    ; → #f (letter)
+```
+
+### ≈⊠ (join)
+**Type:** `[≈] → ≈ → ≈`
+**Description:** Join list of strings with delimiter
+**Complexity:** O(n × m) where n is list length, m is average string length
+
+**Example:**
+```scheme
+; CSV header
+((≈⊠ (⟨⟩ "name" (⟨⟩ "age" (⟨⟩ "city" ∅)))) ",")
+; → "name,age,city"
+
+; Path construction
+((≈⊠ (⟨⟩ "usr" (⟨⟩ "local" (⟨⟩ "bin" ∅)))) "/")
+; → "usr/local/bin"
+
+; Join words
+((≈⊠ (⟨⟩ "hello" (⟨⟩ "world" ∅))) " ")
+; → "hello world"
+```
+
+### ≈⊃ (contains)
+**Type:** `≈ → ≈ → 𝔹`
+**Description:** Check if string contains substring
+**Complexity:** O(n × m) where n is string length, m is substring length
+
+**Example:**
+```scheme
+((≈⊃ "hello world") "world")    ; → #t
+((≈⊃ "hello world") "goodbye")  ; → #f
+((≈⊃ "hello world") "")         ; → #t (empty always contained)
+```
+
+### ≈⊗ (repeat)
+**Type:** `≈ → ℕ → ≈`
+**Description:** Repeat string n times
+**Complexity:** O(n × m) where n is count, m is string length
+
+**Example:**
+```scheme
+((≈⊗ "ab") #3)      ; → "ababab"
+((≈⊗ "x") #5)       ; → "xxxxx"
+((≈⊗ "test") #0)    ; → ""
+```
+
+### ≈⊃→ (contains-at)
+**Type:** `≈ → ≈ → ℕ → 𝔹`
+**Description:** Helper function - check if substring exists at position i
+**Complexity:** O(m) where m is substring length
+
+**Note:** This is an internal helper for ≈⊃. Direct use not typically needed.
+
+### Real-World Examples
+
+**Build CSV row:**
+```scheme
+(≔ build-csv (λ (fields)
+  ((≈⊠ fields) ",")))
+
+(build-csv (⟨⟩ "Alice" (⟨⟩ "30" (⟨⟩ "NYC" ∅))))
+; → "Alice,30,NYC"
+```
+
+**Join words with spaces:**
+```scheme
+(≔ join-words (λ (words)
+  ((≈⊠ words) " ")))
+
+(join-words (⟨⟩ "The" (⟨⟩ "quick" (⟨⟩ "brown" ∅))))
+; → "The quick brown"
+```
+
+**Search in text:**
+```scheme
+(≔ has-keyword? (λ (text) (λ (keyword)
+  ((≈⊃ text) keyword))))
+
+((has-keyword? "Guage is awesome") "awesome")  ; → #t
+```
+
+**Repeat for padding:**
+```scheme
+(≔ pad-left (λ (s) (λ (n)
+  (≈⊕ ((≈⊗ " ") n) s))))
+
+((pad-left "test") #3)  ; → "   test"
+```
+
+### Future Functions (Deferred)
+
+The following functions require more complex character-by-character processing and will be added once implementation patterns are established:
+
+- **≈⊞** (split) - Split string by delimiter (complex recursion)
+- **≈⊳** (trim-left) - Remove leading whitespace (char iteration)
+- **≈⊴** (trim-right) - Remove trailing whitespace (char iteration)
+- **≈⊲** (trim) - Remove both leading/trailing whitespace (composition)
+- **≈↑** (uppercase) - Convert to uppercase (char arithmetic)
+- **≈↓** (lowercase) - Convert to lowercase (char arithmetic)
 
 ---
 
