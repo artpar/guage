@@ -169,7 +169,9 @@ Cell* prim_div(Cell* args) {
     Cell* b = arg2(args);
     assert(cell_is_number(a) && cell_is_number(b));
     double divisor = cell_get_number(b);
-    assert(divisor != 0.0);  /* Should be checked by refinement types */
+    if (divisor == 0.0) {
+        return cell_error("div-by-zero", b);
+    }
     return cell_number(cell_get_number(a) / divisor);
 }
 
@@ -179,7 +181,9 @@ Cell* prim_mod(Cell* args) {
     Cell* b = arg2(args);
     assert(cell_is_number(a) && cell_is_number(b));
     double divisor = cell_get_number(b);
-    assert(divisor != 0.0);  /* Should be checked by refinement types */
+    if (divisor == 0.0) {
+        return cell_error("mod-by-zero", b);
+    }
     /* Use fmod for floating point modulo */
     return cell_number(fmod(cell_get_number(a), divisor));
 }

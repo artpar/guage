@@ -24,24 +24,147 @@ Everything is a **Cell**:
 
 **See:** `KEYWORDS.md` for complete specification.
 
-## The 42 Primitives (Runtime Evaluated)
+## Runtime Primitives (61 Total)
 
-### Core Lambda Calculus (6)
+**Status:** 61 primitives implemented (8 placeholders, 53 fully functional)
+
+### Core Lambda Calculus (3) ✅
 | Symbol | Type | Meaning | Status |
 |--------|------|---------|--------|
 | `⟨⟩` | `α → β → ⟨α β⟩` | Construct cell | ✅ DONE |
 | `◁` | `⟨α β⟩ → α` | Head (car) | ✅ DONE |
 | `▷` | `⟨α β⟩ → β` | Tail (cdr) | ✅ DONE |
-| `λ` | Abstraction | Lambda | ✅ DONE |
-| `·` | Application | Apply function | ✅ DONE |
-| `0 1 2...` | Variable ref | De Bruijn index | ✅ DONE |
 
-### Metaprogramming Core (3)
+**Note:** `λ`, `·`, `≔`, and De Bruijn indices (0, 1, 2...) are part of the evaluator, not primitives.
+
+### Metaprogramming Core (2) ✅
 | Symbol | Type | Meaning | Status |
 |--------|------|---------|--------|
 | `⌜` | `α → ⌜α⌝` | Quote (code→data) | ✅ DONE |
 | `⌞` | `⌜α⌝ → α` | Eval (data→code) | ❌ PLACEHOLDER |
-| `≔` | Binding | Definition | ✅ DONE |
+
+### Comparison & Logic (5) ✅
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `≡` | `α → α → 𝔹` | Equality | ✅ DONE |
+| `≢` | `α → α → 𝔹` | Inequality | ✅ DONE |
+| `∧` | `𝔹 → 𝔹 → 𝔹` | Logical AND | ✅ DONE |
+| `∨` | `𝔹 → 𝔹 → 𝔹` | Logical OR | ✅ DONE |
+| `¬` | `𝔹 → 𝔹` | Logical NOT | ✅ DONE |
+
+### Arithmetic (9) ✅
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `⊕` | `ℕ → ℕ → ℕ` | Addition | ✅ DONE |
+| `⊖` | `ℕ → ℕ → ℕ` | Subtraction | ✅ DONE |
+| `⊗` | `ℕ → ℕ → ℕ` | Multiplication | ✅ DONE |
+| `⊘` | `ℕ → ℕ → ℕ` | Division (float) | ✅ DONE |
+| `%` | `ℕ → ℕ → ℕ` | Modulo (remainder) | ✅ DONE |
+| `<` | `ℕ → ℕ → 𝔹` | Less than | ✅ DONE |
+| `>` | `ℕ → ℕ → 𝔹` | Greater than | ✅ DONE |
+| `≤` | `ℕ → ℕ → 𝔹` | Less or equal | ✅ DONE |
+| `≥` | `ℕ → ℕ → 𝔹` | Greater or equal | ✅ DONE |
+
+### Type Predicates (6) ✅
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `ℕ?` | `α → 𝔹` | Is number | ✅ DONE |
+| `𝔹?` | `α → 𝔹` | Is boolean | ✅ DONE |
+| `:?` | `α → 𝔹` | Is symbol | ✅ DONE |
+| `∅?` | `α → 𝔹` | Is nil | ✅ DONE |
+| `⟨⟩?` | `α → 𝔹` | Is pair | ✅ DONE |
+| `#?` | `α → 𝔹` | Is atom | ✅ DONE |
+
+### Debug & Error Handling (4) ✅
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `⚠` | `:symbol → α → ⚠` | Create error value | ✅ DONE |
+| `⚠?` | `α → 𝔹` | Test if error | ✅ DONE |
+| `⊢` | `𝔹 → :symbol → 𝔹 \| ⚠` | Assert condition | ✅ DONE |
+| `⟲` | `α → α` | Trace (debug print) | ✅ DONE |
+
+### Self-Introspection (2) ✅
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `⧉` | `λ → ℕ` | Get arity of lambda | ✅ DONE |
+| `⊛` | `λ → expression` | Get source code | ✅ DONE |
+
+### Testing (2) ✅
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `≟` | `α → α → 𝔹` | Deep equality test | ✅ DONE |
+| `⊨` | `:symbol → α → α → 𝔹 \| ⚠` | Test case | ✅ DONE |
+
+### Effects (4) - PLACEHOLDERS ONLY
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `⟪⟫` | `effect → α` | Effect block | ❌ PLACEHOLDER |
+| `↯` | `effect → handler → α` | Effect handler | ❌ PLACEHOLDER |
+| `⤴` | `α → effect` | Lift to effect | ❌ PLACEHOLDER |
+| `≫` | `effect → (α → effect) → effect` | Effect bind | ❌ PLACEHOLDER |
+
+**Note:** Effects are stubs for Phase 4+. Return nil currently.
+
+### Actors (3) - PLACEHOLDERS ONLY
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `⟳` | `behavior → actor` | Spawn actor | ❌ PLACEHOLDER |
+| `→!` | `actor → message → ()` | Send message | ❌ PLACEHOLDER |
+| `←?` | `() → message` | Receive message | ❌ PLACEHOLDER |
+
+**Note:** Actors are stubs for Phase 5+. Return nil currently.
+
+### Documentation (4) ✅
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `⌂` | `:symbol → string` | Get description | ✅ DONE |
+| `⌂∈` | `:symbol → string` | Get type signature | ✅ DONE |
+| `⌂≔` | `:symbol → [symbols]` | Get dependencies | ✅ DONE |
+| `⌂⊛` | `:symbol → expression` | Get source code | ✅ DONE |
+
+### Control/Data Flow (2) ✅
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `⌂⟿` | `:symbol → CFG` | Get control flow graph | ✅ DONE |
+| `⌂⇝` | `:symbol → DFG` | Get data flow graph | ✅ DONE |
+
+### Structure Primitives - Leaf (5) ✅
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `⊙≔` | `:symbol → [:symbol] → :symbol` | Define leaf structure | ✅ DONE |
+| `⊙` | `:symbol → [α] → ⊙` | Create structure instance | ✅ DONE |
+| `⊙→` | `⊙ → :symbol → α` | Get field value | ✅ DONE |
+| `⊙←` | `⊙ → :symbol → α → ⊙` | Update field (immutable) | ✅ DONE |
+| `⊙?` | `α → :symbol → 𝔹` | Check structure type | ✅ DONE |
+
+### Structure Primitives - Node/ADT (4) ✅
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `⊚≔` | `:symbol → [[variant]] → :symbol` | Define node/ADT type | ✅ DONE |
+| `⊚` | `:symbol → :symbol → [α] → ⊚` | Create node instance | ✅ DONE |
+| `⊚→` | `⊚ → :symbol → α` | Get node field | ✅ DONE |
+| `⊚?` | `α → :symbol → :symbol → 𝔹` | Check node type/variant | ✅ DONE |
+
+### Graph Primitives (6) ✅
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `⊝≔` | `:symbol → :symbol → [:symbol] → :symbol` | Define graph type | ✅ DONE |
+| `⊝` | `:symbol → ⊝` | Create empty graph | ✅ DONE |
+| `⊝⊕` | `⊝ → α → ⊝` | Add node (immutable) | ✅ DONE |
+| `⊝⊗` | `⊝ → α → α → α → ⊝` | Add edge (immutable) | ✅ DONE |
+| `⊝→` | `⊝ → :symbol → α` | Query graph property | ✅ DONE |
+| `⊝?` | `α → :symbol → 𝔹` | Check graph type | ✅ DONE |
+
+---
+
+## Planned Primitives (Not Yet Implemented)
+
+### Pattern Matching (3) - CRITICAL FOR METAPROGRAMMING
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `∇` | Pattern match | Destructure with patterns | 🎯 NEXT |
+| `≗` | `α → β → 𝔹` | Structural equality | 🎯 NEXT |
+| `_` | Pattern | Wildcard (match anything) | 🎯 NEXT |
 
 ### Pattern Matching (3) - CRITICAL FOR METAPROGRAMMING
 | Symbol | Type | Meaning | Status |

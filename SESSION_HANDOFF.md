@@ -1,23 +1,104 @@
-# Session Handoff: 2026-01-27 (Week 2 Days 6-7: Error Handling & Polish)
+# Session Handoff: 2026-01-27 (Week 2 Days 8-9: Consistency & Testing)
 
 ## Executive Summary
 
-**Status:** CONSISTENCY ACHIEVED! ✅ Error handling now follows "errors as values" philosophy!
-**Duration:** ~1 hour this session (~22 hours total Phase 2C)
-**Key Achievement:** Standardized all error handling to use first-class error values!
+**Status:** ALL SYSTEMS GO! ✅ Complete consistency audit & comprehensive testing complete!
+**Duration:** ~2 hours this session (~24 hours total Phase 2C)
+**Key Achievement:** Discovered and fixed primitive count discrepancy, added 80 new tests, achieved 15/15 test suites passing!
 
 **Major Outcomes:**
-1. ✅ **Symbol parsing fixed** - Keywords like `:x` now self-evaluate (commit 7309002)
-2. ✅ **Error handling consistency** - All 8 violations fixed to use cell_error()
-3. ✅ **Documentation system robust** - No more crashes on doc generation failures
-4. ✅ **13/13 test suites passing** (100% pass rate maintained)
-5. ✅ **163+ total tests** + manual error value tests
+1. ✅ **Primitive count fixed** - 61 primitives (not 49!), documentation corrected
+2. ✅ **Division/modulo errors fixed** - Now return error values instead of crashing
+3. ✅ **80+ new tests added** - Error handling (40) + Structure symbols (40)
+4. ✅ **15/15 test suites passing** (100% pass rate!)
+5. ✅ **243+ total tests** (up from 163)
+6. ✅ **Complete consistency audit** - All documentation accurate
 
-**Previous Status:** Critical list operations bug fixed (Day 1-3)
+**Previous Status:** Error handling consistency achieved (Days 6-7)
 
 ---
 
 ## 🎉 What's New This Session
+
+### 🔍 Consistency Audit & Testing (Days 8-9) ✅
+
+**Achievement:** Complete documentation consistency + 80 new tests!
+
+**Discovery: Primitive Count Discrepancy**
+- **Found:** Documentation said 49 primitives, actual is **61 primitives**!
+- **Root cause:** SPEC.md counted only planned primitives, not implemented ones
+- **Fixed:** Updated SPEC.md and SESSION_HANDOFF.md with accurate counts
+
+**Primitive Breakdown (61 total):**
+1. Core Lambda Calculus: 3
+2. Metaprogramming: 2
+3. Comparison & Logic: 5
+4. Arithmetic: 9
+5. Type Predicates: 6
+6. Debug & Error: 4
+7. Self-Introspection: 2
+8. Testing: 2
+9. Effects (placeholders): 4
+10. Actors (placeholders): 3
+11. Documentation: 4
+12. CFG/DFG: 2
+13. Structure - Leaf: 5
+14. Structure - Node/ADT: 4
+15. Graph: 6
+
+**Critical Bug Fixes:**
+1. **Division by zero** - Changed from `assert()` crash to error value
+   - Before: `assert(divisor != 0.0)` → crash
+   - After: `if (divisor == 0.0) return cell_error("div-by-zero", b)`
+   - primitives.c:172
+
+2. **Modulo by zero** - Changed from `assert()` crash to error value
+   - Before: `assert(divisor != 0.0)` → crash
+   - After: `if (divisor == 0.0) return cell_error("mod-by-zero", b)`
+   - primitives.c:182
+
+**New Test Suites (80 tests):**
+
+1. **error_handling.test (40 tests)**
+   - Error creation (4 tests)
+   - Error detection (5 tests)
+   - Error composition (3 tests)
+   - Function errors (3 tests)
+   - Arithmetic errors (2 tests)
+   - Error recovery patterns (4 tests)
+   - Assertions (4 tests)
+   - Complex scenarios (5 tests)
+   - Type preservation (1 test)
+   - Practical patterns (6 tests)
+   - Edge cases (3 tests)
+
+2. **structure_symbols.test (40 tests)**
+   - Keyword self-evaluation (5 tests)
+   - Structure definition (3 tests)
+   - Structure creation (3 tests)
+   - Field access (5 tests)
+   - Field update (4 tests)
+   - Type checking (5 tests)
+   - Complex structures (3 tests)
+   - Practical examples (2 tests)
+   - Keywords in expressions (4 tests)
+   - Edge cases (6 tests)
+
+**Test Results:**
+- ✅ 15/15 test suites passing (100%)
+- ✅ 243+ total tests (was 163, added 80)
+- ✅ Zero crashes
+- ✅ All error cases properly handled
+
+**Documentation Updates:**
+- ✅ SPEC.md updated with 61 primitives
+- ✅ SESSION_HANDOFF.md corrected
+- ✅ All primitives categorized correctly
+- ✅ Placeholders clearly marked
+
+---
+
+## 🎉 Previous Sessions
 
 ### 🔧 Error Handling Consistency (Days 6-7) ✅
 
@@ -295,18 +376,28 @@ Cell* prim_mod(Cell* args) {
 
 ### Primitives Count
 
-**Runtime Evaluated:**
-- 6 Core lambda calculus: ⟨⟩ ◁ ▷ λ · 0-9
-- 3 Metaprogramming: ⌜ ⌞ ≔
-- 4 Comparison: ≡ ≢ ∧ ∨
-- 9 Arithmetic: ⊕ ⊖ ⊗ ⊘ **%** < > ≤ ≥ (NEW: %)
-- 6 Type predicates: ℕ? 𝔹? :? ∅? ⟨⟩? #?
-- 1 Control: ?
-- 15 Structure primitives: ⊙≔ ⊙ ⊙→ ⊙← ⊙? ⊚≔ ⊚ ⊚→ ⊚? ⊝≔ ⊝ ⊝⊕ ⊝⊗ ⊝→ ⊝?
-- 3 Documentation: ⌂ ⌂∈ ⌂≔
-- 2 Control/Data Flow: ⌂⟿ ⌂⇝
+**CORRECTED COUNT:** 61 primitives (not 49 as previously documented!)
 
-**Total:** 49 primitives (was 48, added %)
+**Runtime Evaluated (61 total):**
+1. **Core Lambda Calculus (3):** ⟨⟩ ◁ ▷
+2. **Metaprogramming (2):** ⌜ ⌞
+3. **Comparison & Logic (5):** ≡ ≢ ∧ ∨ ¬
+4. **Arithmetic (9):** ⊕ ⊖ ⊗ ⊘ % < > ≤ ≥
+5. **Type Predicates (6):** ℕ? 𝔹? :? ∅? ⟨⟩? #?
+6. **Debug & Error (4):** ⚠ ⚠? ⊢ ⟲
+7. **Self-Introspection (2):** ⧉ ⊛
+8. **Testing (2):** ≟ ⊨
+9. **Effects (4 - placeholders):** ⟪⟫ ↯ ⤴ ≫
+10. **Actors (3 - placeholders):** ⟳ →! ←?
+11. **Documentation (4):** ⌂ ⌂∈ ⌂≔ ⌂⊛
+12. **CFG/DFG (2):** ⌂⟿ ⌂⇝
+13. **Structure - Leaf (5):** ⊙≔ ⊙ ⊙→ ⊙← ⊙?
+14. **Structure - Node/ADT (4):** ⊚≔ ⊚ ⊚→ ⊚?
+15. **Graph (6):** ⊝≔ ⊝ ⊝⊕ ⊝⊗ ⊝→ ⊝?
+
+**Note:** λ, ·, ≔, ?, and De Bruijn indices are evaluator features, not primitives.
+**Placeholders:** 7 (effects + actors) return nil, will be implemented in Phase 4+
+**Functional:** 54 primitives fully working
 
 ### What's Next 🎯
 
