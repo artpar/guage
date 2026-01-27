@@ -3,8 +3,26 @@
 ## Core Data Structure
 
 Everything is a **Cell**:
-- **Atom**: `#n` (number), `#t`/`#f` (bool), `:symbol`, `∅` (nil)
+- **Atom**: `#n` (number), `#t`/`#f` (bool), `:symbol` (keyword), `∅` (nil)
 - **Pair**: `⟨a b⟩` (cons cell)
+
+### Keywords (Self-Evaluating Symbols)
+
+**Symbols starting with `:` (colon) are self-evaluating** - they don't require quoting:
+
+```scheme
+:test      ; → :test (self-evaluating, like #42 or #t)
+:Point     ; → :Point
+:x         ; → :x
+```
+
+**Use cases:**
+- Structure type tags: `:Point`, `:Rectangle`
+- Field names: `:x`, `:y`, `:width`
+- Enum values: `:red`, `:green`, `:blue`
+- Message tags: `:ok`, `:error`
+
+**See:** `KEYWORDS.md` for complete specification.
 
 ## The 42 Primitives (Runtime Evaluated)
 
@@ -180,17 +198,18 @@ Everything is a **Cell**:
 **Structure Syntax:**
 ```scheme
 ; Leaf structure (non-recursive)
-(⊙≔ Point :x :y)
-(≔ p (⊙ Point #3 #4))
+; Keywords (:Point, :x, :y) are self-evaluating - no quotes needed!
+(⊙≔ :Point :x :y)
+(≔ p (⊙ :Point #3 #4))
 (⊙→ p :x)  ; → #3
 
 ; Node structure (recursive ADT)
-(⊚≔ List [:Nil] [:Cons :head :tail])
-(≔ l (⊚ List :Cons #1 (⊚ List :Nil)))
+(⊚≔ :List [:Nil] [:Cons :head :tail])
+(≔ l (⊚ :List :Cons #1 (⊚ :List :Nil)))
 
 ; Graph structure
-(⊝≔ Graph :nodes :edges)
-(≔ g (⊝ Graph ∅ ∅))
+(⊝≔ :Graph :nodes :edges)
+(≔ g (⊝ :Graph ∅ ∅))
 (≔ g (⊝⊕ g node-data))
 (≔ g (⊝⊗ g from-id to-id label))
 ```

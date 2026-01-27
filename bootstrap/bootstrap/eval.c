@@ -937,9 +937,16 @@ static Cell* eval_internal(EvalContext* ctx, Cell* env, Cell* expr) {
         return expr;
     }
 
-    /* Variable lookup */
+    /* Keyword symbols (start with ':') are self-evaluating */
     if (cell_is_symbol(expr)) {
         const char* name = cell_get_symbol(expr);
+        if (name[0] == ':') {
+            /* Keywords are self-evaluating (like :Point, :x, :Cons) */
+            cell_retain(expr);
+            return expr;
+        }
+
+        /* Regular symbols: variable lookup */
         Cell* value = eval_lookup(ctx, name);
         if (value == NULL) {
             fprintf(stderr, "Error: Undefined variable '%s'\n", name);
