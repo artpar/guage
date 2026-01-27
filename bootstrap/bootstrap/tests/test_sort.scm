@@ -1,0 +1,356 @@
+; ═══════════════════════════════════════════════════════════════
+; Guage Standard Library Tests: Sorting Algorithms
+; ═══════════════════════════════════════════════════════════════
+
+; Load sorting library
+(⋘ "stdlib/sort.scm")
+
+; ────────────────────────────────────────────────────────────────
+; HELPER: List equality
+; ────────────────────────────────────────────────────────────────
+
+(≔ list-equal? (λ (lst1) (λ (lst2)
+  (? (∅? lst1)
+     (∅? lst2)
+     (? (∅? lst2)
+        #f
+        (? (≡ (◁ lst1) (◁ lst2))
+           ((list-equal? (▷ lst1)) (▷ lst2))
+           #f))))))
+
+; ────────────────────────────────────────────────────────────────
+; TEST DATA
+; ────────────────────────────────────────────────────────────────
+
+(≔ empty-list ∅)
+(≔ single-list (⟨⟩ #5 ∅))
+(≔ sorted-list (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 (⟨⟩ #4 (⟨⟩ #5 ∅))))))
+(≔ reverse-list (⟨⟩ #5 (⟨⟩ #4 (⟨⟩ #3 (⟨⟩ #2 (⟨⟩ #1 ∅))))))
+(≔ random-list (⟨⟩ #3 (⟨⟩ #1 (⟨⟩ #4 (⟨⟩ #1 (⟨⟩ #5 (⟨⟩ #9 ∅)))))))
+(≔ duplicates-list (⟨⟩ #3 (⟨⟩ #3 (⟨⟩ #1 (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #2 ∅)))))))
+
+; ────────────────────────────────────────────────────────────────
+; UTILITY TESTS
+; ────────────────────────────────────────────────────────────────
+
+; Test is-sorted on empty list
+(⊨ :is-sorted-empty
+   #t
+   (⊙⊢ empty-list))
+
+; Test is-sorted on single element
+(⊨ :is-sorted-single
+   #t
+   (⊙⊢ single-list))
+
+; Test is-sorted on sorted list
+(⊨ :is-sorted-sorted
+   #t
+   (⊙⊢ sorted-list))
+
+; Test is-sorted on reverse list
+(⊨ :is-sorted-reverse
+   #f
+   (⊙⊢ reverse-list))
+
+; Test is-sorted on random list
+(⊨ :is-sorted-random
+   #f
+   (⊙⊢ random-list))
+
+; Test is-sorted with custom comparator (descending)
+(⊨ :is-sorted-desc
+   #t
+   ((⊙⊢→ ⊙≥) reverse-list))
+
+; ────────────────────────────────────────────────────────────────
+; BUBBLE SORT TESTS
+; ────────────────────────────────────────────────────────────────
+
+; Bubble sort: empty list
+(⊨ :bubble-empty
+   #t
+   ((list-equal? empty-list) (⊙bubble empty-list)))
+
+; Bubble sort: single element
+(⊨ :bubble-single
+   #t
+   ((list-equal? single-list) (⊙bubble single-list)))
+
+; Bubble sort: already sorted
+(⊨ :bubble-sorted
+   #t
+   ((list-equal? sorted-list) (⊙bubble sorted-list)))
+
+; Bubble sort: reverse sorted
+(⊨ :bubble-reverse
+   #t
+   ((list-equal? sorted-list) (⊙bubble reverse-list)))
+
+; Bubble sort: random list
+(⊨ :bubble-random
+   #t
+   ((list-equal? (⟨⟩ #1 (⟨⟩ #1 (⟨⟩ #3 (⟨⟩ #4 (⟨⟩ #5 (⟨⟩ #9 ∅))))))) (⊙bubble random-list)))
+
+; Bubble sort: with duplicates
+(⊨ :bubble-duplicates
+   #t
+   ((list-equal? (⟨⟩ #1 (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #2 (⟨⟩ #3 (⟨⟩ #3 ∅))))))) (⊙bubble duplicates-list)))
+
+; Bubble sort: descending
+(⊨ :bubble-desc
+   #t
+   ((list-equal? reverse-list) ((⊙bubble→ ⊙≥) sorted-list)))
+
+; ────────────────────────────────────────────────────────────────
+; INSERTION SORT TESTS
+; ────────────────────────────────────────────────────────────────
+
+; Insertion sort: empty list
+(⊨ :insertion-empty
+   #t
+   ((list-equal? empty-list) (⊙insertion empty-list)))
+
+; Insertion sort: single element
+(⊨ :insertion-single
+   #t
+   ((list-equal? single-list) (⊙insertion single-list)))
+
+; Insertion sort: already sorted
+(⊨ :insertion-sorted
+   #t
+   ((list-equal? sorted-list) (⊙insertion sorted-list)))
+
+; Insertion sort: reverse sorted
+(⊨ :insertion-reverse
+   #t
+   ((list-equal? sorted-list) (⊙insertion reverse-list)))
+
+; Insertion sort: random list
+(⊨ :insertion-random
+   #t
+   ((list-equal? (⟨⟩ #1 (⟨⟩ #1 (⟨⟩ #3 (⟨⟩ #4 (⟨⟩ #5 (⟨⟩ #9 ∅))))))) (⊙insertion random-list)))
+
+; Insertion sort: with duplicates
+(⊨ :insertion-duplicates
+   #t
+   ((list-equal? (⟨⟩ #1 (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #2 (⟨⟩ #3 (⟨⟩ #3 ∅))))))) (⊙insertion duplicates-list)))
+
+; Insertion sort: descending
+(⊨ :insertion-desc
+   #t
+   ((list-equal? reverse-list) ((⊙insertion→ ⊙≥) sorted-list)))
+
+; ────────────────────────────────────────────────────────────────
+; MERGE SORT TESTS
+; ────────────────────────────────────────────────────────────────
+
+; Merge sort: empty list
+(⊨ :merge-empty
+   #t
+   ((list-equal? empty-list) (⊙mergesort empty-list)))
+
+; Merge sort: single element
+(⊨ :merge-single
+   #t
+   ((list-equal? single-list) (⊙mergesort single-list)))
+
+; Merge sort: already sorted
+(⊨ :merge-sorted
+   #t
+   ((list-equal? sorted-list) (⊙mergesort sorted-list)))
+
+; Merge sort: reverse sorted
+(⊨ :merge-reverse
+   #t
+   ((list-equal? sorted-list) (⊙mergesort reverse-list)))
+
+; Merge sort: random list
+(⊨ :merge-random
+   #t
+   ((list-equal? (⟨⟩ #1 (⟨⟩ #1 (⟨⟩ #3 (⟨⟩ #4 (⟨⟩ #5 (⟨⟩ #9 ∅))))))) (⊙mergesort random-list)))
+
+; Merge sort: with duplicates
+(⊨ :merge-duplicates
+   #t
+   ((list-equal? (⟨⟩ #1 (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #2 (⟨⟩ #3 (⟨⟩ #3 ∅))))))) (⊙mergesort duplicates-list)))
+
+; Merge sort: descending
+(⊨ :merge-desc
+   #t
+   ((list-equal? reverse-list) ((⊙mergesort→ ⊙≥) sorted-list)))
+
+; ────────────────────────────────────────────────────────────────
+; QUICKSORT TESTS
+; ────────────────────────────────────────────────────────────────
+
+; Quicksort: empty list
+(⊨ :quick-empty
+   #t
+   ((list-equal? empty-list) (⊙quicksort empty-list)))
+
+; Quicksort: single element
+(⊨ :quick-single
+   #t
+   ((list-equal? single-list) (⊙quicksort single-list)))
+
+; Quicksort: already sorted
+(⊨ :quick-sorted
+   #t
+   ((list-equal? sorted-list) (⊙quicksort sorted-list)))
+
+; Quicksort: reverse sorted
+(⊨ :quick-reverse
+   #t
+   ((list-equal? sorted-list) (⊙quicksort reverse-list)))
+
+; Quicksort: random list
+(⊨ :quick-random
+   #t
+   ((list-equal? (⟨⟩ #1 (⟨⟩ #1 (⟨⟩ #3 (⟨⟩ #4 (⟨⟩ #5 (⟨⟩ #9 ∅))))))) (⊙quicksort random-list)))
+
+; Quicksort: with duplicates
+(⊨ :quick-duplicates
+   #t
+   ((list-equal? (⟨⟩ #1 (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #2 (⟨⟩ #3 (⟨⟩ #3 ∅))))))) (⊙quicksort duplicates-list)))
+
+; Quicksort: descending
+(⊨ :quick-desc
+   #t
+   ((list-equal? reverse-list) ((⊙quicksort→ ⊙≥) sorted-list)))
+
+; ────────────────────────────────────────────────────────────────
+; DEFAULT SORT TESTS
+; ────────────────────────────────────────────────────────────────
+
+; Default sort: empty list
+(⊨ :sort-empty
+   #t
+   ((list-equal? empty-list) (⊙sort empty-list)))
+
+; Default sort: single element
+(⊨ :sort-single
+   #t
+   ((list-equal? single-list) (⊙sort single-list)))
+
+; Default sort: already sorted
+(⊨ :sort-sorted
+   #t
+   ((list-equal? sorted-list) (⊙sort sorted-list)))
+
+; Default sort: reverse sorted
+(⊨ :sort-reverse
+   #t
+   ((list-equal? sorted-list) (⊙sort reverse-list)))
+
+; Default sort: random list
+(⊨ :sort-random
+   #t
+   ((list-equal? (⟨⟩ #1 (⟨⟩ #1 (⟨⟩ #3 (⟨⟩ #4 (⟨⟩ #5 (⟨⟩ #9 ∅))))))) (⊙sort random-list)))
+
+; Default sort: with duplicates
+(⊨ :sort-duplicates
+   #t
+   ((list-equal? (⟨⟩ #1 (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #2 (⟨⟩ #3 (⟨⟩ #3 ∅))))))) (⊙sort duplicates-list)))
+
+; ────────────────────────────────────────────────────────────────
+; MERGE HELPER TESTS
+; ────────────────────────────────────────────────────────────────
+
+; Test merge on two empty lists
+(⊨ :merge-both-empty
+   #t
+   ((list-equal? empty-list) (((⊙merge ⊙≤) empty-list) empty-list)))
+
+; Test merge on one empty list
+(⊨ :merge-one-empty
+   #t
+   ((list-equal? sorted-list) (((⊙merge ⊙≤) sorted-list) empty-list)))
+
+; Test merge on two sorted lists
+(⊨ :merge-two-sorted
+   #t
+   ((list-equal? (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 (⟨⟩ #4 (⟨⟩ #5 (⟨⟩ #6 ∅)))))))
+    (((⊙merge ⊙≤) (⟨⟩ #1 (⟨⟩ #3 (⟨⟩ #5 ∅)))) (⟨⟩ #2 (⟨⟩ #4 (⟨⟩ #6 ∅))))))
+
+; ────────────────────────────────────────────────────────────────
+; PARTITION TESTS
+; ────────────────────────────────────────────────────────────────
+
+; Test partition with all less than pivot
+(⊨ :partition-all-less
+   #t
+   (≔ result (((⊙partition ⊙≤) #10) (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅))))
+      (? ((list-equal? (◁ result)) (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅))))
+         ((list-equal? (◁ (▷ result))) empty-list)
+         #f)))
+
+; Test partition with all greater than pivot
+(⊨ :partition-all-greater
+   #t
+   (≔ result (((⊙partition ⊙≤) #0) (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅))))
+      (? ((list-equal? (◁ result)) empty-list)
+         ((list-equal? (◁ (▷ result))) (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅))))
+         #f)))
+
+; Test partition with mixed elements
+(⊨ :partition-mixed
+   #t
+   (≔ result (((⊙partition ⊙≤) #3) (⟨⟩ #1 (⟨⟩ #4 (⟨⟩ #2 (⟨⟩ #5 ∅)))))
+      (? ((list-equal? (◁ result)) (⟨⟩ #2 (⟨⟩ #1 ∅)))
+         ((list-equal? (◁ (▷ result))) (⟨⟩ #5 (⟨⟩ #4 ∅)))
+         #f)))
+
+; ────────────────────────────────────────────────────────────────
+; VERIFICATION: All algorithms produce same result
+; ────────────────────────────────────────────────────────────────
+
+(≔ test-list (⟨⟩ #7 (⟨⟩ #2 (⟨⟩ #9 (⟨⟩ #1 (⟨⟩ #5 ∅))))))
+(≔ expected (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #5 (⟨⟩ #7 (⟨⟩ #9 ∅))))))
+
+; Verify all algorithms agree
+(⊨ :verify-bubble-matches
+   #t
+   ((list-equal? expected) (⊙bubble test-list)))
+
+(⊨ :verify-insertion-matches
+   #t
+   ((list-equal? expected) (⊙insertion test-list)))
+
+(⊨ :verify-merge-matches
+   #t
+   ((list-equal? expected) (⊙mergesort test-list)))
+
+(⊨ :verify-quick-matches
+   #t
+   ((list-equal? expected) (⊙quicksort test-list)))
+
+(⊨ :verify-sort-matches
+   #t
+   ((list-equal? expected) (⊙sort test-list)))
+
+; ────────────────────────────────────────────────────────────────
+; INTEGRATION TESTS
+; ────────────────────────────────────────────────────────────────
+
+; Sort then verify sorted
+(⊨ :sort-then-check
+   #t
+   (⊙⊢ (⊙sort random-list)))
+
+; Sort descending then verify
+(⊨ :sort-desc-then-check
+   #t
+   ((⊙⊢→ ⊙≥) ((⊙sort→ ⊙≥) random-list)))
+
+; Sort preserves length
+(≔ count-length (λ (lst)
+  (? (∅? lst) #0 (⊕ #1 (count-length (▷ lst))))))
+
+(⊨ :sort-preserves-length
+   #t
+   (≡ (count-length random-list) (count-length (⊙sort random-list))))
+
+; ═══════════════════════════════════════════════════════════════
+; END OF TESTS
+; ═══════════════════════════════════════════════════════════════
