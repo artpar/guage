@@ -441,6 +441,54 @@ valgrind --leak-check=full ./guage < tests/core.test
 
 ---
 
-**Session Status: DAY 34 COMPLETE ✅**
-**Test Status: 34 macro tests + 14 core test suites = All passing**
-**Next Developer: Continue with stdlib expansion or type system work**
+### Day 35: List Comprehensions ✅ (2026-01-27)
+
+**Implemented Python-style list comprehensions with advanced features:**
+
+**Features:**
+- ⟦⟧ comprehension syntax: `⟦ expr ← xs, pred ⟧`
+- Multiple generators: `⟦ ⟨x y⟩ ← xs, ← ys ⟧`
+- Nested comprehensions: Cartesian products
+- Guards (filters): Conditional element inclusion
+- Transformation expressions: Map during generation
+
+**Tests:** 23/23 passing
+**Backwards Compatibility:** All existing tests still pass ✅
+
+**Documentation:** See `DAY_35_SUMMARY.md` for full details
+
+---
+
+### Day 36: Extended List Operations ✅ (2026-01-27)
+
+**Implemented 20 production-ready list utility functions:**
+
+**Files Created:**
+- `stdlib/list_extended.scm` - 20 functions + 2 helpers (234 lines)
+- `tests/test_list_extended.scm` - 51 comprehensive tests (296 lines)
+
+**Functions Implemented:**
+1. **Zip Operations (2):** ⊕⊙ (zip), ⊕⊙→ (zip-with)
+2. **Conditional (3):** ⊙▷→ (take-while), ⊙◁→ (drop-while), ⊙⊂→ (span)
+3. **Set-Like (4):** ⊙⊆→ (elem), ⊙≡→ (unique), ⊙⊖→ (difference), ⊙⊗→ (intersection)
+4. **Predicates (2):** ⊙∧→ (all), ⊙∨→ (any)
+5. **Partitioning (1):** ⊙⊲⊲→ (partition)
+6. **Manipulation (7):** ⊙⊕⊕→ (concat), ⊙⋈→ (interleave), ⊙≪→ (rotate-left), ⊙⊳→ (safe-head), ⊙⊴→ (safe-tail), ⊙#→ (length), ⊙⊕⊕-append (helper)
+
+**Technical Challenges Solved:**
+1. Currying primitives - Wrapped operators in lambda closures
+2. Unique implementation - Track seen elements with helper
+3. Helper calling conventions - Fixed uncurried vs curried
+4. Interleave semantics - Stop at shorter list
+
+**Tests:** 47/47 basic + 4/4 integration = 51/51 passing ✅
+**Backwards Compatibility:** All 14 existing test suites pass ✅
+
+**Documentation:** See `docs/archive/2026-01/DAY_36_SUMMARY.md` for complete details
+
+---
+
+**Session Status: DAY 36 COMPLETE ✅**
+**Test Status:** 978+ total tests passing (927 from Day 35 + 51 new)
+**Total Functions:** 80+ primitives + 20 list operations
+**Next Developer:** Continue with sorting algorithms (Day 37) or tree utilities (Day 38)
