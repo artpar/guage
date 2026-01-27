@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include "cell.h"
 #include "primitives.h"
 #include "eval.h"
@@ -177,9 +178,30 @@ Cell* parse(const char* input) {
     return parse_expr(&p);
 }
 
+/* Count parentheses balance in string */
+static int paren_balance(const char* str) {
+    int balance = 0;
+    int i = 0;
+    int in_comment = 0;
+
+    while (str[i] != '\0') {
+        if (str[i] == ';') {
+            in_comment = 1;
+        } else if (str[i] == '\n') {
+            in_comment = 0;
+        } else if (!in_comment) {
+            if (str[i] == '(') balance++;
+            else if (str[i] == ')') balance--;
+        }
+        i++;
+    }
+    return balance;
+}
+
 /* REPL */
 void repl(void) {
     char input[MAX_INPUT];
+    char accumulated[MAX_INPUT * 4];  /* Buffer for multi-line input */
     EvalContext* ctx = eval_context_new();
 
     printf("Guage: The Ultralanguage\n");
@@ -195,35 +217,79 @@ void repl(void) {
 
     printf("Ready.\n\n");
 
+    accumulated[0] = '\0';
+    int balance = 0;
+    int is_interactive = isatty(fileno(stdin));
+
     while (1) {
-        printf("guage> ");
+        if (is_interactive && balance == 0) {
+            printf("guage> ");
+        } else if (is_interactive && balance > 0) {
+            printf("...    ");
+        }
         fflush(stdout);
 
         if (fgets(input, MAX_INPUT, stdin) == NULL) {
-            printf("\n");
+            if (is_interactive) printf("\n");
             break;
         }
 
-        /* Skip empty lines */
-        if (input[0] == '\n') continue;
+        /* Skip empty lines when not accumulating */
+        if (balance == 0 && input[0] == '\n') continue;
 
-        /* Parse */
-        Cell* expr = parse(input);
-        if (expr == NULL) {
-            printf("Parse error\n");
-            continue;
+        /* Accumulate input */
+        strncat(accumulated, input, MAX_INPUT * 4 - strlen(accumulated) - 1);
+        balance += paren_balance(input);
+
+        /* If balanced, parse and evaluate */
+        if (balance == 0 && strlen(accumulated) > 0) {
+            /* Skip if only whitespace */
+            int only_whitespace = 1;
+            for (size_t i = 0; i < strlen(accumulated); i++) {
+                if (accumulated[i] != ' ' && accumulated[i] != '\t' &&
+                    accumulated[i] != '\n' && accumulated[i] != '\r') {
+                    /* Check if it's part of a comment */
+                    if (accumulated[i] == ';') {
+                        /* Skip to end of line */
+                        while (i < strlen(accumulated) && accumulated[i] != '\n') i++;
+                    } else {
+                        only_whitespace = 0;
+                        break;
+                    }
+                }
+            }
+
+            if (only_whitespace) {
+                accumulated[0] = '\0';
+                continue;
+            }
+
+            /* Parse */
+            Cell* expr = parse(accumulated);
+            if (expr == NULL) {
+                printf("Parse error\n");
+                accumulated[0] = '\0';
+                continue;
+            }
+
+            /* Evaluate */
+            Cell* result = eval(ctx, expr);
+
+            /* Print result */
+            cell_print(result);
+            printf("\n");
+
+            /* Cleanup */
+            cell_release(expr);
+            cell_release(result);
+
+            /* Reset accumulator */
+            accumulated[0] = '\0';
+        } else if (balance < 0) {
+            printf("Error: Unbalanced parentheses (too many closing parens)\n");
+            accumulated[0] = '\0';
+            balance = 0;
         }
-
-        /* Evaluate */
-        Cell* result = eval(ctx, expr);
-
-        /* Print result */
-        cell_print(result);
-        printf("\n");
-
-        /* Cleanup */
-        cell_release(expr);
-        cell_release(result);
     }
 
     eval_context_free(ctx);

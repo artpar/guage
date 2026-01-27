@@ -513,6 +513,227 @@ while (iterating old_fields) {
 
 ---
 
+---
+
+## Phase 2C Week 2: CFG/DFG Generation Decisions
+
+### 17. CFG as First-Class Graph Structure
+
+**Decision:** CFG is a CELL_GRAPH with graph_type = GRAPH_CFG.
+
+**Why:**
+- **Queryable:** Use existing ⊝→ to query nodes, edges, entry, exit
+- **Composable:** CFG is just a graph, works with all graph operations
+- **First-class:** Can pass CFG to functions, store in variables
+- **Uniform:** Same structure for all auto-generated graphs
+
+**Example:**
+```scheme
+(≔ cfg (⌂⟿ (⌜ !)))           ; Generate CFG
+(≔ nodes (⊝→ cfg (⌜ :nodes))) ; Query nodes
+(≔ entry (⊝→ cfg (⌜ :entry))) ; Query entry
+```
+
+**Code location:** cfg.c lines 236-267
+
+---
+
+### 18. Built-in Graph Types Don't Need Registration
+
+**Decision:** :CFG, :DFG, :CALL, :DEP checked via GraphType enum, not registry.
+
+**Why:**
+- **Efficiency:** No registry lookup for built-in types
+- **Simplicity:** Built-in types are compile-time constants
+- **Type safety:** GraphType enum enforces valid types
+- **Extensibility:** User-defined types still use registry (GRAPH_GENERIC)
+
+**Implementation:**
+```c
+// In prim_graph_is():
+if (strcmp(type_str, ":CFG") == 0) {
+    return cell_bool(gt == GRAPH_CFG);
+}
+// vs registry lookup for user types
+```
+
+**Code location:** primitives.c lines 1189-1226
+
+---
+
+### 19. CFG Basic Block Representation
+
+**Decision:** Basic blocks are expression cells, not special node types.
+
+**Why:**
+- **Simplicity:** Reuse existing Cell structure
+- **Memory efficient:** No new allocations needed
+- **Debuggable:** Can print blocks as expressions
+- **Flexible:** Blocks can be any expression type
+
+**Example:**
+```scheme
+; Block 0: (≡ n #0)        ; Test expression
+; Block 1: #1               ; Then branch
+; Block 2: (⊗ n (! ...))    ; Else branch
+```
+
+**Code location:** cfg.c lines 62-70
+
+---
+
+### 20. Control Flow Edge Labels
+
+**Decision:** Edges labeled with symbols: :true, :false, :unconditional
+
+**Why:**
+- **Readable:** Clear edge semantics at a glance
+- **Extensible:** Can add new edge types (:exception, :break, :continue)
+- **Queryable:** Can filter edges by label type
+- **Standard:** Common convention in CFG literature
+
+**Format:**
+```scheme
+⟨from_idx to_idx label⟩
+⟨0 1 :unconditional⟩  ; Sequential flow
+⟨1 2 :true⟩           ; True branch
+⟨1 3 :false⟩          ; False branch
+```
+
+**Code location:** cfg.c lines 57-71
+
+---
+
+### 21. CFG Builder Pattern
+
+**Decision:** Use temporary CFGBuilder struct with dynamic arrays, then convert to lists.
+
+**Why:**
+- **Performance:** Avoid O(n²) repeated cons operations
+- **Simplicity:** Build arrays first, convert to lists once
+- **Separation:** Clean separation between build phase and output phase
+- **Memory:** Predictable memory usage patterns
+
+**Implementation:**
+```c
+typedef struct {
+    Cell** blocks;       // Dynamic array
+    Cell** edges;        // Dynamic array
+    int entry_idx;
+    int exit_idx;
+} CFGBuilder;
+```
+
+**Alternative considered:**
+- Build lists directly: O(n²) for appending, more complex
+
+**Code location:** cfg.c lines 22-34
+
+---
+
+### 22. Recursive CFG Walking
+
+**Decision:** Walk AST recursively, handling branch points specially.
+
+**Why:**
+- **Natural:** Matches AST structure
+- **Composable:** Easy to handle nested conditionals
+- **Extensible:** Can add new expression types easily
+- **Correct:** Properly represents control flow paths
+
+**Algorithm:**
+```c
+int cfg_walk(builder, expr, current_block) {
+    if (is_branch_point(expr)) {
+        // Add test block
+        // Walk then branch recursively
+        // Walk else branch recursively
+        // Return join point
+    }
+    // Regular expression - single block
+    return block_idx;
+}
+```
+
+**Handles:**
+- Nested conditionals (? inside ?)
+- Sequential expressions
+- Recursive calls (noted in CFG, not special-cased yet)
+
+**Code location:** cfg.c lines 128-198
+
+---
+
+### 23. Multi-Line Expression Parsing with Parenthesis Balancing
+
+**Decision:** REPL accumulates lines until parentheses are balanced before parsing.
+
+**Why:**
+- **Correctness:** Lambda definitions span multiple lines in test files
+- **User experience:** Interactive REPL can show continuation prompt (`...`)
+- **Robustness:** Prevents parsing incomplete expressions
+- **Safety:** Avoids crashes from evaluating NULL
+
+**Problem it solves:**
+```scheme
+; This was being parsed line-by-line (WRONG):
+(≔ ! (λ (n)       ; Line 1: parse error (unbalanced)
+  (? (≡ n #0)     ; Line 2: parse as standalone (CRASH)
+     #1
+     ...)))
+```
+
+**Solution:**
+1. Count open/close parentheses as lines are read
+2. Accumulate lines in buffer until balance = 0
+3. Skip comments when counting (`;` to end of line)
+4. Filter whitespace-only input
+5. Show `...` prompt when accumulating (interactive mode)
+
+**Implementation details:**
+```c
+int paren_balance(const char* str) {
+    // Count ( and ) while skipping comments
+    // Returns: positive = need more ), zero = balanced, negative = error
+}
+
+void repl() {
+    char accumulated[MAX_INPUT * 4];
+    int balance = 0;
+
+    while (fgets(line)) {
+        strcat(accumulated, line);
+        balance += paren_balance(line);
+
+        if (balance == 0) {
+            parse_and_eval(accumulated);
+            accumulated[0] = '\0';
+        }
+    }
+}
+```
+
+**Edge cases handled:**
+- Comments containing parentheses (ignored)
+- Blank lines (skipped)
+- Whitespace-only lines (skipped)
+- Interactive vs file input (detected with `isatty()`)
+- Too many closing parens (error reported immediately)
+
+**Impact:**
+- ✅ Recursion tests now pass (was timing out/crashing)
+- ✅ All 10/10 test suites pass
+- ✅ Multi-line lambdas work correctly
+- ✅ Better REPL user experience
+
+**Alternative considered:**
+- Smart parser that returns "need more input": More complex, defers problem
+- Rejected because: Simple counting is sufficient and more maintainable
+
+**Code location:** main.c lines 181-285
+
+---
+
 **Document Purpose:** This is a living document. Update it whenever making significant technical decisions. Explain the "why", not just the "what". Future you will thank you.
 
-**Last Updated:** 2026-01-27 - Phase 2C Week 1 Day 4
+**Last Updated:** 2026-01-27 - Phase 2C Week 2 Day 8 + Recursion Bug Fix
