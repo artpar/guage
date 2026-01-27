@@ -3,7 +3,7 @@ CFLAGS = -Wall -Wextra -std=c11 -g -O2
 LDFLAGS =
 
 # Source files
-SOURCES = cell.c primitives.c debruijn.c debug.c eval.c cfg.c dfg.c pattern.c main.c
+SOURCES = cell.c primitives.c debruijn.c debug.c eval.c cfg.c dfg.c pattern.c type.c testgen.c main.c
 OBJECTS = $(SOURCES:.c=.o)
 EXECUTABLE = guage
 
@@ -18,13 +18,15 @@ $(EXECUTABLE): $(OBJECTS)
 
 # Dependencies
 cell.o: cell.c cell.h
-primitives.o: primitives.c primitives.h cell.h pattern.h
+primitives.o: primitives.c primitives.h cell.h pattern.h type.h testgen.h
 debruijn.o: debruijn.c debruijn.h cell.h
 debug.o: debug.c debug.h cell.h eval.h
 eval.o: eval.c eval.h cell.h primitives.h debruijn.h debug.h
 cfg.o: cfg.c cfg.h cell.h primitives.h
 dfg.o: dfg.c dfg.h cell.h primitives.h
 pattern.o: pattern.c pattern.h cell.h eval.h
+type.o: type.c type.h
+testgen.o: testgen.c testgen.h type.h cell.h
 main.o: main.c cell.h primitives.h eval.h debug.h
 
 clean:

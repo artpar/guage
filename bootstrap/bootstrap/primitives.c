@@ -3,6 +3,8 @@
 #include "cfg.h"
 #include "dfg.h"
 #include "pattern.h"
+#include "type.h"
+#include "testgen.h"
 #include <stdio.h>
 #include <assert.h>
 #include <math.h>
@@ -1517,9 +1519,13 @@ static Cell* generate_zero_edge_test(const char* func_name, Cell* test_list) {
     return cell_cons(test, test_list);
 }
 
-/* ⌂⊨ - Auto-generate tests for symbol (ENHANCED with structure analysis)
+/* ⌂⊨ - Auto-generate tests for symbol (TYPE-DIRECTED TEST GENERATION)
  * Args: symbol (function or primitive name)
  * Returns: list of test cases
+ *
+ * This is the CORE of Guage's first-class testing philosophy.
+ * Tests are automatically generated from type signatures using type-directed
+ * generation. No hardcoded patterns - fully extensible and comprehensive.
  */
 Cell* prim_doc_tests(Cell* args) {
     Cell* name = arg1(args);
@@ -1528,66 +1534,23 @@ Cell* prim_doc_tests(Cell* args) {
     }
 
     const char* sym = cell_get_symbol(name);
-    Cell* tests = cell_nil();
 
     /* Check if it's a primitive */
     const Primitive* prim = primitive_lookup_by_name(sym);
     if (prim) {
-        /* Generate tests for primitive based on type signature */
+        /* Parse type signature */
         const char* type_sig = prim->doc.type_signature;
+        TypeExpr* type = type_parse(type_sig);
 
-        /* Parse type signature to determine test strategy */
-        /* For now, generate basic type check tests */
-
-        /* Example: For "ℕ → ℕ → ℕ" (binary arithmetic) */
-        if (strstr(type_sig, "ℕ → ℕ → ℕ")) {
-            /* Test with sample numbers */
-            Cell* test1_name = cell_symbol(":test-normal-case");
-            Cell* test1_args = cell_cons(cell_number(5),
-                                        cell_cons(cell_number(3), cell_nil()));
-            Cell* test1_call = cell_cons(cell_symbol(sym), test1_args);
-
-            /* Test output is a number */
-            Cell* test1_check = cell_cons(cell_symbol("ℕ?"),
-                                         cell_cons(test1_call, cell_nil()));
-            Cell* test1 = cell_cons(cell_symbol("⊨"),
-                                   cell_cons(test1_name,
-                                   cell_cons(cell_bool(true),
-                                   cell_cons(test1_check, cell_nil()))));
-
-            tests = cell_cons(test1, tests);
-
-            /* Add edge case: zero */
-            Cell* test2_name = cell_symbol(":test-zero-operand");
-            Cell* test2_args = cell_cons(cell_number(0),
-                                        cell_cons(cell_number(5), cell_nil()));
-            Cell* test2_call = cell_cons(cell_symbol(sym), test2_args);
-            Cell* test2_check = cell_cons(cell_symbol("ℕ?"),
-                                         cell_cons(test2_call, cell_nil()));
-            Cell* test2 = cell_cons(cell_symbol("⊨"),
-                                   cell_cons(test2_name,
-                                   cell_cons(cell_bool(true),
-                                   cell_cons(test2_check, cell_nil()))));
-
-            tests = cell_cons(test2, tests);
+        if (!type) {
+            return cell_error("⌂⊨ invalid type signature", name);
         }
 
-        /* Example: For "α → 𝔹" (type predicate) */
-        else if (strstr(type_sig, "α → 𝔹")) {
-            /* Test returns boolean */
-            Cell* test1_name = cell_symbol(":test-returns-bool");
-            Cell* test1_arg = cell_number(42);
-            Cell* test1_call = cell_cons(cell_symbol(sym),
-                                        cell_cons(test1_arg, cell_nil()));
-            Cell* test1_check = cell_cons(cell_symbol("𝔹?"),
-                                         cell_cons(test1_call, cell_nil()));
-            Cell* test1 = cell_cons(cell_symbol("⊨"),
-                                   cell_cons(test1_name,
-                                   cell_cons(cell_bool(true),
-                                   cell_cons(test1_check, cell_nil()))));
+        /* Generate tests using type-directed generation */
+        Cell* tests = testgen_for_primitive(sym, type);
 
-            tests = cell_cons(test1, tests);
-        }
+        /* Free type expression */
+        type_free(type);
 
         return tests;
     }
@@ -1597,59 +1560,24 @@ Cell* prim_doc_tests(Cell* args) {
     if (doc) {
         const char* type_sig = doc->type_signature;
 
-        /* Get function body for structure analysis */
-        EvalContext* ctx = eval_get_current_context();
-        Cell* func_value = eval_lookup(ctx, sym);
-        Cell* body = NULL;
+        if (type_sig) {
+            /* Parse type signature */
+            TypeExpr* type = type_parse(type_sig);
 
-        if (func_value && func_value->type == CELL_LAMBDA) {
-            body = func_value->data.lambda.body;
-        }
+            if (type) {
+                /* Generate tests using type-directed generation */
+                Cell* tests = testgen_for_primitive(sym, type);
 
-        /* Generate tests based on user function type */
-        if (type_sig && strstr(type_sig, "ℕ → ℕ")) {
-            /* Type conformance test */
-            char test_name[128];
-            snprintf(test_name, sizeof(test_name), ":test-%s-type", sym);
+                /* Free type expression */
+                type_free(type);
 
-            Cell* test1_name = cell_symbol(test_name);
-            Cell* test1_arg = cell_number(5);
-            Cell* test1_call = cell_cons(cell_symbol(sym),
-                                        cell_cons(test1_arg, cell_nil()));
-            Cell* test1_check = cell_cons(cell_symbol("ℕ?"),
-                                         cell_cons(test1_call, cell_nil()));
-            Cell* test1 = cell_cons(cell_symbol("⊨"),
-                                   cell_cons(test1_name,
-                                   cell_cons(cell_bool(true),
-                                   cell_cons(test1_check, cell_nil()))));
-
-            tests = cell_cons(test1, tests);
-
-            /* Structure-based tests */
-            if (body) {
-                /* Detect conditionals */
-                if (has_conditional(body)) {
-                    tests = generate_branch_test(sym, tests);
-                }
-
-                /* Detect recursion */
-                if (has_recursion(body, sym)) {
-                    tests = generate_base_case_test(sym, tests);
-                    tests = generate_recursive_test(sym, tests);
-                }
-
-                /* Detect zero comparisons */
-                if (has_zero_comparison(body)) {
-                    tests = generate_zero_edge_test(sym, tests);
-                }
+                return tests;
             }
         }
 
-        if (func_value) {
-            cell_release(func_value);
-        }
-
-        return tests;
+        /* No type signature - return empty tests for now */
+        /* TODO: Add structure-based test generation for untyped functions */
+        return cell_nil();
     }
 
     return cell_error("⌂⊨ symbol not found", name);
