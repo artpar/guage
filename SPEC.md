@@ -55,13 +55,14 @@ Everything is a **Cell**:
 |--------|------|---------|--------|
 | `∇` | `α → [[⌜pattern⌝ result]] → β` | Pattern match expression | ✅ DONE (Day 16) |
 
-**Note:** As of Day 18, supports:
+**Note:** As of Day 19, supports:
 - **Wildcard** (_) - matches anything
 - **Literals** - numbers, booleans, symbols, keywords
 - **Variables** - bind matched value to name (Day 16 ✅)
 - **Pair patterns** - destructure pairs (Day 17 ✅)
 - **Leaf structure patterns** (⊙) - destructure simple structures (Day 18 ✅)
 - **Node/ADT patterns** (⊚) - destructure algebraic data types (Day 18 ✅)
+- **Exhaustiveness checking** - warnings for incomplete/unreachable patterns (Day 19 ✅)
 
 **Syntax:**
 ```scheme
@@ -148,6 +149,40 @@ Everything is a **Cell**:
 (∇ tree (⌜ (((⊚ :Tree :Node (⊚ :Tree :Leaf lv) v (⊚ :Tree :Leaf rv))
              (⊕ lv rv)))))  ; → #20
 ```
+
+**Exhaustiveness Checking (Day 19):**
+
+The pattern matcher emits warnings (not errors) to help catch incomplete or redundant patterns:
+
+**Incomplete pattern warnings:**
+```scheme
+; ⚠️ Warning: Pattern match may be incomplete
+; → Matching value of type: number (infinite domain)
+(∇ #42 (⌜ ((#42 :matched))))  ; Missing catch-all for other numbers
+```
+
+**Unreachable pattern warnings:**
+```scheme
+; ⚠️ Warning: Unreachable pattern detected
+; → Pattern at position 2 will never match
+(∇ #42 (⌜ ((_ :any) (#42 :specific))))  ; #42 pattern is unreachable
+```
+
+**Complete patterns (no warnings):**
+```scheme
+; Wildcard covers all cases
+(∇ #42 (⌜ ((#42 :specific) (_ :other))))  ; ✓ Complete
+
+; Variable covers all cases
+(∇ #42 (⌜ ((#42 :specific) (x x))))  ; ✓ Complete
+```
+
+The warnings help identify:
+- **Missing cases** that could cause runtime `:no-match` errors
+- **Dead code** from unreachable patterns
+- **Incomplete ADT handling** when not all variants are covered
+
+Warnings are non-fatal and do not stop execution.
 
 ### Comparison & Logic (5) ✅
 | Symbol | Type | Meaning | Status |

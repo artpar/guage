@@ -1,4 +1,5 @@
 #include "pattern.h"
+#include "pattern_check.h"
 #include "cell.h"
 #include "eval.h"
 #include <string.h>
@@ -499,6 +500,18 @@ Cell* pattern_eval_match(Cell* expr, Cell* clauses, EvalContext* ctx) {
     if (value->type == CELL_ERROR) {
         return value;
     }
+
+    /* Check exhaustiveness and emit warnings */
+    ExhaustivenessResult check = pattern_check_exhaustiveness(clauses);
+
+    if (check.status == COVERAGE_PARTIAL) {
+        /* Incomplete pattern match - warn about potential :no-match error */
+        warn_incomplete_match(value);
+    } else if (check.status == COVERAGE_REDUNDANT) {
+        /* Unreachable patterns detected */
+        warn_unreachable_pattern(check.first_unreachable);
+    }
+    /* COVERAGE_COMPLETE - all good, no warnings */
 
     /* Clauses should be a list of pairs: ((pattern1 result1) (pattern2 result2) ...) */
     /* Each clause is (pattern result) where pattern is data and result is an unevaluated expression */
