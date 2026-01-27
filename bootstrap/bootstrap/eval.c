@@ -899,8 +899,15 @@ static bool env_is_indexed(Cell* env) {
     if (!cell_is_pair(env)) return false;
 
     Cell* first = cell_car(env);
-    /* If first element is a pair, it's likely a named binding */
-    return !cell_is_pair(first);
+    /* Named bindings look like: (symbol . value)
+     * Check if it's a pair whose car is a symbol */
+    if (cell_is_pair(first)) {
+        Cell* car_of_first = cell_car(first);
+        /* If the car of the first element is a symbol, it's a named binding */
+        return !cell_is_symbol(car_of_first);
+    }
+    /* First element is not a pair, so it's an indexed environment */
+    return true;
 }
 
 /* Evaluate expression */
