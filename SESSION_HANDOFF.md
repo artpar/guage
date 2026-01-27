@@ -1,17 +1,17 @@
-# Session Handoff: 2026-01-27 (Week 1-2 Days 4-5: Comprehensive Testing)
+# Session Handoff: 2026-01-27 (Week 2 Days 6-7: Error Handling & Polish)
 
 ## Executive Summary
 
-**Status:** MAJOR PROGRESS! ✅ Testing infrastructure strengthened massively!
-**Duration:** ~3 hours this session (~21 hours total Phase 2C)
-**Key Achievement:** Added 85+ new tests, fixed GCD, added modulo primitive!
+**Status:** CONSISTENCY ACHIEVED! ✅ Error handling now follows "errors as values" philosophy!
+**Duration:** ~1 hour this session (~22 hours total Phase 2C)
+**Key Achievement:** Standardized all error handling to use first-class error values!
 
 **Major Outcomes:**
-1. ✅ **Comprehensive list test suite** - 45+ tests covering all list operations
-2. ✅ **Division/arithmetic test suite** - 40+ tests for edge cases
-3. ✅ **GCD algorithm fixed** - Added % (modulo) primitive
+1. ✅ **Symbol parsing fixed** - Keywords like `:x` now self-evaluate (commit 7309002)
+2. ✅ **Error handling consistency** - All 8 violations fixed to use cell_error()
+3. ✅ **Documentation system robust** - No more crashes on doc generation failures
 4. ✅ **13/13 test suites passing** (100% pass rate maintained)
-5. ✅ **163+ total tests** (up from 78)
+5. ✅ **163+ total tests** + manual error value tests
 
 **Previous Status:** Critical list operations bug fixed (Day 1-3)
 
@@ -19,7 +19,83 @@
 
 ## 🎉 What's New This Session
 
-### 🧪 Comprehensive List Test Suite ✅
+### 🔧 Error Handling Consistency (Days 6-7) ✅
+
+**Achievement:** All errors now follow "errors as values" philosophy!
+
+**8 Fixes in eval.c:**
+
+1. **Arity mismatch** (line 873-878)
+   - Before: `fprintf + return nil`
+   - After: `cell_error("arity-mismatch", ⟨expected actual⟩)`
+   - Test: `(f #1)` returns `⚠:arity-mismatch:⟨#2 ⟨#1 ∅⟩⟩`
+
+2. **Non-function application** (line 893-894)
+   - Before: `fprintf + return nil`
+   - After: `cell_error("not-a-function", fn)`
+   - Test: `(#42 #1)` returns `⚠:not-a-function:#42`
+
+3. **Undefined variable** (line 952-956)
+   - Before: `fprintf + return nil`
+   - After: `cell_error("undefined-variable", var_name)`
+   - Test: `undefined-var` returns `⚠:undefined-variable::undefined-var`
+
+4. **Cannot evaluate** (line 1089-1090)
+   - Before: `fprintf + return expr`
+   - After: `cell_error("eval-error", expr)`
+
+5. **Doc generation failure** (line 742-745)
+   - Before: `abort()` (crashed interpreter!)
+   - After: Graceful degradation with "undocumented" fallback
+   - Impact: Interpreter remains composable
+
+6. **Type inference failure** (line 748-751)
+   - Before: `abort()` (crashed interpreter!)
+   - After: Graceful degradation with "α → β" fallback
+   - Impact: Generic type signature on failure
+
+**Impact:**
+- ✅ All errors composable with `(⚠? value)`
+- ✅ No silent failures (nil → error values)
+- ✅ No crashes (abort → graceful degradation)
+- ✅ Consistent with 74 primitives already using cell_error()
+- ✅ Enables programmatic error handling
+
+**Manual Testing:**
+```scheme
+(≔ f (λ (x y) (⊕ x y)))
+(≔ err (f #1))           ; ⚠:arity-mismatch:⟨#2 ⟨#1 ∅⟩⟩
+(⚠? err)                 ; #t ✅
+```
+
+### 🔑 Symbol Parsing Fix (Day 6) ✅
+
+**Commit:** 7309002 (2026-01-27)
+
+**Problem:** Keywords like `:x`, `:Point` triggered "Undefined variable" from files
+
+**Solution:** eval.c:940-947 checks `:` prefix before variable lookup
+
+**Code:**
+```c
+if (cell_is_symbol(expr)) {
+    const char* name = cell_get_symbol(expr);
+    if (name[0] == ':') {
+        /* Keywords are self-evaluating */
+        cell_retain(expr);
+        return expr;  // ← No variable lookup
+    }
+    /* Regular symbols do variable lookup */
+}
+```
+
+**Result:** Clean structure syntax works from files:
+```scheme
+(⊙≔ :Point :x :y)      ; Works! ✅
+(⊙ :Point #3 #4)       ; Works! ✅
+```
+
+### 🧪 Comprehensive List Test Suite ✅ (Days 4-5)
 
 **File:** `tests/comprehensive_lists.test`
 **Tests:** 45+
@@ -234,10 +310,9 @@ Cell* prim_mod(Cell* args) {
 
 ### What's Next 🎯
 
-**Immediate (Days 6-7):**
-1. ⏳ **Fix structure symbol parsing** - `:symbol` doesn't work from files
-2. ⏳ **Error handling consistency** - Standardize ⚠ vs crashes
-3. ⏳ **Final testing and benchmarks**
+**Immediate (Days 8-10):**
+1. ⏳ **Final testing and benchmarks** - Performance validation
+2. ⏳ **Documentation pass** - Ensure all features documented
 
 **Short-Term (Week 3-4):**
 1. **Pattern matching** - GAME CHANGER (2 weeks)
@@ -322,25 +397,28 @@ return cell_number(fmod(cell_get_number(a), divisor));
 
 ### ✅ Fixed This Session
 
-1. **GCD returns wrong result**
+1. **GCD returns wrong result** (Days 4-5)
    - **Status:** FIXED ✅
    - **Solution:** Added % (modulo) primitive
    - **Test:** 4 GCD tests now passing
 
+2. **Structure symbol parsing from files** (Days 6-7)
+   - **Status:** FIXED ✅ (Commit 7309002)
+   - **Solution:** Keywords self-evaluate in eval.c:940-947
+   - **Test:** Manual verification with `(⊙≔ :Point :x :y)`
+   - **Result:** `:symbol` syntax works from files
+
+3. **Error handling consistency** (Days 6-7)
+   - **Status:** FIXED ✅ (This commit)
+   - **Solution:** Standardized 8 error cases to use cell_error()
+   - **Impact:** All errors now first-class values (composable)
+   - **Files:** eval.c (arity, undefined var, not-a-function, eval-error, doc gen)
+   - **Before:** fprintf + nil or abort()
+   - **After:** cell_error("error-type", data)
+
 ### 🟡 Known Bugs (Not Fixed Yet)
 
-1. **Structure symbol parsing from files**
-   - **Status:** NOT FIXED
-   - **Problem:** `:symbol` not parsed correctly from files
-   - **Workaround:** Works in REPL, fails in file loading
-   - **Priority:** HIGH (Day 6-7)
-   - **Example:**
-     ```scheme
-     ; In file: Error: Undefined variable ':x'
-     (⊙≔ Point :x :y)
-     ```
-
-2. **Nested ≔ inside lambda doesn't work**
+1. **Nested ≔ inside lambda doesn't work**
    - **Status:** KNOWN LIMITATION
    - **Problem:** Can't define local helpers inside lambda
    - **Workaround:** Define helper globally

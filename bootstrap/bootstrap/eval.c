@@ -737,17 +737,17 @@ void eval_define(EvalContext* ctx, const char* name, Cell* value) {
     if (value && cell_is_lambda(value)) {
         FunctionDoc* doc = doc_create(name);
 
-        /* Generate docs - panic if it fails */
+        /* Generate docs - graceful degradation on failure */
         doc_generate_description(ctx, doc, value->data.lambda.body);
         if (!doc->description) {
-            fprintf(stderr, "PANIC: Failed to generate description for function '%s'\n", name);
-            abort();
+            fprintf(stderr, "Warning: Could not generate description for '%s'\n", name);
+            doc->description = strdup("undocumented");
         }
 
         doc_infer_type(doc, value);
         if (!doc->type_signature) {
-            fprintf(stderr, "PANIC: Failed to infer type for function '%s'\n", name);
-            abort();
+            fprintf(stderr, "Warning: Could not infer type for '%s'\n", name);
+            doc->type_signature = strdup("α → β");  /* Generic fallback */
         }
 
         /* Add to context's doc list */
@@ -870,9 +870,12 @@ static Cell* apply(EvalContext* ctx, Cell* fn, Cell* args) {
         /* Check argument count */
         int arg_count = list_length(args);
         if (arg_count != arity) {
-            fprintf(stderr, "Error: Arity mismatch: expected %d, got %d\n",
-                    arity, arg_count);
-            return cell_nil();
+            Cell* expected = cell_number(arity);
+            Cell* actual = cell_number(arg_count);
+            Cell* data = cell_cons(expected, cell_cons(actual, cell_nil()));
+            cell_release(expected);
+            cell_release(actual);
+            return cell_error("arity-mismatch", data);
         }
 
         /* Create new environment: prepend args to closure env */
@@ -887,8 +890,8 @@ static Cell* apply(EvalContext* ctx, Cell* fn, Cell* args) {
         return result;
     }
 
-    fprintf(stderr, "Error: Cannot apply non-function\n");
-    return cell_nil();
+    cell_retain(fn);
+    return cell_error("not-a-function", fn);
 }
 
 /* Check if environment is indexed (not named/assoc) */
@@ -949,8 +952,10 @@ static Cell* eval_internal(EvalContext* ctx, Cell* env, Cell* expr) {
         /* Regular symbols: variable lookup */
         Cell* value = eval_lookup(ctx, name);
         if (value == NULL) {
-            fprintf(stderr, "Error: Undefined variable '%s'\n", name);
-            return cell_nil();
+            Cell* var_name = cell_symbol(name);
+            Cell* result = cell_error("undefined-variable", var_name);
+            cell_release(var_name);
+            return result;
         }
         return value;
     }
@@ -1086,9 +1091,8 @@ static Cell* eval_internal(EvalContext* ctx, Cell* env, Cell* expr) {
     }
 
     /* Unknown expression */
-    fprintf(stderr, "Error: Cannot evaluate expression\n");
     cell_retain(expr);
-    return expr;
+    return cell_error("eval-error", expr);
 }
 
 /* Public eval interface */
