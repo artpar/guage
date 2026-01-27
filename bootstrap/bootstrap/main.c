@@ -248,6 +248,176 @@ static int paren_balance(const char* str) {
     return balance;
 }
 
+/* REPL command handler */
+static void handle_help_command(EvalContext* ctx, const char* cmd) {
+    (void)ctx;  /* Unused, but kept for future use */
+
+    /* Trim whitespace from command */
+    while (*cmd == ' ' || *cmd == '\t') cmd++;
+
+    /* :help with no args - show all commands */
+    if (*cmd == '\0' || *cmd == '\n') {
+        printf("\n╔═══════════════════════════════════════════════════════════╗\n");
+        printf("║  Guage REPL Help System                                   ║\n");
+        printf("╠═══════════════════════════════════════════════════════════╣\n");
+        printf("║  REPL Commands:                                           ║\n");
+        printf("║    :help              List all REPL commands              ║\n");
+        printf("║    :help <symbol>     Show primitive documentation        ║\n");
+        printf("║    :primitives        List all primitive symbols          ║\n");
+        printf("║    :modules           List loaded modules                 ║\n");
+        printf("║                                                           ║\n");
+        printf("║  Special Forms:                                           ║\n");
+        printf("║    λ, ≔, ?, ∇         Core language constructs           ║\n");
+        printf("║                                                           ║\n");
+        printf("║  Example Usage:                                           ║\n");
+        printf("║    :help ⊕            Show documentation for addition    ║\n");
+        printf("║    :primitives        List all available primitives      ║\n");
+        printf("╚═══════════════════════════════════════════════════════════╝\n\n");
+        return;
+    }
+
+    /* :help <symbol> - show primitive documentation */
+    char symbol[256];
+    int i = 0;
+    while (*cmd && *cmd != ' ' && *cmd != '\t' && *cmd != '\n' && i < 255) {
+        symbol[i++] = *cmd++;
+    }
+    symbol[i] = '\0';
+
+    const Primitive* prim = primitive_lookup_by_name(symbol);
+    if (prim == NULL) {
+        printf("Unknown primitive: %s\n", symbol);
+        printf("Type :primitives to see all available primitives\n");
+        return;
+    }
+
+    printf("\n┌─────────────────────────────────────────────────────────┐\n");
+    printf("│ Primitive: %s\n", prim->name);
+    printf("├─────────────────────────────────────────────────────────┤\n");
+    printf("│ Description: %s\n", prim->doc.description);
+    printf("│ Type: %s\n", prim->doc.type_signature);
+    printf("│ Arity: %d\n", prim->arity);
+    printf("└─────────────────────────────────────────────────────────┘\n\n");
+}
+
+static void handle_primitives_command(void) {
+    extern Primitive primitives[];  /* From primitives.c */
+
+    printf("\n╔═══════════════════════════════════════════════════════════╗\n");
+    printf("║  Guage Primitives (78 total)                             ║\n");
+    printf("╠═══════════════════════════════════════════════════════════╣\n");
+
+    /* Core Lambda Calculus */
+    printf("║  Core Lambda Calculus:                                    ║\n");
+    printf("║    ⟨⟩  ◁  ▷                                              ║\n");
+    printf("║                                                           ║\n");
+
+    /* Metaprogramming */
+    printf("║  Metaprogramming:                                         ║\n");
+    printf("║    ⌜  ⌞                                                   ║\n");
+    printf("║                                                           ║\n");
+
+    /* Comparison & Logic */
+    printf("║  Comparison & Logic:                                      ║\n");
+    printf("║    ≡  ≢  ∧  ∨  ¬                                         ║\n");
+    printf("║                                                           ║\n");
+
+    /* Arithmetic */
+    printf("║  Arithmetic:                                              ║\n");
+    printf("║    ⊕  ⊖  ⊗  ⊘  %%  <  >  ≤  ≥                            ║\n");
+    printf("║                                                           ║\n");
+
+    /* Type Predicates */
+    printf("║  Type Predicates:                                         ║\n");
+    printf("║    ℕ?  𝔹?  :?  ∅?  ⟨⟩?  #?  ≈?  ⚠?                       ║\n");
+    printf("║                                                           ║\n");
+
+    /* Debug & Testing */
+    printf("║  Debug & Testing:                                         ║\n");
+    printf("║    ⚠  ⊢  ⟲  ⧉  ⊛  ≟  ⊨                                   ║\n");
+    printf("║                                                           ║\n");
+
+    /* I/O */
+    printf("║  I/O:                                                     ║\n");
+    printf("║    ≋  ≋≈  ≋←  ≋⊳  ≋⊲  ≋⊕  ≋?  ≋∅?                        ║\n");
+    printf("║                                                           ║\n");
+
+    /* Modules */
+    printf("║  Modules:                                                 ║\n");
+    printf("║    ⋘  ⋖  ⌂⊚  ⌂⊚→                                         ║\n");
+    printf("║                                                           ║\n");
+
+    /* Strings */
+    printf("║  Strings:                                                 ║\n");
+    printf("║    ≈  ≈#  ≈⊙  ≈⊕  ≈⊂  ≈≡  ≈<  ≈>                         ║\n");
+    printf("║                                                           ║\n");
+
+    /* Structures */
+    printf("║  Structures (Leaf):                                       ║\n");
+    printf("║    ⊙≔  ⊙  ⊙→  ⊙←  ⊙?                                     ║\n");
+    printf("║                                                           ║\n");
+
+    printf("║  Structures (Node/ADT):                                   ║\n");
+    printf("║    ⊚≔  ⊚  ⊚→  ⊚?                                         ║\n");
+    printf("║                                                           ║\n");
+
+    printf("║  Structures (Graph):                                      ║\n");
+    printf("║    ⊝≔  ⊝  ⊝⊕  ⊝⊗  ⊝→  ⊝?                                 ║\n");
+    printf("║                                                           ║\n");
+
+    /* CFG/DFG */
+    printf("║  CFG/DFG Analysis:                                        ║\n");
+    printf("║    ⌂⇝  ⌂⇝⊳                                               ║\n");
+    printf("║                                                           ║\n");
+
+    /* Effects & Actors (placeholders) */
+    printf("║  Effects (placeholder):                                   ║\n");
+    printf("║    ⟪⟫  ↯  ⤴  ≫                                           ║\n");
+    printf("║                                                           ║\n");
+
+    printf("║  Actors (placeholder):                                    ║\n");
+    printf("║    ⟳  →!  ←?                                             ║\n");
+    printf("╠═══════════════════════════════════════════════════════════╣\n");
+    printf("║  Use :help <symbol> to see detailed documentation        ║\n");
+    printf("╚═══════════════════════════════════════════════════════════╝\n\n");
+}
+
+static void handle_modules_command(EvalContext* ctx) {
+    (void)ctx;  /* Unused, but kept for future use */
+
+    printf("\n┌─────────────────────────────────────────────────────────┐\n");
+    printf("│ Loaded Modules:\n");
+    printf("├─────────────────────────────────────────────────────────┤\n");
+
+    /* Get module registry using ⌂⊚ primitive */
+    Cell* registry = prim_module_info(cell_nil());
+
+    if (cell_is_nil(registry)) {
+        printf("│ (no modules loaded)\n");
+    } else {
+        /* registry is a flat list of strings */
+        Cell* current = registry;
+        int count = 0;
+        while (!cell_is_nil(current)) {
+            if (cell_is_pair(current)) {
+                Cell* module_name = cell_car(current);
+                if (cell_is_string(module_name)) {
+                    printf("│ %d. %s\n", ++count, cell_get_string(module_name));
+                }
+                current = cell_cdr(current);
+            } else {
+                break;
+            }
+        }
+        if (count == 0) {
+            printf("│ (no modules loaded)\n");
+        }
+    }
+
+    cell_release(registry);
+    printf("└─────────────────────────────────────────────────────────┘\n\n");
+}
+
 /* REPL */
 void repl(void) {
     char input[MAX_INPUT];
@@ -258,7 +428,8 @@ void repl(void) {
     module_registry_init();
 
     printf("Guage: The Ultralanguage\n");
-    printf("Type expressions to evaluate. Ctrl+D to exit.\n\n");
+    printf("Type expressions to evaluate. Ctrl+D to exit.\n");
+    printf("Type :help for REPL commands.\n\n");
 
     /* Load some initial definitions */
     printf("Loading primitives...\n");
@@ -289,6 +460,28 @@ void repl(void) {
 
         /* Skip empty lines when not accumulating */
         if (balance == 0 && input[0] == '\n') continue;
+
+        /* Check for REPL commands (only when balanced) */
+        if (balance == 0 && input[0] == ':') {
+            /* Remove trailing newline */
+            size_t len = strlen(input);
+            if (len > 0 && input[len-1] == '\n') {
+                input[len-1] = '\0';
+            }
+
+            /* Parse command */
+            if (strncmp(input, ":help", 5) == 0) {
+                handle_help_command(ctx, input + 5);
+            } else if (strcmp(input, ":primitives") == 0) {
+                handle_primitives_command();
+            } else if (strcmp(input, ":modules") == 0) {
+                handle_modules_command(ctx);
+            } else {
+                printf("Unknown command: %s\n", input);
+                printf("Type :help for available commands\n");
+            }
+            continue;
+        }
 
         /* Accumulate input */
         strncat(accumulated, input, MAX_INPUT * 4 - strlen(accumulated) - 1);

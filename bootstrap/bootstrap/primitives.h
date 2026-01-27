@@ -107,6 +107,9 @@ Cell* prim_file_empty(Cell* args);          /* ≋∅? - file empty */
 
 /* Module System */
 Cell* prim_load(Cell* args);                /* ⋘ - load and evaluate file */
+Cell* prim_module_import(Cell* args);       /* ⋖ - selective import */
+Cell* prim_module_info(Cell* args);         /* ⌂⊚ - module information */
+Cell* prim_module_dependencies(Cell* args); /* ⌂⊚→ - module dependencies */
 
 /* Primitive documentation structure */
 typedef struct {
