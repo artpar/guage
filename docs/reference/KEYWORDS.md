@@ -1,6 +1,11 @@
-# Keywords in Guage: Self-Evaluating Symbols
+---
+Status: REFERENCE
+Created: 2026-01-27
+Updated: 2026-01-27
+Purpose: Specification for self-evaluating symbols (:symbol syntax)
+---
 
-**Date:** 2026-01-27
+# Keywords in Guage: Self-Evaluating Symbols
 **Status:** ✅ IMPLEMENTED
 
 ---

@@ -1,3 +1,10 @@
+---
+Status: REFERENCE
+Created: 2026-01-15
+Updated: 2026-01-27
+Purpose: Structure primitives specification (⊙, ⊚, ⊝)
+---
+
 # Data Structures as First-Class Citizens
 
 ## Philosophy

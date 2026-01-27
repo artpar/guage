@@ -1,8 +1,29 @@
+---
+Status: CURRENT
+Created: 2025-12-01
+Updated: 2026-01-27
+Purpose: Project overview and quick start
+---
+
 # Guage: The Ultralanguage
 
-**The final language made by humans, the first and last language created by AI for AI.**
+**A Turing-complete ultralanguage with pure symbolic syntax, designed to subsume all other languages through careful primitive design and systematic extension.**
 
-A minimal yet complete synthesis of ALL proven programming language innovations from 2024-2025, encoding software engineering wisdom directly into the type system.
+## Quick Start
+
+**New session?** Copy and paste: [`START_SESSION.txt`](START_SESSION.txt)
+
+**Current Status:**
+- ✅ **55 functional primitives** (ALL WORKING!)
+- ✅ **408+ tests passing** (243 manual + 110 auto + 55 new)
+- ✅ **Turing complete** with lambda calculus + De Bruijn indices
+- ✅ **Week 2 Day 13 complete** - Week 3 pattern matching ready!
+- 📍 **See:** [`SESSION_HANDOFF.md`](SESSION_HANDOFF.md) for detailed status
+
+**Documentation:**
+- Language specification → [`SPEC.md`](SPEC.md)
+- Philosophy & principles → [`CLAUDE.md`](CLAUDE.md)
+- All documentation → [`docs/INDEX.md`](docs/INDEX.md)
 
 ## Core Philosophy
 
@@ -41,67 +62,70 @@ guage/
 └── examples/          # Example programs
 ```
 
-## The 42 Primitives
+## Primitives (55 Functional + 7 Placeholders)
 
-### Core Lambda Calculus (6)
-- `⟨ ⟩` - Cell construction
+### Core (Evaluator Built-ins)
+- `λ` - Lambda abstraction
+- `0 1 2...` - De Bruijn indices (variable references)
+- `≔` - Global definition
+- `?` - Conditional (if-then-else)
+
+### Lists (3)
+- `⟨⟩` - Pair construction (cons)
 - `◁` - Head (car)
 - `▷` - Tail (cdr)
-- `λ` - Abstraction
-- `·` - Application
-- `0 1 2...` - De Bruijn indices
 
-### Metaprogramming (3)
-- `⌜⌝` - Quote
-- `⌞⌟` - Eval
-- `≔` - Definition
+### Metaprogramming (2)
+- `⌜` - Quote (code→data)
+- `⌞` - Eval (data→code) - PLACEHOLDER
 
-### Type Constructors (9)
-- `→` - Function type
-- `⊗` - Product type
-- `⊎` - Sum type
-- `Π` - Pi type
-- `Σ` - Sigma type
-- `⊤` - Top type
-- `⊥` - Bottom type
-- `∀` - Universal quantification
-- `∃` - Existential quantification
+### Arithmetic (9)
+- `⊕` `⊖` `⊗` `⊘` `%` - Add, subtract, multiply, divide, modulo
+- `<` `>` `≤` `≥` - Comparisons
 
-### Linear Logic (4)
-- `⊸` - Linear function
-- `!` - Of-course
-- `?` - Why-not
-- `⊛` - Linear tensor
+### Logic (5)
+- `≡` `≢` - Equality, inequality
+- `∧` `∨` `¬` - AND, OR, NOT
 
-### Session Types (5)
-- `▷τ` - Send
-- `◁τ` - Receive
-- `⊕` - Internal choice
-- `&` - External choice
-- `ε` - End session
+### Type Predicates (6)
+- `ℕ?` `𝔹?` `:?` `∅?` `⟨⟩?` `#?` - Test types
 
-### Effects (4)
-- `⟪⟫` - Effect block
-- `↯` - Effect handler
-- `⤴` - Pure lift
-- `≫` - Effect sequencing
+### Debug & Error (4)
+- `⚠` - Create error value
+- `⚠?` - Test if error
+- `⊢` - Assert condition
+- `⟲` - Trace (debug print)
 
-### Refinement Types (4)
-- `{⋅∣φ}` - Refinement
-- `⊢` - Proof
-- `⊨` - Assert
-- `∴` - Therefore
+### Testing (2)
+- `≟` - Deep equality test
+- `⊨` - Test case
 
-### Actors (3)
-- `⟳` - Spawn
-- `→!` - Send message
-- `←?` - Receive message
+### Documentation (5)
+- `⌂` - Get description
+- `⌂∈` - Get type signature
+- `⌂≔` - Get dependencies
+- `⌂⊛` - Get source code
+- `⌂⊨` - Auto-generate tests
 
-### Comparison & Logic (4)
-- `≡` - Equality
-- `≢` - Inequality
-- `∧` - AND
-- `∨` - OR
+### CFG/DFG (2)
+- `⌂⟿` - Get control flow graph
+- `⌂⇝` - Get data flow graph
+
+### Structures - Leaf (5)
+- `⊙≔` `⊙` `⊙→` `⊙←` `⊙?` - Define, create, get, set, check
+
+### Structures - Node/ADT (4)
+- `⊚≔` `⊚` `⊚→` `⊚?` - Define, create, get, check
+
+### Structures - Graph (6)
+- `⊝≔` `⊝` `⊝⊕` `⊝⊗` `⊝→` `⊝?` - Define, create, add node/edge, query, check
+
+### Placeholders (7)
+- `⌞` - Eval (Day 14)
+- `⟪⟫` `↯` `⤴` `≫` - Effects (Phase 4+)
+- `⟳` `→!` `←?` - Actors (Phase 5+)
+
+**Full specification:** See [SPEC.md](SPEC.md)
 
 ## Building
 
@@ -111,53 +135,154 @@ make
 ./guage
 ```
 
-## Examples
+## Examples (Working Now!)
 
-### Identity Function
-```lisp
-; λx.x in De Bruijn notation
-𝕀 ≔ λ.0
+### Factorial with Named Recursion
+```scheme
+; Documentation form (for humans)
+(≔ ! (λ (n) (? (≡ n #0) #1 (⊗ n (! (⊖ n #1))))))
+
+; De Bruijn form (what actually runs)
+(≔ ! (λ (? (≡ 0 #0) #1 (⊗ 0 (! (⊖ 0 #1))))))
+
+(! #5)  ; → #120
 ```
 
-### Factorial (Symbolic)
-```lisp
-! ≔ λ.((≡ 0 0) 1 (⊗ 0 (! (⊖ 0 1))))
+### Fibonacci
+```scheme
+(≔ fib (λ (n) (? (< n #2) n (⊕ (fib (⊖ n #1)) (fib (⊖ n #2))))))
+(fib #10)  ; → #55
 ```
 
-### Type-Safe Database
-```lisp
-(: User (Record
-  [:id {ν:Int ∣ ν > 0}]
-  [:name {ν:String ∣ (length ν) > 0}]
-  [:age {ν:Int ∣ (≥ ν 0) ∧ (≤ ν 150)}]))
+### Structure: Point (Leaf)
+```scheme
+; Define structure
+(⊙≔ :Point :x :y)
+
+; Create instance
+(≔ p (⊙ :Point #3 #4))
+
+; Access fields
+(⊙→ p :x)  ; → #3
+(⊙→ p :y)  ; → #4
+
+; Check type
+(⊙? p :Point)  ; → #t
 ```
 
-## Status
+### Structure: List (ADT)
+```scheme
+; Define recursive ADT
+(⊚≔ :List (⌜ (:Nil)) (⌜ (:Cons :head :tail)))
 
-**Phase 0: Bootstrap Runtime** - IN PROGRESS
-- [ ] Cell structure
-- [ ] Garbage collector
-- [ ] Actor runtime
-- [ ] Effect handlers
-- [ ] REPL
+; Create list: [42, 13, 7]
+(≔ empty (⊚ :List :Nil))
+(≔ l (⊚ :List :Cons #42
+         (⊚ :List :Cons #13
+            (⊚ :List :Cons #7 empty))))
+
+; Access
+(⊚→ l :head)  ; → #42
+
+; Check variant
+(⊚? l :List :Cons)  ; → #t
+(⊚? empty :List :Nil)  ; → #t
+```
+
+### Auto-Documentation
+```scheme
+(≔ double (λ (x) (⊗ x #2)))
+
+; Auto-prints:
+; 📝 double :: ℕ → ℕ
+;    multiply x and 2
+;    Dependencies: ⊗
+
+; Query docs
+(⌂ (⌜ double))   ; → Description
+(⌂∈ (⌜ double))  ; → Type signature
+```
+
+### Auto-Generated Tests
+```scheme
+; Generate tests from function
+(⌂⊨ (⌜ ⊕))
+; → ⟨(⊨ :test-normal-case #t (ℕ? (⊕ #5 #3)))
+;     (⊨ :test-zero-operand #t (ℕ? (⊕ #0 #5)))⟩
+
+; Tests are first-class values (data, not executed yet)
+```
+
+**More examples:** See `tests/*.scm` for 408+ working tests!
+
+## Current Status (Week 2 Day 13)
+
+**Phase 2C: Core Correctness** - 93% COMPLETE
+- ✅ Cell structure with reference counting
+- ✅ Lambda calculus with De Bruijn indices
+- ✅ 55 functional primitives (arithmetic, logic, lists, structures, etc.)
+- ✅ Self-testing system (⌂⊨ generates tests from code)
+- ✅ Structure primitives (⊙ leaf, ⊚ node/ADT, ⊝ graph)
+- ✅ Auto-documentation system
+- ✅ 408+ tests passing
+- ⏳ Pattern matching (Week 3)
+- ⏳ Eval primitive (Day 14)
+- ⏳ Effect handlers (Phase 4+)
+- ⏳ Actor runtime (Phase 5+)
 
 ## Timeline
 
-- Phase 0 (Bootstrap): 1-2 months
-- Phase 1 (Interpreter): 2-3 months
-- Phase 2 (Type System): 6-9 months
-- Phase 3 (Patterns): 3-4 months
-- Phase 4 (Proofs): 4-6 months
-- Phase 5 (Stdlib): 6-12 months
-- Phase 6 (AI): 2-3 months
+**Completed:**
+- ✅ Phase 1 (Dec 2025): Cell infrastructure
+- ✅ Phase 2A (Dec 2025): Lambda calculus + Turing completeness
+- ✅ Phase 2B (Jan 2026): Named recursion + auto-documentation
+- ✅ Phase 2C (Jan 2026): Week 1-2 - Structure primitives + self-testing (93% complete)
 
-**Total: 24-39 months for complete system**
+**In Progress:**
+- 🔄 Phase 2C Week 3 (Days 15-21): Pattern matching (∇, ≗, _)
 
-## Critical Note: Readability
+**Next Up:**
+- Phase 3 (3 weeks): Macros, generics, standard library basics
+- Phase 4 (3 months): Self-hosting (parser/compiler in Guage)
+- Phase 5 (6 months): Advanced metaprogramming (synthesis, time-travel debugging)
+- Phase 6 (6 months): Distribution, native compilation, optimization
 
-This design uses De Bruijn indices + pure symbols, making it extremely minimal but hard to read. Tooling (IDE support, pretty printer) is essential for human interaction.
+**Estimated to MVP:** 6-7 weeks (~225 hours)
+**Estimated to production:** ~21 months total
 
-The language IS pure symbolic De Bruijn notation, but humans interact through a "surface syntax" that compiles to it.
+**Progress tracking:** See [SESSION_HANDOFF.md](SESSION_HANDOFF.md)
+
+## Developer Guide
+
+**Starting a new session?**
+1. Copy and paste: [`START_SESSION.txt`](START_SESSION.txt)
+2. Read: [`SESSION_HANDOFF.md`](SESSION_HANDOFF.md)
+3. Follow methodology in: [`SESSION_START_PROMPT.md`](SESSION_START_PROMPT.md)
+
+**Documentation:**
+- All docs indexed at: [`docs/INDEX.md`](docs/INDEX.md)
+- Governance rules prevent duplication
+- Clear naming conventions (no "advanced", "new", "temp")
+
+**Development Workflow:**
+1. Feature-by-feature, test-first
+2. Update docs as you go
+3. Commit after each complete feature
+4. Archive completed work immediately
+
+**Testing:**
+```bash
+./guage < tests/test_[feature].scm  # Single test
+./run_tests.sh                       # All tests
+```
+
+## Note on Syntax
+
+**Runtime:** Pure symbolic De Bruijn notation (0, 1, 2...)
+**Documentation:** Named parameters for humans (𝕩, 𝕪, 𝕫, ƒ, 𝕘)
+**Philosophy:** No English keywords - only Unicode symbols
+
+The language uses De Bruijn indices internally for efficiency, but documentation uses mathematical notation for clarity.
 
 ## License
 

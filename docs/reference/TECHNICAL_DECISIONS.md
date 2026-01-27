@@ -1,3 +1,10 @@
+---
+Status: REFERENCE
+Created: 2025-12-15
+Updated: 2026-01-27
+Purpose: Design rationale and implementation trade-offs
+---
+
 # Technical Decisions Log
 
 **Purpose:** Document the "why" behind implementation choices to maintain consistency and inform future development.

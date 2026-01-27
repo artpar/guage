@@ -1,3 +1,10 @@
+---
+Status: REFERENCE
+Created: 2026-01-10
+Updated: 2026-01-27
+Purpose: Complete catalog of all symbols and their meanings
+---
+
 # Guage Symbolic Vocabulary
 ## Complete Symbol System for Pure AI-First Language
 

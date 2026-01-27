@@ -1,0 +1,45 @@
+# Guage Development Session Start
+
+I'm working on **Guage**, a Turing-complete ultralanguage with pure symbolic syntax.
+
+**Read first:**
+1. `SESSION_HANDOFF.md` - Current status and what's next
+2. `SPEC.md` - Language specification
+3. `docs/INDEX.md` - Documentation navigation
+
+**Current state (from SESSION_HANDOFF.md):**
+- 55 functional primitives (ALL WORKING!)
+- 408+ tests passing
+- Week 2 Day 13 complete, Week 3 ready
+
+**Working methodology:**
+- Feature-by-feature, test-first development
+- Update docs as we go (SESSION_HANDOFF.md, SPEC.md)
+- Follow governance rules in docs/INDEX.md
+- Commit after each complete feature
+- No vague terms in doc names (see docs/DOC_PATTERNS.md)
+
+**Principles:**
+- Pure symbols only (no English)
+- First-class everything (functions, errors, tests, CFG/DFG)
+- Single source of truth (link, don't duplicate)
+- De Bruijn indices at runtime
+- Tests as first-class values
+
+**Session workflow:**
+1. Choose next feature from SESSION_HANDOFF.md "What's Next"
+2. Write tests first (tests/test_[feature].scm)
+3. Implement feature
+4. Verify tests pass + no regressions
+5. Document in SESSION_HANDOFF.md + SPEC.md
+6. Commit with clear message
+
+**Session end:**
+1. Update SESSION_HANDOFF.md (executive summary, what's new, what's next)
+2. Archive completed notes to docs/archive/YYYY-MM/
+3. Update docs/INDEX.md Quick Status
+4. Commit documentation
+
+**See SESSION_START_PROMPT.md for complete methodology.**
+
+Ready to work! What's next from SESSION_HANDOFF.md?

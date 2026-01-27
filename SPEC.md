@@ -1,3 +1,10 @@
+---
+Status: CURRENT
+Created: 2025-12-01
+Updated: 2026-01-27
+Purpose: Canonical language specification
+---
+
 # Guage Language Specification v0.1
 
 ## Core Data Structure
@@ -700,11 +707,11 @@ Source (symbols)
 7. **EVERYTHING IS QUERYABLE** - CFG/DFG/traces as first-class values
 8. **CODE IS DATA IS PROOF** - Metaprogramming at all levels
 
-## Advanced Metaprogramming (Native First-Class Features)
+## Metaprogramming Vision (Native First-Class Features)
 
 **Status:** Core language design - Infrastructure being built NOW
 **Implementation:** Incremental (infrastructure first, full features later)
-**See:** `ADVANCED_METAPROGRAMMING.md` for complete specification
+**See:** `METAPROGRAMMING_VISION.md` for complete specification
 
 **CRITICAL:** These are NOT afterthoughts or "Phase 5 extras". They are **native, first-class citizens** that must be supported from the ground up. Current work (Phase 2C) is building the foundation.
 
@@ -777,4 +784,4 @@ This enables AI-assisted development where the compiler helps you write, prove, 
 - Phase 6: Distribution and analysis (24 weeks)
 - **Total:** ~21 months to full vision
 
-See `ADVANCED_METAPROGRAMMING.md` for detailed specifications and implementation strategy.
+See `METAPROGRAMMING_VISION.md` for detailed specifications and implementation strategy.

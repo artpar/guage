@@ -1,6 +1,13 @@
+---
+Status: REFERENCE
+Created: 2026-01-20
+Updated: 2026-01-27
+Purpose: Long-term vision and native metaprogramming features
+---
+
 # Advanced Metaprogramming: Native First-Class Features
 
-**Status:** CORE LANGUAGE DESIGN - Not Optional Add-Ons
+**Phase:** CORE LANGUAGE DESIGN - Not Optional Add-Ons
 **Infrastructure:** Being built NOW in Phase 2C (data structures, CFG/DFG)
 **Full Implementation:** Incremental over 21 months
 **Philosophy:** Design the language to support these features NATIVELY from day one

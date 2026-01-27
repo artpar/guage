@@ -485,9 +485,9 @@ make clean && make      # Build
 
 ---
 
-## Advanced Metaprogramming: Native First-Class Features
+## Metaprogramming Vision: Native First-Class Features
 
-**See `ADVANCED_METAPROGRAMMING.md` for complete specification.**
+**See `METAPROGRAMMING_VISION.md` for complete specification.**
 
 ### What Makes Guage an "Ultralanguage"
 
@@ -589,14 +589,79 @@ When contributing to Guage:
 5. **Keep it simple** - Single path, no complexity
 6. **Reference count carefully** - No leaks
 
-## Questions?
+## Documentation Structure
 
-Read:
-- `SESSION_HANDOFF.md` - Current implementation details and progress
-- `IMPLEMENTATION_STATUS.md` - Feature checklist
-- `ADVANCED_METAPROGRAMMING.md` - Full vision and native features
-- `SPEC.md` - Language specification
-- `CLAUDE.md` (this file) - Philosophy and principles
+**We maintain an organized documentation system to prevent duplication and staleness.**
+
+### Living Documents (Root Directory)
+
+These 4 documents are **always current** and never archived:
+
+- **README.md** - Project overview (update at milestones)
+- **SPEC.md** - Language specification (update when primitives/syntax change)
+- **CLAUDE.md** (this file) - Philosophy and principles (rarely change)
+- **SESSION_HANDOFF.md** - Current progress and status (update every session)
+
+### Organized Documentation (docs/ Directory)
+
+All other documentation lives under `docs/` with clear organization:
+
+```
+docs/
+├── INDEX.md              # Navigation hub + documentation governance rules
+├── reference/            # Stable, deep-dive technical docs
+├── planning/             # Active roadmaps and TODOs
+└── archive/              # Historical documents organized by date
+    ├── YYYY-MM/
+    │   ├── audits/
+    │   ├── plans/
+    │   └── sessions/
+    └── phases/
+```
+
+### Documentation Patterns (Prevent Duplication)
+
+**Rule: Single Source of Truth**
+- Each type of information has ONE canonical location
+- Never copy information between documents - link instead
+- Update in one place only
+
+**Rule: Where New Documents Go**
+1. **Temporary (1-7 days)** → Archive after session ends
+2. **Active planning (1-4 weeks)** → `docs/planning/`, archive when complete
+3. **Reference (months/years)** → `docs/reference/`, rarely updated
+4. **Current status** → Update `SESSION_HANDOFF.md` only
+
+**Rule: When to Archive**
+- After session ends → Move session notes to `archive/YYYY-MM/sessions/`
+- After plan completed → Move to `archive/YYYY-MM/plans/`
+- After audit done → Move to `archive/YYYY-MM/audits/`
+- After phase complete → Move to `archive/phases/`
+
+**Full documentation governance:** See [docs/INDEX.md](docs/INDEX.md)
+
+### Quick Navigation
+
+**Start here:**
+- New to Guage? → [README.md](README.md)
+- Current status? → [SESSION_HANDOFF.md](SESSION_HANDOFF.md)
+- Language spec? → [SPEC.md](SPEC.md)
+- Find anything? → [docs/INDEX.md](docs/INDEX.md)
+
+**Deep dives:**
+- Long-term vision → [docs/reference/METAPROGRAMMING_VISION.md](docs/reference/METAPROGRAMMING_VISION.md)
+- Data structures → [docs/reference/DATA_STRUCTURES.md](docs/reference/DATA_STRUCTURES.md)
+- Symbol meanings → [docs/reference/SYMBOLIC_VOCABULARY.md](docs/reference/SYMBOLIC_VOCABULARY.md)
+- Design decisions → [docs/reference/TECHNICAL_DECISIONS.md](docs/reference/TECHNICAL_DECISIONS.md)
+- Self-evaluating symbols → [docs/reference/KEYWORDS.md](docs/reference/KEYWORDS.md)
+
+**Active work:**
+- What's next? → [docs/planning/WEEK_3_ROADMAP.md](docs/planning/WEEK_3_ROADMAP.md)
+- Task tracking? → [docs/planning/TODO.md](docs/planning/TODO.md)
+
+**Historical:**
+- Past sessions/plans → [docs/archive/2026-01/](docs/archive/2026-01/)
+- Phase completions → [docs/archive/phases/](docs/archive/phases/)
 
 ---
 

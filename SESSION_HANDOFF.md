@@ -1,3 +1,10 @@
+---
+Status: CURRENT
+Created: 2026-01-27
+Updated: 2026-01-27
+Purpose: Current project status and progress
+---
+
 # Session Handoff: 2026-01-27 (Week 2 Days 12-13: Test Infrastructure & Comprehensive Audit)
 
 ## Executive Summary
@@ -797,6 +804,26 @@ e2abdc9 docs: Add Day 11 session end summary
 **Session Duration:** ~12 hours (Day 13 complete)
 **Total Phase 2C Time:** ~41.5 hours
 **Estimated Remaining to MVP:** 6-7 weeks (~225 hours)
+
+---
+
+## 📚 Documentation Navigation
+
+**As of Day 13, all documentation has been reorganized for clarity and maintainability.**
+
+### Living Documents (Always Current)
+- **README.md** - Project overview
+- **SPEC.md** - Language specification
+- **CLAUDE.md** - Philosophy and principles
+- **SESSION_HANDOFF.md** (this file) - Current status
+
+### Find Everything Else
+- **Navigation hub:** [docs/INDEX.md](docs/INDEX.md) - Single source of truth for all documentation
+- **Reference docs:** [docs/reference/](docs/reference/) - Stable, deep-dive technical content
+- **Active planning:** [docs/planning/](docs/planning/) - Current roadmaps and TODOs
+- **Historical archive:** [docs/archive/2026-01/](docs/archive/2026-01/) - Past sessions, plans, audits
+
+**Documentation governance rules are in [docs/INDEX.md](docs/INDEX.md) to prevent duplication and staleness.**
 
 ---
 
