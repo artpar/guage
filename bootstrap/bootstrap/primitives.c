@@ -1337,6 +1337,100 @@ Cell* prim_doc_source(Cell* args) {
     return cell_nil();
 }
 
+/* ⌂⊨ - Auto-generate tests for symbol
+ * Args: symbol (function or primitive name)
+ * Returns: list of test cases
+ */
+Cell* prim_doc_tests(Cell* args) {
+    Cell* name = arg1(args);
+    if (!cell_is_symbol(name)) {
+        return cell_error("⌂⊨ requires a symbol argument", name);
+    }
+
+    const char* sym = cell_get_symbol(name);
+    Cell* tests = cell_nil();
+
+    /* Check if it's a primitive */
+    const Primitive* prim = primitive_lookup_by_name(sym);
+    if (prim) {
+        /* Generate tests for primitive based on type signature */
+        const char* type_sig = prim->doc.type_signature;
+
+        /* Parse type signature to determine test strategy */
+        /* For now, generate basic type check tests */
+
+        /* Example: For "ℕ → ℕ → ℕ" (binary arithmetic) */
+        if (strstr(type_sig, "ℕ → ℕ → ℕ")) {
+            /* Test with sample numbers */
+            Cell* test1_name = cell_symbol(":test-normal-case");
+            Cell* test1_args = cell_cons(cell_number(5),
+                                        cell_cons(cell_number(3), cell_nil()));
+            Cell* test1_call = cell_cons(cell_symbol(sym), test1_args);
+
+            /* Test output is a number */
+            Cell* test1_check = cell_cons(cell_symbol("ℕ?"),
+                                         cell_cons(test1_call, cell_nil()));
+            Cell* test1 = cell_cons(cell_symbol("⊨"),
+                                   cell_cons(test1_name,
+                                   cell_cons(cell_bool(true),
+                                   cell_cons(test1_check, cell_nil()))));
+
+            tests = cell_cons(test1, tests);
+        }
+
+        /* Example: For "α → 𝔹" (type predicate) */
+        else if (strstr(type_sig, "α → 𝔹")) {
+            /* Test returns boolean */
+            Cell* test1_name = cell_symbol(":test-returns-bool");
+            Cell* test1_arg = cell_number(42);
+            Cell* test1_call = cell_cons(cell_symbol(sym),
+                                        cell_cons(test1_arg, cell_nil()));
+            Cell* test1_check = cell_cons(cell_symbol("𝔹?"),
+                                         cell_cons(test1_call, cell_nil()));
+            Cell* test1 = cell_cons(cell_symbol("⊨"),
+                                   cell_cons(test1_name,
+                                   cell_cons(cell_bool(true),
+                                   cell_cons(test1_check, cell_nil()))));
+
+            tests = cell_cons(test1, tests);
+        }
+
+        return tests;
+    }
+
+    /* Check if it's a user function */
+    FunctionDoc* doc = eval_find_user_doc(sym);
+    if (doc) {
+        const char* type_sig = doc->type_signature;
+
+        /* Generate tests based on user function type */
+        /* For now, return basic type conformance tests */
+
+        if (type_sig && strstr(type_sig, "ℕ → ℕ")) {
+            /* Test input/output are numbers */
+            char test_name[128];
+            snprintf(test_name, sizeof(test_name), ":test-%s-type", sym);
+
+            Cell* test1_name = cell_symbol(test_name);
+            Cell* test1_arg = cell_number(5);
+            Cell* test1_call = cell_cons(cell_symbol(sym),
+                                        cell_cons(test1_arg, cell_nil()));
+            Cell* test1_check = cell_cons(cell_symbol("ℕ?"),
+                                         cell_cons(test1_call, cell_nil()));
+            Cell* test1 = cell_cons(cell_symbol("⊨"),
+                                   cell_cons(test1_name,
+                                   cell_cons(cell_bool(true),
+                                   cell_cons(test1_check, cell_nil()))));
+
+            tests = cell_cons(test1, tests);
+        }
+
+        return tests;
+    }
+
+    return cell_error("⌂⊨ symbol not found", name);
+}
+
 /* ============ CFG/DFG Query Primitives ============ */
 
 /* ⌂⟿ - Get Control Flow Graph for function
@@ -1487,6 +1581,7 @@ static Primitive primitives[] = {
     {"⌂∈", prim_doc_type, 1, {"Get type signature for symbol", ":symbol → string"}},
     {"⌂≔", prim_doc_deps, 1, {"Get dependencies for symbol", ":symbol → [symbols]"}},
     {"⌂⊛", prim_doc_source, 1, {"Get source code for symbol", ":symbol → expression"}},
+    {"⌂⊨", prim_doc_tests, 1, {"Auto-generate tests for symbol", ":symbol → [tests]"}},
 
     /* CFG/DFG Query primitives */
     {"⌂⟿", prim_query_cfg, 1, {"Get control flow graph for function", ":symbol → CFG"}},

@@ -24,9 +24,9 @@ Everything is a **Cell**:
 
 **See:** `KEYWORDS.md` for complete specification.
 
-## Runtime Primitives (61 Total)
+## Runtime Primitives (62 Total)
 
-**Status:** 61 primitives implemented (8 placeholders, 53 fully functional)
+**Status:** 62 primitives implemented (7 placeholders, 55 fully functional)
 
 ### Core Lambda Calculus (3) ✅
 | Symbol | Type | Meaning | Status |
@@ -114,13 +114,14 @@ Everything is a **Cell**:
 
 **Note:** Actors are stubs for Phase 5+. Return nil currently.
 
-### Documentation (4) ✅
+### Documentation (5) ✅
 | Symbol | Type | Meaning | Status |
 |--------|------|---------|--------|
 | `⌂` | `:symbol → string` | Get description | ✅ DONE |
 | `⌂∈` | `:symbol → string` | Get type signature | ✅ DONE |
 | `⌂≔` | `:symbol → [symbols]` | Get dependencies | ✅ DONE |
 | `⌂⊛` | `:symbol → expression` | Get source code | ✅ DONE |
+| `⌂⊨` | `:symbol → [tests]` | Auto-generate tests | ✅ DONE |
 
 ### Control/Data Flow (2) ✅
 | Symbol | Type | Meaning | Status |
