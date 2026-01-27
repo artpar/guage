@@ -1665,6 +1665,14 @@ Cell* prim_load(Cell* args) {
 
     /* Register module and set as currently loading */
     module_registry_add(filename);
+
+    /* Track dependency if loaded from within another module (Day 29) */
+    const char* parent_module = module_get_current_loading();
+    if (parent_module && strcmp(parent_module, filename) != 0) {
+        /* parent_module depends on filename */
+        module_registry_add_dependency(parent_module, filename);
+    }
+
     module_set_current_loading(filename);
 
     /* Get current context */
@@ -1962,6 +1970,119 @@ Cell* prim_module_info(Cell* args) {
 
     /* Invalid argument type */
     return cell_error("⌂⊚ requires nil, symbol, or string", arg1_val);
+}
+
+/* ⋖ - Selective import (Day 28) */
+Cell* prim_module_import(Cell* args) {
+    /* (⋖ "module-path" ⟨:sym1 :sym2 ...⟩) */
+    /* Validates symbols exist in module, ensures module is loaded */
+
+    if (cell_is_nil(args)) {
+        return cell_error("module-import-missing-args", cell_nil());
+    }
+
+    Cell* module_path_cell = arg1(args);
+    Cell* rest = cell_cdr(args);
+
+    if (cell_is_nil(rest)) {
+        return cell_error("module-import-missing-symbols", module_path_cell);
+    }
+
+    Cell* symbols = arg1(rest);
+
+    /* First argument must be string (module path) */
+    if (!cell_is_string(module_path_cell)) {
+        return cell_error("module-path-must-be-string", module_path_cell);
+    }
+
+    const char* module_path = cell_get_string(module_path_cell);
+
+    /* Second argument must be list of symbols */
+    if (!cell_is_pair(symbols) && !cell_is_nil(symbols)) {
+        return cell_error("symbol-list-must-be-list", symbols);
+    }
+
+    /* Check if module is loaded */
+    if (!module_registry_has_module(module_path)) {
+        return cell_error("module-not-loaded", module_path_cell);
+    }
+
+    /* Get module's symbol list */
+    Cell* module_symbols = module_registry_list_symbols(module_path);
+
+    /* Validate each requested symbol exists in module */
+    Cell* curr = symbols;
+    while (!cell_is_nil(curr)) {
+        Cell* requested_sym = cell_car(curr);
+
+        if (!cell_is_symbol(requested_sym)) {
+            cell_release(module_symbols);
+            return cell_error("symbol-list-must-contain-symbols", requested_sym);
+        }
+
+        /* Check if this symbol is in module */
+        const char* requested_name = cell_get_symbol(requested_sym);
+        /* Normalize: strip leading : if present */
+        if (requested_name[0] == ':') {
+            requested_name++;
+        }
+
+        int found = 0;
+        Cell* mod_curr = module_symbols;
+        while (!cell_is_nil(mod_curr)) {
+            Cell* mod_sym = cell_car(mod_curr);
+            if (cell_is_symbol(mod_sym)) {
+                const char* mod_name = cell_get_symbol(mod_sym);
+                if (mod_name[0] == ':') {
+                    mod_name++;
+                }
+                if (strcmp(mod_name, requested_name) == 0) {
+                    found = 1;
+                    break;
+                }
+            }
+            mod_curr = cell_cdr(mod_curr);
+        }
+
+        if (!found) {
+            cell_release(module_symbols);
+            return cell_error("symbol-not-in-module", requested_sym);
+        }
+
+        curr = cell_cdr(curr);
+    }
+
+    cell_release(module_symbols);
+
+    /* All symbols validated - return success */
+    return cell_symbol(":ok");
+}
+
+/* ⌂⊚→ - Get module dependencies (Day 29) */
+Cell* prim_module_dependencies(Cell* args) {
+    /* (⌂⊚→ "module-path") */
+    /* Returns list of module names (as strings) that this module depends on */
+
+    if (cell_is_nil(args)) {
+        return cell_error("module-deps-missing-args", cell_nil());
+    }
+
+    Cell* module_path_cell = arg1(args);
+
+    /* Argument must be string (module path) */
+    if (!cell_is_string(module_path_cell)) {
+        return cell_error("module-path-must-be-string", module_path_cell);
+    }
+
+    const char* module_path = cell_get_string(module_path_cell);
+
+    /* Check if module is loaded */
+    if (!module_registry_has_module(module_path)) {
+        return cell_error("module-not-loaded", module_path_cell);
+    }
+
+    /* Get module dependencies */
+    return module_registry_get_dependencies(module_path);
 }
 
 /* ============ Structure Analysis Helpers for Test Generation ============ */
@@ -2387,6 +2508,8 @@ static Primitive primitives[] = {
 
     /* Module System */
     {"⋘", prim_load, 1, {"Load and evaluate file", "≈ → α"}},
+    {"⋖", prim_module_import, 2, {"Validate symbols exist in module", "≈ → [::symbol] → ::ok | ⚠"}},
+    {"⌂⊚→", prim_module_dependencies, 1, {"Get module dependencies", "≈ → [≈]"}},
 
     {NULL, NULL, 0, {NULL, NULL}}
 };

@@ -31,9 +31,9 @@ Everything is a **Cell**:
 
 **See:** `KEYWORDS.md` for complete specification.
 
-## Runtime Primitives (76 Total)
+## Runtime Primitives (78 Total)
 
-**Status:** 76 primitives implemented (6 placeholders, 70 fully functional + 6 placeholders = 76 total)
+**Status:** 78 primitives implemented (6 placeholders, 72 fully functional + 6 placeholders = 78 total)
 
 ### Core Lambda Calculus (3) ✅
 | Symbol | Type | Meaning | Status |
@@ -419,11 +419,13 @@ All I/O operations return errors on failure:
 
 ---
 
-### Module System (2) ✅
+### Module System (4) ✅
 | Symbol | Type | Meaning | Status |
 |--------|------|---------|--------|
 | `⋘` | `≈ → α` | Load and evaluate file | ✅ DONE |
 | `⌂⊚` | `() → [≈]` / `:α → ≈` / `≈ → [:α]` | Module information / provenance | ✅ DONE |
+| `⋖` | `≈ → [:α] → :ok | ⚠` | Validate symbols exist in module | ✅ DONE |
+| `⌂⊚→` | `≈ → [≈]` | Get module dependencies | ✅ DONE |
 
 **Basic Load:**
 ```scheme
@@ -574,6 +576,77 @@ All I/O operations return errors on failure:
   (⊖ (⊙→ (⌂⊛ sym2) :defined-at)
      (⊙→ (⌂⊛ sym1) :defined-at))))
 ```
+
+**Selective Import (⋖) - Day 28:**
+```scheme
+; Load a module
+(⋘ "math.scm")                  ; Defines square, cube, double
+
+; Validate single symbol exists in module
+(⋖ "math.scm" (⟨⟩ :square ∅))  ; → :ok
+
+; Validate multiple symbols
+(⋖ "math.scm" (⟨⟩ :square (⟨⟩ :cube ∅)))  ; → :ok
+
+; All symbols must exist
+(⋖ "math.scm" (⟨⟩ :square (⟨⟩ :nonexistent ∅)))  ; → ⚠:symbol-not-in-module
+
+; Module must be loaded first
+(⋖ "never_loaded.scm" (⟨⟩ :foo ∅))  ; → ⚠:module-not-loaded
+
+; Empty list is valid (vacuous truth)
+(⋖ "math.scm" ∅)               ; → :ok
+
+; Use for safe importing
+(≔ safe-import (λ (module symbols)
+  (? (⚠? (⋖ module symbols))
+     (⚠ :import-failed module)
+     :ok)))
+
+(safe-import "math.scm" (⟨⟩ :square ∅))  ; → :ok
+```
+
+**Selective Import Features:**
+- Validates symbols exist before use (documentation + validation)
+- Module must be loaded first (use ⋘)
+- Returns :ok on success, error on failure
+- All symbols must exist (no partial validation)
+- Transparent: doesn't restrict access, only validates
+
+**Module Dependencies (⌂⊚→) - Day 29:**
+```scheme
+; Create module dependencies
+(≋⊲ "base.scm" "(≔ BASE #10)")
+(≋⊲ "derived.scm" "(⋘ \"base.scm\") (≔ DERIVED (⊕ BASE #1))")
+
+; Load derived module (automatically tracks dependency)
+(⋘ "derived.scm")
+
+; Query module dependencies
+(⌂⊚→ "derived.scm")           ; → ⟨"base.scm" ∅⟩
+
+; Independent module has no dependencies
+(≋⊲ "independent.scm" "(≔ INDEP #42)")
+(⋘ "independent.scm")
+(⌂⊚→ "independent.scm")       ; → ∅
+
+; Transitive dependencies NOT included (only direct loads)
+(≋⊲ "c.scm" "(≔ C #3)")
+(≋⊲ "b.scm" "(⋘ \"c.scm\") (≔ B (⊕ C #2))")
+(≋⊲ "a.scm" "(⋘ \"b.scm\") (≔ A (⊕ B #1))")
+(⋘ "a.scm")
+(⌂⊚→ "a.scm")                 ; → ⟨"b.scm" ∅⟩  (NOT ⟨"b.scm" ⟨"c.scm" ∅⟩⟩)
+
+; Error on unloaded module
+(⌂⊚→ "never_loaded.scm")      ; → ⚠:module-not-loaded
+```
+
+**Dependency Tracking Features:**
+- Automatic tracking when module loads another via ⋘
+- Only direct dependencies recorded (not transitive)
+- No self-dependencies (module doesn't depend on itself)
+- Dependencies stored as list of module paths (strings)
+- Works with full module system transparency
 
 **Module Registry Features:**
 - Every loaded file is automatically registered

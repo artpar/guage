@@ -47,6 +47,8 @@ void module_registry_add(const char* module_name) {
 
     entry->symbols = cell_nil();
     cell_retain(entry->symbols);
+    entry->dependencies = cell_nil();  // Day 29: Initialize dependencies
+    cell_retain(entry->dependencies);
     entry->loaded_at = time(NULL);
     entry->load_order = ++load_order_counter;  // Day 27: Track load sequence
     entry->next = registry.head;
@@ -186,12 +188,67 @@ ModuleEntry* module_registry_get_entry(const char* module_name) {
     return NULL;
 }
 
+void module_registry_add_dependency(const char* module_name, const char* dep_module_name) {
+    if (!module_name || !dep_module_name) return;
+
+    // Don't add self-dependencies
+    if (strcmp(module_name, dep_module_name) == 0) return;
+
+    // Find module
+    ModuleEntry* entry = registry.head;
+    while (entry) {
+        if (strcmp(entry->name, module_name) == 0) {
+            // Check if dependency already in list
+            Cell* curr = entry->dependencies;
+            while (curr && !cell_is_nil(curr)) {
+                Cell* dep = cell_car(curr);
+                if (cell_is_string(dep) &&
+                    strcmp(cell_get_string(dep), dep_module_name) == 0) {
+                    // Already in list
+                    return;
+                }
+                curr = cell_cdr(curr);
+            }
+
+            // Add dependency to front of list (as string)
+            Cell* new_dep = cell_string(dep_module_name);
+            Cell* new_list = cell_cons(new_dep, entry->dependencies);
+            cell_release(new_dep);
+            cell_release(entry->dependencies);
+            entry->dependencies = new_list;
+            cell_retain(entry->dependencies);
+            return;
+        }
+        entry = entry->next;
+    }
+
+    // Module not found - ignore (module will be added later)
+}
+
+Cell* module_registry_get_dependencies(const char* module_name) {
+    if (!module_name) return cell_nil();
+
+    // Find module and return its dependencies
+    ModuleEntry* entry = registry.head;
+    while (entry) {
+        if (strcmp(entry->name, module_name) == 0) {
+            cell_retain(entry->dependencies);
+            return entry->dependencies;
+        }
+        entry = entry->next;
+    }
+
+    // Module not found
+    return cell_nil();
+}
+
 void module_registry_free(void) {
     ModuleEntry* entry = registry.head;
     while (entry) {
         ModuleEntry* next = entry->next;
         free(entry->name);
         cell_release(entry->symbols);
+        cell_release(entry->dependencies);  // Day 29: Release dependencies
         free(entry);
         entry = next;
     }

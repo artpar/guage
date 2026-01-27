@@ -20,6 +20,7 @@
 typedef struct ModuleEntry {
     char* name;              // Module file path
     Cell* symbols;           // List of defined symbol names (as keywords)
+    Cell* dependencies;      // List of module names this module depends on - Day 29
     time_t loaded_at;        // When loaded (Unix timestamp)
     size_t load_order;       // Load sequence (1, 2, 3...) - Day 27
     struct ModuleEntry* next;// Linked list
@@ -78,6 +79,20 @@ int module_registry_has_module(const char* module_name);
  * Day 27: Needed for enhanced provenance tracking
  */
 ModuleEntry* module_registry_get_entry(const char* module_name);
+
+/**
+ * Add a dependency to a module
+ * Records that module_name depends on dep_module_name
+ * Day 29: Module dependency tracking
+ */
+void module_registry_add_dependency(const char* module_name, const char* dep_module_name);
+
+/**
+ * Get all dependencies of a module
+ * Returns: List of module names (as strings) or nil if module not found
+ * Day 29: Module dependency tracking
+ */
+Cell* module_registry_get_dependencies(const char* module_name);
 
 /**
  * Free all module registry memory (call at shutdown)
