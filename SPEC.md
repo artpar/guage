@@ -31,9 +31,9 @@ Everything is a **Cell**:
 
 **See:** `KEYWORDS.md` for complete specification.
 
-## Runtime Primitives (62 Total)
+## Runtime Primitives (63 Total)
 
-**Status:** 62 primitives implemented (6 placeholders, 56 fully functional)
+**Status:** 63 primitives implemented (6 placeholders, 57 fully functional)
 
 ### Core Lambda Calculus (3) ✅
 | Symbol | Type | Meaning | Status |
@@ -49,6 +49,31 @@ Everything is a **Cell**:
 |--------|------|---------|--------|
 | `⌜` | `α → ⌜α⌝` | Quote (code→data) | ✅ DONE |
 | `⌞` | `⌜α⌝ → α` | Eval (data→code) | ✅ DONE |
+
+### Pattern Matching (1) ✅
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `∇` | `α → [[⌜pattern⌝ result]] → β` | Pattern match expression | ✅ DONE (Day 15) |
+
+**Note:** As of Day 15, supports wildcard (_) and literal patterns (numbers, booleans, symbols, nil). Variable patterns (Day 16), pair patterns (Day 17), and ADT patterns (Day 18-19) coming soon.
+
+**Syntax:**
+```scheme
+(∇ expr
+   (⟨⟩ (⟨⟩ (⌜ pattern₁) (⟨⟩ result₁ ∅))
+       (⟨⟩ (⟨⟩ (⌜ pattern₂) (⟨⟩ result₂ ∅))
+           ∅)))
+```
+
+**Examples:**
+```scheme
+; Wildcard pattern
+(∇ #42 (⟨⟩ (⟨⟩ (⌜ _) (⟨⟩ :ok ∅)) ∅))  ; → :ok
+
+; Literal patterns
+(∇ #42 (⟨⟩ (⟨⟩ (⌜ #42) (⟨⟩ :matched ∅))
+           (⟨⟩ (⟨⟩ (⌜ _) (⟨⟩ :other ∅)) ∅)))  ; → :matched
+```
 
 ### Comparison & Logic (5) ✅
 | Symbol | Type | Meaning | Status |

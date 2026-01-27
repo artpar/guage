@@ -2,6 +2,7 @@
 #include "eval.h"
 #include "cfg.h"
 #include "dfg.h"
+#include "pattern.h"
 #include <stdio.h>
 #include <assert.h>
 #include <math.h>
@@ -104,6 +105,22 @@ Cell* prim_eval(Cell* args) {
 
     /* Evaluate the expression in current environment */
     return eval(ctx, expr);
+}
+
+/* ∇ - pattern match */
+Cell* prim_match(Cell* args) {
+    /* Get arguments: expression and clauses */
+    Cell* expr = arg1(args);
+    Cell* clauses = arg2(args);
+
+    /* Get current eval context */
+    EvalContext* ctx = eval_get_current_context();
+    if (!ctx) {
+        return cell_error("no-context", expr);
+    }
+
+    /* Delegate to pattern matching module */
+    return pattern_eval_match(expr, clauses, ctx);
 }
 
 /* Comparison & Logic */
@@ -1730,6 +1747,9 @@ static Primitive primitives[] = {
     /* Metaprogramming */
     {"⌜", prim_quote, 1, {"Quote expression (prevent evaluation)", "α → α"}},
     {"⌞", prim_eval, 1, {"Evaluate expression as code", "α → β"}},
+
+    /* Pattern Matching */
+    {"∇", prim_match, 2, {"Pattern match expression against clauses", "α → [[pattern result]] → β"}},
 
     /* Comparison & Logic */
     {"≡", prim_equal, 2, {"Test if two values are equal", "α → α → 𝔹"}},
