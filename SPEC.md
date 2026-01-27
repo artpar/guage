@@ -529,3 +529,84 @@ Source (symbols)
 4. **PATTERNS ARE TYPES** - Design patterns enforced
 5. **EFFECTS ARE TRACKED** - No hidden side effects
 6. **PROVABLY CORRECT** - Proof-carrying code optional
+7. **EVERYTHING IS QUERYABLE** - CFG/DFG/traces as first-class values
+8. **CODE IS DATA IS PROOF** - Metaprogramming at all levels
+
+## Advanced Metaprogramming (Native First-Class Features)
+
+**Status:** Core language design - Infrastructure being built NOW
+**Implementation:** Incremental (infrastructure first, full features later)
+**See:** `ADVANCED_METAPROGRAMMING.md` for complete specification
+
+**CRITICAL:** These are NOT afterthoughts or "Phase 5 extras". They are **native, first-class citizens** that must be supported from the ground up. Current work (Phase 2C) is building the foundation.
+
+### I. Program Synthesis & Repair
+- **⊛** - Synthesize code from specifications
+- **◂** - Repair broken code automatically
+- Specifications as first-class values
+
+### II. Semantic Versioning & API Evolution
+- **⊑** - Subtype compatibility check
+- **⋈** - Migration adapter generation
+- **⊿** - Automatic client upgrade functions
+- APIs as first-class, analyzable values
+
+### III. Refinement Types & Dependent Types
+- **⊢** - Types carry proofs (refinement)
+- **⊡** - Dependent type definitions
+- **↓** - Termination proofs
+- **O** - Complexity bounds in types
+- Invalid states unrepresentable
+
+### IV. Time-Travel Debugging & Causal Analysis
+- **⊙⊳** - Traced execution (full history)
+- **⊆** - Modify trace (counterfactual)
+- **⨳** - Search trace for violations
+- **◊** - Replay from any point
+- Execution traces as queryable values
+
+### V. Transparent Distribution & Migration
+- **⫸** - Capturable computations
+- **⤒/⤓** - Upload/download state
+- **⫷** - Auto-parallelize
+- **⇝** - Hot code swapping
+- Serialize, migrate, resume anywhere
+
+### VI. Self-Optimizing Code
+- **⊛** - Profile-guided optimization
+- **◎** - Continuous optimization
+- **Θ** - Optimization strategies
+- Code improves itself at runtime
+
+### VII. Self-Documenting & Self-Testing
+- **📖** - Generate documentation
+- **⊙?** - Generate tests from types
+- **⊙⊗** - Mutation testing
+- Coverage and property-based testing
+
+### VIII. Cross-Program Analysis
+- **⋘** - Load program as value
+- **⊙⋈** - Joint CFG/DFG analysis
+- Taint analysis, deadlock proofs
+- Whole-program optimization
+
+**Why This Matters:**
+
+Unlike Coq/Agda (separate proof languages) or traditional metaprogramming (text manipulation), Guage makes **all aspects of computation** first-class values:
+- CFG/DFG are data structures you can query
+- Specifications generate code automatically
+- Types prove properties at compile time
+- Execution traces are replayable and modifiable
+- Programs analyze and optimize themselves
+
+This enables AI-assisted development where the compiler helps you write, prove, test, optimize, and deploy code.
+
+**Implementation Timeline:**
+- Phase 2C: Data structures (CURRENT)
+- Phase 3: Pattern matching, macros, generics (18 weeks)
+- Phase 4: Self-hosting, type system (12 weeks)
+- Phase 5: Advanced metaprogramming (36 weeks)
+- Phase 6: Distribution and analysis (24 weeks)
+- **Total:** ~21 months to full vision
+
+See `ADVANCED_METAPROGRAMMING.md` for detailed specifications and implementation strategy.

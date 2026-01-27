@@ -32,20 +32,72 @@ Guage is a **Turing-complete ultralanguage** designed to be the ultimate program
 
 **Why:** Universal. Language-independent. Mathematically precise.
 
-### 2. First-Class Everything
+### 2. First-Class Everything (Including Metaprogramming)
 
-Everything is a value that can be passed, returned, and inspected:
+**CRITICAL:** Everything is a value - not just data, but **ALL aspects of computation**:
 
+**Already Implemented:**
 - **Functions:** λ expressions with closures
 - **Errors:** ⚠ values, not exceptions
 - **Debugging:** ⟲ trace returns the value
-- **Types:** Can be computed and passed (future)
-- **Effects:** Composable effect handlers (future)
 - **Tests:** ⊨ test cases are expressions
+- **Structures:** ⊙/⊚ user-defined types
 
-**Why:** Consistency. Composability. Metaprogramming.
+**Being Built NOW (Phase 2C):**
+- **CFG/DFG:** Control and data flow graphs as ⊝ graph structures
+- **Type Schemas:** Stored in registry, queryable
+- **Code Structure:** AST as data you can transform
 
-### 3. Single Source of Truth
+**Coming Soon:**
+- **Execution Traces:** Complete program history as queryable graph
+- **Specifications:** Formal specs that generate implementations
+- **Optimizations:** Optimization passes as composable functions
+- **Proofs:** Type refinements that prove properties
+- **APIs:** Interface definitions as comparable values
+- **Programs:** Other codebases loadable and analyzable
+
+**Why:** This isn't "nice to have" - it's the **core of Guage**. If something exists in the language, it must be a first-class value you can inspect, transform, and reason about. No special cases. No "compiler magic." Everything is data.
+
+### 3. Everything is Queryable, Provable, Transformable
+
+**This is what makes Guage an "ultralanguage":**
+
+**Queryable:**
+- CFG/DFG are graph structures you can search: `(⊝→ cfg :entry)`
+- Execution traces are queryable: `(⨳ trace predicate)`
+- Types are inspectable: `(⊢ value Type)`
+- Code structure is analyzable: `(⊙⋈ program₁ program₂)`
+
+**Provable:**
+- Types carry proofs: `(⊡ Sorted [ℤ] (∀ i (≼ (⊇ ⊙ i) (⊇ ⊙ (⊕ i 1)))))`
+- Termination provable: `(⊢ φ ↓)`
+- Complexity provable: `(⊢ φ (O (⊗ n (ℓ n))))`
+- Correctness provable: `(⊢ φ spec)`
+
+**Transformable:**
+- Synthesize from specs: `(⊛ spec)`
+- Repair broken code: `(⊛ spec ◂ broken_code)`
+- Optimize automatically: `(◎ code)`
+- Generate docs/tests: `(📖 code)` `(⊙? code)`
+- Hot-swap: `(⇝ old_version new_version)`
+
+**Current Infrastructure (Phase 2C):**
+- ✅ Graph structures (⊝) for CFG/DFG
+- ✅ Type registry for queryable schemas
+- ✅ Immutable operations for time-travel
+- ✅ Reference counting for serialization
+
+**Why This Architecture:**
+Traditional languages treat the compiler as a black box. In Guage:
+- The compiler is a library you can call
+- CFG/DFG are data structures you can query
+- Types are values you can compute with
+- Code is data you can transform
+- Everything is inspectable and modifiable
+
+This enables **AI-assisted development** where the language helps you write, prove, test, optimize, and deploy code.
+
+### 4. Single Source of Truth
 
 - **No dual paths** - One canonical way to do things
 - **No unnecessary transforms** - Direct representation
@@ -54,7 +106,7 @@ Everything is a value that can be passed, returned, and inspected:
 
 **Why:** Simplicity. Maintainability. Understandability.
 
-### 4. Development-First
+### 5. Development-First
 
 - **Never lint** - Code is correct by construction
 - **Never type check during dev** - Types are gradual
@@ -64,7 +116,7 @@ Everything is a value that can be passed, returned, and inspected:
 
 **Why:** Fast iteration. Developer productivity. Flexibility.
 
-### 5. Mathematical Foundation
+### 6. Mathematical Foundation
 
 Based on:
 - **Lambda calculus** - Functions as first-class values
@@ -433,6 +485,99 @@ make clean && make      # Build
 
 ---
 
+## Advanced Metaprogramming: Native First-Class Features
+
+**See `ADVANCED_METAPROGRAMMING.md` for complete specification.**
+
+### What Makes Guage an "Ultralanguage"
+
+Unlike traditional languages where metaprogramming is an afterthought, **Guage is designed from the ground up** to make all aspects of computation queryable, provable, and transformable:
+
+**Program Synthesis & Repair:**
+```scheme
+; Synthesize sort from specification
+(≔ spec (⌜⟨
+  (∀ xs (≡ (# (φ xs)) (# xs)))           ; same length
+  (∀ xs (∀ i (≼ (⊇ (φ xs) i) ...)))     ; ordered
+⟩⌝))
+(≔ sort (⊛ spec))                         ; ⊛ = synthesize
+
+; Repair broken implementation
+(≔ broken (λ (xs) (⊳ xs ⌽)))            ; just reverses
+(≔ fixed (⊛ spec ◂ broken))              ; ◂ = repair
+```
+
+**Time-Travel Debugging:**
+```scheme
+(≔ τ (⊙⊳ (φ x)))                         ; traced execution
+(⊇ τ (⌜ ⟨t∷42⟩⌝))                        ; state at step 42
+(⊇ τ (⌜ ⟨←∷z⟩⌝))                         ; what caused z?
+(≔ τ′ (⊆ τ (⌜ ⟨t∷10 x∷999⟩⌝)))          ; counterfactual
+```
+
+**Types That Prove:**
+```scheme
+(⊡ Sorted (⊢ [ℤ] (∀ i (≼ (⊇ ⊙ i) (⊇ ⊙ (⊕ i 1))))))
+(≔ merge ∷ (→ Sorted (→ Sorted Sorted))) ; proven at compile time
+(⊢ quicksort (O (⊗ n (ℓ n))))            ; complexity proven
+```
+
+**Cross-Program Analysis:**
+```scheme
+(≔ π₁ (⋘ (⌜ :service1.η)))               ; load program as value
+(≔ π₂ (⋘ (⌜ :service2.η)))
+(⊙⋈ π₁ π₂)                                ; joint CFG/DFG
+(⊢ (⊙⋈) (¬ deadlock))                    ; prove no deadlock
+```
+
+### Why Current Work (Phase 2C) Matters
+
+**We're building the foundation NOW:**
+
+1. **Graph Structures (⊝)** - CFG/DFG as first-class values
+2. **Type Registry** - Foundation for dependent types
+3. **Immutable Operations** - Enables time-travel debugging
+4. **Reference Counting** - Required for serialization/migration
+
+These aren't "useful later" - they're **essential for the language to work as designed**.
+
+### Implementation Timeline
+
+Not "maybe someday" - here's the concrete plan:
+
+- **Phase 2C** (CURRENT): Data structures - 3 weeks
+- **Phase 3**: Pattern matching, macros, generics - 18 weeks
+- **Phase 4**: Self-hosting, type system - 12 weeks
+- **Phase 5**: Synthesis, optimization, time-travel - 36 weeks
+- **Phase 6**: Distribution, cross-program analysis - 24 weeks
+
+**Total:** ~21 months to full vision
+
+### What This Enables
+
+**AI-Assisted Development:**
+- Compiler synthesizes code from natural language specs
+- Automatic bug repair with minimal edits
+- Tests generated from types
+- Documentation extracted from structure
+- Code optimizes itself based on profiling
+
+**Provably Correct Software:**
+- Types prove properties at compile time
+- Termination guaranteed
+- Complexity bounds verified
+- No runtime errors for proven properties
+
+**Living, Evolving Systems:**
+- Hot code swapping without downtime
+- Automatic migration between API versions
+- Continuous optimization based on usage
+- Programs that analyze and improve themselves
+
+This isn't science fiction - it's **architectural requirements** being built into the language from day one.
+
+---
+
 ## Contribution Guidelines
 
 When contributing to Guage:
@@ -447,10 +592,11 @@ When contributing to Guage:
 ## Questions?
 
 Read:
-- `SESSION_HANDOFF.md` - Current implementation details
+- `SESSION_HANDOFF.md` - Current implementation details and progress
 - `IMPLEMENTATION_STATUS.md` - Feature checklist
-- `SUMMARY.md` - High-level overview
-- This file - Philosophy and principles
+- `ADVANCED_METAPROGRAMMING.md` - Full vision and native features
+- `SPEC.md` - Language specification
+- `CLAUDE.md` (this file) - Philosophy and principles
 
 ---
 
