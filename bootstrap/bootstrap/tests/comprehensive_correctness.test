@@ -1,0 +1,379 @@
+; Comprehensive Correctness Test - All 55 Functional Primitives
+; Tests that each primitive works as specified
+
+; ========== Arithmetic (9) ==========
+
+; Addition
+(⊕ #5 #3)
+; Expected: #8
+
+; Subtraction
+(⊖ #10 #3)
+; Expected: #7
+
+; Multiplication
+(⊗ #4 #5)
+; Expected: #20
+
+; Division
+(⊘ #10 #2)
+; Expected: #5.0 (or #5)
+
+; Modulo
+(% #10 #3)
+; Expected: #1
+
+; Less than
+(< #3 #5)
+; Expected: #t
+
+(< #5 #3)
+; Expected: #f
+
+; Greater than
+(> #5 #3)
+; Expected: #t
+
+(> #3 #5)
+; Expected: #f
+
+; Less or equal
+(≤ #3 #3)
+; Expected: #t
+
+(≤ #3 #5)
+; Expected: #t
+
+(≤ #5 #3)
+; Expected: #f
+
+; Greater or equal
+(≥ #5 #5)
+; Expected: #t
+
+(≥ #5 #3)
+; Expected: #t
+
+(≥ #3 #5)
+; Expected: #f
+
+; ========== Logic & Comparison (5) ==========
+
+; Equality
+(≡ #5 #5)
+; Expected: #t
+
+(≡ #5 #3)
+; Expected: #f
+
+(≡ :test :test)
+; Expected: #t
+
+; Inequality
+(≢ #5 #3)
+; Expected: #t
+
+(≢ #5 #5)
+; Expected: #f
+
+; Logical AND
+(∧ #t #t)
+; Expected: #t
+
+(∧ #t #f)
+; Expected: #f
+
+(∧ #f #f)
+; Expected: #f
+
+; Logical OR
+(∨ #t #t)
+; Expected: #t
+
+(∨ #t #f)
+; Expected: #t
+
+(∨ #f #f)
+; Expected: #f
+
+; Logical NOT
+(¬ #t)
+; Expected: #f
+
+(¬ #f)
+; Expected: #t
+
+; ========== Type Predicates (6) ==========
+
+; Is number?
+(ℕ? #42)
+; Expected: #t
+
+(ℕ? #t)
+; Expected: #f
+
+; Is boolean?
+(𝔹? #t)
+; Expected: #t
+
+(𝔹? #f)
+; Expected: #t
+
+(𝔹? #5)
+; Expected: #f
+
+; Is symbol?
+(:? :test)
+; Expected: #t
+
+(:? #5)
+; Expected: #f
+
+; Is nil?
+(∅? ∅)
+; Expected: #t
+
+(∅? #5)
+; Expected: #f
+
+; Is pair?
+(⟨⟩? (⟨⟩ #1 #2))
+; Expected: #t
+
+(⟨⟩? #5)
+; Expected: #f
+
+; Is atom?
+(#? #5)
+; Expected: #t
+
+(#? #t)
+; Expected: #t
+
+(#? :symbol)
+; Expected: #t
+
+(#? (⟨⟩ #1 #2))
+; Expected: #f
+
+; ========== Lists (3) ==========
+
+; Construct pair
+(≔ test-pair (⟨⟩ #42 #99))
+test-pair
+; Expected: ⟨#42 #99⟩
+
+; Head (car)
+(◁ test-pair)
+; Expected: #42
+
+; Tail (cdr)
+(▷ test-pair)
+; Expected: #99
+
+; Nested lists
+(≔ nested (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅))))
+(◁ nested)
+; Expected: #1
+
+(◁ (▷ nested))
+; Expected: #2
+
+(◁ (▷ (▷ nested)))
+; Expected: #3
+
+; ========== Metaprogramming (1) ==========
+
+; Quote
+(⌜ (⊕ #1 #2))
+; Expected: Quoted expression (not evaluated)
+
+; ========== Debug/Error (4) ==========
+
+; Create error
+(≔ test-error (⚠ :test-error :test-data))
+test-error
+; Expected: ⚠(:test-error :test-data)
+
+; Is error?
+(⚠? test-error)
+; Expected: #t
+
+(⚠? #5)
+; Expected: #f
+
+; Assert (passing)
+(⊢ #t :ok)
+; Expected: #t
+
+; Assert (failing)
+(⊢ #f :failed)
+; Expected: ⚠(:assertion-failed :failed)
+
+; Trace
+(⟲ #42)
+; Expected: #42 (and prints to stderr)
+
+; ========== Introspection (2) ==========
+
+; Arity
+(≔ test-fn (λ (x) (⊕ x #1)))
+(⧉ test-fn)
+; Expected: #1
+
+(≔ test-fn2 (λ (x y) (⊕ x y)))
+(⧉ test-fn2)
+; Expected: #2
+
+; Source
+(⊛ test-fn)
+; Expected: Lambda source code
+
+; ========== Testing (2) ==========
+
+; Deep equality
+(≟ #5 #5)
+; Expected: #t
+
+(≟ (⟨⟩ #1 #2) (⟨⟩ #1 #2))
+; Expected: #t
+
+(≟ (⟨⟩ #1 #2) (⟨⟩ #1 #3))
+; Expected: #f
+
+; Test case (passing)
+(⊨ :test-pass #t #t)
+; Expected: #t
+
+; Test case (failing)
+(⊨ :test-fail #t #f)
+; Expected: ⚠(:test-failed ...)
+
+; ========== Documentation (5) ==========
+
+; Get description
+(⌂ (⌜ ⊕))
+; Expected: Description string
+
+; Get type signature
+(⌂∈ (⌜ ⊕))
+; Expected: Type signature string
+
+; Get dependencies
+(⌂≔ (⌜ test-fn))
+; Expected: List of dependencies
+
+; Get source
+(⌂⊛ (⌜ test-fn))
+; Expected: Source code
+
+; Generate tests
+(⌂⊨ (⌜ ⊕))
+; Expected: List of auto-generated tests
+
+; ========== CFG/DFG (2) ==========
+
+; Control flow graph
+(≔ factorial (λ (n) (? (≡ n #0) #1 (⊗ n (factorial (⊖ n #1))))))
+(⌂⟿ (⌜ factorial))
+; Expected: CFG structure
+
+; Data flow graph
+(⌂⇝ (⌜ factorial))
+; Expected: DFG structure
+
+; ========== Structures - Leaf (5) ==========
+
+; Define leaf structure
+(⊙≔ :Point :x :y)
+; Expected: :Point type defined
+
+; Create instance
+(≔ point (⊙ :Point #3 #4))
+point
+; Expected: Point instance
+
+; Get field
+(⊙→ point :x)
+; Expected: #3
+
+(⊙→ point :y)
+; Expected: #4
+
+; Update field (immutable)
+(≔ point2 (⊙← point :x #10))
+(⊙→ point2 :x)
+; Expected: #10
+
+(⊙→ point :x)
+; Expected: #3 (original unchanged)
+
+; Check type
+(⊙? point :Point)
+; Expected: #t
+
+(⊙? #5 :Point)
+; Expected: #f
+
+; ========== Structures - Node (4) ==========
+
+; Define ADT
+(⊚≔ :List [:Nil] [:Cons :head :tail])
+; Expected: :List type defined
+
+; Create nil variant
+(≔ empty (⊚ :List :Nil))
+empty
+; Expected: List Nil
+
+; Create cons variant
+(≔ lst (⊚ :List :Cons #42 empty))
+lst
+; Expected: List Cons with head=#42
+
+; Get field
+(⊚→ lst :head)
+; Expected: #42
+
+; Check type and variant
+(⊚? lst :List :Cons)
+; Expected: #t
+
+(⊚? empty :List :Nil)
+; Expected: #t
+
+(⊚? lst :List :Nil)
+; Expected: #f
+
+; ========== Graphs (6) ==========
+
+; Define graph type
+(⊝≔ :SocialGraph :MyGraph :nodes :edges)
+; Expected: :SocialGraph type defined
+
+; Create empty graph
+(≔ graph (⊝ :SocialGraph :MyGraph))
+graph
+; Expected: Empty graph
+
+; Add node
+(≔ graph1 (⊝⊕ graph #node1))
+; Expected: Graph with one node
+
+; Add edge
+(≔ graph2 (⊝⊗ graph1 #1 #2 :follows))
+; Expected: Graph with edge
+
+; Query property
+(⊝→ graph2 :nodes)
+; Expected: List of nodes
+
+; Check type
+(⊝? graph2 :SocialGraph)
+; Expected: #t
+
+(⊝? #5 :SocialGraph)
+; Expected: #f
+
+; ========== Summary ==========
+:comprehensive-correctness-test-complete
