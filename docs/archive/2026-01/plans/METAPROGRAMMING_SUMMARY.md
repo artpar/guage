@@ -41,7 +41,7 @@
 (⧉ max (⧈ (a b) `(? (> ,a ,b) ,a ,b)))  // AST transformation, type-safe
 ```
 
-### 2. AI-Friendly by Design
+### 2. Friendly by Design
 
 **Symbols over words:**
 - ❌ `define-syntax` (English, ambiguous)
@@ -188,7 +188,7 @@
 **Current:** Interpreted, slow
 **After:** Compile-time optimization, zero-cost abstractions
 
-### AI-Friendliness
+### Friendliness
 
 **Structural macros:**
 - AI can verify correctness
@@ -256,7 +256,7 @@ Week 11-18: ⊳ Generics
 
 ### Q: Why not just copy Scheme/Rust?
 
-**A:** Guage is symbol-only and AI-first. We need structural, not textual, and mathematical symbols, not English.
+**A:** Guage is symbol-only and first. We need structural, not textual, and mathematical symbols, not English.
 
 ### Q: How long to self-hosting?
 
@@ -315,7 +315,7 @@ Week 11-18: ⊳ Generics
 | Pattern matching | Basic | ✅ | ✅ | ✅ (planned) |
 | Zero-cost generics | ❌ | ✅ | Partial | ✅ (planned) |
 | Symbolic syntax | ❌ | ❌ | ❌ | ✅ |
-| AI-friendly | Low | Medium | Medium | High |
+| friendly | Low | Medium | Medium | High |
 | Self-hosting | ✅ | ✅ | ✅ | 🎯 Goal |
 
 ---

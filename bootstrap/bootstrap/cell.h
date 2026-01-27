@@ -18,6 +18,7 @@ typedef enum {
     CELL_ATOM_BOOL,      /* #t/#f - boolean */
     CELL_ATOM_SYMBOL,    /* :symbol */
     CELL_ATOM_NIL,       /* ∅ - nil */
+    CELL_ATOM_STRING,    /* "string" - string literal */
     CELL_PAIR,           /* ⟨a b⟩ - cons cell */
     CELL_LAMBDA,         /* λ - closure */
     CELL_BUILTIN,        /* Built-in primitive */
@@ -68,6 +69,7 @@ typedef union {
     double number;
     bool boolean;
     const char* symbol;
+    const char* string;  /* Immutable string (strdup'd) */
     void* builtin;  /* Pointer to builtin function */
 } AtomData;
 
@@ -98,6 +100,8 @@ struct Cell {
             Cell* env;     /* Lexical environment */
             Cell* body;    /* Lambda body */
             int arity;     /* Number of parameters */
+            const char* source_module;  /* Module/file where defined - Day 27 */
+            int source_line;            /* Line number in source - Day 27 */
         } lambda;
         struct {
             const char* message;  /* Error message */
@@ -124,9 +128,10 @@ struct Cell {
 Cell* cell_number(double n);
 Cell* cell_bool(bool b);
 Cell* cell_symbol(const char* sym);
+Cell* cell_string(const char* str);
 Cell* cell_nil(void);
 Cell* cell_cons(Cell* car, Cell* cdr);
-Cell* cell_lambda(Cell* env, Cell* body, int arity);
+Cell* cell_lambda(Cell* env, Cell* body, int arity, const char* source_module, int source_line);
 Cell* cell_builtin(void* fn);
 Cell* cell_error(const char* message, Cell* data);
 Cell* cell_struct(StructKind kind, Cell* type_tag, Cell* variant, Cell* fields);
@@ -136,6 +141,7 @@ Cell* cell_graph(GraphType graph_type, Cell* nodes, Cell* edges, Cell* metadata)
 double cell_get_number(Cell* c);
 bool cell_get_bool(Cell* c);
 const char* cell_get_symbol(Cell* c);
+const char* cell_get_string(Cell* c);
 Cell* cell_car(Cell* c);  /* ◁ - head */
 Cell* cell_cdr(Cell* c);  /* ▷ - tail */
 
@@ -154,6 +160,7 @@ Cell* cell_borrow(Cell* c); /* Temporary borrow */
 bool cell_is_number(Cell* c);
 bool cell_is_bool(Cell* c);
 bool cell_is_symbol(Cell* c);
+bool cell_is_string(Cell* c);
 bool cell_is_nil(Cell* c);
 bool cell_is_pair(Cell* c);
 bool cell_is_lambda(Cell* c);

@@ -3,7 +3,7 @@
 
 **Date:** 2026-01-27
 **Purpose:** Design metaprogramming capabilities for Guage ultralanguage
-**Constraint:** Pure symbolic syntax, AI-friendly structures, first-class everything
+**Constraint:** Pure symbolic syntax, friendly structures, first-class everything
 
 ---
 
@@ -18,7 +18,7 @@
 7. [Symbol Proposals](#symbol-proposals)
 8. [Implementation Strategy](#implementation-strategy)
 9. [Examples and Power Demonstrations](#examples-and-power-demonstrations)
-10. [AI-Friendly Design](#ai-friendly-design)
+10. [Friendly Design](#friendly-design)
 11. [References and Further Reading](#references)
 
 ---
@@ -35,7 +35,7 @@ This report analyzes three interconnected metaprogramming paradigms and proposes
 
 - All three systems can be unified under a **code-as-data** philosophy
 - Guage's existing `⌜` (quote) primitive provides the foundation
-- Structural (not textual) macros are AI-friendly and type-safe
+- Structural (not textual) macros are friendly and type-safe
 - Compile-time evaluation enables zero-cost abstractions
 - Symbol-based syntax makes metaprogramming language-independent
 
@@ -1248,7 +1248,7 @@ Need pattern matching for powerful macros:
 
 ---
 
-## AI-Friendly Design
+## Friendly Design
 
 ### 8.1 Why Structural Macros Matter for AI
 
@@ -1257,7 +1257,7 @@ Need pattern matching for powerful macros:
 // C preprocessor - textual substitution
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 
-// Problem: AI must reason about text, not structure
+// Problem: must reason about text, not structure
 // MAX(x++, y++) → ((x++) > (y++) ? (x++) : (y++))  // BUG: multiple eval
 ```
 
@@ -1267,7 +1267,7 @@ Need pattern matching for powerful macros:
 (⧉ max (⧈ (a b)
   `(? (> ,a ,b) ,a ,b)))
 
-; AI sees tree structure:
+; sees tree structure:
 ;   (?
 ;     (> a b)
 ;     a
@@ -1290,7 +1290,7 @@ Need pattern matching for powerful macros:
 def map(function, list):
     return [function(x) for x in list]
 
-# AI confusion: "map" (cartography?) "list" (verb or noun?)
+# confusion: "map" (cartography?) "list" (verb or noun?)
 ```
 
 **Mathematical symbols:**
@@ -1298,7 +1298,7 @@ def map(function, list):
 ; Guage - symbol-based
 (≔ map (λ (f lst) (∇ lst [∅ ∅] [(⟨⟩ h t) (⟨⟩ (f h) (map f t))])))
 
-; AI understanding: Pure structure, no linguistic ambiguity
+; understanding: Pure structure, no linguistic ambiguity
 ```
 
 **Why symbols help AI:**
@@ -1307,13 +1307,13 @@ def map(function, list):
 - **Visually distinct** - Easy to parse/recognize
 - **Culturally neutral** - Works worldwide
 
-### 8.3 Pattern Matching for AI Reasoning
+### 8.3 Pattern Matching for Reasoning
 
-Pattern matching enables AI to:
+Pattern matching enables to:
 
 **1. Recognize code patterns:**
 ```scheme
-; AI learns: this pattern means "fold left"
+; learns: this pattern means "fold left"
 (∇ code
   [(∇ :recursive-list-processing
     [(∇ lst [∅ base-case] [(⟨⟩ h t) (op h (recurse t))])]
@@ -1323,7 +1323,7 @@ Pattern matching enables AI to:
 **2. Generate code from specifications:**
 ```scheme
 ; User: "I need a function that sums a list"
-; AI generates:
+; generates:
 (≔ sum (λ (lst)
   (∇ lst
     [∅ #0]
@@ -1332,7 +1332,7 @@ Pattern matching enables AI to:
 
 **3. Transform code automatically:**
 ```scheme
-; AI recognizes optimization opportunity
+; recognizes optimization opportunity
 ; Before: (map f (map g lst))
 ; After: (map (∘ f g) lst)  ; Single pass, fused
 
@@ -1347,61 +1347,61 @@ Pattern matching enables AI to:
 **Code = Data = Easy for AI:**
 
 ```scheme
-; AI can manipulate code as easily as data
+; can manipulate code as easily as data
 (≔ code-snippets
   (list
     (⌜ (λ (x) (⊕ x #1)))      ; Increment
     (⌜ (λ (x) (⊗ x #2)))      ; Double
     (⌜ (λ (x) (⊗ x x)))))     ; Square
 
-; AI can analyze
+; can analyze
 (map analyze-complexity code-snippets)
 ; → (list :O(1) :O(1) :O(1))
 
-; AI can compose
+; can compose
 (≔ new-function
   (compose-functions (car code-snippets)
                      (cadr code-snippets)))
 ; → (λ (x) (⊕ (⊗ x #2) #1))  ; Double then increment
 
-; AI can optimize
+; can optimize
 (optimize-expression (⌜ (⊕ (⊗ #2 x) (⊗ #3 x))))
 ; → (⊗ #5 x)  ; Common subexpression eliminated
 ```
 
 **Benefits:**
-- AI treats code as first-class data
+- treats code as first-class data
 - Can apply ML techniques to code structures
 - Can learn patterns from code examples
 - Can generate/transform code programmatically
 
-### 8.5 Gradual Typing for AI-Assisted Development
+### 8.5 Gradual Typing for Assisted Development
 
 ```scheme
 ; Stage 1: Write untyped code quickly
 (≔ process (λ (data)
   (map transform (filter predicate data))))
 
-; Stage 2: AI infers types
-; AI suggests: process : (List α) → (List β)
+; Stage 2: infers types
+; suggests: process : (List α) → (List β)
 
 ; Stage 3: Add constraints gradually
 (≔ process (λ (⊳ A : (⊧ Eq)) (λ (⊳ B) (λ (data : (List A))
   (map transform (filter predicate data))))))
 
-; Stage 4: AI verifies correctness
-; AI checks: transform : A → B, predicate : A → 𝔹, filter : (A → 𝔹) → List A → List A
+; Stage 4: verifies correctness
+; checks: transform : A → B, predicate : A → 𝔹, filter : (A → 𝔹) → List A → List A
 ```
 
-**AI advantages:**
+**Avantages:**
 - Start coding without full type annotations
-- AI gradually suggests types based on usage
+- gradually suggests types based on usage
 - Developer refines types interactively
-- AI catches type errors early
+- catches type errors early
 
-### 8.6 AI-Synthesized Macros
+### 8.6 Synthesized Macros
 
-**Example: AI learns from examples**
+**Example: Learns from examples**
 
 ```scheme
 ; Human provides examples of desired transformation
@@ -1417,16 +1417,16 @@ Pattern matching enables AI to:
 ; Input: (⊘ z #10)
 ; Output: (λ (z) (⊘ z #10))
 
-; AI synthesizes macro:
+; synthesizes macro:
 (⧉ make-lambda (⧈ (expr)
   (≔ var (extract-variable expr))
   `(λ (,var) ,expr)))
 
-; AI recognizes pattern:
+; recognizes pattern:
 ; "Wrap binary operation with variable as first arg in lambda"
 ```
 
-**AI can learn:**
+**can learn:**
 - Code transformation patterns
 - Optimization rules
 - Domain-specific language constructs
@@ -1446,7 +1446,7 @@ Pattern matching enables AI to:
 | **Expansion time** | Compile-time | Compile-time | Compile-time | Compile-time |
 | **Recursive macros** | Yes | Yes | Yes | Yes |
 | **Symbols** | English keywords | English keywords | English keywords | Pure symbols |
-| **AI-friendly** | Moderate | Low | Moderate | High |
+| **friendly** | Moderate | Low | Moderate | High |
 
 ### Template/Generic Systems
 
@@ -1459,7 +1459,7 @@ Pattern matching enables AI to:
 | **Specialization** | Full/partial | Limited | Overlapping instances | Full/partial |
 | **Compile-time eval** | Yes (constexpr) | Yes (const fn) | Limited | Yes (planned) |
 | **Symbols** | English keywords | English keywords | English keywords | Pure symbols |
-| **AI-friendly** | Low | Moderate | Moderate | High |
+| **friendly** | Low | Moderate | Moderate | High |
 
 ---
 
@@ -1564,7 +1564,7 @@ Pattern matching enables AI to:
 2. **Template metaprogramming** allows type-level computation and zero-cost abstractions
 3. **Generic programming** provides reusable algorithms with type safety
 4. All three can be unified under Guage's **code-as-data** philosophy
-5. **Symbolic syntax** makes metaprogramming language-independent and AI-friendly
+5. **Symbolic syntax** makes metaprogramming language-independent and friendly
 6. **De Bruijn indices** provide automatic hygiene for macros
 7. **Pattern matching** is the foundation for all three systems
 
@@ -1592,11 +1592,11 @@ Pattern matching enables AI to:
 - Monomorphization enables full optimization
 - Zero-cost abstractions make high-level code fast
 
-**AI-Friendliness:**
+**Friendliness:**
 - Structural macros are analyzable by ML models
 - Symbolic syntax removes linguistic ambiguity
-- Homoiconicity enables AI code generation
-- Pattern matching enables AI pattern recognition
+- Homoiconicity enables code generation
+- Pattern matching enables pattern recognition
 
 ---
 
@@ -1700,4 +1700,4 @@ Pattern matching enables AI to:
 
 **END OF REPORT**
 
-This comprehensive research report covers the theoretical foundations, practical implementations, and proposed integration of macro systems, template metaprogramming, and generic programming into Guage. The symbol-based, structural approach makes these powerful features both type-safe and AI-friendly.
+This comprehensive research report covers the theoretical foundations, practical implementations, and proposed integration of macro systems, template metaprogramming, and generic programming into Guage. The symbol-based, structural approach makes these powerful features both type-safe and friendly.

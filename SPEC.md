@@ -31,9 +31,9 @@ Everything is a **Cell**:
 
 **See:** `KEYWORDS.md` for complete specification.
 
-## Runtime Primitives (63 Total)
+## Runtime Primitives (76 Total)
 
-**Status:** 63 primitives implemented (6 placeholders, 57 fully functional)
+**Status:** 76 primitives implemented (6 placeholders, 70 fully functional + 6 placeholders = 76 total)
 
 ### Core Lambda Calculus (3) ✅
 | Symbol | Type | Meaning | Status |
@@ -261,7 +261,7 @@ Warnings are non-fatal and do not stop execution.
 | `⌂` | `:symbol → string` | Get description | ✅ DONE |
 | `⌂∈` | `:symbol → string` | Get type signature | ✅ DONE |
 | `⌂≔` | `:symbol → [symbols]` | Get dependencies | ✅ DONE |
-| `⌂⊛` | `:symbol → expression` | Get source code | ✅ DONE |
+| `⌂⊛` | `:symbol → ⊙` | Get provenance metadata | ✅ DONE |
 | `⌂⊨` | `:symbol → [tests]` | Auto-generate tests | ✅ DONE |
 
 ### Control/Data Flow (2) ✅
@@ -306,6 +306,310 @@ Graph types are currently restricted to 5 predefined types for metaprogramming:
 - `:dep` - Dependency Graphs (future)
 
 Use `:generic` for custom graph types. This restriction enables specialized graph algorithms and optimizations for compiler metaprogramming while still allowing user-defined graph structures.
+
+### String Operations (9) ✅
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `≈` | `α → ≈` | Convert value to string | ✅ DONE |
+| `≈⊕` | `≈ → ≈ → ≈` | Concatenate strings | ✅ DONE |
+| `≈#` | `≈ → ℕ` | String length | ✅ DONE |
+| `≈→` | `≈ → ℕ → :symbol` | Character at index | ✅ DONE |
+| `≈⊂` | `≈ → ℕ → ℕ → ≈` | Substring (start, end) | ✅ DONE |
+| `≈?` | `α → 𝔹` | Is string? | ✅ DONE |
+| `≈∅?` | `≈ → 𝔹` | Is empty string? | ✅ DONE |
+| `≈≡` | `≈ → ≈ → 𝔹` | String equality | ✅ DONE |
+| `≈<` | `≈ → ≈ → 𝔹` | String ordering (lexicographic) | ✅ DONE |
+
+**String Literals:**
+Strings are enclosed in double quotes with escape sequences:
+```scheme
+"hello"           ; Basic string
+"hello world"     ; String with spaces
+"with\nnewline"   ; Escape sequences: \n \t \r \\ \"
+""                ; Empty string
+```
+
+**Examples:**
+```scheme
+(≈ #42)                      ; → "42"
+(≈⊕ "hello" " world")        ; → "hello world"
+(≈# "test")                  ; → #4
+(≈→ "hello" #0)              ; → :h
+(≈⊂ "hello world" #0 #5)     ; → "hello"
+(≈? "test")                  ; → #t
+(≈∅? "")                     ; → #t
+(≈≡ "hello" "hello")         ; → #t
+(≈< "apple" "banana")        ; → #t
+```
+
+### I/O Operations (8) ✅
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `≋` | `α → α` | Print value to stdout with newline | ✅ DONE |
+| `≋≈` | `≈ → ≈` | Print string without newline | ✅ DONE |
+| `≋←` | `() → ≈` | Read line from stdin | ✅ DONE |
+| `≋⊳` | `≈ → ≈` | Read entire file as string | ✅ DONE |
+| `≋⊲` | `≈ → ≈ → ≈` | Write string to file (overwrites) | ✅ DONE |
+| `≋⊕` | `≈ → ≈ → ≈` | Append string to file | ✅ DONE |
+| `≋?` | `≈ → 𝔹` | Check if file exists | ✅ DONE |
+| `≋∅?` | `≈ → 𝔹` | Check if file is empty | ✅ DONE |
+
+**Console I/O:**
+```scheme
+; Print with newline
+(≋ "Hello, world!")          ; → "Hello, world!" (and prints)
+(≋ #42)                      ; → #42 (and prints "42")
+
+; Print without newline
+(≋≈ "Name: ")                ; → "Name: " (no newline)
+
+; Read from console (interactive)
+; (≋←)                       ; → string from stdin
+```
+
+**File I/O:**
+```scheme
+; Write to file
+(≋⊲ "test.txt" "content")    ; → "test.txt" (file created/overwritten)
+
+; Read from file
+(≋⊳ "test.txt")              ; → "content"
+
+; Append to file
+(≋⊕ "test.txt" " more")      ; → "test.txt"
+(≋⊳ "test.txt")              ; → "content more"
+
+; File predicates
+(≋? "test.txt")              ; → #t (file exists)
+(≋∅? "test.txt")             ; → #f (not empty)
+```
+
+**Real-world Example:**
+```scheme
+; Logging system
+(≔ log (λ (msg)
+  (≋⊕ "app.log" (≈⊕ msg "\n"))))
+
+(log "Application started")
+(log "Processing data...")
+(log "Application stopped")
+
+; Safe file read
+(≔ safe-read (λ (path) (λ (default)
+  (? (≋? path)
+     (≋⊳ path)
+     default))))
+
+((safe-read "config.txt") "default config")
+```
+
+**Error Handling:**
+All I/O operations return errors on failure:
+- `≋⊳` - Returns `:file-not-found` if file doesn't exist
+- `≋⊲` - Returns `:file-write-error` on write failure
+- `≋⊕` - Returns `:file-append-error` on append failure
+- `≋←` - Returns `:read-error` on stdin error
+
+**Technical Details:**
+- All I/O is synchronous (blocking)
+- Files are opened, operated on, and closed immediately
+- File paths must be strings
+- No file locking or concurrent access control
+- UTF-8 encoding assumed
+
+---
+
+### Module System (2) ✅
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `⋘` | `≈ → α` | Load and evaluate file | ✅ DONE |
+| `⌂⊚` | `() → [≈]` / `:α → ≈` / `≈ → [:α]` | Module information / provenance | ✅ DONE |
+
+**Basic Load:**
+```scheme
+; Create a module file
+(≋⊲ "math.scm" "(≔ double (λ (n) (⊗ n #2)))")
+
+; Load and evaluate the module
+(⋘ "math.scm")                ; → result of last expression
+
+; Use the loaded function
+(double #21)                   ; → #42
+```
+
+**Multiple Definitions:**
+```scheme
+; Module with multiple definitions
+(≔ stdlib "(≔ inc (λ (n) (⊕ n #1))) (≔ dec (λ (n) (⊖ n #1)))")
+(≋⊲ "stdlib.scm" stdlib)
+
+; Load all definitions
+(⋘ "stdlib.scm")
+
+; All functions available
+(inc #5)                       ; → #6
+(dec #10)                      ; → #9
+```
+
+**Module Dependencies:**
+```scheme
+; base-module.scm
+(≋⊲ "base.scm" "(≔ PI #3.14159)")
+
+; derived-module.scm
+(≋⊲ "derived.scm" "(≔ area (λ (r) (⊗ PI (⊗ r r))))")
+
+; Load in order
+(⋘ "base.scm")                 ; Defines PI
+(⋘ "derived.scm")              ; Uses PI
+
+(area #5)                      ; → #78.53975
+```
+
+**Standard Library Usage:**
+```scheme
+; Load standard library modules
+(⋘ "stdlib/list.scm")          ; List operations
+(⋘ "stdlib/option.scm")        ; Option/Result types
+(⋘ "stdlib/math.scm")          ; Math utilities
+
+; Use loaded functions
+(map inc (list #1 #2 #3))      ; → ⟨#2 ⟨#3 ⟨#4 ∅⟩⟩⟩
+```
+
+**Error Handling:**
+```scheme
+; File not found
+(⋘ "missing.scm")              ; → ⚠:file-not-found
+(⚠? (⋘ "missing.scm"))         ; → #t
+
+; Invalid argument
+(⋘ #42)                        ; → ⚠ error
+
+; Safe loading with fallback
+(≔ safe-load (λ (path) (λ (default)
+  (? (≋? path)
+     (? (⚠? (⋘ path))
+        default
+        #t)
+     default))))
+
+((safe-load "config.scm") #f)  ; → #f if file missing/error
+```
+
+**Module Registry (⌂⊚):**
+```scheme
+; Load a module
+(⋘ "math.scm")                  ; Defines square, cube, etc.
+
+; List all loaded modules
+(⌂⊚)                            ; → ⟨"math.scm" ∅⟩
+
+; Find which module defines a symbol
+(⌂⊚ :square)                    ; → "math.scm"
+(⌂⊚ :undefined-symbol)          ; → ⚠:symbol-not-in-any-module
+
+; List all symbols from a module
+(⌂⊚ "math.scm")                 ; → ⟨:square ⟨:cube ⟨:double ∅⟩⟩⟩
+(⌂⊚ "nonexistent.scm")          ; → ∅
+
+; Check symbol provenance
+(≔ check-source (λ (sym)
+  (? (⚠? (⌂⊚ sym))
+     (⌜ :builtin)
+     (⌂⊚ sym))))
+
+(check-source :square)          ; → "math.scm"
+(check-source :⊕)               ; → :builtin
+```
+
+**Enhanced Provenance (⌂⊛) - Day 27:**
+```scheme
+; Load a module
+(⋘ "math.scm")
+
+; Get full provenance for a symbol
+(⌂⊛ :square)
+; → ⊙[::Provenance ⟨⟨::module "math.scm"⟩
+;                    ⟨⟨::line #0⟩
+;                     ⟨⟨::load-order #1⟩
+;                      ⟨⟨::defined-at #1737584932⟩ ∅⟩⟩⟩⟩]
+
+; Access provenance fields
+(≔ prov (⌂⊛ :square))
+(⊙→ prov :module)              ; → "math.scm"
+(⊙→ prov :line)                ; → #0 (line number, currently 0)
+(⊙→ prov :load-order)          ; → #1 (first module loaded)
+(⊙→ prov :defined-at)          ; → #1737584932 (Unix timestamp)
+
+; Primitives return simple provenance
+(⌂⊛ :⊕)
+; → ⊙[::Provenance ⟨⟨::module "<primitive>"⟩ ∅⟩]
+
+; Undefined symbols return error
+(⌂⊛ :nonexistent)              ; → ⚠:symbol-not-found
+```
+
+**Provenance Structure Fields:**
+- **:module** (string) - Module file path or "<primitive>"
+- **:line** (number) - Line number in source (currently 0, parser enhancement pending)
+- **:load-order** (number) - Sequential module load number (1, 2, 3...)
+- **:defined-at** (number) - Unix timestamp when module was loaded
+
+**Use Cases:**
+```scheme
+; Find oldest loaded module
+(≔ find-oldest (λ (symbols)
+  (⊳ (⊠ (λ (a b)
+          (< (⊙→ (⌂⊛ a) :load-order)
+             (⊙→ (⌂⊛ b) :load-order)))
+        symbols))))
+
+; Check if symbol is from standard library
+(≔ from-stdlib? (λ (sym)
+  (≈⊂ "stdlib/" (⊙→ (⌂⊛ sym) :module))))
+
+; Get load time difference between modules
+(≔ load-gap (λ (sym1 sym2)
+  (⊖ (⊙→ (⌂⊛ sym2) :defined-at)
+     (⊙→ (⌂⊛ sym1) :defined-at))))
+```
+
+**Module Registry Features:**
+- Every loaded file is automatically registered
+- Symbols defined during load are tracked
+- Provenance: know which module defines each symbol
+- Transparency: all modules and symbols are queryable
+- No information hiding (first design)
+
+**How It Works:**
+1. Reads entire file into memory
+2. Parses all expressions sequentially
+3. Evaluates each expression in current environment
+4. Returns result of last expression
+5. All definitions become available in current scope
+
+**Technical Details:**
+- Files are evaluated in **current environment** (no isolation)
+- All definitions are global (added to current scope)
+- Module can redefine existing variables
+- No circular dependency detection
+- No caching (loading twice evaluates twice)
+- Return value is the last expression in the file
+
+**Limitations (Current Implementation):**
+- No namespace isolation
+- No explicit imports/exports
+- No dependency tracking (planned for Day 28-29)
+- Parse errors may crash (needs improvement)
+- Line numbers currently not tracked by parser (always 0)
+
+**Future Enhancements:**
+- `⊞◇` (module-define) - Define module with explicit exports
+- `⊞⊳` (module-import) - Import specific symbols
+- Module registry to prevent double-loading
+- Namespace isolation
+- Dependency resolution
 
 ---
 
@@ -908,7 +1212,7 @@ Unlike Coq/Agda (separate proof languages) or traditional metaprogramming (text 
 - Execution traces are replayable and modifiable
 - Programs analyze and optimize themselves
 
-This enables AI-assisted development where the compiler helps you write, prove, test, optimize, and deploy code.
+This enables assisted development where the compiler helps you write, prove, test, optimize, and deploy code.
 
 **Implementation Timeline:**
 - Phase 2C: Data structures (CURRENT)

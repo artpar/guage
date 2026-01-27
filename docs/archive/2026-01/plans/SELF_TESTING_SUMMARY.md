@@ -403,7 +403,7 @@ Future: System that optimizes based on test results:
 - ✅ Reduces developer burden (no manual test writing)
 - ✅ Ensures coverage (every function has tests)
 - ✅ Enables self-validation (system tests itself)
-- ✅ Foundation for AI-assisted development (tests are data)
+- ✅ Foundation for assisted development (tests are data)
 
 **Next step:** Build on this foundation with structure-based tests, property-based testing, and mutation testing.
 

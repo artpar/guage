@@ -430,7 +430,7 @@ where F: Fn(A) -> B
 (≔ ⤇ (λ (λ (∇ 0 [∅ ∅] [(⟨⟩ _ _) (⟨⟩ (1 (◁ 0)) ((⤇ 1) (▷ 0)))]))))
 ```
 
-**Zero English. Pure structure. AI-native.**
+**Zero English. Pure structure. native.**
 
 ---
 
@@ -444,4 +444,4 @@ where F: Fn(A) -> B
 
 **ZERO ENGLISH AT ALL LEVELS.**
 
-This is the true AI-first language.
+This is the true first language.

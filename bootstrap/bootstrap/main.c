@@ -5,6 +5,7 @@
 #include "cell.h"
 #include "primitives.h"
 #include "eval.h"
+#include "module.h"
 
 #define MAX_INPUT 4096
 
@@ -130,6 +131,44 @@ static Cell* parse_symbol(Parser* p) {
     return cell_symbol(buffer);
 }
 
+static Cell* parse_string(Parser* p) {
+    /* Skip opening quote */
+    p->pos++;
+
+    char buffer[1024];
+    int i = 0;
+
+    /* Read until closing quote */
+    while (p->input[p->pos] != '"' && p->input[p->pos] != '\0') {
+        /* Handle escape sequences */
+        if (p->input[p->pos] == '\\' && p->input[p->pos + 1] != '\0') {
+            p->pos++;  /* Skip backslash */
+            switch (p->input[p->pos]) {
+                case 'n':  buffer[i++] = '\n'; break;
+                case 't':  buffer[i++] = '\t'; break;
+                case 'r':  buffer[i++] = '\r'; break;
+                case '\\': buffer[i++] = '\\'; break;
+                case '"':  buffer[i++] = '"'; break;
+                default:   buffer[i++] = p->input[p->pos]; break;
+            }
+            p->pos++;
+        } else {
+            buffer[i++] = p->input[p->pos++];
+        }
+
+        if (i >= 1023) break;  /* Buffer overflow protection */
+    }
+
+    buffer[i] = '\0';
+
+    /* Skip closing quote */
+    if (p->input[p->pos] == '"') {
+        p->pos++;
+    }
+
+    return cell_string(buffer);
+}
+
 static Cell* parse_expr(Parser* p) {
     skip_whitespace(p);
 
@@ -141,6 +180,11 @@ static Cell* parse_expr(Parser* p) {
     /* List */
     if (p->input[p->pos] == '(') {
         return parse_list(p);
+    }
+
+    /* String literal */
+    if (p->input[p->pos] == '"') {
+        return parse_string(p);
     }
 
     /* Number or Boolean with # prefix */
@@ -183,13 +227,19 @@ static int paren_balance(const char* str) {
     int balance = 0;
     int i = 0;
     int in_comment = 0;
+    int in_string = 0;
 
     while (str[i] != '\0') {
-        if (str[i] == ';') {
+        /* Handle string boundaries */
+        if (str[i] == '"' && (i == 0 || str[i-1] != '\\')) {
+            in_string = !in_string;
+        }
+
+        if (str[i] == ';' && !in_string) {
             in_comment = 1;
         } else if (str[i] == '\n') {
             in_comment = 0;
-        } else if (!in_comment) {
+        } else if (!in_comment && !in_string) {
             if (str[i] == '(') balance++;
             else if (str[i] == ')') balance--;
         }
@@ -203,6 +253,9 @@ void repl(void) {
     char input[MAX_INPUT];
     char accumulated[MAX_INPUT * 4];  /* Buffer for multi-line input */
     EvalContext* ctx = eval_context_new();
+
+    /* Initialize module registry */
+    module_registry_init();
 
     printf("Guage: The Ultralanguage\n");
     printf("Type expressions to evaluate. Ctrl+D to exit.\n\n");

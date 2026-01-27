@@ -37,6 +37,12 @@ Cell* cell_symbol(const char* sym) {
     return c;
 }
 
+Cell* cell_string(const char* str) {
+    Cell* c = cell_alloc(CELL_ATOM_STRING);
+    c->data.atom.string = strdup(str);
+    return c;
+}
+
 Cell* cell_nil(void) {
     Cell* c = cell_alloc(CELL_ATOM_NIL);
     return c;
@@ -57,11 +63,13 @@ Cell* cell_cons(Cell* car, Cell* cdr) {
     return c;
 }
 
-Cell* cell_lambda(Cell* env, Cell* body, int arity) {
+Cell* cell_lambda(Cell* env, Cell* body, int arity, const char* source_module, int source_line) {
     Cell* c = cell_alloc(CELL_LAMBDA);
     c->data.lambda.env = env;
     c->data.lambda.body = body;
     c->data.lambda.arity = arity;
+    c->data.lambda.source_module = source_module ? strdup(source_module) : NULL;  /* Day 27 */
+    c->data.lambda.source_line = source_line;  /* Day 27 */
 
     if (env) cell_retain(env);
     cell_retain(body);
@@ -129,6 +137,11 @@ const char* cell_get_symbol(Cell* c) {
     return c->data.atom.symbol;
 }
 
+const char* cell_get_string(Cell* c) {
+    assert(c->type == CELL_ATOM_STRING);
+    return c->data.atom.string;
+}
+
 Cell* cell_car(Cell* c) {
     assert(c->type == CELL_PAIR);
     assert(!cell_is_consumed(c));
@@ -163,9 +176,15 @@ void cell_release(Cell* c) {
             case CELL_LAMBDA:
                 cell_release(c->data.lambda.env);
                 cell_release(c->data.lambda.body);
+                if (c->data.lambda.source_module) {
+                    free((void*)c->data.lambda.source_module);  /* Day 27 */
+                }
                 break;
             case CELL_ATOM_SYMBOL:
                 free((void*)c->data.atom.symbol);
+                break;
+            case CELL_ATOM_STRING:
+                free((void*)c->data.atom.string);
                 break;
             case CELL_ERROR:
                 free((void*)c->data.error.message);
@@ -238,6 +257,10 @@ bool cell_is_symbol(Cell* c) {
     return c && c->type == CELL_ATOM_SYMBOL;
 }
 
+bool cell_is_string(Cell* c) {
+    return c && c->type == CELL_ATOM_STRING;
+}
+
 bool cell_is_nil(Cell* c) {
     return c && c->type == CELL_ATOM_NIL;
 }
@@ -254,6 +277,7 @@ bool cell_is_atom(Cell* c) {
     return c && (c->type == CELL_ATOM_NUMBER ||
                  c->type == CELL_ATOM_BOOL ||
                  c->type == CELL_ATOM_SYMBOL ||
+                 c->type == CELL_ATOM_STRING ||
                  c->type == CELL_ATOM_NIL);
 }
 
@@ -475,6 +499,8 @@ bool cell_equal(Cell* a, Cell* b) {
             return a->data.atom.boolean == b->data.atom.boolean;
         case CELL_ATOM_SYMBOL:
             return strcmp(a->data.atom.symbol, b->data.atom.symbol) == 0;
+        case CELL_ATOM_STRING:
+            return strcmp(a->data.atom.string, b->data.atom.string) == 0;
         case CELL_ATOM_NIL:
             return true;
         case CELL_PAIR:
@@ -514,6 +540,9 @@ void cell_print(Cell* c) {
             break;
         case CELL_ATOM_SYMBOL:
             printf(":%s", c->data.atom.symbol);
+            break;
+        case CELL_ATOM_STRING:
+            printf("\"%s\"", c->data.atom.string);
             break;
         case CELL_ATOM_NIL:
             printf("∅");

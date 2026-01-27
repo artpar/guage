@@ -93,6 +93,21 @@ Cell* prim_graph_add_edge(Cell* args);      /* ⊝⊗ - add edge to graph */
 Cell* prim_graph_query(Cell* args);         /* ⊝→ - query graph property */
 Cell* prim_graph_is(Cell* args);            /* ⊝? - check graph type */
 
+/* I/O primitives - Console */
+Cell* prim_print(Cell* args);               /* ≋ - print with newline */
+Cell* prim_print_str(Cell* args);           /* ≋≈ - print string */
+Cell* prim_read_line(Cell* args);           /* ≋← - read line from stdin */
+
+/* I/O primitives - Files */
+Cell* prim_read_file(Cell* args);           /* ≋⊳ - read file */
+Cell* prim_write_file(Cell* args);          /* ≋⊲ - write file */
+Cell* prim_append_file(Cell* args);         /* ≋⊕ - append to file */
+Cell* prim_file_exists(Cell* args);         /* ≋? - file exists */
+Cell* prim_file_empty(Cell* args);          /* ≋∅? - file empty */
+
+/* Module System */
+Cell* prim_load(Cell* args);                /* ⋘ - load and evaluate file */
+
 /* Primitive documentation structure */
 typedef struct {
     const char* description;     /* What this primitive does */

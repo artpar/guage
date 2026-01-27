@@ -2,7 +2,7 @@
 
 **Date:** 2026-01-27
 **Goal:** Add industrial-strength metaprogramming to Guage
-**Philosophy:** Structural (not textual), AI-friendly, zero-cost abstractions
+**Philosophy:** Structural (not textual), friendly, zero-cost abstractions
 
 ---
 

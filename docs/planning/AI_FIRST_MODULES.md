@@ -1,453 +1,410 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Purpose: Design AI-first module system for Guage ultralanguage
+Updated: 2026-01-27
+Purpose: Design first module system for Guage ultralanguage
 ---
 
-# AI-First Module System Design
+# First Module System Design
 
-## The Problem with Traditional Modules
+## Vision: Transparency Over Encapsulation
 
-**Traditional module systems (imports/exports/namespaces) are WRONG for Guage because:**
+**Core Principle:** In an ultralanguage, **everything must be queryable, provable, and transformable**. Traditional module systems with imports/exports/namespaces **hide information** that needs to reason about code.
 
-```scheme
-; Traditional approach (Python, JS, Java)
-import { foo } from "module"  ; ❌ Information hiding
-export bar                     ; ❌ Selective visibility
-namespace X.Y.Z               ; ❌ Namespace isolation
-```
-
-**Why this fails for AI:**
-1. **AI can't see hidden code** - How can AI reason about unexported functions?
-2. **Namespace barriers** - AI can't query across module boundaries
-3. **Import hell** - Explicit imports break AI's ability to discover relationships
-4. **No provenance** - Can't ask "where did this function come from?"
-5. **Static structure** - Can't dynamically compose or transform modules
-
-**Guage's ultralanguage vision requires:**
-- ✅ Everything queryable (including "private" code)
-- ✅ All code visible for analysis (no hiding)
-- ✅ Modules as first-class values (not namespace magic)
-- ✅ Provenance tracking (where did this symbol come from?)
-- ✅ Dynamic composition (AI can assemble modules)
+**Guage's Approach:** Modules are **first-class values** with **full transparency** and **provenance tracking**.
 
 ---
 
-## Guage's AI-First Module System
+## What's Wrong with Traditional Modules?
 
-### Core Principle: **TRANSPARENCY OVER ENCAPSULATION**
-
-**Modules in Guage are:**
-1. **First-class values** - You can inspect, query, transform them
-2. **Transparent** - All code is visible, nothing hidden
-3. **Self-describing** - Modules know their dependencies and structure
-4. **Composable** - Modules are data structures that compose
-5. **Queryable** - AI can reason about module relationships
-
-### The Design
-
-```scheme
-; MODULE AS VALUE (not namespace)
-; ================================
-
-; 1. Module is a structure containing metadata + definitions
-(⊙≔ :Module :path :deps :exports :defs)
-
-; 2. Load returns a module VALUE (not side effects!)
-(≔ math-module (⋘ "stdlib/math.scm"))
-; → ⊙(:Module
-;      :path "stdlib/math.scm"
-;      :deps []
-;      :exports [⊕⊕ ⊗⊗ ↥ ↧]
-;      :defs [(≔ ⊕⊕ ...) (≔ ⊗⊗ ...) ...])
-
-; 3. Query module structure (AI-friendly!)
-(⊙→ math-module :path)     ; → "stdlib/math.scm"
-(⊙→ math-module :exports)  ; → [⊕⊕ ⊗⊗ ↥ ↧]
-(⊙→ math-module :deps)     ; → []
-
-; 4. Import brings symbols into scope WITH PROVENANCE
-(⋖ math-module)            ; Import all exports
-(⊕⊕ (list #1 #2 #3))       ; → #6 (works!)
-
-; 5. Query provenance (where did ⊕⊕ come from?)
-(⌂⊛ (⌜ ⊕⊕))                ; → "stdlib/math.scm" (AI can trace!)
-
-; 6. Selective import (but everything still queryable!)
-(⋖ math-module (⌜ [⊕⊕ ⊗⊗])) ; Import only ⊕⊕, ⊗⊗
-; Note: ↥ ↧ are NOT imported, but still queryable in math-module!
-
-; 7. Query ALL definitions (even "unexported")
-(⊙→ math-module :defs)     ; → All definitions (internal helpers visible!)
-```
-
-### Why This Works for AI
-
-**1. Module Structure is Queryable**
-```scheme
-; AI can ask: "What modules are loaded?"
-(⌂⊚)  ; → List of all modules in registry
-
-; AI can ask: "What does this module export?"
-(⊙→ (⌂⊚ "stdlib/list.scm") :exports)
-
-; AI can ask: "What are ALL functions in this module?"
-(⊙→ (⌂⊚ "stdlib/math.scm") :defs)  ; Includes internal helpers!
-```
-
-**2. Dependency Graph is a Value**
-```scheme
-; Get entire dependency graph as structure
-(⌂⟿ :modules)  ; → Graph of module dependencies
-
-; Query: "What depends on module X?"
-(⊝→ (⌂⟿ :modules) "stdlib/math.scm" :dependents)
-
-; Query: "What's the load order?"
-(⊝⊳ (⌂⟿ :modules))  ; Topological sort of modules
-```
-
-**3. Provenance Tracking**
-```scheme
-; Every symbol knows where it came from
-(⌂⊛ (⌜ map))        ; → "stdlib/list.scm"
-(⌂⊛ (⌜ ⊕⊕))         ; → "stdlib/math.scm"
-
-; AI can reason: "This function uses symbols from 3 modules"
-(⌂⇝ (⌜ my-function))  ; → DFG showing symbol origins
-```
-
-**4. No Information Hiding**
-```scheme
-; Traditional: helper functions are "private"
-; Guage: ALL code is visible for AI analysis
-
-(≔ math (⋘ "math.scm"))
-
-; Exports: [square cube]
-(⊙→ math :exports)
-
-; But internal helpers are STILL QUERYABLE!
-(⊙→ math :defs)  ; → Includes internal helper-multiply!
-
-; AI can reason: "square uses helper-multiply internally"
-(⌂⇝ (⊙→ math (⌜ square)))  ; DFG shows helper-multiply dependency
-```
-
-**5. Dynamic Composition**
-```scheme
-; AI can compose modules programmatically!
-(≔ combined (⊙⊕ module1 module2))  ; Merge two modules
-
-; AI can filter modules
-(≔ math-subset (⊙⊲ math (λ (def) (≈⊂ def "sum"))))  ; Only sum-related
-
-; AI can transform modules
-(≔ optimized (◎ module))  ; Optimize entire module
-```
-
----
-
-## Implementation Plan
-
-### Phase 1: Module as Value (1-2 hours)
-
-**Add module structure type:**
-```scheme
-(⊙≔ :Module :path :deps :exports :defs)
-```
-
-**Enhance ⋘ to return module value:**
-```c
-// Current: Load evaluates in global env (side effects)
-Cell* prim_load(Cell* args, Env* env) {
-    // Read file, parse, evaluate all definitions
-    // Definitions added to global env
-    // Return result of last expression
-}
-
-// NEW: Load returns module structure
-Cell* prim_load(Cell* args, Env* env) {
-    // Read file, parse
-    // Extract module metadata (deps, exports)
-    // Collect all definitions
-    // Create Module structure
-    // Return Module VALUE (no side effects yet!)
-}
-```
-
-### Phase 2: Module Registry (1 hour)
-
-**Global registry of loaded modules:**
-```scheme
-; Registry is just a graph structure!
-(⊝≔ :ModuleRegistry :path→module :dep-graph)
-
-; Load updates registry
-(≔ m (⋘ "math.scm"))
-; Registry updated: path→module["math.scm"] = m
-
-; Query registry
-(⌂⊚)                    ; List all modules
-(⌂⊚ "math.scm")         ; Get specific module
-```
-
-### Phase 3: Import Primitive (1 hour)
-
-**⋖ (import) primitive:**
-```scheme
-(⋖ module)              ; Import all exports to global env
-(⋖ module (⌜ [sym...]))  ; Import specific symbols
-
-; Implementation:
-; 1. Extract exports from module structure
-; 2. Add to global environment
-; 3. Track provenance in metadata
-```
-
-### Phase 4: Provenance Tracking (1 hour)
-
-**Enhance ⌂⊛ (source) to track module origin:**
-```scheme
-(⌂⊛ (⌜ map))  ; → "stdlib/list.scm"
-
-; Implementation:
-; - When importing, attach metadata to symbol
-; - ⌂⊛ looks up metadata
-```
-
-### Phase 5: Dependency Graph (2 hours)
-
-**⌂⟿ returns module dependency graph:**
-```scheme
-(⌂⟿ :modules)  ; → Graph structure
-
-; Each node = module
-; Each edge = dependency relationship
-; Queryable with ⊝→, ⊝⊳, etc.
-```
-
----
-
-## Comparison: Traditional vs AI-First
-
-### Traditional Module System (WRONG for AI)
-
+### Traditional Approach (Python, JavaScript, etc.)
 ```python
 # module.py
-def _helper():  # "Private" (hidden from AI)
+def _internal_helper():  # Hidden from outside
     return 42
 
-def public():   # Exported
-    return _helper()
+def public_api():
+    return _internal_helper()
 
-# main.py
-from module import public  # Explicit import
-# AI CANNOT see _helper!
-# AI CANNOT query module structure!
-# AI CANNOT reason about dependencies!
+# client.py
+from module import public_api  # Can't see _internal_helper
 ```
 
-### Guage AI-First Modules (RIGHT for AI)
+**Problems:**
+1. **Information Hiding** - can't see `_internal_helper` implementation
+2. **Selective Visibility** - Import lists restrict what's available
+3. **Namespace Isolation** - Code is fragmented into silos
+4. **Not Queryable** - Can't analyze full program structure
+5. **Not Transformable** - Can't modify "private" functions
+
+### Why This Fails for Ultralanguage
+
+**Guage's Mission:**
+- **Queryable** - CFG/DFG are first-class values you can query
+- **Provable** - Types prove properties at compile time
+- **Transformable** - Code synthesizes/repairs automatically
+- **Assisted** - Compiler helps you write, test, optimize code
+
+**Information hiding breaks all of this!**
+
+---
+
+## Guage's Solution: Module Registry + Provenance
+
+### Principle 1: Everything is Visible (But Tagged)
+
+Instead of hiding code, **tag it with metadata**:
 
 ```scheme
-; math.scm
-(≔ helper (λ (x) (⊗ x #2)))   ; "Internal" but VISIBLE
-(⊙◇ :exports (⌜ [public]))     ; Declare exports
+; Module defines functions with provenance
+(⋘ "stdlib/list.scm")  ; Loads all definitions
 
-(≔ public (λ (x) (helper x)))  ; Uses helper
+; Every symbol now has provenance:
+(⌂⊛ (⌜ map))  ; → Returns source + metadata
+; Metadata includes:
+; - Origin module: "stdlib/list.scm"
+; - Visibility: :public | :internal
+; - Dependencies: (filter, fold-left, ...)
+; - Type signature: (α → β) → [α] → [β]
+```
 
-; main.scm
-(≔ math (⋘ "math.scm"))        ; Load as VALUE
-(⋖ math)                        ; Import exports
+**Key Insight:** "Private" is **documentation**, not **restriction**:
+- can still see and analyze everything
+- Humans get guidance on what's stable API
+- No actual information hiding
 
-; AI can see EVERYTHING:
-(⊙→ math :defs)                 ; → All defs (including helper!)
-(⌂⊛ (⌜ helper))                 ; → "math.scm" (provenance!)
-(⌂⇝ (⌜ public))                 ; → DFG shows helper dependency!
+### Principle 2: Modules as First-Class Values
+
+Modules are **data structures** you can query:
+
+```scheme
+; Create module registry (automatic on load)
+(⋘ "stdlib/list.scm")  ; Adds to registry
+
+; Query loaded modules
+(⌂⊚)  ; → List of all loaded modules
+; Returns: ⟨(⊙ :Module
+;             :name "stdlib/list.scm"
+;             :symbols ⟨:map :filter :fold-left ...⟩
+;             :dependencies ⟨⟩
+;             :loaded-at "2026-01-27T10:30:00")
+;          ...⟩
+
+; Get module for specific symbol
+(⌂⊚ (⌜ map))  ; → "stdlib/list.scm"
+
+; Get all symbols from module
+(⌂⊚ "stdlib/list.scm")  ; → ⟨:map :filter :fold-left ...⟩
+```
+
+### Principle 3: Provenance Tracking
+
+Every definition knows its origin:
+
+```scheme
+; Original ⌂⊛ (get source)
+(⌂⊛ (⌜ map))  ; → Function body only
+
+; Enhanced ⌂⊛ with provenance
+(⌂⊛ (⌜ map))
+; Returns:
+; (⊙ :Definition
+;    :name :map
+;    :source (λ (f) (λ (xs) ...))
+;    :module "stdlib/list.scm"
+;    :line 15
+;    :visibility :public
+;    :dependencies ⟨:fold-left :cons ...⟩
+;    :type "(α → β) → [α] → [β]")
+```
+
+### Principle 4: No Namespace Collisions (By Warning)
+
+Instead of isolation, **warn on conflicts**:
+
+```scheme
+; Load first module
+(⋘ "lib1.scm")  ; Defines `foo`
+
+; Load second module
+(⋘ "lib2.scm")  ; Also defines `foo`
+; ⚠ Warning: Symbol 'foo' redefined
+; → Previous: lib1.scm:10
+; → New: lib2.scm:5
+; → Use (⌂⊚ (⌜ foo)) to see current binding
+
+; Explicitly choose which `foo`
+(≔ lib1-foo (⊙→ (⌂⊚ "lib1.scm") :foo))
+(≔ lib2-foo (⊙→ (⌂⊚ "lib2.scm") :foo))
+```
+
+**Why This Works:**
+- sees both definitions (full transparency)
+- Developer gets warning (not silent override)
+- Explicit disambiguation (no magic)
+- All code visible for analysis
+
+---
+
+## Implementation: Three Phases
+
+### Phase 1: Module Registry (Day 26) - 3 hours
+
+**New Primitive: `⌂⊚` (list/get modules)**
+
+```scheme
+; List all loaded modules
+(⌂⊚)  ; → ⟨(⊙ :Module ...) (⊙ :Module ...) ...⟩
+
+; Get module for symbol
+(⌂⊚ (⌜ map))  ; → "stdlib/list.scm"
+
+; Get symbols from module
+(⌂⊚ "stdlib/list.scm")  ; → ⟨:map :filter ...⟩
+```
+
+**Implementation:**
+1. Add `ModuleRegistry` struct to track loaded modules
+2. Enhance `⋘` to register modules when loaded
+3. Add `⌂⊚` primitive for querying registry
+4. Store module metadata (name, symbols, load time)
+
+**Test Coverage:**
+- Query all modules
+- Query symbol origin
+- Query module symbols
+- Handle unloaded modules
+
+### Phase 2: Enhanced Provenance (Day 27) - 2 hours
+
+**Enhance `⌂⊛` to include module info:**
+
+```scheme
+(⌂⊛ (⌜ map))
+; Returns:
+; (⊙ :Definition
+;    :name :map
+;    :source <lambda>
+;    :module "stdlib/list.scm"
+;    :visibility :public)
+```
+
+**Implementation:**
+1. Extend definition metadata structure
+2. Track module name when loading
+3. Return full metadata from `⌂⊛`
+4. Add visibility hints (documentation only)
+
+### Phase 3: Dependency Tracking (Day 28) - 2 hours
+
+**Automatic dependency graph:**
+
+```scheme
+; Get dependencies
+(⌂≔ (⌜ map))  ; → ⟨:fold-left :cons ...⟩
+
+; Get module dependencies
+(⌂⊚→ "stdlib/list.scm")  ; → ⟨⟩ (no module deps yet)
+
+; Future: Module-level dependencies
+(⋘ "app.scm")  ; Loads stdlib/list.scm automatically
+```
+
+**Implementation:**
+1. Track symbol dependencies when defining functions
+2. Build module dependency graph
+3. Detect circular dependencies (warning, not error)
+4. Enable automatic dependency resolution
+
+---
+
+## Advanced Features (Future)
+
+### 1. Explicit "Exports" (Documentation Only)
+
+```scheme
+; Module file: stdlib/list.scm
+
+; Mark stable API (documentation, not restriction)
+(⊙◇ :public ⟨:map :filter :fold-left :fold-right⟩)
+
+; Everything else is :internal (but still visible!)
+(≔ _list-helper (λ (xs) ...))  ; can still see this
+```
+
+**Key:** `:public` vs `:internal` is **metadata**, not access control.
+
+### 2. Selective Import (Convenience, Not Hiding)
+
+```scheme
+; Bring symbols into scope (doesn't hide others)
+(⋖ "stdlib/list.scm" ⟨:map :filter⟩)
+
+; Short syntax instead of:
+(≔ map (⊙→ (⌂⊚ "stdlib/list.scm") :map))
+(≔ filter (⊙→ (⌂⊚ "stdlib/list.scm") :filter))
+
+; Other symbols still accessible:
+(⊙→ (⌂⊚ "stdlib/list.scm") :fold-left)  ; Works!
+```
+
+**Key:** Import is **convenience**, not **restriction**.
+
+### 3. Conflict Resolution
+
+```scheme
+; Load conflicting modules
+(⋘ "lib1.scm")  ; Defines `foo`
+(⋘ "lib2.scm")  ; Also defines `foo`
+; ⚠ Warning: 'foo' redefined
+
+; Explicit resolution
+(⋖ "lib1.scm" ⟨:foo⟩ :as ⟨:foo1⟩)
+(⋖ "lib2.scm" ⟨:foo⟩ :as ⟨:foo2⟩)
+```
+
+### 4. Module Hot-Swapping
+
+```scheme
+; Reload module (update all references)
+(⇝ "stdlib/list.scm")  ; Reloads and updates
+
+; Swap implementations
+(⇝ "old-impl.scm" "new-impl.scm")  ; Hot code swap
 ```
 
 ---
 
-## Benefits for AI-Assisted Development
+## Comparison: Traditional vs Guage
 
-### 1. Complete Visibility
+| Feature | Traditional | Guage |
+|---------|-------------|-------|
+| **Information Access** | Hidden (private) | Transparent (tagged) |
+| **Imports** | Restrict visibility | Convenience only |
+| **Exports** | Enforce boundaries | Document intent |
+| **Namespace** | Isolated scopes | Single scope + provenance |
+| **Dependencies** | Manual declaration | Automatic tracking |
+| **Conflicts** | Compile error | Warning + resolution |
+| **Analysis** | Limited (can't see private) | Full (everything visible) |
+| **Queryability** | Restricted | Complete |
+| **Transformability** | Blocked | Enabled |
+
+---
+
+## Why This Enables the Ultralanguage Vision
+
+### 1. Assisted Development
 ```scheme
-; AI can see ALL code, not just exports
-; "Is there a function that does X anywhere?"
-(⨳ (⌂⊚) (λ (mod)
-  (∃ (⊙→ mod :defs) (λ (def) (≈⊂ def "sort")))))
+; can see and analyze EVERYTHING:
+(⌂⊚)  ; List all modules
+(⌂⊛ (⌜ map))  ; See full implementation + metadata
+(⌂⟿ (⌜ map))  ; Get CFG (including "private" helpers)
+(⌂⇝ (⌜ map))  ; Get DFG (full data flow)
+
+; No hidden code means:
+; - Better code suggestions
+; - Accurate refactoring
+; - Complete analysis
+; - Full-program optimization
 ```
 
-### 2. Relationship Discovery
+### 2. Cross-Module Analysis
 ```scheme
-; AI can discover: "These two modules use similar patterns"
-(⊙⋈ module1 module2)  ; Joint analysis
+; Load multiple modules
+(⋘ "service1.scm")
+(⋘ "service2.scm")
+
+; Analyze interactions (see METAPROGRAMMING_VISION.md)
+(≔ π₁ (⋘ (⌜ :service1)))
+(≔ π₂ (⋘ (⌜ :service2)))
+(⊙⋈ π₁ π₂)  ; Joint CFG/DFG analysis
+(⊢ (⊙⋈) (¬ deadlock))  ; Prove no deadlock
 ```
 
-### 3. Automatic Refactoring
+### 3. Program Synthesis & Repair
 ```scheme
-; AI can extract common code across modules
-(⊛ (⌜ extract-common) module1 module2)
+; Synthesize implementation from spec
+(≔ spec (⌜ (∀ xs (sorted? (sort xs)))))
+(≔ sort (⊛ spec))  ; Synthesize
+
+; Repair broken function
+(≔ broken-map ...)  ; Buggy implementation
+(⌂⊚ (⌜ broken-map))  ; See module origin
+(≔ fixed-map (⊛ spec ◂ broken-map))  ; Repair
 ```
 
-### 4. Dependency Optimization
+### 4. Time-Travel Debugging
 ```scheme
-; AI can: "You only use 1 function from this module"
-(⊝→ (⌂⟿ :modules) "heavy.scm" :usage)
-; → Suggests: Import only needed function
-```
-
-### 5. Synthesis from Specs
-```scheme
-; AI can generate modules from descriptions
-(⊛ "Create a module with sorting functions"
-   (⌜ :returns-module))
+; Full program trace (including "private" functions)
+(≔ τ (⊙⊳ (main)))
+(⊇ τ (⌜ ⟨t∷42⟩⌝))  ; State at step 42
+(⊇ τ (⌜ ⟨←∷_list-helper⟩⌝))  ; Even "internal" functions visible!
 ```
 
 ---
 
-## Key Primitives
+## Philosophy: Why Transparency Beats Encapsulation
 
-### Current (Day 25)
-| Symbol | Type | Meaning | Status |
-|--------|------|---------|--------|
-| `⋘` | `:path → α` | Load file, return last expression | ✅ DONE |
+### Traditional View (OOP/Modules)
+> "Encapsulation protects implementation details, enables information hiding, prevents misuse."
 
-### Planned (Week 4)
-| Symbol | Type | Meaning | Priority |
-|--------|------|---------|----------|
-| `⋘` (enhanced) | `:path → ⊙Module` | Load as module structure | HIGH |
-| `⋖` | `⊙Module → ∅` | Import module exports | HIGH |
-| `⌂⊚` | `∅ → [⊙Module]` | List all modules | HIGH |
-| `⌂⊚` | `:path → ⊙Module` | Get specific module | HIGH |
-| `⊙◇` | `:exports [symbol] → ∅` | Declare exports (in module file) | MED |
-| `⌂⟿` | `:modules → ⊝Graph` | Module dependency graph | MED |
-| `⊙⊕` | `⊙Module → ⊙Module → ⊙Module` | Merge modules | LOW |
-| `⊙⊲` | `⊙Module → (def → 𝔹) → ⊙Module` | Filter module defs | LOW |
+**Problem:** Information hiding blocks analysis, transformation, and reasoning.
 
----
+### Ultralanguage View (Guage)
+> "Transparency enables analysis, transformation, and assistance. Document intent without hiding information."
 
-## Examples
+**Benefits:**
+- **Full visibility** → Better analysis
+- **Metadata** → Guide without restricting
+- **Provenance** → Know where everything came from
+- **First-class** → Modules are queryable values
+- **friendly** → See full context for reasoning
 
-### Basic Usage
-```scheme
-; Load module as value
-(≔ list-mod (⋘ "stdlib/list.scm"))
+### The Key Insight
 
-; Inspect structure
-(⊙→ list-mod :path)     ; → "stdlib/list.scm"
-(⊙→ list-mod :exports)  ; → [map filter fold ...]
+**In traditional languages:** Compiler is a black box, code is hidden, analysis is limited.
 
-; Import to use
-(⋖ list-mod)
-(map (λ (x) (⊗ x #2)) (list #1 #2 #3))  ; Works!
-```
+**In Guage:** Compiler is a library, code is data, everything is queryable.
 
-### AI Query Examples
-```scheme
-; "What modules are loaded?"
-(⌂⊚)  ; → [⊙Module(...) ⊙Module(...) ...]
-
-; "Where is 'map' defined?"
-(⌂⊛ (⌜ map))  ; → "stdlib/list.scm"
-
-; "What functions use 'fold'?"
-(⨳ (⌂⊚) (λ (mod)
-  (⊲ (⊙→ mod :defs) (λ (def)
-    (∈ (⌂⇝ def) (⌜ fold))))))
-
-; "What's the dependency order?"
-(⊝⊳ (⌂⟿ :modules))  ; Topological sort
-
-; "Unused dependencies?"
-(⊲ (⌂⊚) (λ (mod)
-  (≡ (⊝→ (⌂⟿ :modules) (⊙→ mod :path) :usage-count) #0)))
-```
-
-### Module Composition
-```scheme
-; Combine two modules
-(≔ extended-math (⊙⊕
-  (⋘ "stdlib/math.scm")
-  (⋘ "stdlib/trig.scm")))
-
-; Extract subset
-(≔ sorting-only (⊙⊲
-  (⋘ "stdlib/list.scm")
-  (λ (def) (≈⊂ (≈ def) "sort"))))
-
-; Transform entire module (optimization)
-(≔ optimized-list (◎ (⋘ "stdlib/list.scm")))
-```
+This is what makes Guage an **ultralanguage**.
 
 ---
 
-## Why This is Revolutionary
+## Next Steps
 
-**Traditional languages:**
-- Modules = namespace barriers (information hiding)
-- AI is blind to internal structure
-- Imports are declarative syntax (not data)
-- Static composition only
+**Immediate (Week 4):**
+1. Implement module registry (Day 26)
+2. Enhance provenance tracking (Day 27)
+3. Add dependency tracking (Day 28)
+4. Write comprehensive tests (Day 29)
 
-**Guage ultralanguage:**
-- Modules = first-class queryable values
-- AI sees ALL code (no hiding)
-- Imports are runtime operations (transformable)
-- Dynamic composition, synthesis, optimization
+**Future (Phase 4+):**
+1. Explicit exports (documentation)
+2. Selective imports (convenience)
+3. Conflict resolution
+4. Hot code swapping
+5. Cross-module optimization
 
-**This enables:**
-1. **AI code understanding** - Can reason about entire codebase
-2. **Automatic refactoring** - AI can reorganize modules
-3. **Dependency optimization** - AI suggests unused imports
-4. **Cross-module analysis** - Security, performance, correctness
-5. **Program synthesis** - AI generates modules from specs
-6. **Hot code swapping** - Replace modules at runtime
-7. **Time-travel debugging** - Inspect module state historically
+**Validation:**
+- Does this enable reasoning? ✅
+- Does this maintain queryability? ✅
+- Does this support transformation? ✅
+- Does this align with ultralanguage vision? ✅
 
 ---
 
-## Implementation Timeline
+## Summary
 
-**Week 4 (Days 26-28): Core Module System**
-- Day 26: Module as value structure (2h)
-- Day 27: Module registry + ⋖ import (3h)
-- Day 28: Provenance tracking (2h)
+**Traditional modules:** Hide information, restrict access, create silos.
 
-**Week 5 (Days 29-31): Advanced Features**
-- Day 29: Dependency graph (3h)
-- Day 30: Module composition (⊙⊕, ⊙⊲) (2h)
-- Day 31: Comprehensive tests (3h)
+**Guage modules:** Transparent by design, first-class values, fully queryable.
 
-**Total: ~15 hours over 6 days**
+This isn't just "different" - it's **fundamentally necessary** for an ultralanguage where can see, analyze, and transform all code.
+
+**The ultralanguage promise:** Everything is a value. Everything is queryable. Everything is transformable.
+
+Traditional module systems **break this promise**. Guage's transparent module system **keeps it**.
 
 ---
 
-## Success Metrics
-
-**Must Have:**
-- ✅ Module structure is queryable
-- ✅ All code visible (no information hiding)
-- ✅ Provenance tracking works
-- ✅ Dependency graph accessible
-- ✅ AI can reason about module relationships
-
-**Should Have:**
-- ✅ Module composition operations
-- ✅ Dynamic import/export
-- ✅ Circular dependency detection
-- ✅ Module caching
-
-**Future:**
-- ✅ Hot code swapping
-- ✅ Module synthesis
-- ✅ Cross-program analysis
-- ✅ Automatic optimization
-
----
-
-**This is what makes Guage an ULTRALANGUAGE for AI.**
-
-Not "modules with imports", but **modules as queryable, transformable, first-class values** that AI can reason about, compose, and synthesize.
-
+**Next:** Implement module registry primitive (⌂⊚) - See MODULE_SYSTEM_INCREMENTAL.md

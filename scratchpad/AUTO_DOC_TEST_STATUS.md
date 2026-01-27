@@ -154,7 +154,7 @@ Cell* generate_tests_from_type(const char* name, TypeExpr* type);
 ⟩⌝))
 ```
 
-**AI-Assisted Test Generation:**
+**Assisted Test Generation:**
 ```scheme
 ; Use LLM to generate tests from documentation
 (⌂⊨ (⌜ ∇) :use-llm)

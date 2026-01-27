@@ -127,7 +127,7 @@ These features are **NATIVE, FIRST-CLASS CITIZENS** of Guage:
 - ✅ Code is data you transform
 - ✅ Everything is inspectable/modifiable
 
-**Result:** AI-assisted development where language helps you write, prove, test, optimize, and deploy code.
+**Result:** assisted development where language helps you write, prove, test, optimize, and deploy code.
 
 ---
 

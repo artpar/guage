@@ -6,7 +6,7 @@ Purpose: Complete catalog of all symbols and their meanings
 ---
 
 # Guage Symbolic Vocabulary
-## Complete Symbol System for Pure AI-First Language
+## Complete Symbol System for Pure First Language
 
 **Principle:** NO ENGLISH. EVER. Not in core, not in stdlib, not in documentation.
 **Why:** AI doesn't think in English. Symbols are universal, unambiguous, language-independent.

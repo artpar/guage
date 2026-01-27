@@ -191,7 +191,7 @@ This infrastructure enables:
 - Property-based testing (random test generation)
 - Mutation testing (verify test quality)
 - Coverage analysis (identify gaps)
-- Test synthesis (AI-generated tests)
+- Test synthesis (generated tests)
 
 ## Risks and Mitigation
 

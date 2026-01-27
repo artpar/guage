@@ -1,52 +1,99 @@
-/* module.h - AI-first module registry system
- *
- * Tracks loaded modules with full metadata for AI queries.
- * Maintains backwards compatibility - ⋘ still works the same way.
- *
- * Key principles:
- * - Everything queryable (no information hiding)
- * - Provenance tracking (where did symbols come from?)
- * - Transparent by design (AI can see all code)
- */
-
 #ifndef MODULE_H
 #define MODULE_H
 
 #include "cell.h"
+#include <time.h>
 
-/* Module metadata structure */
+/**
+ * Module Registry
+ *
+ * Transparent module system for first development:
+ * - All modules queryable as first-class values
+ * - Provenance tracking (know where symbols came from)
+ * - No information hiding (everything visible for analysis)
+ * - Module metadata accessible at runtime
+ *
+ * See docs/planning/AI_FIRST_MODULES.md for design philosophy.
+ */
+
+// Module registry entry
+typedef struct ModuleEntry {
+    char* name;              // Module file path
+    Cell* symbols;           // List of defined symbol names (as keywords)
+    time_t loaded_at;        // When loaded (Unix timestamp)
+    size_t load_order;       // Load sequence (1, 2, 3...) - Day 27
+    struct ModuleEntry* next;// Linked list
+} ModuleEntry;
+
+// Global module registry
 typedef struct {
-    char* path;              /* File path */
-    Cell* definitions;       /* List of (symbol . value) pairs */
-    Cell* exports;           /* List of exported symbols (or NULL for all) */
-    Cell* dependencies;      /* List of dependency paths */
-} ModuleInfo;
+    ModuleEntry* head;
+    size_t count;
+} ModuleRegistry;
 
-/* Initialize module registry */
-void module_init(void);
+/**
+ * Initialize module registry (call at startup)
+ */
+void module_registry_init(void);
 
-/* Register a loaded module */
-void module_register(const char* path, Cell* definitions);
+/**
+ * Register a new module (called by ⋘ when loading file)
+ * If module already registered, does nothing.
+ */
+void module_registry_add(const char* module_name);
 
-/* Query all loaded modules */
-/* Returns list of paths */
-Cell* module_list_all(void);
+/**
+ * Add symbol to module's symbol list
+ * Called by ≔ (define) during module loading
+ */
+void module_registry_add_symbol(const char* module_name, const char* symbol);
 
-/* Get module metadata by path */
-/* Returns Module structure or error */
-Cell* module_get(const char* path);
+/**
+ * List all loaded modules
+ * Returns: List of module names as strings
+ */
+Cell* module_registry_list_modules(void);
 
-/* Find which module defined a symbol */
-/* Returns path string or NULL */
-const char* module_find_symbol(const char* symbol);
+/**
+ * Find which module defines a symbol
+ * Returns: Module name (string) or NULL if not found
+ */
+const char* module_registry_find_symbol(const char* symbol);
 
-/* Set exports for module (called by ⊙◇ primitive) */
-void module_set_exports(const char* path, Cell* exports);
+/**
+ * Get all symbols defined by a module
+ * Returns: List of symbols (as keywords) or nil if module not found
+ */
+Cell* module_registry_list_symbols(const char* module_name);
 
-/* Set dependencies for module */
-void module_set_dependencies(const char* path, Cell* dependencies);
+/**
+ * Check if module is loaded
+ * Returns: true if module exists in registry
+ */
+int module_registry_has_module(const char* module_name);
 
-/* Cleanup module registry */
-void module_cleanup(void);
+/**
+ * Get module entry by name (for accessing metadata)
+ * Returns: ModuleEntry pointer or NULL if not found
+ * Day 27: Needed for enhanced provenance tracking
+ */
+ModuleEntry* module_registry_get_entry(const char* module_name);
 
-#endif /* MODULE_H */
+/**
+ * Free all module registry memory (call at shutdown)
+ */
+void module_registry_free(void);
+
+/**
+ * Set current loading module (for tracking symbol definitions)
+ * Pass NULL to clear.
+ */
+void module_set_current_loading(const char* module_name);
+
+/**
+ * Get current loading module name
+ * Returns: Module name or NULL if not loading
+ */
+const char* module_get_current_loading(void);
+
+#endif // MODULE_H

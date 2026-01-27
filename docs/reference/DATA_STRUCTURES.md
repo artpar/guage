@@ -785,7 +785,7 @@ void cell_release(Cell* c) {
 3. ✅ **Compiler introspection** - Query CFG/DFG/Call/Dep graphs
 4. ✅ **Meta-analysis** - Optimize using graph queries
 5. ✅ **Type safety** - Structure types enforced
-6. ✅ **AI understanding** - Structures are explicit and queryable
+6. ✅ **understanding** - Structures are explicit and queryable
 
 **Implementation timeline:**
 - Week 1: Cell extensions + structure types
@@ -798,4 +798,4 @@ void cell_release(Cell* c) {
 
 ---
 
-**Philosophy:** If it exists in the program, it should be queryable. Data structures aren't just implementation details - they're first-class values that AI and programmers can reason about.
+**Philosophy:** If it exists in the program, it should be queryable. Data structures aren't just implementation details - they're first-class values that and programmers can reason about.

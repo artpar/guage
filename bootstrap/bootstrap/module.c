@@ -1,179 +1,208 @@
-/* module.c - AI-first module registry implementation */
-
 #include "module.h"
 #include "cell.h"
-#include <stdlib.h>
 #include <string.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <time.h>
 
-/* Global module registry */
-static ModuleInfo* modules = NULL;
-static int module_count = 0;
-static int module_capacity = 0;
+// Global module registry
+static ModuleRegistry registry = {NULL, 0};
 
-/* Initialize module registry */
-void module_init(void) {
-    module_capacity = 16;
-    modules = (ModuleInfo*)malloc(sizeof(ModuleInfo) * module_capacity);
-    module_count = 0;
+// Current loading module (for tracking symbol definitions)
+static const char* current_loading_module = NULL;
+
+// Load order counter (increments with each module load) - Day 27
+static size_t load_order_counter = 0;
+
+void module_registry_init(void) {
+    registry.head = NULL;
+    registry.count = 0;
 }
 
-/* Register a loaded module */
-void module_register(const char* path, Cell* definitions) {
-    /* Check if module already registered (reload case) */
-    for (int i = 0; i < module_count; i++) {
-        if (strcmp(modules[i].path, path) == 0) {
-            /* Update existing entry */
-            cell_release(modules[i].definitions);
-            cell_retain(definitions);
-            modules[i].definitions = definitions;
+void module_registry_add(const char* module_name) {
+    if (!module_name) return;
+
+    // Check if already exists
+    ModuleEntry* curr = registry.head;
+    while (curr) {
+        if (strcmp(curr->name, module_name) == 0) {
+            return;  // Already registered
+        }
+        curr = curr->next;
+    }
+
+    // Create new entry
+    ModuleEntry* entry = malloc(sizeof(ModuleEntry));
+    if (!entry) {
+        fprintf(stderr, "Error: Failed to allocate module entry\n");
+        return;
+    }
+
+    entry->name = strdup(module_name);
+    if (!entry->name) {
+        fprintf(stderr, "Error: Failed to allocate module name\n");
+        free(entry);
+        return;
+    }
+
+    entry->symbols = cell_nil();
+    cell_retain(entry->symbols);
+    entry->loaded_at = time(NULL);
+    entry->load_order = ++load_order_counter;  // Day 27: Track load sequence
+    entry->next = registry.head;
+    registry.head = entry;
+    registry.count++;
+}
+
+void module_registry_add_symbol(const char* module_name, const char* symbol) {
+    if (!module_name || !symbol) return;
+
+    // Find module
+    ModuleEntry* entry = registry.head;
+    while (entry) {
+        if (strcmp(entry->name, module_name) == 0) {
+            // Check if symbol already in list
+            Cell* curr = entry->symbols;
+            while (curr && !cell_is_nil(curr)) {
+                Cell* sym = cell_car(curr);
+                if (cell_is_symbol(sym) &&
+                    strcmp(cell_get_symbol(sym), symbol) == 0) {
+                    // Already in list
+                    return;
+                }
+                curr = cell_cdr(curr);
+            }
+
+            // Add symbol to front of list
+            Cell* new_sym = cell_symbol(symbol);
+            Cell* new_list = cell_cons(new_sym, entry->symbols);
+            cell_release(new_sym);
+            cell_release(entry->symbols);
+            entry->symbols = new_list;
+            cell_retain(entry->symbols);
             return;
         }
+        entry = entry->next;
     }
 
-    /* Expand capacity if needed */
-    if (module_count >= module_capacity) {
-        module_capacity *= 2;
-        modules = (ModuleInfo*)realloc(modules, sizeof(ModuleInfo) * module_capacity);
-    }
-
-    /* Add new module */
-    modules[module_count].path = strdup(path);
-    cell_retain(definitions);
-    modules[module_count].definitions = definitions;
-    modules[module_count].exports = NULL;
-    modules[module_count].dependencies = NULL;
-    module_count++;
+    // Module not found - this can happen if symbol defined before module registered
+    // Just ignore it (module will be added later by ⋘)
 }
 
-/* Query all loaded modules - returns list of paths */
-Cell* module_list_all(void) {
+Cell* module_registry_list_modules(void) {
+    // Return list of module names (as strings, not symbols)
     Cell* result = cell_nil();
 
-    /* Build list in reverse order (will reverse at end) */
-    for (int i = module_count - 1; i >= 0; i--) {
-        Cell* path_str = cell_string(modules[i].path);
-        result = cell_cons(path_str, result);
+    // Build list in reverse order (most recent first)
+    ModuleEntry* entry = registry.head;
+    while (entry) {
+        Cell* name_cell = cell_string(entry->name);
+        Cell* new_result = cell_cons(name_cell, result);
+        cell_release(name_cell);
+        cell_release(result);
+        result = new_result;
+
+        entry = entry->next;
     }
 
     return result;
 }
 
-/* Get module metadata by path */
-Cell* module_get(const char* path) {
-    /* Find module */
-    for (int i = 0; i < module_count; i++) {
-        if (strcmp(modules[i].path, path) == 0) {
-            /* Build Module structure */
-            /* Structure: ⊙ :Module :path :defs :exports :deps */
+const char* module_registry_find_symbol(const char* symbol) {
+    if (!symbol) return NULL;
 
-            /* Build fields list */
-            Cell* path_field = cell_string(modules[i].path);
-
-            Cell* defs_field = modules[i].definitions;
-            cell_retain(defs_field);
-
-            Cell* exports_field = modules[i].exports ? modules[i].exports : cell_nil();
-            cell_retain(exports_field);
-
-            Cell* deps_field = modules[i].dependencies ? modules[i].dependencies : cell_nil();
-            cell_retain(deps_field);
-
-            /* Create structure using ⊙ pattern */
-            /* For now, return a simple structure with fields */
-            /* Type tag */
-            Cell* type_tag = cell_symbol("Module");
-
-            /* Build field list: (path defs exports deps) */
-            Cell* field_list = cell_nil();
-            field_list = cell_cons(deps_field, field_list);
-            field_list = cell_cons(exports_field, field_list);
-            field_list = cell_cons(defs_field, field_list);
-            field_list = cell_cons(path_field, field_list);
-
-            /* Create structure: (Module . (path defs exports deps)) */
-            Cell* structure = cell_cons(type_tag, field_list);
-
-            /* Mark as structure (using existing cell_struct infrastructure if available) */
-            /* For now, just return the cons cell structure */
-            return structure;
-        }
+    // Normalize symbol name - strip leading colon if present
+    // Keywords like :square should match stored names like square
+    const char* search_name = symbol;
+    if (symbol[0] == ':') {
+        search_name = symbol + 1;  // Skip the colon
     }
 
-    /* Not found */
-    return cell_error(":module-not-found", cell_string(path));
-}
-
-/* Find which module defined a symbol */
-const char* module_find_symbol(const char* symbol) {
-    /* Search through all modules */
-    for (int i = 0; i < module_count; i++) {
-        /* Check if symbol in module's definitions */
-        Cell* defs = modules[i].definitions;
-
-        /* Walk through definitions list */
-        while (defs && cell_is_pair(defs)) {
-            Cell* def = cell_car(defs);
-
-            /* Each def is (symbol . value) */
-            if (cell_is_pair(def)) {
-                Cell* sym = cell_car(def);
-                if (cell_is_symbol(sym)) {
-                    const char* sym_name = cell_get_symbol(sym);
-                    if (strcmp(sym_name, symbol) == 0) {
-                        return modules[i].path;
-                    }
+    // Search all modules for symbol
+    // Return first match (most recently loaded)
+    ModuleEntry* entry = registry.head;
+    while (entry) {
+        Cell* curr = entry->symbols;
+        while (curr && !cell_is_nil(curr)) {
+            Cell* sym = cell_car(curr);
+            if (cell_is_symbol(sym)) {
+                const char* stored_name = cell_get_symbol(sym);
+                // Also normalize stored name if it has a colon
+                if (stored_name[0] == ':') {
+                    stored_name++;
+                }
+                if (strcmp(stored_name, search_name) == 0) {
+                    return entry->name;
                 }
             }
-
-            defs = cell_cdr(defs);
+            curr = cell_cdr(curr);
         }
+        entry = entry->next;
     }
 
-    return NULL;  /* Not found */
+    return NULL;  // Not found
 }
 
-/* Set exports for module */
-void module_set_exports(const char* path, Cell* exports) {
-    for (int i = 0; i < module_count; i++) {
-        if (strcmp(modules[i].path, path) == 0) {
-            if (modules[i].exports) {
-                cell_release(modules[i].exports);
-            }
-            cell_retain(exports);
-            modules[i].exports = exports;
-            return;
+Cell* module_registry_list_symbols(const char* module_name) {
+    if (!module_name) return cell_nil();
+
+    // Find module and return its symbols
+    ModuleEntry* entry = registry.head;
+    while (entry) {
+        if (strcmp(entry->name, module_name) == 0) {
+            cell_retain(entry->symbols);
+            return entry->symbols;
         }
+        entry = entry->next;
     }
+
+    // Module not found
+    return cell_nil();
 }
 
-/* Set dependencies for module */
-void module_set_dependencies(const char* path, Cell* dependencies) {
-    for (int i = 0; i < module_count; i++) {
-        if (strcmp(modules[i].path, path) == 0) {
-            if (modules[i].dependencies) {
-                cell_release(modules[i].dependencies);
-            }
-            cell_retain(dependencies);
-            modules[i].dependencies = dependencies;
-            return;
+int module_registry_has_module(const char* module_name) {
+    if (!module_name) return 0;
+
+    ModuleEntry* entry = registry.head;
+    while (entry) {
+        if (strcmp(entry->name, module_name) == 0) {
+            return 1;
         }
+        entry = entry->next;
     }
+    return 0;
 }
 
-/* Cleanup module registry */
-void module_cleanup(void) {
-    for (int i = 0; i < module_count; i++) {
-        free(modules[i].path);
-        cell_release(modules[i].definitions);
-        if (modules[i].exports) {
-            cell_release(modules[i].exports);
+ModuleEntry* module_registry_get_entry(const char* module_name) {
+    if (!module_name) return NULL;
+
+    ModuleEntry* entry = registry.head;
+    while (entry) {
+        if (strcmp(entry->name, module_name) == 0) {
+            return entry;  // Day 27: Return entry for metadata access
         }
-        if (modules[i].dependencies) {
-            cell_release(modules[i].dependencies);
-        }
+        entry = entry->next;
     }
-    free(modules);
-    modules = NULL;
-    module_count = 0;
-    module_capacity = 0;
+    return NULL;
+}
+
+void module_registry_free(void) {
+    ModuleEntry* entry = registry.head;
+    while (entry) {
+        ModuleEntry* next = entry->next;
+        free(entry->name);
+        cell_release(entry->symbols);
+        free(entry);
+        entry = next;
+    }
+    registry.head = NULL;
+    registry.count = 0;
+}
+
+void module_set_current_loading(const char* module_name) {
+    current_loading_module = module_name;
+}
+
+const char* module_get_current_loading(void) {
+    return current_loading_module;
 }

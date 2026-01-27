@@ -5,7 +5,9 @@
 #include "pattern.h"
 #include "type.h"
 #include "testgen.h"
+#include "module.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <assert.h>
 #include <math.h>
 #include <string.h>
@@ -1264,6 +1266,505 @@ Cell* prim_graph_is(Cell* args) {
     return cell_bool(value->data.graph.graph_type == GRAPH_GENERIC);
 }
 
+/* String Operations */
+
+/* ≈ - Convert value to string */
+Cell* prim_str(Cell* args) {
+    Cell* value = arg1(args);
+    char buffer[256];
+
+    if (cell_is_number(value)) {
+        double num = cell_get_number(value);
+        snprintf(buffer, sizeof(buffer), "%.10g", num);
+        return cell_string(buffer);
+    } else if (cell_is_bool(value)) {
+        return cell_string(cell_get_bool(value) ? "#t" : "#f");
+    } else if (cell_is_symbol(value)) {
+        const char* sym = cell_get_symbol(value);
+        return cell_string(sym);
+    } else if (cell_is_string(value)) {
+        cell_retain(value);  /* Already a string */
+        return value;
+    } else if (cell_is_nil(value)) {
+        return cell_string("∅");
+    } else {
+        return cell_error("≈ cannot convert type to string", value);
+    }
+}
+
+/* ≈⊕ - Concatenate two strings */
+Cell* prim_str_concat(Cell* args) {
+    Cell* str1 = arg1(args);
+    Cell* str2 = arg2(args);
+
+    if (!cell_is_string(str1) || !cell_is_string(str2)) {
+        return cell_error("≈⊕ requires two strings", str1);
+    }
+
+    const char* s1 = cell_get_string(str1);
+    const char* s2 = cell_get_string(str2);
+
+    size_t len = strlen(s1) + strlen(s2) + 1;
+    char* result = (char*)malloc(len);
+    strcpy(result, s1);
+    strcat(result, s2);
+
+    Cell* ret = cell_string(result);
+    free(result);  /* cell_string strdup's */
+    return ret;
+}
+
+/* ≈# - String length */
+Cell* prim_str_length(Cell* args) {
+    Cell* str = arg1(args);
+    assert(cell_is_string(str));
+    return cell_number((double)strlen(cell_get_string(str)));
+}
+
+/* ≈→ - Character at index (returns symbol) */
+Cell* prim_str_ref(Cell* args) {
+    Cell* str = arg1(args);
+    Cell* idx = arg2(args);
+
+    assert(cell_is_string(str) && cell_is_number(idx));
+
+    const char* s = cell_get_string(str);
+    int i = (int)cell_get_number(idx);
+    int len = strlen(s);
+
+    if (i < 0 || i >= len) {
+        return cell_error("≈→ index out of bounds", idx);
+    }
+
+    char ch[2] = {s[i], '\0'};
+    return cell_symbol(ch);  /* Return single-char symbol */
+}
+
+/* ≈⊂ - Substring (start, end) */
+Cell* prim_str_slice(Cell* args) {
+    Cell* str = arg1(args);
+    Cell* start_cell = arg2(args);
+    Cell* end_cell = arg3(args);
+
+    assert(cell_is_string(str) && cell_is_number(start_cell) && cell_is_number(end_cell));
+
+    const char* s = cell_get_string(str);
+    int len = strlen(s);
+    int start = (int)cell_get_number(start_cell);
+    int end = (int)cell_get_number(end_cell);
+
+    /* Bounds checking */
+    if (start < 0) start = 0;
+    if (end > len) end = len;
+    if (start > end) start = end;
+
+    int slice_len = end - start;
+    char* result = (char*)malloc(slice_len + 1);
+    strncpy(result, s + start, slice_len);
+    result[slice_len] = '\0';
+
+    Cell* ret = cell_string(result);
+    free(result);
+    return ret;
+}
+
+/* ≈? - Is string? */
+Cell* prim_is_string(Cell* args) {
+    return cell_bool(cell_is_string(arg1(args)));
+}
+
+/* ≈∅? - Is empty string? */
+Cell* prim_str_empty(Cell* args) {
+    Cell* str = arg1(args);
+    if (!cell_is_string(str)) {
+        return cell_bool(false);
+    }
+    return cell_bool(strlen(cell_get_string(str)) == 0);
+}
+
+/* ≈≡ - String equality */
+Cell* prim_str_equal(Cell* args) {
+    Cell* str1 = arg1(args);
+    Cell* str2 = arg2(args);
+
+    if (!cell_is_string(str1) || !cell_is_string(str2)) {
+        return cell_bool(false);
+    }
+
+    return cell_bool(strcmp(cell_get_string(str1), cell_get_string(str2)) == 0);
+}
+
+/* ≈< - String ordering */
+Cell* prim_str_less(Cell* args) {
+    Cell* str1 = arg1(args);
+    Cell* str2 = arg2(args);
+
+    assert(cell_is_string(str1) && cell_is_string(str2));
+
+    return cell_bool(strcmp(cell_get_string(str1), cell_get_string(str2)) < 0);
+}
+
+/* ============ I/O Primitives ============ */
+
+/* ≋ - Print value to stdout with newline */
+Cell* prim_print(Cell* args) {
+    Cell* value = arg1(args);
+
+    if (cell_is_string(value)) {
+        printf("%s\n", cell_get_string(value));
+    } else if (cell_is_number(value)) {
+        printf("%.10g\n", cell_get_number(value));
+    } else if (cell_is_bool(value)) {
+        printf("%s\n", cell_get_bool(value) ? "#t" : "#f");
+    } else if (cell_is_symbol(value)) {
+        printf("%s\n", cell_get_symbol(value));
+    } else if (cell_is_nil(value)) {
+        printf("∅\n");
+    } else {
+        printf("<value>\n");
+    }
+
+    fflush(stdout);
+    cell_retain(value);  /* Return the value */
+    return value;
+}
+
+/* ≋≈ - Print string to stdout without newline */
+Cell* prim_print_str(Cell* args) {
+    Cell* str = arg1(args);
+
+    if (!cell_is_string(str)) {
+        return cell_error("≋≈ requires a string", str);
+    }
+
+    printf("%s", cell_get_string(str));
+    fflush(stdout);
+
+    cell_retain(str);
+    return str;
+}
+
+/* ≋← - Read line from stdin */
+Cell* prim_read_line(Cell* args) {
+    char buffer[4096];
+
+    if (fgets(buffer, sizeof(buffer), stdin) == NULL) {
+        /* EOF or error */
+        return cell_error(":read-error", cell_nil());
+    }
+
+    /* Remove trailing newline */
+    size_t len = strlen(buffer);
+    if (len > 0 && buffer[len - 1] == '\n') {
+        buffer[len - 1] = '\0';
+    }
+
+    return cell_string(buffer);
+}
+
+/* ≋⊳ - Read entire file as string */
+Cell* prim_read_file(Cell* args) {
+    Cell* path = arg1(args);
+
+    if (!cell_is_string(path)) {
+        return cell_error("≋⊳ requires a string path", path);
+    }
+
+    const char* filename = cell_get_string(path);
+    FILE* file = fopen(filename, "r");
+
+    if (!file) {
+        return cell_error(":file-not-found", path);
+    }
+
+    /* Get file size */
+    fseek(file, 0, SEEK_END);
+    long file_size = ftell(file);
+    fseek(file, 0, SEEK_SET);
+
+    /* Allocate buffer */
+    char* buffer = (char*)malloc(file_size + 1);
+    if (!buffer) {
+        fclose(file);
+        return cell_error(":out-of-memory", path);
+    }
+
+    /* Read entire file */
+    size_t bytes_read = fread(buffer, 1, file_size, file);
+    buffer[bytes_read] = '\0';
+
+    fclose(file);
+
+    Cell* result = cell_string(buffer);
+    free(buffer);
+    return result;
+}
+
+/* ≋⊲ - Write string to file (overwrites) */
+Cell* prim_write_file(Cell* args) {
+    Cell* path = arg1(args);
+    Cell* content = arg2(args);
+
+    if (!cell_is_string(path)) {
+        return cell_error("≋⊲ requires string path", path);
+    }
+
+    if (!cell_is_string(content)) {
+        return cell_error("≋⊲ requires string content", content);
+    }
+
+    const char* filename = cell_get_string(path);
+    const char* data = cell_get_string(content);
+
+    FILE* file = fopen(filename, "w");
+    if (!file) {
+        return cell_error(":file-write-error", path);
+    }
+
+    fputs(data, file);
+    fclose(file);
+
+    cell_retain(path);  /* Return path */
+    return path;
+}
+
+/* ≋⊕ - Append string to file */
+Cell* prim_append_file(Cell* args) {
+    Cell* path = arg1(args);
+    Cell* content = arg2(args);
+
+    if (!cell_is_string(path)) {
+        return cell_error("≋⊕ requires string path", path);
+    }
+
+    if (!cell_is_string(content)) {
+        return cell_error("≋⊕ requires string content", content);
+    }
+
+    const char* filename = cell_get_string(path);
+    const char* data = cell_get_string(content);
+
+    FILE* file = fopen(filename, "a");
+    if (!file) {
+        return cell_error(":file-append-error", path);
+    }
+
+    fputs(data, file);
+    fclose(file);
+
+    cell_retain(path);  /* Return path */
+    return path;
+}
+
+/* ≋? - Check if file exists */
+Cell* prim_file_exists(Cell* args) {
+    Cell* path = arg1(args);
+
+    if (!cell_is_string(path)) {
+        return cell_bool(false);
+    }
+
+    const char* filename = cell_get_string(path);
+    FILE* file = fopen(filename, "r");
+
+    if (file) {
+        fclose(file);
+        return cell_bool(true);
+    }
+
+    return cell_bool(false);
+}
+
+/* ≋∅? - Check if file is empty */
+Cell* prim_file_empty(Cell* args) {
+    Cell* path = arg1(args);
+
+    if (!cell_is_string(path)) {
+        return cell_bool(false);
+    }
+
+    const char* filename = cell_get_string(path);
+    FILE* file = fopen(filename, "r");
+
+    if (!file) {
+        return cell_bool(false);  /* File doesn't exist = not empty */
+    }
+
+    /* Check file size */
+    fseek(file, 0, SEEK_END);
+    long size = ftell(file);
+    fclose(file);
+
+    return cell_bool(size == 0);
+}
+
+/* Module System */
+
+/* Parser struct from main.c */
+typedef struct {
+    const char* input;
+    int pos;
+} LoadParser;
+
+/* Forward declarations from main.c */
+extern Cell* parse(const char* input);
+
+/* Helper: skip whitespace and comments */
+static void load_skip_whitespace(LoadParser* p) {
+    while (1) {
+        /* Skip whitespace */
+        while (p->input[p->pos] == ' ' ||
+               p->input[p->pos] == '\t' ||
+               p->input[p->pos] == '\n' ||
+               p->input[p->pos] == '\r') {
+            p->pos++;
+        }
+
+        /* Skip comments */
+        if (p->input[p->pos] == ';') {
+            while (p->input[p->pos] != '\0' &&
+                   p->input[p->pos] != '\n') {
+                p->pos++;
+            }
+            continue;
+        }
+
+        break;
+    }
+}
+
+/* ⋘ - Load and evaluate a file */
+Cell* prim_load(Cell* args) {
+    Cell* path = arg1(args);
+
+    if (!cell_is_string(path)) {
+        return cell_error("⋘ requires a string path", path);
+    }
+
+    const char* filename = cell_get_string(path);
+
+    /* Read file */
+    FILE* file = fopen(filename, "r");
+    if (!file) {
+        return cell_error(":file-not-found", path);
+    }
+
+    fseek(file, 0, SEEK_END);
+    long file_size = ftell(file);
+    fseek(file, 0, SEEK_SET);
+
+    char* buffer = (char*)malloc(file_size + 1);
+    if (!buffer) {
+        fclose(file);
+        return cell_error(":out-of-memory", path);
+    }
+
+    size_t bytes_read = fread(buffer, 1, file_size, file);
+    buffer[bytes_read] = '\0';
+    fclose(file);
+
+    /* Register module and set as currently loading */
+    module_registry_add(filename);
+    module_set_current_loading(filename);
+
+    /* Get current context */
+    EvalContext* ctx = eval_get_current_context();
+
+    /* Parse and evaluate all expressions in the file */
+    LoadParser parser = {buffer, 0};
+    Cell* result = cell_nil();
+    int expression_count = 0;
+
+    while (parser.input[parser.pos] != '\0') {
+        load_skip_whitespace(&parser);
+
+        if (parser.input[parser.pos] == '\0') {
+            break;
+        }
+
+        /* Parse one expression */
+        Cell* expr = parse(parser.input + parser.pos);
+
+        if (!expr) {
+            module_set_current_loading(NULL);
+            free(buffer);
+            return cell_error(":parse-error", path);
+        }
+
+        /* Evaluate expression */
+        if (expression_count > 0) {
+            cell_release(result);
+        }
+        result = eval(ctx, expr);
+        cell_release(expr);
+
+        if (cell_is_error(result)) {
+            module_set_current_loading(NULL);
+            free(buffer);
+            return result;
+        }
+
+        expression_count++;
+
+        /* Advance parser position - skip past the expression we just parsed
+         * by counting balanced parentheses */
+        int start_pos = parser.pos;
+        int depth = 0;
+        int in_string = 0;
+        int started_with_paren = (parser.input[parser.pos] == '(');
+
+        if (started_with_paren) {
+            /* For S-expressions, count balanced parens */
+            while (parser.input[parser.pos] != '\0') {
+                char c = parser.input[parser.pos];
+
+                if (c == '"' && (parser.pos == 0 || parser.input[parser.pos - 1] != '\\')) {
+                    in_string = !in_string;
+                    parser.pos++;
+                    continue;
+                }
+
+                if (!in_string) {
+                    if (c == '(') {
+                        depth++;
+                    } else if (c == ')') {
+                        depth--;
+                        if (depth == 0) {
+                            parser.pos++;
+                            break;
+                        }
+                    }
+                }
+
+                parser.pos++;
+            }
+        } else {
+            /* For atoms, skip until whitespace or paren */
+            while (parser.input[parser.pos] != '\0' &&
+                   parser.input[parser.pos] != ' ' &&
+                   parser.input[parser.pos] != '\n' &&
+                   parser.input[parser.pos] != '\t' &&
+                   parser.input[parser.pos] != '\r' &&
+                   parser.input[parser.pos] != '(' &&
+                   parser.input[parser.pos] != ')') {
+                parser.pos++;
+            }
+        }
+
+        /* Safety check - ensure we made progress */
+        if (parser.pos == start_pos) {
+            /* Didn't advance - skip at least one character to avoid infinite loop */
+            parser.pos++;
+        }
+    }
+
+    /* Clear current loading module */
+    module_set_current_loading(NULL);
+
+    free(buffer);
+    return result;
+}
+
 /* Forward declaration */
 static Primitive primitives[];
 /* Documentation primitives */
@@ -1336,20 +1837,131 @@ Cell* prim_doc_deps(Cell* args) {
     return cell_nil();
 }
 
-/* ⌂⊛ - Get source code for symbol */
+/* ⌂⊛ - Get source code for symbol (Day 27: Enhanced provenance) */
 Cell* prim_doc_source(Cell* args) {
     Cell* name = arg1(args);
     const char* sym = cell_get_symbol(name);
 
+    /* Strip leading colon if present (keywords like :⊕ should match primitives) */
+    const char* search_name = sym;
+    if (sym[0] == ':') {
+        search_name = sym + 1;
+    }
+
     /* Primitives are built-in */
     for (int i = 0; primitives[i].name != NULL; i++) {
-        if (strcmp(primitives[i].name, sym) == 0) {
-            return cell_symbol("<primitive>");
+        if (strcmp(primitives[i].name, search_name) == 0) {
+            /* Return simple structure for primitives */
+            Cell* type_tag = cell_symbol(":Provenance");
+            Cell* fields = cell_nil();
+
+            Cell* module_key = cell_symbol(":module");
+            Cell* module_val = cell_string("<primitive>");
+            fields = cell_cons(cell_cons(module_key, module_val), fields);
+            cell_release(module_key);
+            cell_release(module_val);
+
+            Cell* result = cell_struct(STRUCT_LEAF, type_tag, NULL, fields);
+            cell_release(type_tag);
+            cell_release(fields);
+            return result;
         }
     }
 
-    /* TODO: Return actual source for user functions */
-    return cell_nil();
+    /* Look up which module defines this symbol */
+    const char* module_name = module_registry_find_symbol(search_name);
+    if (!module_name) {
+        return cell_error("symbol-not-found", name);
+    }
+
+    /* Get module entry for metadata */
+    ModuleEntry* entry = module_registry_get_entry(module_name);
+    if (!entry) {
+        return cell_error("module-not-found", cell_string(module_name));
+    }
+
+    /* Try to get the actual value to extract line number if it's a lambda */
+    EvalContext* ctx = eval_get_current_context();
+    Cell* value = eval_lookup(ctx, search_name);
+    int line_number = 0;
+    const char* source_module = module_name;
+
+    if (value && cell_is_lambda(value)) {
+        line_number = value->data.lambda.source_line;
+        if (value->data.lambda.source_module) {
+            source_module = value->data.lambda.source_module;
+        }
+    }
+
+    /* Build provenance structure */
+    Cell* type_tag = cell_symbol(":Provenance");
+    Cell* fields = cell_nil();
+
+    /* Add fields in reverse order (they're consed onto front) */
+    /* :defined-at - timestamp */
+    Cell* defined_key = cell_symbol(":defined-at");
+    Cell* defined_val = cell_number((double)entry->loaded_at);
+    fields = cell_cons(cell_cons(defined_key, defined_val), fields);
+    cell_release(defined_key);
+    cell_release(defined_val);
+
+    /* :load-order - sequence number */
+    Cell* order_key = cell_symbol(":load-order");
+    Cell* order_val = cell_number((double)entry->load_order);
+    fields = cell_cons(cell_cons(order_key, order_val), fields);
+    cell_release(order_key);
+    cell_release(order_val);
+
+    /* :line - line number */
+    Cell* line_key = cell_symbol(":line");
+    Cell* line_val = cell_number((double)line_number);
+    fields = cell_cons(cell_cons(line_key, line_val), fields);
+    cell_release(line_key);
+    cell_release(line_val);
+
+    /* :module - module path */
+    Cell* module_key = cell_symbol(":module");
+    Cell* module_val = cell_string(source_module);
+    fields = cell_cons(cell_cons(module_key, module_val), fields);
+    cell_release(module_key);
+    cell_release(module_val);
+
+    Cell* result = cell_struct(STRUCT_LEAF, type_tag, NULL, fields);
+    cell_release(type_tag);
+    cell_release(fields);
+
+    return result;
+}
+
+/* ⌂⊚ - Module information (list modules, find symbol, list symbols) */
+Cell* prim_module_info(Cell* args) {
+    /* (⌂⊚) - List all loaded modules */
+    if (cell_is_nil(args)) {
+        return module_registry_list_modules();
+    }
+
+    Cell* arg1_val = arg1(args);
+
+    /* (⌂⊚ (⌜ symbol)) or (⌂⊚ :symbol) - Find which module defines symbol */
+    if (cell_is_symbol(arg1_val)) {
+        const char* sym = cell_get_symbol(arg1_val);
+        const char* module_name = module_registry_find_symbol(sym);
+
+        if (module_name == NULL) {
+            return cell_error("symbol-not-in-any-module", arg1_val);
+        }
+
+        return cell_string(module_name);
+    }
+
+    /* (⌂⊚ "module-name") - List all symbols from module */
+    if (cell_is_string(arg1_val)) {
+        const char* module_name = cell_get_string(arg1_val);
+        return module_registry_list_symbols(module_name);
+    }
+
+    /* Invalid argument type */
+    return cell_error("⌂⊚ requires nil, symbol, or string", arg1_val);
 }
 
 /* ============ Structure Analysis Helpers for Test Generation ============ */
@@ -1723,6 +2335,7 @@ static Primitive primitives[] = {
     {"⌂≔", prim_doc_deps, 1, {"Get dependencies for symbol", ":symbol → [symbols]"}},
     {"⌂⊛", prim_doc_source, 1, {"Get source code for symbol", ":symbol → expression"}},
     {"⌂⊨", prim_doc_tests, 1, {"Auto-generate tests for symbol", ":symbol → [tests]"}},
+    {"⌂⊚", prim_module_info, 1, {"Query module information", "() → [modules] | :symbol → string | string → [symbols]"}},
 
     /* CFG/DFG Query primitives */
     {"⌂⟿", prim_query_cfg, 1, {"Get control flow graph for function", ":symbol → CFG"}},
@@ -1748,6 +2361,32 @@ static Primitive primitives[] = {
     {"⊝⊗", prim_graph_add_edge, 4, {"Add edge to graph (immutable)", "⊝ → α → α → α → ⊝"}},
     {"⊝→", prim_graph_query, 2, {"Query graph property (:nodes, :edges, :entry, :exit, :metadata)", "⊝ → :symbol → α"}},
     {"⊝?", prim_graph_is, 2, {"Check if value is graph of given type", "α → :symbol → 𝔹"}},
+
+    /* String operations */
+    {"≈", prim_str, 1, {"Convert value to string", "α → ≈"}},
+    {"≈⊕", prim_str_concat, 2, {"Concatenate two strings", "≈ → ≈ → ≈"}},
+    {"≈#", prim_str_length, 1, {"Get string length", "≈ → ℕ"}},
+    {"≈→", prim_str_ref, 2, {"Get character at index", "≈ → ℕ → :symbol"}},
+    {"≈⊂", prim_str_slice, 3, {"Get substring from start to end", "≈ → ℕ → ℕ → ≈"}},
+    {"≈?", prim_is_string, 1, {"Test if value is a string", "α → 𝔹"}},
+    {"≈∅?", prim_str_empty, 1, {"Test if string is empty", "≈ → 𝔹"}},
+    {"≈≡", prim_str_equal, 2, {"Test string equality", "≈ → ≈ → 𝔹"}},
+    {"≈<", prim_str_less, 2, {"Test string ordering", "≈ → ≈ → 𝔹"}},
+
+    /* I/O operations - Console */
+    {"≋", prim_print, 1, {"Print value to stdout with newline", "α → α"}},
+    {"≋≈", prim_print_str, 1, {"Print string to stdout without newline", "≈ → ≈"}},
+    {"≋←", prim_read_line, 0, {"Read line from stdin", "() → ≈"}},
+
+    /* I/O operations - Files */
+    {"≋⊳", prim_read_file, 1, {"Read entire file as string", "≈ → ≈"}},
+    {"≋⊲", prim_write_file, 2, {"Write string to file (overwrites)", "≈ → ≈ → ≈"}},
+    {"≋⊕", prim_append_file, 2, {"Append string to file", "≈ → ≈ → ≈"}},
+    {"≋?", prim_file_exists, 1, {"Check if file exists", "≈ → 𝔹"}},
+    {"≋∅?", prim_file_empty, 1, {"Check if file is empty", "≈ → 𝔹"}},
+
+    /* Module System */
+    {"⋘", prim_load, 1, {"Load and evaluate file", "≈ → α"}},
 
     {NULL, NULL, 0, {NULL, NULL}}
 };

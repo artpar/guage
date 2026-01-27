@@ -96,7 +96,7 @@ Infrastructure now supports:
 - Property-based testing (random test generation)
 - Mutation testing (test quality validation)
 - Coverage analysis (gap identification)
-- Test synthesis (AI-generated tests)
+- Test synthesis (generated tests)
 
 ## What's Next (Day 12)
 

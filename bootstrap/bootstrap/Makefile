@@ -18,10 +18,10 @@ $(EXECUTABLE): $(OBJECTS)
 
 # Dependencies
 cell.o: cell.c cell.h
-primitives.o: primitives.c primitives.h cell.h pattern.h type.h testgen.h
+primitives.o: primitives.c primitives.h cell.h pattern.h type.h testgen.h module.h
 debruijn.o: debruijn.c debruijn.h cell.h
 debug.o: debug.c debug.h cell.h eval.h
-eval.o: eval.c eval.h cell.h primitives.h debruijn.h debug.h
+eval.o: eval.c eval.h cell.h primitives.h debruijn.h debug.h module.h
 cfg.o: cfg.c cfg.h cell.h primitives.h
 dfg.o: dfg.c dfg.h cell.h primitives.h
 pattern.o: pattern.c pattern.h pattern_check.h cell.h eval.h
@@ -29,7 +29,7 @@ pattern_check.o: pattern_check.c pattern_check.h cell.h
 type.o: type.c type.h
 testgen.o: testgen.c testgen.h type.h cell.h
 module.o: module.c module.h cell.h
-main.o: main.c cell.h primitives.h eval.h debug.h
+main.o: main.c cell.h primitives.h eval.h debug.h module.h
 
 clean:
 	rm -f $(OBJECTS) $(EXECUTABLE)

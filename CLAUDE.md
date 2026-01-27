@@ -95,7 +95,7 @@ Traditional languages treat the compiler as a black box. In Guage:
 - Code is data you can transform
 - Everything is inspectable and modifiable
 
-This enables **AI-assisted development** where the language helps you write, prove, test, optimize, and deploy code.
+This enables **assisted development** where the language helps you write, prove, test, optimize, and deploy code.
 
 ### 4. Single Source of Truth
 
@@ -555,7 +555,7 @@ Not "maybe someday" - here's the concrete plan:
 
 ### What This Enables
 
-**AI-Assisted Development:**
+**Assisted Development:**
 - Compiler synthesizes code from natural language specs
 - Automatic bug repair with minimal edits
 - Tests generated from types

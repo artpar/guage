@@ -106,7 +106,7 @@ def test_factorial():
 (all? results)  ; → System knows if it's valid!
 ```
 
-### 4. AI-Friendly Architecture
+### 4. Friendly Architecture
 
 Tests are data AI can:
 - Generate
@@ -348,7 +348,7 @@ This scales because there's **one** place to change.
 
 No test framework = no friction. Tests are just... there.
 
-### 4. Queryable → AI-Friendly
+### 4. Queryable → Friendly
 
 Since tests are data structures, AI can:
 - Generate them
@@ -401,7 +401,7 @@ This principle, combined with:
 
 We're not building "just another programming language."
 
-We're building a **self-improving, self-validating, AI-friendly ultralanguage**.
+We're building a **self-improving, self-validating, friendly ultralanguage**.
 
 And today, we took a major step toward that vision.
 

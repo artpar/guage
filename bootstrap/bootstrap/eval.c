@@ -2,6 +2,7 @@
 #include "primitives.h"
 #include "debruijn.h"
 #include "pattern.h"
+#include "module.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -151,7 +152,7 @@ static void extract_dependencies(Cell* expr, SymbolSet* params, DepList* deps) {
     if (!expr || cell_is_nil(expr)) return;
 
     /* Literals - no dependencies */
-    if (cell_is_number(expr) || cell_is_bool(expr)) {
+    if (cell_is_number(expr) || cell_is_bool(expr) || cell_is_string(expr)) {
         return;
     }
 
@@ -734,6 +735,12 @@ void eval_define(EvalContext* ctx, const char* name, Cell* value) {
     Cell* binding = cell_cons(sym, value);
     ctx->env = cell_cons(binding, ctx->env);
 
+    /* If loading a module, track this symbol */
+    const char* current_module = module_get_current_loading();
+    if (current_module != NULL) {
+        module_registry_add_symbol(current_module, name);
+    }
+
     /* Generate documentation if value is a lambda */
     if (value && cell_is_lambda(value)) {
         FunctionDoc* doc = doc_create(name);
@@ -936,7 +943,7 @@ static Cell* eval_internal(EvalContext* ctx, Cell* env, Cell* expr) {
     }
 
     /* Self-evaluating literals */
-    if (cell_is_bool(expr) || cell_is_nil(expr)) {
+    if (cell_is_bool(expr) || cell_is_nil(expr) || cell_is_string(expr)) {
         cell_retain(expr);
         return expr;
     }
@@ -1024,7 +1031,9 @@ static Cell* eval_internal(EvalContext* ctx, Cell* env, Cell* expr) {
                 Cell* closure_env = env_is_indexed(env) ? env : cell_nil();
 
                 /* Create lambda cell with closure environment */
-                Cell* lambda = cell_lambda(closure_env, converted_body, arity);
+                /* Day 27: Pass source location (module tracked, line number not yet available) */
+                Cell* lambda = cell_lambda(closure_env, converted_body, arity,
+                                          module_get_current_loading(), 0);
 
                 return lambda;
             }
@@ -1049,7 +1058,9 @@ static Cell* eval_internal(EvalContext* ctx, Cell* env, Cell* expr) {
                 Cell* closure_env = env_is_indexed(env) ? env : cell_nil();
 
                 /* Create lambda cell with closure environment */
-                Cell* lambda = cell_lambda(closure_env, converted_body, arity);
+                /* Day 27: Pass source location (module tracked, line number not yet available) */
+                Cell* lambda = cell_lambda(closure_env, converted_body, arity,
+                                          module_get_current_loading(), 0);
 
                 /* Cleanup */
                 context_free(ctx_convert);
