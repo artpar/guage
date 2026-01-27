@@ -5,32 +5,132 @@ Updated: 2026-01-27
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: 2026-01-27 (Week 3 Day 17: Pair Patterns COMPLETE!)
+# Session Handoff: 2026-01-27 (Week 3 Day 18: ADT Patterns COMPLETE!)
 
 ## Executive Summary
 
-**Status:** 🎉 **DAY 17 COMPLETE!** Pair pattern matching fully implemented!
-**Duration:** ~4 hours (Day 17: pair patterns + nested bindings)
-**Key Achievement:** Destructuring pairs with recursive pattern matching!
+**Status:** 🎉 **DAY 18 COMPLETE!** ADT pattern matching fully implemented!
+**Duration:** ~4 hours (Day 18: leaf structures + node/ADT patterns + nested bindings fix)
+**Key Achievement:** Destructuring algebraic data types and leaf structures!
 
 **Major Outcomes:**
-1. ✅ **Pair Patterns Complete** - Recursive destructuring of pairs!
-2. ✅ **Nested Bindings** - Variables from nested patterns work perfectly!
-3. ✅ **List Patterns** - Extract head/tail, destructure lists!
-4. ✅ **54 Tests Passing** - 29 pair tests + 25 variable tests
-5. ✅ **Type-Aware Matching** - Pairs must match pair values (strong typing!)
-6. ✅ **SPEC.md Updated** - Pair pattern syntax and examples documented
+1. ✅ **Leaf Structure Patterns** (⊙) - Destructure simple structures!
+2. ✅ **Node/ADT Patterns** (⊚) - Match variants and extract fields!
+3. ✅ **Recursive ADTs** - Lists, trees, options all work!
+4. ✅ **107 Tests Passing** - 35 ADT tests + 72 previous pattern tests!
+5. ✅ **Nested Binding Fixes** - Fixed merge_bindings for 3+ field structures
+6. ✅ **SPEC.md Updated** - ADT pattern syntax and examples documented
 
 **Previous Status:**
 - Day 13: ALL critical fixes complete (ADT support, :? primitive)
 - Day 14: ⌞ (eval) implemented - 49 tests passing
 - Day 15: AUTO-TESTING PERFECTION + Pattern matching foundation
 - Day 16: Variable Patterns COMPLETE!
-- **Day 17: Pair Patterns COMPLETE! 🎉**
+- Day 17: Pair Patterns COMPLETE!
+- **Day 18: ADT Patterns COMPLETE! 🎉**
 
 ---
 
-## 🎉 What's New This Session (Day 17 - CURRENT)
+## 🎉 What's New This Session (Day 18 - CURRENT)
+
+### 🚀 ADT Pattern Matching ✅ (Day 18)
+
+**Status:** COMPLETE - Leaf structure and node/ADT patterns working perfectly!
+
+**What:** Implemented pattern matching for algebraic data types (ADTs) including both leaf structures (⊙) and node structures with variants (⊚).
+
+**Why This Matters:**
+- **Full ADT support** - Can now destructure user-defined types
+- **Variant matching** - Pattern match on enum-like types
+- **Recursive ADTs** - Lists, trees, options all work
+- **Foundation for type system** - Pattern exhaustiveness checking next
+- **Real-world data structures** - Can now express complex data patterns
+
+**Examples:**
+
+```scheme
+; Leaf structure patterns (simple structures)
+(⊙≔ :Point :x :y)
+(≔ p (⊙ :Point #3 #4))
+(∇ p (⌜ (((⊙ :Point x y) (⊕ x y)))))  ; → #7
+
+; Node/ADT patterns (variants)
+(⊚≔ :Option (⌜ (:None)) (⌜ (:Some :value)))
+(≔ some-42 (⊚ :Option :Some #42))
+(∇ some-42 (⌜ (((⊚ :Option :Some v) v))))  ; → #42
+
+; Recursive ADT (List)
+(⊚≔ :List (⌜ (:Nil)) (⌜ (:Cons :head :tail)))
+(≔ lst (⊚ :List :Cons #1 (⊚ :List :Cons #2 (⊚ :List :Nil))))
+(∇ lst (⌜ (((⊚ :List :Cons h1 (⊚ :List :Cons h2 t)) h2))))  ; → #2
+
+; Binary tree
+(⊚≔ :Tree (⌜ (:Leaf :value)) (⌜ (:Node :left :value :right)))
+(≔ tree (⊚ :Tree :Node
+         (⊚ :Tree :Leaf #5)
+         #10
+         (⊚ :Tree :Leaf #15)))
+(∇ tree (⌜ (((⊚ :Tree :Node (⊚ :Tree :Leaf lv) v (⊚ :Tree :Leaf rv))
+             (⊕ lv rv)))))  ; → #20
+```
+
+**Implementation Details:**
+
+**1. Leaf Structure Pattern** `(⊙ :Type field-patterns...)`
+```c
+// Matches simple structures created with ⊙
+// Must match type tag exactly
+// Fields matched recursively
+if (strcmp(first->data.atom.symbol, "⊙") == 0) {
+    if (cell_struct_kind(value) != STRUCT_LEAF) return failure;
+    // Match type tag
+    // Match each field recursively
+    // Merge all bindings
+}
+```
+
+**2. Node/ADT Pattern** `(⊚ :Type :Variant field-patterns...)`
+```c
+// Matches ADT structures created with ⊚
+// Must match both type and variant
+// Fields matched recursively
+if (strcmp(first->data.atom.symbol, "⊚") == 0) {
+    if (cell_struct_kind(value) != STRUCT_NODE) return failure;
+    // Match type tag and variant
+    // Match each field recursively
+    // Merge all bindings
+}
+```
+
+**3. Critical Bug Fix: Three-Field Binding Merge**
+```c
+// Bug: When merging list + single binding, single wasn't wrapped
+// Fix: Wrap single binding before appending
+} else if (!b1_single && b2_single) {
+    Cell* b2_wrapped = cell_cons(bindings2, cell_nil());
+    Cell* result = append_bindings(bindings1, b2_wrapped);
+    cell_release(b2_wrapped);
+    return result;
+}
+```
+
+**Test Coverage:**
+- 12 leaf structure tests (simple structures, nested, wildcards, literals)
+- 3 enum-like ADT tests (Bool with True/False)
+- 6 ADT with fields tests (Option, None/Some)
+- 6 recursive List tests (Nil/Cons, nested destructuring)
+- 4 binary Tree tests (Leaf/Node, nested patterns)
+- 4 mixed pattern tests (pairs of structs, nested ADTs)
+- **Total: 35 comprehensive ADT tests, all passing!**
+
+**Files Modified:**
+- `bootstrap/bootstrap/pattern.c` - Added leaf and node pattern matching
+- `bootstrap/bootstrap/pattern.c` - Fixed merge_bindings for 3+ fields
+- `tests/test_pattern_adt.scm` - Created comprehensive test suite
+- `SPEC.md` - Documented ADT pattern syntax
+- `SESSION_HANDOFF.md` - This update!
+
+---
 
 ### 🚀 Pair Pattern Matching ✅ (Day 17)
 

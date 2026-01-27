@@ -121,10 +121,10 @@ static Cell* append_bindings(Cell* bindings1, Cell* bindings2) {
     while (current) {
         Cell* next = cell_cdr(current);
         if (!next || next->type == CELL_ATOM_NIL) {
-            /* Found the end - append bindings2 here */
-            Cell* new_cdr = cell_cons(bindings2, cell_nil());
+            /* Found the end - append bindings2 directly (no extra wrapping!) */
+            cell_retain(bindings2);  /* Retain because we're adding to structure */
             cell_release(current->data.pair.cdr);
-            current->data.pair.cdr = new_cdr;
+            current->data.pair.cdr = bindings2;
             break;
         }
         if (next->type != CELL_PAIR) {
@@ -162,8 +162,11 @@ static Cell* merge_bindings(Cell* bindings1, Cell* bindings2) {
         Cell* result = cell_cons(bindings1, bindings2);
         return result;
     } else if (!b1_single && b2_single) {
-        /* b1 list, b2 single: append b2 to end of b1 list */
-        return append_bindings(bindings1, bindings2);
+        /* b1 list, b2 single: wrap b2 in list then append */
+        Cell* b2_wrapped = cell_cons(bindings2, cell_nil());
+        Cell* result = append_bindings(bindings1, b2_wrapped);
+        cell_release(b2_wrapped);
+        return result;
     } else {
         /* Both lists: append b2 list to end of b1 list */
         return append_bindings(bindings1, bindings2);
@@ -298,6 +301,184 @@ MatchResult pattern_try_match(Cell* value, Cell* pattern) {
         Cell* merged = merge_bindings(match1.bindings, match2.bindings);
         MatchResult result = {.success = true, .bindings = merged};
         return result;
+    }
+
+    /* Leaf structure pattern - (⊙ :type field-patterns...) (Day 18) */
+    if (pattern && pattern->type == CELL_PAIR) {
+        Cell* first = cell_car(pattern);
+        if (first && first->type == CELL_ATOM_SYMBOL &&
+            strcmp(first->data.atom.symbol, "⊙") == 0) {
+            /* Value must be a structure */
+            if (!value || value->type != CELL_STRUCT) {
+                return failure;
+            }
+            /* Must be a leaf structure */
+            if (cell_struct_kind(value) != STRUCT_LEAF) {
+                return failure;
+            }
+
+            /* Extract pattern type tag */
+            Cell* rest = cell_cdr(pattern);
+            if (!rest || rest->type != CELL_PAIR) {
+                return failure;
+            }
+            Cell* pattern_type = cell_car(rest);
+            if (!pattern_type || pattern_type->type != CELL_ATOM_SYMBOL) {
+                return failure;
+            }
+
+            /* Match type tag */
+            Cell* value_type = cell_struct_type_tag(value);
+            if (!symbols_equal(value_type, pattern_type)) {
+                return failure;
+            }
+
+            /* Get field patterns */
+            Cell* field_patterns = cell_cdr(rest);
+
+            /* Get value fields */
+            Cell* value_fields = cell_struct_fields(value);
+
+            /* Match each field pattern against corresponding field value */
+            Cell* bindings = NULL;
+            Cell* current_pattern = field_patterns;
+            Cell* current_field = value_fields;
+
+            while (current_pattern && current_pattern->type == CELL_PAIR) {
+                /* Check we have a corresponding field */
+                if (!current_field || current_field->type != CELL_PAIR) {
+                    /* Pattern has more fields than value - mismatch */
+                    if (bindings) cell_release(bindings);
+                    return failure;
+                }
+
+                Cell* field_pat = cell_car(current_pattern);
+                Cell* field_binding = cell_car(current_field);  /* (name . value) */
+                Cell* field_value = cell_cdr(field_binding);
+
+                /* Recursively match field value against field pattern */
+                MatchResult field_match = pattern_try_match(field_value, field_pat);
+                if (!field_match.success) {
+                    if (bindings) cell_release(bindings);
+                    return failure;
+                }
+
+                /* Merge field bindings */
+                if (field_match.bindings) {
+                    bindings = merge_bindings(bindings, field_match.bindings);
+                }
+
+                current_pattern = cell_cdr(current_pattern);
+                current_field = cell_cdr(current_field);
+            }
+
+            /* Check if value has more fields than pattern */
+            if (current_field && current_field->type == CELL_PAIR) {
+                /* Value has more fields than pattern - mismatch */
+                if (bindings) cell_release(bindings);
+                return failure;
+            }
+
+            MatchResult result = {.success = true, .bindings = bindings};
+            return result;
+        }
+    }
+
+    /* Node/ADT pattern - (⊚ :type :variant field-patterns...) (Day 18) */
+    if (pattern && pattern->type == CELL_PAIR) {
+        Cell* first = cell_car(pattern);
+        if (first && first->type == CELL_ATOM_SYMBOL &&
+            strcmp(first->data.atom.symbol, "⊚") == 0) {
+            /* Value must be a structure */
+            if (!value || value->type != CELL_STRUCT) {
+                return failure;
+            }
+            /* Must be a node structure */
+            if (cell_struct_kind(value) != STRUCT_NODE) {
+                return failure;
+            }
+
+            /* Extract pattern type tag */
+            Cell* rest = cell_cdr(pattern);
+            if (!rest || rest->type != CELL_PAIR) {
+                return failure;
+            }
+            Cell* pattern_type = cell_car(rest);
+            if (!pattern_type || pattern_type->type != CELL_ATOM_SYMBOL) {
+                return failure;
+            }
+
+            /* Match type tag */
+            Cell* value_type = cell_struct_type_tag(value);
+            if (!symbols_equal(value_type, pattern_type)) {
+                return failure;
+            }
+
+            /* Extract pattern variant */
+            Cell* rest2 = cell_cdr(rest);
+            if (!rest2 || rest2->type != CELL_PAIR) {
+                return failure;
+            }
+            Cell* pattern_variant = cell_car(rest2);
+            if (!pattern_variant || pattern_variant->type != CELL_ATOM_SYMBOL) {
+                return failure;
+            }
+
+            /* Match variant */
+            Cell* value_variant = cell_struct_variant(value);
+            if (!symbols_equal(value_variant, pattern_variant)) {
+                return failure;
+            }
+
+            /* Get field patterns */
+            Cell* field_patterns = cell_cdr(rest2);
+
+            /* Get value fields */
+            Cell* value_fields = cell_struct_fields(value);
+
+            /* Match each field pattern against corresponding field value */
+            Cell* bindings = NULL;
+            Cell* current_pattern = field_patterns;
+            Cell* current_field = value_fields;
+
+            while (current_pattern && current_pattern->type == CELL_PAIR) {
+                /* Check we have a corresponding field */
+                if (!current_field || current_field->type != CELL_PAIR) {
+                    /* Pattern has more fields than value - mismatch */
+                    if (bindings) cell_release(bindings);
+                    return failure;
+                }
+
+                Cell* field_pat = cell_car(current_pattern);
+                Cell* field_binding = cell_car(current_field);  /* (name . value) */
+                Cell* field_value = cell_cdr(field_binding);
+
+                /* Recursively match field value against field pattern */
+                MatchResult field_match = pattern_try_match(field_value, field_pat);
+                if (!field_match.success) {
+                    if (bindings) cell_release(bindings);
+                    return failure;
+                }
+
+                /* Merge field bindings */
+                if (field_match.bindings) {
+                    bindings = merge_bindings(bindings, field_match.bindings);
+                }
+
+                current_pattern = cell_cdr(current_pattern);
+                current_field = cell_cdr(current_field);
+            }
+
+            /* Check if value has more fields than pattern */
+            if (current_field && current_field->type == CELL_PAIR) {
+                /* Value has more fields than pattern - mismatch */
+                if (bindings) cell_release(bindings);
+                return failure;
+            }
+
+            MatchResult result = {.success = true, .bindings = bindings};
+            return result;
+        }
     }
 
     /* Pattern type not supported yet */

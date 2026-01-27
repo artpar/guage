@@ -55,12 +55,13 @@ Everything is a **Cell**:
 |--------|------|---------|--------|
 | `∇` | `α → [[⌜pattern⌝ result]] → β` | Pattern match expression | ✅ DONE (Day 16) |
 
-**Note:** As of Day 17, supports:
+**Note:** As of Day 18, supports:
 - **Wildcard** (_) - matches anything
 - **Literals** - numbers, booleans, symbols, keywords
 - **Variables** - bind matched value to name (Day 16 ✅)
 - **Pair patterns** - destructure pairs (Day 17 ✅)
-- **ADT patterns** (Day 18-19) - coming soon
+- **Leaf structure patterns** (⊙) - destructure simple structures (Day 18 ✅)
+- **Node/ADT patterns** (⊚) - destructure algebraic data types (Day 18 ✅)
 
 **Syntax:**
 ```scheme
@@ -75,6 +76,8 @@ Everything is a **Cell**:
 - `#42`, `#t`, `:foo` - Literals (match exact value)
 - `x`, `n`, `value` - Variables (bind value to name)
 - `(⟨⟩ pat1 pat2)` - Pair destructuring (recursive matching)
+- `(⊙ :Type pat1 pat2 ...)` - Leaf structure destructuring (Day 18)
+- `(⊚ :Type :Variant pat1 ...)` - Node/ADT destructuring (Day 18)
 
 **Examples:**
 ```scheme
@@ -102,6 +105,48 @@ Everything is a **Cell**:
 ; List patterns
 (∇ (⟨⟩ #42 ∅) (⌜ (((⟨⟩ x ∅) x))))  ; → #42 (single-element list)
 (∇ (⟨⟩ #3 (⟨⟩ #4 ∅)) (⌜ (((⟨⟩ x (⟨⟩ y ∅)) (⊕ x y)))))  ; → #7
+
+; Leaf structure patterns (Day 18)
+(⊙≔ :Point :x :y)
+(≔ p (⊙ :Point #3 #4))
+(∇ p (⌜ (((⊙ :Point x y) (⊕ x y)))))  ; → #7
+
+; Nested leaf structures
+(⊙≔ :Line :start :end)
+(≔ line (⊙ :Line p1 p2))
+(∇ line (⌜ (((⊙ :Line (⊙ :Point x1 y1) (⊙ :Point x2 y2))
+              (⊕ (⊕ x1 y1) (⊕ x2 y2))))))  ; → #37
+
+; Node/ADT patterns (Day 18)
+(⊚≔ :Option (⌜ (:None)) (⌜ (:Some :value)))
+(≔ some-42 (⊚ :Option :Some #42))
+(≔ none (⊚ :Option :None))
+
+; Match ADT variants
+(∇ some-42 (⌜ (((⊚ :Option :Some v) v))))  ; → #42
+(∇ none (⌜ (((⊚ :Option :None) :empty))))  ; → :empty
+
+; Multiple clauses with ADT
+(∇ none (⌜ (((⊚ :Option :Some v) v)
+            ((⊚ :Option :None) #99))))  ; → #99
+
+; Recursive ADT (List)
+(⊚≔ :List (⌜ (:Nil)) (⌜ (:Cons :head :tail)))
+(≔ lst (⊚ :List :Cons #1 (⊚ :List :Cons #2 (⊚ :List :Nil))))
+
+; Nested ADT patterns
+(∇ lst (⌜ (((⊚ :List :Cons h1 (⊚ :List :Cons h2 t)) h2))))  ; → #2
+
+; Binary tree ADT
+(⊚≔ :Tree (⌜ (:Leaf :value)) (⌜ (:Node :left :value :right)))
+(≔ tree (⊚ :Tree :Node
+         (⊚ :Tree :Leaf #5)
+         #10
+         (⊚ :Tree :Leaf #15)))
+
+; Extract from nested tree
+(∇ tree (⌜ (((⊚ :Tree :Node (⊚ :Tree :Leaf lv) v (⊚ :Tree :Leaf rv))
+             (⊕ lv rv)))))  ; → #20
 ```
 
 ### Comparison & Logic (5) ✅

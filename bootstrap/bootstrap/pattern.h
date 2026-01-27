@@ -10,9 +10,10 @@
  * Implements pattern matching for Guage:
  * - Literal patterns (#42, :foo, ∅, #t)
  * - Wildcard pattern (_)
- * - Variable patterns (x) - Day 16
- * - Pair patterns ((⟨⟩ a b)) - Day 17
- * - ADT patterns ([:Cons h t]) - Day 18
+ * - Variable patterns (x) - Day 16 ✅
+ * - Pair patterns ((⟨⟩ a b)) - Day 17 ✅
+ * - Leaf structure patterns ((⊙ :Type field...)) - Day 18 ✅
+ * - Node/ADT patterns ((⊚ :Type :Variant field...)) - Day 18 ✅
  */
 
 /* Pattern matching result */
@@ -32,6 +33,8 @@ typedef struct {
  * - Literals: #42, #t, #f, :foo, ∅ - Day 15
  * - Variables: x, n, etc (binds value) - Day 16 ✅
  * - Pairs: (⟨⟩ pat1 pat2) (destructures pairs) - Day 17 ✅
+ * - Leaf structures: (⊙ :Type field-pats...) - Day 18 ✅
+ * - Node/ADTs: (⊚ :Type :Variant field-pats...) - Day 18 ✅
  */
 MatchResult pattern_try_match(Cell* value, Cell* pattern);
 
