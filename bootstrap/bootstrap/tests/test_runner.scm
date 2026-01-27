@@ -46,13 +46,6 @@
      (⟨⟩ (execute-test (◁ tests))
          (run-test-list (▷ tests))))))
 
-; Summarize test results
-(≔ summarize-results (λ (results)
-  (≔ passed (count-status results :pass))
-  (≔ failed (count-status results :fail))
-  (≔ errors (count-status results :error))
-  ⟨:passed passed :failed failed :errors errors :total (length results)⟩))
-
 ; Count test results by status
 (≔ count-status (λ (results status)
   (? (∅? results)
@@ -60,6 +53,13 @@
      (? (≡ (◁ (◁ results)) status)
         (⊕ #1 (count-status (▷ results) status))
         (count-status (▷ results) status)))))
+
+; Summarize test results
+(≔ summarize-results (λ (results)
+  (≔ passed (count-status results :pass))
+  (≔ failed (count-status results :fail))
+  (≔ errors (count-status results :error))
+  ⟨:passed passed :failed failed :errors errors :total (length results)⟩))
 
 ; ============ Primitive Test Collection ============
 
@@ -191,7 +191,7 @@
   (append (structure-leaf-tests)
   (append (structure-node-tests)
   (append (graph-tests)
-  ∅))))))))))))))))))
+  ∅)))))))))))))))))
 
 ; Run all tests and report
 (≔ run-all-tests (λ ()
