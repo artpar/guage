@@ -1337,7 +1337,161 @@ Cell* prim_doc_source(Cell* args) {
     return cell_nil();
 }
 
-/* ⌂⊨ - Auto-generate tests for symbol
+/* ============ Structure Analysis Helpers for Test Generation ============ */
+
+/* Check if expression contains a conditional (?) */
+static bool has_conditional(Cell* expr) {
+    if (!expr) return false;
+
+    /* Check if this is a conditional expression */
+    if (cell_is_pair(expr)) {
+        Cell* first = cell_car(expr);
+        if (cell_is_symbol(first)) {
+            const char* sym = cell_get_symbol(first);
+            if (strcmp(sym, "?") == 0) {
+                return true;
+            }
+        }
+
+        /* Recursively check subexpressions */
+        if (has_conditional(cell_car(expr))) return true;
+        if (has_conditional(cell_cdr(expr))) return true;
+    }
+
+    return false;
+}
+
+/* Check if expression contains recursion (self-reference) */
+static bool has_recursion(Cell* expr, const char* func_name) {
+    if (!expr || !func_name) return false;
+
+    /* Check if this symbol is the function name */
+    if (cell_is_symbol(expr)) {
+        const char* sym = cell_get_symbol(expr);
+        if (strcmp(sym, func_name) == 0) {
+            return true;
+        }
+    }
+
+    /* Recursively check pairs */
+    if (cell_is_pair(expr)) {
+        if (has_recursion(cell_car(expr), func_name)) return true;
+        if (has_recursion(cell_cdr(expr), func_name)) return true;
+    }
+
+    return false;
+}
+
+/* Check if expression contains comparison with zero */
+static bool has_zero_comparison(Cell* expr) {
+    if (!expr) return false;
+
+    /* Check if this is a comparison with #0 */
+    if (cell_is_pair(expr)) {
+        Cell* first = cell_car(expr);
+        if (cell_is_symbol(first)) {
+            const char* sym = cell_get_symbol(first);
+            if (strcmp(sym, "≡") == 0 || strcmp(sym, "<") == 0 ||
+                strcmp(sym, ">") == 0 || strcmp(sym, "≤") == 0 ||
+                strcmp(sym, "≥") == 0) {
+                /* Check if any argument is #0 */
+                Cell* rest = cell_cdr(expr);
+                while (cell_is_pair(rest)) {
+                    Cell* arg = cell_car(rest);
+                    if (cell_is_number(arg) && cell_get_number(arg) == 0.0) {
+                        return true;
+                    }
+                    rest = cell_cdr(rest);
+                }
+            }
+        }
+
+        /* Recursively check */
+        if (has_zero_comparison(cell_car(expr))) return true;
+        if (has_zero_comparison(cell_cdr(expr))) return true;
+    }
+
+    return false;
+}
+
+/* Generate test for conditional branch coverage */
+static Cell* generate_branch_test(const char* func_name, Cell* test_list) {
+    /* For now, generate a simple branch test */
+    char test_name[128];
+    snprintf(test_name, sizeof(test_name), ":test-%s-branch", func_name);
+
+    Cell* test_name_sym = cell_symbol(test_name);
+    Cell* test_arg = cell_number(1);
+    Cell* test_call = cell_cons(cell_symbol(func_name),
+                               cell_cons(test_arg, cell_nil()));
+    Cell* test_check = cell_cons(cell_symbol("ℕ?"),
+                                 cell_cons(test_call, cell_nil()));
+    Cell* test = cell_cons(cell_symbol("⊨"),
+                          cell_cons(test_name_sym,
+                          cell_cons(cell_bool(true),
+                          cell_cons(test_check, cell_nil()))));
+
+    return cell_cons(test, test_list);
+}
+
+/* Generate test for base case (when recursion detected) */
+static Cell* generate_base_case_test(const char* func_name, Cell* test_list) {
+    char test_name[128];
+    snprintf(test_name, sizeof(test_name), ":test-%s-base-case", func_name);
+
+    Cell* test_name_sym = cell_symbol(test_name);
+    Cell* test_arg = cell_number(0);  /* Test with zero for base case */
+    Cell* test_call = cell_cons(cell_symbol(func_name),
+                               cell_cons(test_arg, cell_nil()));
+    Cell* test_check = cell_cons(cell_symbol("ℕ?"),
+                                 cell_cons(test_call, cell_nil()));
+    Cell* test = cell_cons(cell_symbol("⊨"),
+                          cell_cons(test_name_sym,
+                          cell_cons(cell_bool(true),
+                          cell_cons(test_check, cell_nil()))));
+
+    return cell_cons(test, test_list);
+}
+
+/* Generate test for recursive case */
+static Cell* generate_recursive_test(const char* func_name, Cell* test_list) {
+    char test_name[128];
+    snprintf(test_name, sizeof(test_name), ":test-%s-recursive", func_name);
+
+    Cell* test_name_sym = cell_symbol(test_name);
+    Cell* test_arg = cell_number(3);  /* Test with small number for recursion */
+    Cell* test_call = cell_cons(cell_symbol(func_name),
+                               cell_cons(test_arg, cell_nil()));
+    Cell* test_check = cell_cons(cell_symbol("ℕ?"),
+                                 cell_cons(test_call, cell_nil()));
+    Cell* test = cell_cons(cell_symbol("⊨"),
+                          cell_cons(test_name_sym,
+                          cell_cons(cell_bool(true),
+                          cell_cons(test_check, cell_nil()))));
+
+    return cell_cons(test, test_list);
+}
+
+/* Generate edge case test for zero handling */
+static Cell* generate_zero_edge_test(const char* func_name, Cell* test_list) {
+    char test_name[128];
+    snprintf(test_name, sizeof(test_name), ":test-%s-zero-edge", func_name);
+
+    Cell* test_name_sym = cell_symbol(test_name);
+    Cell* test_arg = cell_number(0);
+    Cell* test_call = cell_cons(cell_symbol(func_name),
+                               cell_cons(test_arg, cell_nil()));
+    Cell* test_check = cell_cons(cell_symbol("ℕ?"),
+                                 cell_cons(test_call, cell_nil()));
+    Cell* test = cell_cons(cell_symbol("⊨"),
+                          cell_cons(test_name_sym,
+                          cell_cons(cell_bool(true),
+                          cell_cons(test_check, cell_nil()))));
+
+    return cell_cons(test, test_list);
+}
+
+/* ⌂⊨ - Auto-generate tests for symbol (ENHANCED with structure analysis)
  * Args: symbol (function or primitive name)
  * Returns: list of test cases
  */
@@ -1376,6 +1530,20 @@ Cell* prim_doc_tests(Cell* args) {
                                    cell_cons(test1_check, cell_nil()))));
 
             tests = cell_cons(test1, tests);
+
+            /* Add edge case: zero */
+            Cell* test2_name = cell_symbol(":test-zero-operand");
+            Cell* test2_args = cell_cons(cell_number(0),
+                                        cell_cons(cell_number(5), cell_nil()));
+            Cell* test2_call = cell_cons(cell_symbol(sym), test2_args);
+            Cell* test2_check = cell_cons(cell_symbol("ℕ?"),
+                                         cell_cons(test2_call, cell_nil()));
+            Cell* test2 = cell_cons(cell_symbol("⊨"),
+                                   cell_cons(test2_name,
+                                   cell_cons(cell_bool(true),
+                                   cell_cons(test2_check, cell_nil()))));
+
+            tests = cell_cons(test2, tests);
         }
 
         /* Example: For "α → 𝔹" (type predicate) */
@@ -1403,11 +1571,18 @@ Cell* prim_doc_tests(Cell* args) {
     if (doc) {
         const char* type_sig = doc->type_signature;
 
-        /* Generate tests based on user function type */
-        /* For now, return basic type conformance tests */
+        /* Get function body for structure analysis */
+        EvalContext* ctx = eval_get_current_context();
+        Cell* func_value = eval_lookup(ctx, sym);
+        Cell* body = NULL;
 
+        if (func_value && func_value->type == CELL_LAMBDA) {
+            body = func_value->data.lambda.body;
+        }
+
+        /* Generate tests based on user function type */
         if (type_sig && strstr(type_sig, "ℕ → ℕ")) {
-            /* Test input/output are numbers */
+            /* Type conformance test */
             char test_name[128];
             snprintf(test_name, sizeof(test_name), ":test-%s-type", sym);
 
@@ -1423,6 +1598,29 @@ Cell* prim_doc_tests(Cell* args) {
                                    cell_cons(test1_check, cell_nil()))));
 
             tests = cell_cons(test1, tests);
+
+            /* Structure-based tests */
+            if (body) {
+                /* Detect conditionals */
+                if (has_conditional(body)) {
+                    tests = generate_branch_test(sym, tests);
+                }
+
+                /* Detect recursion */
+                if (has_recursion(body, sym)) {
+                    tests = generate_base_case_test(sym, tests);
+                    tests = generate_recursive_test(sym, tests);
+                }
+
+                /* Detect zero comparisons */
+                if (has_zero_comparison(body)) {
+                    tests = generate_zero_edge_test(sym, tests);
+                }
+            }
+        }
+
+        if (func_value) {
+            cell_release(func_value);
         }
 
         return tests;
