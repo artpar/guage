@@ -31,6 +31,7 @@ typedef struct {
  * - Wildcard: _ (always matches, no bindings) - Day 15
  * - Literals: #42, #t, #f, :foo, ∅ - Day 15
  * - Variables: x, n, etc (binds value) - Day 16 ✅
+ * - Pairs: (⟨⟩ pat1 pat2) (destructures pairs) - Day 17 ✅
  */
 MatchResult pattern_try_match(Cell* value, Cell* pattern);
 

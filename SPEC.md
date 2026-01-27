@@ -55,11 +55,11 @@ Everything is a **Cell**:
 |--------|------|---------|--------|
 | `∇` | `α → [[⌜pattern⌝ result]] → β` | Pattern match expression | ✅ DONE (Day 16) |
 
-**Note:** As of Day 16, supports:
+**Note:** As of Day 17, supports:
 - **Wildcard** (_) - matches anything
 - **Literals** - numbers, booleans, symbols, keywords
 - **Variables** - bind matched value to name (Day 16 ✅)
-- **Pair patterns** (Day 17) - coming soon
+- **Pair patterns** - destructure pairs (Day 17 ✅)
 - **ADT patterns** (Day 18-19) - coming soon
 
 **Syntax:**
@@ -74,6 +74,7 @@ Everything is a **Cell**:
 - `_` - Wildcard (matches anything, no binding)
 - `#42`, `#t`, `:foo` - Literals (match exact value)
 - `x`, `n`, `value` - Variables (bind value to name)
+- `(⟨⟩ pat1 pat2)` - Pair destructuring (recursive matching)
 
 **Examples:**
 ```scheme
@@ -91,6 +92,16 @@ Everything is a **Cell**:
 
 ; Multiple clauses
 (∇ #50 (⌜ ((#42 :is-42) (n (⊗ n #2)))))  ; → #100
+
+; Pair patterns (Day 17)
+(∇ (⟨⟩ #1 #2) (⌜ (((⟨⟩ x y) (⊕ x y)))))  ; → #3
+
+; Nested pairs
+(∇ (⟨⟩ (⟨⟩ #1 #2) #3) (⌜ (((⟨⟩ (⟨⟩ a b) c) (⊕ a (⊕ b c))))))  ; → #6
+
+; List patterns
+(∇ (⟨⟩ #42 ∅) (⌜ (((⟨⟩ x ∅) x))))  ; → #42 (single-element list)
+(∇ (⟨⟩ #3 (⟨⟩ #4 ∅)) (⌜ (((⟨⟩ x (⟨⟩ y ∅)) (⊕ x y)))))  ; → #7
 ```
 
 ### Comparison & Logic (5) ✅
