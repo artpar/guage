@@ -1,0 +1,1 @@
+(⋘ "../../tests/fixtures/integ_utils.scm") (≔ main (λ (x) (triple x)))
