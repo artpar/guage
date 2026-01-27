@@ -1,0 +1,49 @@
+; CFG (Control Flow Graph) Tests - Phase 2C Week 2
+
+; Define a simple factorial function
+(≔ ! (λ (n) (? (≡ n #0) #1 (⊗ n (! (⊖ n #1))))))
+
+; Get CFG for factorial
+(≔ cfg (⌂⟿ (⌜ !)))
+
+; Test that CFG is a graph
+(⊨ (⌜ :cfg-is-graph) #t (⊝? cfg (⌜ :CFG)))
+
+; Test that CFG has nodes
+(⊨ (⌜ :cfg-has-nodes) #t (⟨⟩? (⊝→ cfg (⌜ :nodes))))
+
+; Test that CFG has edges
+(⊨ (⌜ :cfg-has-edges) #t (⟨⟩? (⊝→ cfg (⌜ :edges))))
+
+; Test that CFG has entry point
+(⊨ (⌜ :cfg-has-entry) #t (ℕ? (⊝→ cfg (⌜ :entry))))
+
+; Test that CFG has exit point
+(⊨ (⌜ :cfg-has-exit) #t (ℕ? (⊝→ cfg (⌜ :exit))))
+
+; Define a simple add function (no branches)
+(≔ add (λ (a b) (⊕ a b)))
+
+; Get CFG for add
+(≔ cfg-add (⌂⟿ (⌜ add)))
+
+; Test add CFG is a graph
+(⊨ (⌜ :cfg-add-is-graph) #t (⊝? cfg-add (⌜ :CFG)))
+
+; Test add CFG has nodes
+(⊨ (⌜ :cfg-add-has-nodes) #t (⟨⟩? (⊝→ cfg-add (⌜ :nodes))))
+
+; Define conditional function
+(≔ max (λ (a b) (? (> a b) a b)))
+
+; Get CFG for max
+(≔ cfg-max (⌂⟿ (⌜ max)))
+
+; Test max CFG is a graph
+(⊨ (⌜ :cfg-max-is-graph) #t (⊝? cfg-max (⌜ :CFG)))
+
+; Test max CFG has nodes (should have at least test + branches)
+(⊨ (⌜ :cfg-max-has-nodes) #t (⟨⟩? (⊝→ cfg-max (⌜ :nodes))))
+
+; Test max CFG has edges (true/false branches)
+(⊨ (⌜ :cfg-max-has-edges) #t (⟨⟩? (⊝→ cfg-max (⌜ :edges))))

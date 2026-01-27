@@ -1,5 +1,6 @@
 #include "primitives.h"
 #include "eval.h"
+#include "cfg.h"
 #include <stdio.h>
 #include <assert.h>
 #include <math.h>
@@ -1190,7 +1191,24 @@ Cell* prim_graph_is(Cell* args) {
         return cell_bool(false);
     }
 
-    /* Look up expected type schema */
+    /* Check for built-in graph types (CFG, DFG, CALL, DEP) */
+    if (cell_is_symbol(expected_type)) {
+        const char* type_str = cell_get_symbol(expected_type);
+        GraphType gt = value->data.graph.graph_type;
+
+        /* Map built-in graph types to symbols */
+        if (strcmp(type_str, ":CFG") == 0) {
+            return cell_bool(gt == GRAPH_CFG);
+        } else if (strcmp(type_str, ":DFG") == 0) {
+            return cell_bool(gt == GRAPH_DFG);
+        } else if (strcmp(type_str, ":CALL") == 0 || strcmp(type_str, ":CallGraph") == 0) {
+            return cell_bool(gt == GRAPH_CALL);
+        } else if (strcmp(type_str, ":DEP") == 0 || strcmp(type_str, ":DepGraph") == 0) {
+            return cell_bool(gt == GRAPH_DEP);
+        }
+    }
+
+    /* Look up expected type schema for user-defined types */
     EvalContext* ctx = eval_get_current_context();
     Cell* schema = eval_lookup_type(ctx, expected_type);
     if (!schema) {
@@ -1210,10 +1228,9 @@ Cell* prim_graph_is(Cell* args) {
         return cell_bool(false);
     }
 
-    /* For now, any graph matches any graph type */
-    /* Future: could check graph_type matches schema graph_type */
+    /* For user-defined graph types, check if GENERIC */
     cell_release(schema);
-    return cell_bool(true);
+    return cell_bool(value->data.graph.graph_type == GRAPH_GENERIC);
 }
 
 /* Forward declaration */
@@ -1304,6 +1321,48 @@ Cell* prim_doc_source(Cell* args) {
     return cell_nil();
 }
 
+/* ============ CFG/DFG Query Primitives ============ */
+
+/* ⌂⟿ - Get Control Flow Graph for function
+ * Args: quoted symbol (function name)
+ * Returns: CFG graph structure
+ */
+Cell* prim_query_cfg(Cell* args) {
+    if (!cell_is_pair(args)) {
+        return cell_error("⌂⟿ requires a quoted function name", cell_nil());
+    }
+
+    Cell* quoted = arg1(args);
+    if (!cell_is_symbol(quoted)) {
+        return cell_error("⌂⟿ requires a symbol argument", quoted);
+    }
+
+    const char* func_name = cell_get_symbol(quoted);
+
+    /* Look up function in environment */
+    EvalContext* ctx = eval_get_current_context();
+    Cell* func_value = eval_lookup(ctx, func_name);
+
+    if (!func_value) {
+        return cell_error("⌂⟿ function not found", quoted);
+    }
+
+    /* Verify it's a lambda */
+    if (func_value->type != CELL_LAMBDA) {
+        cell_release(func_value);
+        return cell_error("⌂⟿ argument must be a function", quoted);
+    }
+
+    /* Get lambda body */
+    Cell* body = func_value->data.lambda.body;
+
+    /* Generate CFG */
+    Cell* cfg = generate_cfg(body);
+
+    cell_release(func_value);
+    return cfg;
+}
+
 /* Primitive table - PURE SYMBOLS ONLY */
 /* Primitive table - PURE SYMBOLS ONLY
  * EVERY primitive MUST have documentation */
@@ -1373,6 +1432,9 @@ static Primitive primitives[] = {
     {"⌂∈", prim_doc_type, 1, {"Get type signature for symbol", ":symbol → string"}},
     {"⌂≔", prim_doc_deps, 1, {"Get dependencies for symbol", ":symbol → [symbols]"}},
     {"⌂⊛", prim_doc_source, 1, {"Get source code for symbol", ":symbol → expression"}},
+
+    /* CFG/DFG Query primitives */
+    {"⌂⟿", prim_query_cfg, 1, {"Get control flow graph for function", ":symbol → CFG"}},
 
     /* Structure primitives - Leaf (⊙) */
     {"⊙≔", prim_struct_define_leaf, -1, {"Define leaf structure type with field names", ":symbol → [:symbol] → :symbol"}},
