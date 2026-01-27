@@ -93,3 +93,60 @@
 (⊨ (⌜ :node-right-is-leaf) #t (⊚? (⊚→ node (⌜ :right)) (⌜ :Tree) (⌜ :Leaf)))
 (⊨ (⌜ :node-left-value) #10 (⊚→ (⊚→ node (⌜ :left)) (⌜ :value)))
 (⊨ (⌜ :node-right-value) #20 (⊚→ (⊚→ node (⌜ :right)) (⌜ :value)))
+
+; ============ Graph Structure Tests ============
+
+; Define simple generic graph
+(⊝≔ (⌜ :Graph) (⌜ :generic) (⌜ :nodes) (⌜ :edges))
+
+; Create empty graph
+(≔ g0 (⊝ (⌜ :Graph)))
+
+; Test empty graph properties
+(⊨ (⌜ :empty-graph-nodes) ∅ (⊝→ g0 (⌜ :nodes)))
+(⊨ (⌜ :empty-graph-edges) ∅ (⊝→ g0 (⌜ :edges)))
+
+; Add first node
+(≔ g1 (⊝⊕ g0 #0))
+
+; Test single node (nodes list is not empty)
+(⊨ (⌜ :graph-has-node) #t (⟨⟩? (⊝→ g1 (⌜ :nodes))))
+
+; Add second node
+(≔ g2 (⊝⊕ g1 #1))
+
+; Test two nodes (nodes list has tail that is non-empty)
+(⊨ (⌜ :graph-has-two-nodes) #t (⟨⟩? (▷ (⊝→ g2 (⌜ :nodes)))))
+
+; Test immutability - original unchanged
+(⊨ (⌜ :graph-original-unchanged) ∅ (⊝→ g0 (⌜ :nodes)))
+
+; Create fresh graph for edge testing
+(≔ eg (⊝ (⌜ :Graph)))
+(≔ eg (⊝⊕ eg #10))
+(≔ eg (⊝⊕ eg #20))
+
+; Add single edge
+(≔ eg2 (⊝⊗ eg #10 #20 (⌜ :connects)))
+
+; Test edge exists
+(⊨ (⌜ :graph-has-edge) #t (⟨⟩? (⊝→ eg2 (⌜ :edges))))
+
+; Test graph type checking
+(⊨ (⌜ :is-graph) #t (⊝? g0 (⌜ :Graph)))
+(⊨ (⌜ :is-graph-with-nodes) #t (⊝? g2 (⌜ :Graph)))
+(⊨ (⌜ :number-not-graph) #f (⊝? #42 (⌜ :Graph)))
+(⊨ (⌜ :struct-not-graph) #f (⊝? p1 (⌜ :Graph)))
+
+; Define CFG graph type
+(⊝≔ (⌜ :CFG) (⌜ :cfg) (⌜ :nodes) (⌜ :edges) (⌜ :entry) (⌜ :exit))
+
+; Create CFG instance
+(≔ cfg (⊝ (⌜ :CFG)))
+
+; Test CFG is a graph
+(⊨ (⌜ :cfg-is-graph) #t (⊝? cfg (⌜ :CFG)))
+
+; Test CFG entry/exit (should be ∅ for empty CFG)
+(⊨ (⌜ :cfg-no-entry) ∅ (⊝→ cfg (⌜ :entry)))
+(⊨ (⌜ :cfg-no-exit) ∅ (⊝→ cfg (⌜ :exit)))

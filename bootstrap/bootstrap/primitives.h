@@ -84,6 +84,14 @@ Cell* prim_struct_create_node(Cell* args);  /* ⊚ - create node instance */
 Cell* prim_struct_get_node(Cell* args);     /* ⊚→ - get node field value */
 Cell* prim_struct_is_node(Cell* args);      /* ⊚? - check node type and variant */
 
+/* Structure primitives - Graph */
+Cell* prim_graph_define(Cell* args);        /* ⊝≔ - define graph type */
+Cell* prim_graph_create(Cell* args);        /* ⊝ - create graph instance */
+Cell* prim_graph_add_node(Cell* args);      /* ⊝⊕ - add node to graph */
+Cell* prim_graph_add_edge(Cell* args);      /* ⊝⊗ - add edge to graph */
+Cell* prim_graph_query(Cell* args);         /* ⊝→ - query graph property */
+Cell* prim_graph_is(Cell* args);            /* ⊝? - check graph type */
+
 /* Primitive documentation structure */
 typedef struct {
     const char* description;     /* What this primitive does */

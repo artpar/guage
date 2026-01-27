@@ -29,6 +29,18 @@ static Cell* arg3(Cell* args) {
     return cell_car(rest);
 }
 
+/* Helper: get fourth argument */
+static Cell* arg4(Cell* args) {
+    assert(cell_is_pair(args));
+    Cell* rest = cell_cdr(args);
+    assert(cell_is_pair(rest));
+    rest = cell_cdr(rest);
+    assert(cell_is_pair(rest));
+    rest = cell_cdr(rest);
+    assert(cell_is_pair(rest));
+    return cell_car(rest);
+}
+
 /* Core Lambda Calculus */
 
 /* ⟨ ⟩ - construct cell */
@@ -949,6 +961,261 @@ Cell* prim_struct_is_node(Cell* args) {
     return cell_bool(true);
 }
 
+/* ============ Graph Primitives ============ */
+
+/* ⊝≔ - Define graph structure type
+ * Args: type_tag (symbol) graph_type (symbol) followed by field names (symbols)
+ * Example: (⊝≔ :Graph :generic :nodes :edges)
+ * Returns: type_tag
+ */
+Cell* prim_graph_define(Cell* args) {
+    if (!cell_is_pair(args)) {
+        return cell_error("⊝≔ requires at least type tag and graph type", cell_nil());
+    }
+
+    Cell* type_tag = arg1(args);
+    if (!cell_is_symbol(type_tag)) {
+        return cell_error("⊝≔ type tag must be a symbol", type_tag);
+    }
+
+    Cell* rest = cell_cdr(args);
+    if (!cell_is_pair(rest)) {
+        return cell_error("⊝≔ requires graph type", type_tag);
+    }
+
+    Cell* graph_type_sym = cell_car(rest);
+    if (!cell_is_symbol(graph_type_sym)) {
+        return cell_error("⊝≔ graph type must be a symbol", graph_type_sym);
+    }
+
+    /* Validate graph type - must be :generic, :cfg, :dfg, :call, or :dep */
+    const char* gtype = cell_get_symbol(graph_type_sym);
+    if (strcmp(gtype, ":generic") != 0 &&
+        strcmp(gtype, ":cfg") != 0 &&
+        strcmp(gtype, ":dfg") != 0 &&
+        strcmp(gtype, ":call") != 0 &&
+        strcmp(gtype, ":dep") != 0) {
+        return cell_error("⊝≔ graph type must be :generic, :cfg, :dfg, :call, or :dep", graph_type_sym);
+    }
+
+    /* Collect field names from remaining args */
+    Cell* fields = cell_nil();
+    rest = cell_cdr(rest);
+    while (cell_is_pair(rest)) {
+        Cell* field = cell_car(rest);
+        if (!cell_is_symbol(field)) {
+            cell_release(fields);
+            return cell_error("⊝≔ field names must be symbols", field);
+        }
+        cell_retain(field);
+        fields = cell_cons(field, fields);
+        rest = cell_cdr(rest);
+    }
+
+    /* Reverse fields to preserve order */
+    Cell* reversed = cell_nil();
+    while (cell_is_pair(fields)) {
+        Cell* field = cell_car(fields);
+        cell_retain(field);
+        reversed = cell_cons(field, reversed);
+        Cell* next = cell_cdr(fields);
+        cell_release(fields);
+        fields = next;
+    }
+
+    /* Create schema: ⟨:graph ⟨graph_type ⟨fields⟩⟩⟩ */
+    cell_retain(graph_type_sym);
+    Cell* type_and_fields = cell_cons(graph_type_sym, reversed);
+    Cell* kind_tag = cell_symbol(":graph");
+    Cell* schema = cell_cons(kind_tag, type_and_fields);
+
+    /* Register in type registry */
+    EvalContext* ctx = eval_get_current_context();
+    eval_register_type(ctx, type_tag, schema);
+
+    /* Return the type tag */
+    cell_retain(type_tag);
+    return type_tag;
+}
+
+/* ⊝ - Create empty graph instance
+ * Args: type_tag
+ * Example: (⊝ :Graph)
+ * Returns: graph cell
+ */
+Cell* prim_graph_create(Cell* args) {
+    Cell* type_tag = arg1(args);
+    if (!cell_is_symbol(type_tag)) {
+        return cell_error("⊝ type tag must be a symbol", type_tag);
+    }
+
+    /* Lookup type schema */
+    EvalContext* ctx = eval_get_current_context();
+    Cell* schema = eval_lookup_type(ctx, type_tag);
+    if (!schema) {
+        return cell_error("⊝ undefined type", type_tag);
+    }
+
+    /* Extract graph type from schema: ⟨:graph ⟨graph_type fields⟩⟩ */
+    if (!cell_is_pair(schema)) {
+        cell_release(schema);
+        return cell_error("⊝ invalid schema", type_tag);
+    }
+
+    Cell* kind = cell_car(schema);
+    const char* kind_str = cell_get_symbol(kind);
+    if (strcmp(kind_str, ":graph") != 0) {
+        cell_release(schema);
+        return cell_error("⊝ type is not a graph", type_tag);
+    }
+
+    Cell* type_and_fields = cell_cdr(schema);
+    if (!cell_is_pair(type_and_fields)) {
+        cell_release(schema);
+        return cell_error("⊝ invalid schema format", type_tag);
+    }
+
+    Cell* graph_type_sym = cell_car(type_and_fields);
+    const char* gtype = cell_get_symbol(graph_type_sym);
+
+    /* Map symbol to GraphType enum */
+    GraphType graph_type;
+    if (strcmp(gtype, ":generic") == 0) {
+        graph_type = GRAPH_GENERIC;
+    } else if (strcmp(gtype, ":cfg") == 0) {
+        graph_type = GRAPH_CFG;
+    } else if (strcmp(gtype, ":dfg") == 0) {
+        graph_type = GRAPH_DFG;
+    } else if (strcmp(gtype, ":call") == 0) {
+        graph_type = GRAPH_CALL;
+    } else if (strcmp(gtype, ":dep") == 0) {
+        graph_type = GRAPH_DEP;
+    } else {
+        cell_release(schema);
+        return cell_error("⊝ unknown graph type", graph_type_sym);
+    }
+
+    /* Create empty graph */
+    Cell* result = cell_graph(graph_type, cell_nil(), cell_nil(), cell_nil());
+
+    cell_release(schema);
+    return result;
+}
+
+/* ⊝⊕ - Add node to graph
+ * Args: graph node_data
+ * Example: (⊝⊕ g #0)
+ * Returns: new graph with node added
+ */
+Cell* prim_graph_add_node(Cell* args) {
+    Cell* graph = arg1(args);
+    Cell* node_data = arg2(args);
+
+    if (!cell_is_graph(graph)) {
+        return cell_error("⊝⊕ first arg must be graph", graph);
+    }
+
+    /* Use cell.c function to add node (returns new graph) */
+    Cell* result = cell_graph_add_node(graph, node_data);
+    return result;
+}
+
+/* ⊝⊗ - Add edge to graph
+ * Args: graph from_node to_node label
+ * Example: (⊝⊗ g #0 #1 :edge)
+ * Returns: new graph with edge added
+ */
+Cell* prim_graph_add_edge(Cell* args) {
+    Cell* graph = arg1(args);
+    Cell* from = arg2(args);
+    Cell* to = arg3(args);
+    Cell* label = arg4(args);
+
+    if (!cell_is_graph(graph)) {
+        return cell_error("⊝⊗ first arg must be graph", graph);
+    }
+
+    /* Use cell.c function to add edge (returns new graph) */
+    Cell* result = cell_graph_add_edge(graph, from, to, label);
+    return result;
+}
+
+/* ⊝→ - Query graph property
+ * Args: graph property_name
+ * Example: (⊝→ g :nodes)
+ * Returns: requested property
+ */
+Cell* prim_graph_query(Cell* args) {
+    Cell* graph = arg1(args);
+    Cell* property = arg2(args);
+
+    if (!cell_is_graph(graph)) {
+        return cell_error("⊝→ first arg must be graph", graph);
+    }
+
+    if (!cell_is_symbol(property)) {
+        return cell_error("⊝→ property must be symbol", property);
+    }
+
+    const char* prop = cell_get_symbol(property);
+
+    if (strcmp(prop, ":nodes") == 0) {
+        return cell_graph_nodes(graph);
+    } else if (strcmp(prop, ":edges") == 0) {
+        return cell_graph_edges(graph);
+    } else if (strcmp(prop, ":entry") == 0) {
+        Cell* entry = cell_graph_entry(graph);
+        return entry ? entry : cell_nil();
+    } else if (strcmp(prop, ":exit") == 0) {
+        Cell* exit = cell_graph_exit(graph);
+        return exit ? exit : cell_nil();
+    } else if (strcmp(prop, ":metadata") == 0) {
+        return cell_graph_metadata(graph);
+    } else {
+        return cell_error("⊝→ unknown property", property);
+    }
+}
+
+/* ⊝? - Check if value is graph of given type
+ * Args: value type_tag
+ * Example: (⊝? g :Graph)
+ * Returns: #t or #f
+ */
+Cell* prim_graph_is(Cell* args) {
+    Cell* value = arg1(args);
+    Cell* expected_type = arg2(args);
+
+    /* Check if it's a graph at all */
+    if (!cell_is_graph(value)) {
+        return cell_bool(false);
+    }
+
+    /* Look up expected type schema */
+    EvalContext* ctx = eval_get_current_context();
+    Cell* schema = eval_lookup_type(ctx, expected_type);
+    if (!schema) {
+        return cell_bool(false);
+    }
+
+    /* Verify it's a graph schema */
+    if (!cell_is_pair(schema)) {
+        cell_release(schema);
+        return cell_bool(false);
+    }
+
+    Cell* kind = cell_car(schema);
+    const char* kind_str = cell_get_symbol(kind);
+    if (strcmp(kind_str, ":graph") != 0) {
+        cell_release(schema);
+        return cell_bool(false);
+    }
+
+    /* For now, any graph matches any graph type */
+    /* Future: could check graph_type matches schema graph_type */
+    cell_release(schema);
+    return cell_bool(true);
+}
+
 /* Forward declaration */
 static Primitive primitives[];
 /* Documentation primitives */
@@ -1119,6 +1386,14 @@ static Primitive primitives[] = {
     {"⊚", prim_struct_create_node, -1, {"Create node instance with variant", ":symbol → :symbol → [α] → ⊚"}},
     {"⊚→", prim_struct_get_node, 2, {"Get field value from node", "⊚ → :symbol → α"}},
     {"⊚?", prim_struct_is_node, 3, {"Check if value is node of given type and variant", "α → :symbol → :symbol → 𝔹"}},
+
+    /* Graph primitives */
+    {"⊝≔", prim_graph_define, -1, {"Define graph type with graph_type and fields", ":symbol → :symbol → [:symbol] → :symbol"}},
+    {"⊝", prim_graph_create, 1, {"Create empty graph instance", ":symbol → ⊝"}},
+    {"⊝⊕", prim_graph_add_node, 2, {"Add node to graph (immutable)", "⊝ → α → ⊝"}},
+    {"⊝⊗", prim_graph_add_edge, 4, {"Add edge to graph (immutable)", "⊝ → α → α → α → ⊝"}},
+    {"⊝→", prim_graph_query, 2, {"Query graph property (:nodes, :edges, :entry, :exit, :metadata)", "⊝ → :symbol → α"}},
+    {"⊝?", prim_graph_is, 2, {"Check if value is graph of given type", "α → :symbol → 𝔹"}},
 
     {NULL, NULL, 0, {NULL, NULL}}
 };

@@ -383,8 +383,8 @@ Cell* cell_graph_add_node(Cell* graph, Cell* node) {
 Cell* cell_graph_add_edge(Cell* graph, Cell* from, Cell* to, Cell* label) {
     assert(graph->type == CELL_GRAPH);
 
-    /* Create edge as ⟨from ⟨to label⟩⟩ */
-    Cell* edge = cell_cons(from, cell_cons(to, label));
+    /* Create edge as ⟨from ⟨to ⟨label ∅⟩⟩⟩ (proper list) */
+    Cell* edge = cell_cons(from, cell_cons(to, cell_cons(label, cell_nil())));
 
     /* Create new edge list with edge prepended */
     Cell* new_edges = cell_cons(edge, graph->data.graph.edges);
