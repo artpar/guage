@@ -14,6 +14,8 @@
 typedef struct {
     const char* input;
     int pos;
+    int line;      /* Current line number (1-based) */
+    int column;    /* Current column number (1-based) */
 } Parser;
 
 static void skip_whitespace(Parser* p) {
@@ -23,6 +25,15 @@ static void skip_whitespace(Parser* p) {
                p->input[p->pos] == '\t' ||
                p->input[p->pos] == '\n' ||
                p->input[p->pos] == '\r') {
+            /* Track line/column */
+            if (p->input[p->pos] == '\n') {
+                p->line++;
+                p->column = 1;
+            } else if (p->input[p->pos] == '\t') {
+                p->column += 4;  /* Assume tab = 4 spaces */
+            } else {
+                p->column++;
+            }
             p->pos++;
         }
 
@@ -31,6 +42,7 @@ static void skip_whitespace(Parser* p) {
             while (p->input[p->pos] != '\0' &&
                    p->input[p->pos] != '\n') {
                 p->pos++;
+                p->column++;
             }
             continue;  /* Go back and skip more whitespace */
         }
@@ -44,11 +56,13 @@ static Cell* parse_expr(Parser* p);
 static Cell* parse_list(Parser* p) {
     /* Skip '(' */
     p->pos++;
+    p->column++;
     skip_whitespace(p);
 
     /* Empty list */
     if (p->input[p->pos] == ')') {
         p->pos++;
+        p->column++;
         return cell_nil();
     }
 
@@ -73,6 +87,7 @@ static Cell* parse_list(Parser* p) {
 
     if (p->input[p->pos] == ')') {
         p->pos++;
+        p->column++;
     }
 
     return result;
@@ -85,22 +100,26 @@ static Cell* parse_number(Parser* p) {
     if (p->input[p->pos] == '-') {
         is_negative = 1;
         p->pos++;
+        p->column++;
     }
 
     while (p->input[p->pos] >= '0' && p->input[p->pos] <= '9') {
         value = value * 10 + (p->input[p->pos] - '0');
         p->pos++;
+        p->column++;
     }
 
     /* Handle decimal point */
     if (p->input[p->pos] == '.') {
         p->pos++;
+        p->column++;
         double fraction = 0;
         double divisor = 10;
         while (p->input[p->pos] >= '0' && p->input[p->pos] <= '9') {
             fraction += (p->input[p->pos] - '0') / divisor;
             divisor *= 10;
             p->pos++;
+            p->column++;
         }
         value += fraction;
     }
@@ -124,6 +143,7 @@ static Cell* parse_symbol(Parser* p) {
            p->input[p->pos] != '(' &&
            p->input[p->pos] != ')') {
         buffer[i++] = p->input[p->pos++];
+        p->column++;  /* Count each byte (UTF-8 safe for display) */
         if (i >= 255) break;
     }
     buffer[i] = '\0';
@@ -134,6 +154,7 @@ static Cell* parse_symbol(Parser* p) {
 static Cell* parse_string(Parser* p) {
     /* Skip opening quote */
     p->pos++;
+    p->column++;
 
     char buffer[1024];
     int i = 0;
@@ -143,6 +164,7 @@ static Cell* parse_string(Parser* p) {
         /* Handle escape sequences */
         if (p->input[p->pos] == '\\' && p->input[p->pos + 1] != '\0') {
             p->pos++;  /* Skip backslash */
+            p->column++;
             switch (p->input[p->pos]) {
                 case 'n':  buffer[i++] = '\n'; break;
                 case 't':  buffer[i++] = '\t'; break;
@@ -152,8 +174,10 @@ static Cell* parse_string(Parser* p) {
                 default:   buffer[i++] = p->input[p->pos]; break;
             }
             p->pos++;
+            p->column++;
         } else {
             buffer[i++] = p->input[p->pos++];
+            p->column++;
         }
 
         if (i >= 1023) break;  /* Buffer overflow protection */
@@ -164,6 +188,7 @@ static Cell* parse_string(Parser* p) {
     /* Skip closing quote */
     if (p->input[p->pos] == '"') {
         p->pos++;
+        p->column++;
     }
 
     return cell_string(buffer);
@@ -190,12 +215,15 @@ static Cell* parse_expr(Parser* p) {
     /* Number or Boolean with # prefix */
     if (p->input[p->pos] == '#') {
         p->pos++;
+        p->column++;
         /* Boolean */
         if (p->input[p->pos] == 't') {
             p->pos++;
+            p->column++;
             return cell_bool(true);
         } else if (p->input[p->pos] == 'f') {
             p->pos++;
+            p->column++;
             return cell_bool(false);
         }
         /* Number with # prefix */
@@ -205,6 +233,7 @@ static Cell* parse_expr(Parser* p) {
         }
         /* Invalid # syntax - backtrack */
         p->pos--;
+        p->column--;
     }
 
     /* Number without prefix */
@@ -218,7 +247,7 @@ static Cell* parse_expr(Parser* p) {
 }
 
 Cell* parse(const char* input) {
-    Parser p = {input, 0};
+    Parser p = {input, 0, 1, 1};  /* pos=0, line=1, column=1 */
     return parse_expr(&p);
 }
 
@@ -513,7 +542,13 @@ void repl(void) {
             /* Parse */
             Cell* expr = parse(accumulated);
             if (expr == NULL) {
-                printf("Parse error\n");
+                /* Count lines in accumulated input */
+                int line_count = 1;
+                for (size_t i = 0; i < strlen(accumulated); i++) {
+                    if (accumulated[i] == '\n') line_count++;
+                }
+                printf("Parse error at line %d\n", line_count);
+                printf("Hint: Check for unbalanced parentheses or incomplete expressions\n");
                 accumulated[0] = '\0';
                 continue;
             }
@@ -532,7 +567,13 @@ void repl(void) {
             /* Reset accumulator */
             accumulated[0] = '\0';
         } else if (balance < 0) {
-            printf("Error: Unbalanced parentheses (too many closing parens)\n");
+            /* Count lines */
+            int line_count = 1;
+            for (size_t i = 0; i < strlen(accumulated); i++) {
+                if (accumulated[i] == '\n') line_count++;
+            }
+            printf("Error: Unbalanced parentheses (too many closing parens) near line %d\n", line_count);
+            printf("Hint: Check for extra ')' or missing '(' in your expression\n");
             accumulated[0] = '\0';
             balance = 0;
         }
