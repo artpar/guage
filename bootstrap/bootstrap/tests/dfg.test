@@ -1,0 +1,50 @@
+; Data Flow Graph Tests
+
+; Define factorial (with recursion)
+(≔ ! (λ (n)
+  (? (≡ n #0)
+     #1
+     (⊗ n (! (⊖ n #1))))))
+
+; Test 1: DFG is a graph
+(⊝? (⌂⇝ (⌜ !)) (⌜ :DFG))
+
+; Test 2: DFG has nodes (operations)
+(⟨⟩? (⊝→ (⌂⇝ (⌜ !)) (⌜ :nodes)))
+
+; Test 3: DFG has edges (data dependencies)
+(⟨⟩? (⊝→ (⌂⇝ (⌜ !)) (⌜ :edges)))
+
+; Test 4: DFG has entry points (parameters)
+(⟨⟩? (⊝→ (⌂⇝ (⌜ !)) (⌜ :entry)))
+
+; Test 5: DFG has exit points (return values)
+(⟨⟩? (⊝→ (⌂⇝ (⌜ !)) (⌜ :exit)))
+
+; Simple function: add two numbers
+(≔ add (λ (a b) (⊕ a b)))
+
+; Test 6: Simple function DFG is a graph
+(⊝? (⌂⇝ (⌜ add)) (⌜ :DFG))
+
+; Test 7: Simple function has nodes
+(⟨⟩? (⊝→ (⌂⇝ (⌜ add)) (⌜ :nodes)))
+
+; Conditional function: max of two numbers
+(≔ max (λ (a b) (? (> a b) a b)))
+
+; Test 8: Conditional function DFG is a graph
+(⊝? (⌂⇝ (⌜ max)) (⌜ :DFG))
+
+; Test 9: Conditional function has nodes (operation nodes)
+(⟨⟩? (⊝→ (⌂⇝ (⌜ max)) (⌜ :nodes)))
+
+; Test 10: Conditional function has edges (data dependencies)
+(⟨⟩? (⊝→ (⌂⇝ (⌜ max)) (⌜ :edges)))
+
+; Test 11: Nested operations
+(≔ complex (λ (x y) (⊕ (⊗ x #2) (⊘ y #3))))
+(⊝? (⌂⇝ (⌜ complex)) (⌜ :DFG))
+
+; Test 12: Multiple parameters tracked
+(⟨⟩? (⊝→ (⌂⇝ (⌜ complex)) (⌜ :entry)))

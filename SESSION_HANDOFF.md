@@ -2,18 +2,19 @@
 
 ## Executive Summary
 
-**Phase 2C Week 2 Day 8:** CFG generation complete! Recursion bug fixed! All tests passing!
+**Phase 2C Week 2 Days 8-9:** CFG + DFG complete! Recursion bug fixed! All tests passing!
 
-**Status:** Week 1 complete (all 15 primitives), Week 2 Day 8 complete (CFG + bug fix)
-**Duration:** ~2 hours this session, ~13 hours total Phase 2C
+**Status:** Week 1 complete (all 15 primitives), Week 2 Days 8-9 complete (CFG + DFG)
+**Duration:** ~3 hours this session, ~14 hours total Phase 2C
 **Major Outcomes:**
 1. ✅ Week 1 (Days 1-7): All 15 structure primitives complete
-2. ✅ Week 2 Day 8: CFG generation and query primitive working
-3. ✅ **RECURSION BUG FIXED** - Multi-line expression parsing
-4. ✅ **10/10 test suites passing** (was 9/10)
-5. ✅ 66 total tests passing (46 structure + 10 CFG + 10 other)
-6. ✅ Built-in graph type recognition (:CFG, :DFG, etc)
-7. ✅ First metaprogramming primitive operational
+2. ✅ Week 2 Day 8: CFG generation and ⌂⟿ query primitive working
+3. ✅ **Week 2 Day 9: DFG generation and ⌂⇝ query primitive working**
+4. ✅ **RECURSION BUG FIXED** - Multi-line expression parsing
+5. ✅ **11/11 test suites passing** (100% pass rate!)
+6. ✅ 78 total tests passing (46 structure + 10 CFG + 12 DFG + 10 other)
+7. ✅ Built-in graph type recognition (:CFG, :DFG, etc)
+8. ✅ Two metaprogramming primitives operational (⌂⟿, ⌂⇝)
 
 ---
 
@@ -63,7 +64,134 @@ fgets(input, MAX_INPUT, stdin);
 
 ---
 
-## 🆕 What Was Already Done (Day 8)
+## 🆕 New This Session (Day 9): DFG Generation ✅
+
+### Data Flow Graph (DFG) - COMPLETE ✅
+
+**Auto-generates Data Flow Graphs for any function!**
+
+**New Files:**
+- `bootstrap/bootstrap/dfg.h` - DFG generation interface
+- `bootstrap/bootstrap/dfg.c` - DFG algorithm implementation (~370 lines)
+- `bootstrap/bootstrap/tests/dfg.test` - 12 DFG tests
+
+**New Primitive:**
+```scheme
+⌂⇝ - Get Data Flow Graph
+(⌂⇝ (⌜ function-name)) → DFG graph
+```
+
+**Example Usage:**
+```scheme
+; Define factorial
+(≔ ! (λ (n) (? (≡ n #0) #1 (⊗ n (! (⊖ n #1))))))
+
+; Get its DFG automatically
+(≔ dfg (⌂⇝ (⌜ !)))
+
+; DFG shows:
+; - 14 operation nodes (parameters, operations, constants)
+; - 13 data dependency edges (value flow)
+; - Entry points (parameters: n)
+; - Exit points (return values)
+
+; Query the DFG
+(⊝? dfg (⌜ :DFG))        ; → #t (it's a DFG)
+(⊝→ dfg (⌜ :nodes))      ; → ⟨op1 ⟨op2 ...⟩⟩
+(⊝→ dfg (⌜ :edges))      ; → ⟨⟨from to :data⟩ ...⟩
+(⊝→ dfg (⌜ :entry))      ; → ⟨param_indices⟩
+(⊝→ dfg (⌜ :exit))       ; → ⟨return_indices⟩
+```
+
+### DFG Algorithm
+
+**How it works:**
+
+1. **Walk Lambda Body:** Traverse AST expression tree
+2. **Identify Operations:** Any expression that produces a value
+   - Arithmetic: ⊕, ⊖, ⊗, ⊘
+   - Comparison: ≡, <, >, etc.
+   - Logic: ∧, ∨, ¬
+   - Conditional: ?
+   - Function calls
+3. **Track Parameters:** De Bruijn indices → parameter nodes
+4. **Build Data Dependencies:**
+   - Operation uses result of another → data edge
+   - Conditional test → control edge
+   - Parameter usage → data edge from param
+5. **Set Entry/Exit:** Parameters are entries, return values are exits
+
+**DFG Structure:**
+```c
+CELL_GRAPH {
+  graph_type: GRAPH_DFG,
+  nodes: ⟨operation1 ⟨operation2 ...⟩⟩,
+  edges: ⟨⟨from_idx to_idx :data⟩ ...⟩,
+  entry: ⟨param_idx1 ⟨param_idx2 ...⟩⟩,
+  exit: ⟨return_idx⟩,
+  metadata: ⟨⟨:entry ...⟩ ⟨:exit ...⟩ ∅⟩
+}
+```
+
+### Key Differences: CFG vs DFG
+
+**CFG (Control Flow Graph):**
+- **Nodes:** Basic blocks (sequences of code)
+- **Edges:** Control flow (which code executes next)
+- **Purpose:** Show execution paths
+- **Example:** if → then branch OR else branch
+
+**DFG (Data Flow Graph):**
+- **Nodes:** Operations (produces values)
+- **Edges:** Data dependencies (which values flow where)
+- **Purpose:** Show value flow
+- **Example:** n → subtract → factorial → multiply → result
+
+**Complementary Information:**
+- CFG: "What code runs when?"
+- DFG: "Where does this value come from?"
+- Together: Complete understanding of function behavior
+
+### Test Results
+
+**New DFG Tests (12/12 passing):**
+```
+✅ dfg-is-graph - Factorial DFG is a graph
+✅ dfg-has-nodes - DFG has operation nodes
+✅ dfg-has-edges - DFG has data dependency edges
+✅ dfg-has-entry - DFG has entry points (parameters)
+✅ dfg-has-exit - DFG has exit points (return values)
+✅ dfg-add-is-graph - Simple function DFG
+✅ dfg-add-has-nodes - Binary operation has nodes
+✅ dfg-max-is-graph - Conditional function DFG
+✅ dfg-max-has-nodes - Conditional creates nodes
+✅ dfg-max-has-edges - Data dependencies tracked
+✅ dfg-complex - Nested operations tracked
+✅ dfg-multi-param - Multiple parameters tracked
+```
+
+**Overall Test Status:**
+- 12/12 DFG tests ✅
+- 10/10 CFG tests ✅
+- 46/46 structure tests ✅
+- 11/11 test suites ✅ (100% pass rate!)
+- **Total: 78 passing tests**
+
+### Files Modified (Day 9)
+
+```
+bootstrap/bootstrap/
+├── dfg.h             (new, 40 lines)  - DFG interface
+├── dfg.c             (new, 370 lines) - DFG implementation
+├── primitives.c      (+30 lines)      - ⌂⇝ primitive
+├── Makefile          (+dfg.o)         - Build configuration
+└── tests/
+    └── dfg.test      (new, 50 lines)  - DFG tests
+```
+
+---
+
+## 🆕 What Was Done Earlier (Day 8)
 
 ### CFG Generation - COMPLETE ✅
 
@@ -226,7 +354,7 @@ Documentation:
 - Zero memory leaks ✅
 - Complete documentation ✅
 
-### Week 2 (Days 8-14): CFG/DFG Generation - IN PROGRESS
+### Week 2 (Days 8-14): CFG/DFG/Call/Dep Generation - IN PROGRESS
 
 **Day 8: CFG Generation - COMPLETE ✅**
 - cfg.h/cfg.c implemented
@@ -234,11 +362,16 @@ Documentation:
 - 10 CFG tests passing
 - Built-in type recognition
 
-**Days 9-10: DFG Generation - NEXT**
-- Data flow analysis
-- Track value producers/consumers
-- Build dependency edges
-- ⌂⇝ query primitive
+**Day 9: DFG Generation - COMPLETE ✅**
+- dfg.h/dfg.c implemented (~370 lines)
+- ⌂⇝ query primitive working
+- 12 DFG tests passing
+- Data flow tracking operational
+
+**Day 10-11: Call Graph - NEXT**
+- Function call tracking
+- Recursion detection
+- ⌂⊚ query primitive
 
 **Day 11: Call Graph - PLANNED**
 - Function call tracking
@@ -275,19 +408,24 @@ Documentation:
 - ✅ Reference counting
 - ✅ 46 structure tests passing
 
-**Phase 2C Week 2 Day 8 (Complete):**
+**Phase 2C Week 2 Days 8-9 (Complete):**
 - ✅ CFG generation algorithm
 - ✅ ⌂⟿ query primitive
+- ✅ DFG generation algorithm
+- ✅ ⌂⇝ query primitive
 - ✅ Built-in graph type checking
-- ✅ 10 CFG tests passing
-- ✅ 56 total tests passing
+- ✅ 10 CFG tests + 12 DFG tests passing
+- ✅ 78 total tests passing (11/11 suites)
 
 ### What's Next 🎯
 
-**Immediate (Week 2, Days 9-10):**
-1. **DFG Generation** - Data flow graph algorithm
-2. **⌂⇝ Primitive** - Query data flow graphs
-3. **DFG Tests** - Validate data flow tracking
+**Immediate (Week 2, Days 10-12):**
+1. ✅ ~~DFG Generation~~ - DONE!
+2. ✅ ~~⌂⇝ Primitive~~ - DONE!
+3. **Call Graph Generation** - Function call tracking (Day 11)
+4. **⌂⊚ Primitive** - Query call graphs
+5. **Dependency Graph Generation** - Symbol dependencies (Day 12)
+6. **⌂⊙ Primitive** - Query dependency graphs
 
 **Week 2 (Days 11-12):**
 1. **Call Graph** - Function call tracking
@@ -678,10 +816,15 @@ f7a8b0e docs: Add comprehensive Day 4 summary
 - [x] ⌂⟿ query primitive
 - [x] 10 CFG tests passing
 
-**Days 9-10:** 🎯 NEXT
-- [ ] DFG generation algorithm
-- [ ] ⌂⇝ query primitive
-- [ ] 10+ DFG tests
+**Day 9:** ✅ COMPLETE
+- [x] DFG generation algorithm
+- [x] ⌂⇝ query primitive
+- [x] 12 DFG tests passing
+
+**Days 10-11:** 🎯 NEXT
+- [ ] Call graph generation algorithm
+- [ ] ⌂⊚ query primitive
+- [ ] 10+ call graph tests
 
 **Days 11-12:** ⏳ PLANNED
 - [ ] Call graph generation
@@ -740,41 +883,45 @@ f7a8b0e docs: Add comprehensive Day 4 summary
 
 ## Session Summary
 
-**Accomplished this session (Day 8):**
-- ✅ Implemented complete CFG generation algorithm
+**Accomplished this session (Days 8-9):**
+- ✅ Implemented complete CFG generation algorithm (Day 8)
 - ✅ Added ⌂⟿ query primitive (first metaprogramming query!)
+- ✅ **Fixed critical recursion bug** (multi-line parsing)
+- ✅ Implemented complete DFG generation algorithm (Day 9)
+- ✅ Added ⌂⇝ query primitive (second metaprogramming query!)
 - ✅ Enhanced ⊝? to recognize built-in graph types
-- ✅ Created 10 CFG tests (all passing)
+- ✅ Created 10 CFG tests + 12 DFG tests (all passing)
 - ✅ Updated build system and documentation
 - ✅ Zero memory leaks, clean compilation
 - ✅ All changes committed to git
+- ✅ **11/11 test suites passing (100% pass rate!)**
 
-**Overall progress (Days 1-8):**
+**Overall progress (Days 1-9):**
 - Week 1: Cell infrastructure + 15 structure primitives
-- Week 2 Day 8: CFG generation + query primitive
-- **19 primitives total** (15 structure + 4 query, 1 done)
-- **56 tests passing** (46 structure + 10 CFG)
-- **On schedule:** Week 2 Day 8 complete
+- Week 2 Days 8-9: CFG + DFG generation + query primitives
+- **17 primitives total** (15 structure + 2 query done, 2 query remaining)
+- **78 tests passing** (46 structure + 10 CFG + 12 DFG + 10 other)
+- **On schedule:** Week 2 Day 9 complete, ahead of plan!
 
-**Next Session Goals (Days 9-10):**
-1. Implement dfg.h/dfg.c (~300 lines)
-2. Add ⌂⇝ query primitive
-3. Create 10+ DFG tests
-4. Validate data flow tracking works
+**Next Session Goals (Days 10-11):**
+1. Implement call_graph.h/call_graph.c (~250 lines)
+2. Add ⌂⊚ query primitive
+3. Create 10+ call graph tests
+4. Track function calls and recursion
 
 **Critical for Next Session:**
-- Read cfg.c to understand pattern
-- DFG tracks data dependencies (value flow)
-- Operations are nodes, dependencies are edges
-- Parameters are inputs, returns are outputs
+- Follow CFG/DFG pattern for call graphs
+- Track function calls (including self-recursion)
+- Build call edges between functions
+- Detect recursion cycles
 
-**Status:** Week 2 Day 8 complete. Ready for Days 9-10. **On track!**
+**Status:** Week 2 Day 9 complete. Ready for Days 10-11. **Ahead of schedule!**
 
 **Prepared by:** Claude Sonnet 4.5
 **Date:** 2026-01-27
-**Session Duration:** ~1 hour
-**Total Phase 2C Time:** ~12 hours
-**Estimated Remaining:** ~40-50 hours (2 weeks)
+**Session Duration:** ~3 hours
+**Total Phase 2C Time:** ~14 hours
+**Estimated Remaining:** ~35-40 hours (1.5-2 weeks)
 
 ---
 

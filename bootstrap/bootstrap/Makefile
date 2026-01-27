@@ -3,7 +3,7 @@ CFLAGS = -Wall -Wextra -std=c11 -g -O2
 LDFLAGS =
 
 # Source files
-SOURCES = cell.c primitives.c debruijn.c debug.c eval.c cfg.c main.c
+SOURCES = cell.c primitives.c debruijn.c debug.c eval.c cfg.c dfg.c main.c
 OBJECTS = $(SOURCES:.c=.o)
 EXECUTABLE = guage
 
@@ -23,6 +23,7 @@ debruijn.o: debruijn.c debruijn.h cell.h
 debug.o: debug.c debug.h cell.h eval.h
 eval.o: eval.c eval.h cell.h primitives.h debruijn.h debug.h
 cfg.o: cfg.c cfg.h cell.h primitives.h
+dfg.o: dfg.c dfg.h cell.h primitives.h
 main.o: main.c cell.h primitives.h eval.h debug.h
 
 clean:

@@ -1,6 +1,7 @@
 #include "primitives.h"
 #include "eval.h"
 #include "cfg.h"
+#include "dfg.h"
 #include <stdio.h>
 #include <assert.h>
 #include <math.h>
@@ -1363,6 +1364,44 @@ Cell* prim_query_cfg(Cell* args) {
     return cfg;
 }
 
+/* Query data flow graph for function - ⌂⇝ */
+Cell* prim_query_dfg(Cell* args) {
+    if (!cell_is_pair(args)) {
+        return cell_error("⌂⇝ requires a quoted function name", cell_nil());
+    }
+
+    Cell* quoted = arg1(args);
+    if (!cell_is_symbol(quoted)) {
+        return cell_error("⌂⇝ requires a symbol argument", quoted);
+    }
+
+    const char* func_name = cell_get_symbol(quoted);
+
+    /* Look up function in environment */
+    EvalContext* ctx = eval_get_current_context();
+    Cell* func_value = eval_lookup(ctx, func_name);
+
+    if (!func_value) {
+        return cell_error("⌂⇝ function not found", quoted);
+    }
+
+    /* Verify it's a lambda */
+    if (func_value->type != CELL_LAMBDA) {
+        cell_release(func_value);
+        return cell_error("⌂⇝ argument must be a function", quoted);
+    }
+
+    /* Get lambda body and parameter count */
+    Cell* body = func_value->data.lambda.body;
+    int param_count = func_value->data.lambda.arity;
+
+    /* Generate DFG */
+    Cell* dfg = generate_dfg(body, param_count);
+
+    cell_release(func_value);
+    return dfg;
+}
+
 /* Primitive table - PURE SYMBOLS ONLY */
 /* Primitive table - PURE SYMBOLS ONLY
  * EVERY primitive MUST have documentation */
@@ -1435,6 +1474,7 @@ static Primitive primitives[] = {
 
     /* CFG/DFG Query primitives */
     {"⌂⟿", prim_query_cfg, 1, {"Get control flow graph for function", ":symbol → CFG"}},
+    {"⌂⇝", prim_query_dfg, 1, {"Get data flow graph for function", ":symbol → DFG"}},
 
     /* Structure primitives - Leaf (⊙) */
     {"⊙≔", prim_struct_define_leaf, -1, {"Define leaf structure type with field names", ":symbol → [:symbol] → :symbol"}},
