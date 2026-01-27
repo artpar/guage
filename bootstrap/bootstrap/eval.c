@@ -3,6 +3,7 @@
 #include "debruijn.h"
 #include "pattern.h"
 #include "module.h"
+#include "macro.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -671,6 +672,7 @@ EvalContext* eval_context_new(void) {
     ctx->primitives = primitives_init();
     ctx->user_docs = NULL;  /* Initialize doc list */
     ctx->type_registry = cell_nil();  /* Initialize type registry */
+    macro_init();  /* Initialize macro system */
     return ctx;
 }
 
@@ -960,6 +962,22 @@ static bool env_is_indexed(Cell* env) {
 
 /* Evaluate expression */
 static Cell* eval_internal(EvalContext* ctx, Cell* env, Cell* expr) {
+    /* Macro expansion pass - expand macros before evaluation */
+    if (cell_is_pair(expr)) {
+        Cell* first = cell_car(expr);
+        if (cell_is_symbol(first) && macro_is_macro_call(expr)) {
+            /* This is a macro call - expand it */
+            Cell* expanded = macro_expand(expr, ctx);
+            if (cell_is_error(expanded)) {
+                return expanded;
+            }
+            /* Evaluate the expanded code */
+            Cell* result = eval_internal(ctx, env, expanded);
+            cell_release(expanded);
+            return result;
+        }
+    }
+
     /* Numbers can be De Bruijn indices OR literals */
     if (cell_is_number(expr)) {
         /* Only try to interpret as De Bruijn index if env is indexed */
@@ -1025,6 +1043,38 @@ static Cell* eval_internal(EvalContext* ctx, Cell* env, Cell* expr) {
             if (strcmp(sym, "⌞̃") == 0 || strcmp(sym, "quasiquote") == 0) {
                 Cell* arg = cell_car(rest);
                 return eval_quasiquote(ctx, env, arg);
+            }
+
+            /* ⧉ - macro define (3 args) OR arity (1 arg) */
+            if (strcmp(sym, "⧉") == 0) {
+                /* Count arguments */
+                int arg_count = 0;
+                Cell* temp = rest;
+                while (temp && cell_is_pair(temp)) {
+                    arg_count++;
+                    temp = cell_cdr(temp);
+                }
+
+                /* If 3 arguments, it's a macro definition */
+                if (arg_count == 3) {
+                    /* Syntax: (⧉ name (param1 param2 ...) body) */
+                    Cell* name = cell_car(rest);
+                    Cell* params = cell_car(cell_cdr(rest));
+                    Cell* body = cell_car(cell_cdr(cell_cdr(rest)));
+
+                    if (!cell_is_symbol(name)) {
+                        return cell_error("macro-name-not-symbol", name);
+                    }
+                    const char* name_str = cell_get_symbol(name);
+
+                    /* Register macro - DON'T evaluate body (it's a template) */
+                    macro_define(name_str, params, body);
+
+                    /* Return name as symbol */
+                    cell_retain(name);
+                    return name;
+                }
+                /* Otherwise fall through to primitive (arity) */
             }
 
             /* ≔ - define */
