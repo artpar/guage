@@ -19,6 +19,16 @@ static Cell* arg2(Cell* args) {
     return cell_car(rest);
 }
 
+/* Helper: get third argument */
+static Cell* arg3(Cell* args) {
+    assert(cell_is_pair(args));
+    Cell* rest = cell_cdr(args);
+    assert(cell_is_pair(rest));
+    rest = cell_cdr(rest);
+    assert(cell_is_pair(rest));
+    return cell_car(rest);
+}
+
 /* Core Lambda Calculus */
 
 /* ⟨ ⟩ - construct cell */
@@ -662,6 +672,283 @@ Cell* prim_struct_type_check(Cell* args) {
     return cell_bool(cell_equal(actual_type, expected_type));
 }
 
+/* ============ Node/ADT Structure Primitives ============ */
+
+/* ⊚≔ - Define node/ADT structure type with variants
+ * Args: type_tag (symbol) followed by variant definitions
+ * Each variant: [variant_tag field1 field2 ...]
+ * Example: (⊚≔ :List [:Nil] [:Cons :head :tail])
+ * Returns: type_tag
+ */
+Cell* prim_struct_define_node(Cell* args) {
+    if (!cell_is_pair(args)) {
+        return cell_error("⊚≔ requires at least a type tag", cell_nil());
+    }
+
+    Cell* type_tag = arg1(args);
+    if (!cell_is_symbol(type_tag)) {
+        return cell_error("⊚≔ type tag must be a symbol", type_tag);
+    }
+
+    /* Collect variant definitions from remaining args */
+    Cell* variants = cell_nil();
+    Cell* rest = cell_cdr(args);
+
+    while (cell_is_pair(rest)) {
+        Cell* variant_def = cell_car(rest);
+
+        /* Each variant should be a list [variant_tag field1 field2 ...] */
+        if (!cell_is_pair(variant_def)) {
+            cell_release(variants);
+            return cell_error("⊚≔ each variant must be a list", variant_def);
+        }
+
+        Cell* variant_tag = cell_car(variant_def);
+        if (!cell_is_symbol(variant_tag)) {
+            cell_release(variants);
+            return cell_error("⊚≔ variant tag must be a symbol", variant_tag);
+        }
+
+        /* Collect field names for this variant */
+        Cell* fields = cell_nil();
+        Cell* field_rest = cell_cdr(variant_def);
+        while (cell_is_pair(field_rest)) {
+            Cell* field = cell_car(field_rest);
+            if (!cell_is_symbol(field)) {
+                cell_release(fields);
+                cell_release(variants);
+                return cell_error("⊚≔ field names must be symbols", field);
+            }
+            cell_retain(field);
+            fields = cell_cons(field, fields);
+            field_rest = cell_cdr(field_rest);
+        }
+
+        /* Reverse fields to preserve order */
+        Cell* reversed_fields = cell_nil();
+        while (cell_is_pair(fields)) {
+            Cell* field = cell_car(fields);
+            cell_retain(field);
+            reversed_fields = cell_cons(field, reversed_fields);
+            Cell* next = cell_cdr(fields);
+            cell_release(fields);
+            fields = next;
+        }
+
+        /* Create variant schema: ⟨variant_tag fields⟩ */
+        cell_retain(variant_tag);
+        Cell* variant_schema = cell_cons(variant_tag, reversed_fields);
+
+        /* Add to variants list */
+        variants = cell_cons(variant_schema, variants);
+        rest = cell_cdr(rest);
+    }
+
+    /* Check that at least one variant was provided */
+    if (cell_is_nil(variants)) {
+        return cell_error("⊚≔ requires at least one variant", type_tag);
+    }
+
+    /* Reverse variants to preserve order */
+    Cell* reversed_variants = cell_nil();
+    while (cell_is_pair(variants)) {
+        Cell* variant = cell_car(variants);
+        cell_retain(variant);
+        reversed_variants = cell_cons(variant, reversed_variants);
+        Cell* next = cell_cdr(variants);
+        cell_release(variants);
+        variants = next;
+    }
+
+    /* Create schema: ⟨:node variants⟩ */
+    Cell* kind_tag = cell_symbol(":node");
+    Cell* schema = cell_cons(kind_tag, reversed_variants);
+
+    /* Register in type registry */
+    EvalContext* ctx = eval_get_current_context();
+    eval_register_type(ctx, type_tag, schema);
+
+    /* Return the type tag */
+    cell_retain(type_tag);
+    return type_tag;
+}
+
+/* ⊚ - Create node/ADT structure instance
+ * Args: type_tag variant_tag field_values...
+ * Example: (⊚ :List :Cons #1 nil-list)
+ * Returns: struct cell with variant
+ */
+Cell* prim_struct_create_node(Cell* args) {
+    if (!cell_is_pair(args)) {
+        return cell_error("⊚ requires type tag", cell_nil());
+    }
+
+    Cell* type_tag = arg1(args);
+    if (!cell_is_symbol(type_tag)) {
+        return cell_error("⊚ type tag must be a symbol", type_tag);
+    }
+
+    if (!cell_is_pair(cell_cdr(args))) {
+        return cell_error("⊚ requires variant tag", type_tag);
+    }
+
+    Cell* variant_tag = arg2(args);
+    if (!cell_is_symbol(variant_tag)) {
+        return cell_error("⊚ variant tag must be a symbol", variant_tag);
+    }
+
+    /* Lookup type schema */
+    EvalContext* ctx = eval_get_current_context();
+    Cell* schema = eval_lookup_type(ctx, type_tag);
+    if (!schema) {
+        return cell_error("⊚ undefined type", type_tag);
+    }
+
+    /* Extract variants from schema: ⟨:node variants⟩ */
+    if (!cell_is_pair(schema)) {
+        cell_release(schema);
+        return cell_error("⊚ invalid schema", type_tag);
+    }
+
+    Cell* variants = cell_cdr(schema);  /* Skip :node tag */
+
+    /* Find the variant schema */
+    Cell* variant_schema = NULL;
+    Cell* vlist = variants;
+    while (cell_is_pair(vlist)) {
+        Cell* variant_def = cell_car(vlist);
+        if (cell_is_pair(variant_def)) {
+            Cell* vtag = cell_car(variant_def);
+            if (cell_equal(vtag, variant_tag)) {
+                variant_schema = variant_def;
+                break;
+            }
+        }
+        vlist = cell_cdr(vlist);
+    }
+
+    if (!variant_schema) {
+        cell_release(schema);
+        return cell_error("⊚ unknown variant", variant_tag);
+    }
+
+    Cell* field_names = cell_cdr(variant_schema);  /* Skip variant tag */
+
+    /* Collect field values from args */
+    Cell* rest = cell_cdr(cell_cdr(args));  /* Skip type tag and variant tag */
+    Cell* field_pairs = cell_nil();
+
+    Cell* names = field_names;
+    while (cell_is_pair(names) && cell_is_pair(rest)) {
+        Cell* field_name = cell_car(names);
+        Cell* field_value = cell_car(rest);
+
+        /* Create (name . value) pair */
+        cell_retain(field_name);
+        cell_retain(field_value);
+        Cell* pair = cell_cons(field_name, field_value);
+        field_pairs = cell_cons(pair, field_pairs);
+
+        names = cell_cdr(names);
+        rest = cell_cdr(rest);
+    }
+
+    /* Check field count matches */
+    if (cell_is_pair(names)) {
+        cell_release(field_pairs);
+        cell_release(schema);
+        return cell_error("⊚ not enough field values", type_tag);
+    }
+    if (cell_is_pair(rest)) {
+        cell_release(field_pairs);
+        cell_release(schema);
+        return cell_error("⊚ too many field values", type_tag);
+    }
+
+    /* Reverse field pairs to preserve order */
+    Cell* reversed_pairs = cell_nil();
+    while (cell_is_pair(field_pairs)) {
+        Cell* pair = cell_car(field_pairs);
+        cell_retain(pair);
+        reversed_pairs = cell_cons(pair, reversed_pairs);
+        Cell* next = cell_cdr(field_pairs);
+        cell_release(field_pairs);
+        field_pairs = next;
+    }
+
+    /* Create struct with variant */
+    cell_retain(type_tag);
+    cell_retain(variant_tag);
+    Cell* result = cell_struct(STRUCT_NODE, type_tag, variant_tag, reversed_pairs);
+
+    cell_release(schema);
+    return result;
+}
+
+/* ⊚→ - Get field value from node structure
+ * Args: struct field_name
+ * Example: (⊚→ cons-cell :head)
+ * Returns: field value
+ */
+Cell* prim_struct_get_node(Cell* args) {
+    Cell* st = arg1(args);
+    Cell* field_name = arg2(args);
+
+    if (!cell_is_struct(st)) {
+        return cell_error("⊚→ first arg must be struct", st);
+    }
+
+    if (cell_struct_kind(st) != STRUCT_NODE) {
+        return cell_error("⊚→ requires node structure", st);
+    }
+
+    if (!cell_is_symbol(field_name)) {
+        return cell_error("⊚→ field name must be symbol", field_name);
+    }
+
+    Cell* value = cell_struct_get_field(st, field_name);
+    if (!value) {
+        return cell_error("⊚→ field not found", field_name);
+    }
+
+    return value;
+}
+
+/* ⊚? - Check if value is node structure of given type and variant
+ * Args: value type_tag variant_tag
+ * Example: (⊚? my-list :List :Cons)
+ * Returns: #t or #f
+ */
+Cell* prim_struct_is_node(Cell* args) {
+    Cell* value = arg1(args);
+    Cell* expected_type = arg2(args);
+    Cell* expected_variant = arg3(args);
+
+    /* Check if it's a struct at all */
+    if (!cell_is_struct(value)) {
+        return cell_bool(false);
+    }
+
+    /* Check if it's a node */
+    if (cell_struct_kind(value) != STRUCT_NODE) {
+        return cell_bool(false);
+    }
+
+    /* Check type tag */
+    Cell* actual_type = cell_struct_type_tag(value);
+    if (!cell_equal(actual_type, expected_type)) {
+        return cell_bool(false);
+    }
+
+    /* Check variant tag */
+    Cell* actual_variant = cell_struct_variant(value);
+    if (!actual_variant || !cell_equal(actual_variant, expected_variant)) {
+        return cell_bool(false);
+    }
+
+    return cell_bool(true);
+}
+
 /* Forward declaration */
 static Primitive primitives[];
 /* Documentation primitives */
@@ -826,6 +1113,12 @@ static Primitive primitives[] = {
     {"⊙→", prim_struct_get_field, 2, {"Get field value from structure", "⊙ → :symbol → α"}},
     {"⊙←", prim_struct_update_field, 3, {"Update field in structure (immutable)", "⊙ → :symbol → α → ⊙"}},
     {"⊙?", prim_struct_type_check, 2, {"Check if value is structure of given type", "α → :symbol → 𝔹"}},
+
+    /* Structure primitives - Node/ADT (⊚) */
+    {"⊚≔", prim_struct_define_node, -1, {"Define node/ADT type with variants", ":symbol → [[variant]] → :symbol"}},
+    {"⊚", prim_struct_create_node, -1, {"Create node instance with variant", ":symbol → :symbol → [α] → ⊚"}},
+    {"⊚→", prim_struct_get_node, 2, {"Get field value from node", "⊚ → :symbol → α"}},
+    {"⊚?", prim_struct_is_node, 3, {"Check if value is node of given type and variant", "α → :symbol → :symbol → 𝔹"}},
 
     {NULL, NULL, 0, {NULL, NULL}}
 };

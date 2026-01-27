@@ -38,3 +38,58 @@
 (⊨ (⌜ :not-rect) #f (⊙? p1 (⌜ :Rectangle)))
 (⊨ (⌜ :not-point) #f (⊙? r1 (⌜ :Point)))
 (⊨ (⌜ :number-not-struct) #f (⊙? #42 (⌜ :Point)))
+
+; ============ Node/ADT Structure Tests ============
+
+; Define List ADT with two variants
+(⊚≔ (⌜ :List) (⟨⟩ (⌜ :Nil) ∅) (⟨⟩ (⌜ :Cons) (⟨⟩ (⌜ :head) (⟨⟩ (⌜ :tail) ∅))))
+
+; Create empty list (Nil variant)
+(≔ nil (⊚ (⌜ :List) (⌜ :Nil)))
+
+; Test Nil variant checking
+(⊨ (⌜ :nil-is-list-nil) #t (⊚? nil (⌜ :List) (⌜ :Nil)))
+(⊨ (⌜ :nil-not-cons) #f (⊚? nil (⌜ :List) (⌜ :Cons)))
+
+; Create list with one element (Cons variant)
+(≔ cons1 (⊚ (⌜ :List) (⌜ :Cons) #1 nil))
+
+; Test Cons variant checking
+(⊨ (⌜ :cons1-is-list-cons) #t (⊚? cons1 (⌜ :List) (⌜ :Cons)))
+(⊨ (⌜ :cons1-not-nil) #f (⊚? cons1 (⌜ :List) (⌜ :Nil)))
+
+; Test field access on Cons
+(⊨ (⌜ :cons1-head) #1 (⊚→ cons1 (⌜ :head)))
+(⊨ (⌜ :cons1-tail-is-nil) #t (⊚? (⊚→ cons1 (⌜ :tail)) (⌜ :List) (⌜ :Nil)))
+
+; Create list with two elements
+(≔ cons2 (⊚ (⌜ :List) (⌜ :Cons) #2 cons1))
+
+; Test nested list
+(⊨ (⌜ :cons2-head) #2 (⊚→ cons2 (⌜ :head)))
+(⊨ (⌜ :cons2-tail-is-cons) #t (⊚? (⊚→ cons2 (⌜ :tail)) (⌜ :List) (⌜ :Cons)))
+(⊨ (⌜ :cons2-tail-head) #1 (⊚→ (⊚→ cons2 (⌜ :tail)) (⌜ :head)))
+
+; Define Tree ADT with two variants
+(⊚≔ (⌜ :Tree) (⟨⟩ (⌜ :Leaf) (⟨⟩ (⌜ :value) ∅)) (⟨⟩ (⌜ :Node) (⟨⟩ (⌜ :left) (⟨⟩ (⌜ :right) ∅))))
+
+; Create leaf
+(≔ leaf (⊚ (⌜ :Tree) (⌜ :Leaf) #42))
+
+; Test leaf
+(⊨ (⌜ :leaf-is-tree-leaf) #t (⊚? leaf (⌜ :Tree) (⌜ :Leaf)))
+(⊨ (⌜ :leaf-not-node) #f (⊚? leaf (⌜ :Tree) (⌜ :Node)))
+(⊨ (⌜ :leaf-value) #42 (⊚→ leaf (⌜ :value)))
+
+; Create tree node
+(≔ left-leaf (⊚ (⌜ :Tree) (⌜ :Leaf) #10))
+(≔ right-leaf (⊚ (⌜ :Tree) (⌜ :Leaf) #20))
+(≔ node (⊚ (⌜ :Tree) (⌜ :Node) left-leaf right-leaf))
+
+; Test node
+(⊨ (⌜ :node-is-tree-node) #t (⊚? node (⌜ :Tree) (⌜ :Node)))
+(⊨ (⌜ :node-not-leaf) #f (⊚? node (⌜ :Tree) (⌜ :Leaf)))
+(⊨ (⌜ :node-left-is-leaf) #t (⊚? (⊚→ node (⌜ :left)) (⌜ :Tree) (⌜ :Leaf)))
+(⊨ (⌜ :node-right-is-leaf) #t (⊚? (⊚→ node (⌜ :right)) (⌜ :Tree) (⌜ :Leaf)))
+(⊨ (⌜ :node-left-value) #10 (⊚→ (⊚→ node (⌜ :left)) (⌜ :value)))
+(⊨ (⌜ :node-right-value) #20 (⊚→ (⊚→ node (⌜ :right)) (⌜ :value)))

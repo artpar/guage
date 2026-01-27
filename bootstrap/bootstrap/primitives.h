@@ -71,12 +71,18 @@ Cell* prim_doc_type(Cell* args);       /* ⌂∈ - get type signature */
 Cell* prim_doc_deps(Cell* args);       /* ⌂≔ - get dependencies */
 Cell* prim_doc_source(Cell* args);     /* ⌂⊛ - get source code */
 
-/* Structure primitives */
+/* Structure primitives - Leaf */
 Cell* prim_struct_define_leaf(Cell* args);  /* ⊙≔ - define leaf type */
 Cell* prim_struct_create(Cell* args);       /* ⊙ - create struct instance */
 Cell* prim_struct_get_field(Cell* args);    /* ⊙→ - get field value */
 Cell* prim_struct_update_field(Cell* args); /* ⊙← - update field (immutable) */
 Cell* prim_struct_type_check(Cell* args);   /* ⊙? - check structure type */
+
+/* Structure primitives - Node/ADT */
+Cell* prim_struct_define_node(Cell* args);  /* ⊚≔ - define node/ADT type */
+Cell* prim_struct_create_node(Cell* args);  /* ⊚ - create node instance */
+Cell* prim_struct_get_node(Cell* args);     /* ⊚→ - get node field value */
+Cell* prim_struct_is_node(Cell* args);      /* ⊚? - check node type and variant */
 
 /* Primitive documentation structure */
 typedef struct {

@@ -161,21 +161,21 @@ Everything is a **Cell**:
 ### Data Structures (15) - CRITICAL FOR METAPROGRAMMING
 | Symbol | Type | Meaning | Status |
 |--------|------|---------|--------|
-| `⊙≔` | Define leaf | Define simple structure | 🎯 NEXT |
-| `⊙` | Create leaf | Create leaf instance | 🎯 NEXT |
-| `⊙→` | Get field | Access structure field | 🎯 NEXT |
-| `⊙←` | Set field | Update structure field | 🎯 NEXT |
-| `⊙?` | Type check | Check structure type | 🎯 NEXT |
+| `⊙≔` | Define leaf | Define simple structure | ✅ DONE |
+| `⊙` | Create leaf | Create leaf instance | ✅ DONE |
+| `⊙→` | Get field | Access structure field | ✅ DONE |
+| `⊙←` | Set field | Update structure field | ✅ DONE |
+| `⊙?` | Type check | Check structure type | ✅ DONE |
 | `⊚≔` | Define node | Define recursive structure (ADT) | 🎯 NEXT |
 | `⊚` | Create node | Create node instance | 🎯 NEXT |
 | `⊚→` | Get field | Access node field | 🎯 NEXT |
 | `⊚?` | Variant check | Check type and variant | 🎯 NEXT |
-| `⊝≔` | Define graph | Define graph structure | 🎯 NEXT |
-| `⊝` | Create graph | Create graph instance | 🎯 NEXT |
-| `⊝⊕` | Add node | Add node to graph | 🎯 NEXT |
-| `⊝⊗` | Add edge | Add edge to graph | 🎯 NEXT |
-| `⊝→` | Query graph | Query graph structure | 🎯 NEXT |
-| `⊝?` | Graph check | Check graph type | 🎯 NEXT |
+| `⊝≔` | Define graph | Define graph structure | ⏳ PLANNED |
+| `⊝` | Create graph | Create graph instance | ⏳ PLANNED |
+| `⊝⊕` | Add node | Add node to graph | ⏳ PLANNED |
+| `⊝⊗` | Add edge | Add edge to graph | ⏳ PLANNED |
+| `⊝→` | Query graph | Query graph structure | ⏳ PLANNED |
+| `⊝?` | Graph check | Check graph type | ⏳ PLANNED |
 
 **Structure Syntax:**
 ```scheme
