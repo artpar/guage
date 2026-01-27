@@ -1,0 +1,287 @@
+; Test suite for stdlib/option.scm
+; Option and Result types with helper functions
+
+; Load the library
+; (This would be done via module system when available)
+; For now, we assume types are defined
+
+; ============================================================================
+; Test 1-4: Option Type Constructors
+; ============================================================================
+
+; Test creating Some value
+(≔ some-42 (⊙◇ #42))
+(⊨ :some-creates-value #t (⊚? some-42 :Option :Some))
+
+; Test creating None value
+(⊨ :none-is-none #t (⊚? ⊙∅ :Option :None))
+
+; Test Some contains correct value
+(⊨ :some-value-correct #42 (⊚→ some-42 :value))
+
+; Test constructors preserve values
+(≔ some-true (⊙◇ #t))
+(⊨ :some-bool #t (⊚→ some-true :value))
+
+; ============================================================================
+; Test 5-8: Result Type Constructors
+; ============================================================================
+
+; Test creating Ok value
+(≔ ok-99 (⊙✓ #99))
+(⊨ :ok-creates-success #t (⊚? ok-99 :Result :Ok))
+
+; Test creating Err value
+(≔ err-msg (⊙✗ :bad-input))
+(⊨ :err-creates-failure #t (⊚? err-msg :Result :Err))
+
+; Test Ok contains correct value
+(⊨ :ok-value-correct #99 (⊚→ ok-99 :value))
+
+; Test Err contains correct error
+(⊨ :err-error-correct #t (≡ :bad-input (⊚→ err-msg :error)))
+
+; ============================================================================
+; Test 9-12: Option Predicates
+; ============================================================================
+
+; Test is-some on Some
+(⊨ :is-some-on-some #t (⊙? (⊙◇ #10)))
+
+; Test is-some on None
+(⊨ :is-some-on-none #f (⊙? ⊙∅))
+
+; Test is-none on None
+(⊨ :is-none-on-none #t (⊙∅? ⊙∅))
+
+; Test is-none on Some
+(⊨ :is-none-on-some #f (⊙∅? (⊙◇ #5)))
+
+; ============================================================================
+; Test 13-16: Result Predicates
+; ============================================================================
+
+; Test is-ok on Ok
+(⊨ :is-ok-on-ok #t (⊙✓? (⊙✓ #100)))
+
+; Test is-ok on Err
+(⊨ :is-ok-on-err #f (⊙✓? (⊙✗ :error)))
+
+; Test is-err on Err
+(⊨ :is-err-on-err #t (⊙✗? (⊙✗ :failed)))
+
+; Test is-err on Ok
+(⊨ :is-err-on-ok #f (⊙✗? (⊙✓ #50)))
+
+; ============================================================================
+; Test 17-20: Option Map
+; ============================================================================
+
+; Test map on Some - doubles value
+(≔ double (λ (x) (⊗ x #2)))
+(≔ some-5 (⊙◇ #5))
+(≔ mapped ((⊙→ double) some-5))
+(⊨ :map-some-result #10 (⊚→ mapped :value))
+
+; Test map on None - stays None
+(≔ mapped-none ((⊙→ double) ⊙∅))
+(⊨ :map-none-stays-none #t (⊙∅? mapped-none))
+
+; Test map with increment
+(≔ inc (λ (x) (⊕ x #1)))
+(≔ mapped-inc ((⊙→ inc) (⊙◇ #10)))
+(⊨ :map-increment #11 (⊚→ mapped-inc :value))
+
+; Test map preserves Some structure
+(⊨ :map-preserves-some #t (⊙? mapped-inc))
+
+; ============================================================================
+; Test 21-24: Option Bind
+; ============================================================================
+
+; Test bind on Some with function returning Some
+(≔ safe-div (λ (x) (? (≡ x #0) ⊙∅ (⊙◇ (⊘ #100 x)))))
+(≔ bound ((⊙⊙ safe-div) (⊙◇ #10)))
+(⊨ :bind-some-to-some #10 (⊚→ bound :value))
+
+; Test bind on Some with function returning None
+(≔ bound-none ((⊙⊙ safe-div) (⊙◇ #0)))
+(⊨ :bind-some-to-none #t (⊙∅? bound-none))
+
+; Test bind on None - stays None
+(≔ bound-none2 ((⊙⊙ safe-div) ⊙∅))
+(⊨ :bind-none-stays-none #t (⊙∅? bound-none2))
+
+; Test bind flattens nested options
+(≔ nested-opt (⊙◇ #20))
+(≔ flattened ((⊙⊙ (λ (x) (⊙◇ (⊕ x #1)))) nested-opt))
+(⊨ :bind-flattens #21 (⊚→ flattened :value))
+
+; ============================================================================
+; Test 25-28: Option Or-Else
+; ============================================================================
+
+; Test or-else on Some - returns value
+(≔ val ((⊙∨ #99) (⊙◇ #42)))
+(⊨ :or-else-some-value #42 val)
+
+; Test or-else on None - returns default
+(≔ val-default ((⊙∨ #99) ⊙∅))
+(⊨ :or-else-none-default #99 val-default)
+
+; Test or-else preserves Some
+(≔ preserved ((⊙∨ #0) (⊙◇ #7)))
+(⊨ :or-else-preserves-some #7 preserved)
+
+; Test or-else can use different default
+(⊨ :or-else-different-default #-1 ((⊙∨ #-1) ⊙∅))
+
+; ============================================================================
+; Test 29-31: Option Unwrap (including error cases)
+; ============================================================================
+
+; Test unwrap on Some - extracts value
+(⊨ :unwrap-some-extracts #42 (⊙! (⊙◇ #42)))
+
+; Test unwrap on None - returns error
+(≔ unwrap-err (⊙! ⊙∅))
+(⊨ :unwrap-none-is-error #t (⚠? unwrap-err))
+
+; Test unwrap error has correct tag
+(⊨ :unwrap-none-error-tag #t (≡ :unwrap-none (◁ unwrap-err)))
+
+; ============================================================================
+; Test 32-34: Option Or
+; ============================================================================
+
+; Test or with first Some
+(≔ or-first ((⊙⊕ (⊙◇ #20)) (⊙◇ #10)))
+(⊨ :or-first-some #10 (⊚→ or-first :value))
+
+; Test or with first None, second Some
+(≔ or-second ((⊙⊕ (⊙◇ #30)) ⊙∅))
+(⊨ :or-second-some #30 (⊚→ or-second :value))
+
+; Test or with both None
+(≔ or-both-none ((⊙⊕ ⊙∅) ⊙∅))
+(⊨ :or-both-none #t (⊙∅? or-both-none))
+
+; ============================================================================
+; Test 35-38: Result Map
+; ============================================================================
+
+; Test map on Ok - transforms value
+(≔ ok-10 (⊙✓ #10))
+(≔ mapped-ok ((⊙⇒ double) ok-10))
+(⊨ :map-ok-transforms #20 (⊚→ mapped-ok :value))
+
+; Test map on Err - preserves error
+(≔ err-test (⊙✗ :error))
+(≔ mapped-err ((⊙⇒ double) err-test))
+(⊨ :map-err-preserved #t (⊙✗? mapped-err))
+
+; Test map-error on Err - transforms error
+(≔ err-to-upper (λ (e) :UPPER))
+(≔ mapped-err-val ((⊙⇐ err-to-upper) (⊙✗ :lower)))
+(⊨ :map-error-transforms #t (≡ :UPPER (⊚→ mapped-err-val :error)))
+
+; Test map-error on Ok - preserves value
+(≔ mapped-ok-unchanged ((⊙⇐ err-to-upper) (⊙✓ #50)))
+(⊨ :map-error-preserves-ok #50 (⊚→ mapped-ok-unchanged :value))
+
+; ============================================================================
+; Test 39-42: Result Bind
+; ============================================================================
+
+; Test bind on Ok with function returning Ok
+(≔ validate (λ (x) (? (> x #0) (⊙✓ (⊗ x #2)) (⊙✗ :negative))))
+(≔ bound-ok ((⊙⊙⇒ validate) (⊙✓ #5)))
+(⊨ :bind-ok-to-ok #10 (⊚→ bound-ok :value))
+
+; Test bind on Ok with function returning Err
+(≔ bound-err ((⊙⊙⇒ validate) (⊙✓ #-1)))
+(⊨ :bind-ok-to-err #t (⊙✗? bound-err))
+
+; Test bind on Err - stays Err
+(≔ bound-err2 ((⊙⊙⇒ validate) (⊙✗ :initial-error)))
+(⊨ :bind-err-stays-err #t (⊙✗? bound-err2))
+
+; Test bind preserves original error
+(⊨ :bind-preserves-error #t (≡ :initial-error (⊚→ bound-err2 :error)))
+
+; ============================================================================
+; Test 43-45: Result Unwrap
+; ============================================================================
+
+; Test unwrap on Ok - extracts value
+(⊨ :unwrap-ok-extracts #100 (⊙‼ (⊙✓ #100)))
+
+; Test unwrap on Err - returns error
+(≔ unwrap-res-err (⊙‼ (⊙✗ :failed)))
+(⊨ :unwrap-err-is-error #t (⚠? unwrap-res-err))
+
+; Test unwrap-or on Ok - returns value
+(⊨ :unwrap-or-ok-value #25 ((⊙‼∨ #0) (⊙✓ #25)))
+
+; ============================================================================
+; Test 46-47: Result Unwrap-Or
+; ============================================================================
+
+; Test unwrap-or on Err - returns default
+(⊨ :unwrap-or-err-default #99 ((⊙‼∨ #99) (⊙✗ :error)))
+
+; Test unwrap-or preserves Ok value
+(⊨ :unwrap-or-preserves #15 ((⊙‼∨ #-1) (⊙✓ #15)))
+
+; ============================================================================
+; Test 48-51: Conversions
+; ============================================================================
+
+; Test option-to-result on Some - becomes Ok
+(≔ opt-some (⊙◇ #77))
+(≔ res-from-some (⊙→⊙ opt-some))
+(⊨ :some-to-ok #77 (⊚→ res-from-some :value))
+
+; Test option-to-result on None - becomes Err
+(≔ res-from-none (⊙→⊙ ⊙∅))
+(⊨ :none-to-err #t (⊙✗? res-from-none))
+
+; Test result-to-option on Ok - becomes Some
+(≔ res-ok (⊙✓ #88))
+(≔ opt-from-ok (⊙⊙→ res-ok))
+(⊨ :ok-to-some #88 (⊚→ opt-from-ok :value))
+
+; Test result-to-option on Err - becomes None
+(≔ opt-from-err (⊙⊙→ (⊙✗ :error)))
+(⊨ :err-to-none #t (⊙∅? opt-from-err))
+
+; ============================================================================
+; Test 52-55: Real-world Usage Examples
+; ============================================================================
+
+; Example: Safe division returning Option
+(≔ safe-divide (λ (a) (λ (b)
+  (? (≡ b #0)
+     ⊙∅
+     (⊙◇ (⊘ a b))))))
+
+(⊨ :safe-div-valid #5 ((⊙∨ #0) ((safe-divide #10) #2)))
+(⊨ :safe-div-zero #-1 ((⊙∨ #-1) ((safe-divide #10) #0)))
+
+; Example: Chaining optional operations
+(≔ half-if-even (λ (x)
+  (? (≡ (% x #2) #0)
+     (⊙◇ (⊘ x #2))
+     ⊙∅)))
+
+(≔ chain-result ((⊙⊙ half-if-even) (⊙◇ #10)))
+(⊨ :chain-even-success #5 (⊚→ chain-result :value))
+
+; Example: Result-based validation
+(≔ validate-positive (λ (x)
+  (? (> x #0)
+     (⊙✓ x)
+     (⊙✗ :must-be-positive))))
+
+(⊨ :validate-positive-ok #5 (⊚→ ((⊙⊙⇒ validate-positive) (⊙✓ #5)) :value))
+(⊨ :validate-positive-err #t (⊙✗? ((⊙⊙⇒ validate-positive) (⊙✓ #-1))))
