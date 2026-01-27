@@ -1079,7 +1079,28 @@ static Cell* eval_internal(EvalContext* ctx, Cell* env, Cell* expr) {
         }
 
         /* Function application */
-        Cell* fn = eval_internal(ctx, env, first);
+        /* Special case: :? primitive lookup (keyword exception) */
+        Cell* fn;
+        if (cell_is_symbol(first)) {
+            const char* fn_name = cell_get_symbol(first);
+            if (strcmp(fn_name, ":?") == 0) {
+                /* Look up :? as primitive, not keyword */
+                fn = eval_lookup(ctx, fn_name);
+                if (fn == NULL) {
+                    Cell* var_name = cell_symbol(fn_name);
+                    Cell* result = cell_error("undefined-variable", var_name);
+                    cell_release(var_name);
+                    Cell* args = eval_list(ctx, env, rest);
+                    cell_release(args);
+                    return result;
+                }
+            } else {
+                fn = eval_internal(ctx, env, first);
+            }
+        } else {
+            fn = eval_internal(ctx, env, first);
+        }
+
         Cell* args = eval_list(ctx, env, rest);
 
         Cell* result = apply(ctx, fn, args);
