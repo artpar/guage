@@ -33,7 +33,7 @@ Everything is a **Cell**:
 
 ## Runtime Primitives (62 Total)
 
-**Status:** 62 primitives implemented (7 placeholders, 55 fully functional)
+**Status:** 62 primitives implemented (6 placeholders, 56 fully functional)
 
 ### Core Lambda Calculus (3) ✅
 | Symbol | Type | Meaning | Status |
@@ -48,7 +48,7 @@ Everything is a **Cell**:
 | Symbol | Type | Meaning | Status |
 |--------|------|---------|--------|
 | `⌜` | `α → ⌜α⌝` | Quote (code→data) | ✅ DONE |
-| `⌞` | `⌜α⌝ → α` | Eval (data→code) | ❌ PLACEHOLDER |
+| `⌞` | `⌜α⌝ → α` | Eval (data→code) | ✅ DONE |
 
 ### Comparison & Logic (5) ✅
 | Symbol | Type | Meaning | Status |

@@ -93,8 +93,17 @@ Cell* prim_quote(Cell* args) {
 
 /* ⌞⌟ - eval (evaluate as code) */
 Cell* prim_eval(Cell* args) {
-    /* Eval is handled by the evaluator */
-    return args;
+    /* Get the expression to evaluate */
+    Cell* expr = arg1(args);
+
+    /* Get current eval context */
+    EvalContext* ctx = eval_get_current_context();
+    if (!ctx) {
+        return cell_error("no-context", expr);
+    }
+
+    /* Evaluate the expression in current environment */
+    return eval(ctx, expr);
 }
 
 /* Comparison & Logic */
