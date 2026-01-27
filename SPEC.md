@@ -31,9 +31,9 @@ Everything is a **Cell**:
 
 **See:** `KEYWORDS.md` for complete specification.
 
-## Runtime Primitives (78 Total)
+## Runtime Primitives (80 Total)
 
-**Status:** 78 primitives implemented (6 placeholders, 72 fully functional + 6 placeholders = 78 total)
+**Status:** 80 primitives implemented (6 placeholders, 74 fully functional + 6 placeholders = 80 total)
 
 ### Core Lambda Calculus (3) ✅
 | Symbol | Type | Meaning | Status |
@@ -44,11 +44,13 @@ Everything is a **Cell**:
 
 **Note:** `λ`, `·`, `≔`, and De Bruijn indices (0, 1, 2...) are part of the evaluator, not primitives.
 
-### Metaprogramming Core (2) ✅
+### Metaprogramming Core (4) ✅
 | Symbol | Type | Meaning | Status |
 |--------|------|---------|--------|
 | `⌜` | `α → ⌜α⌝` | Quote (code→data) | ✅ DONE |
 | `⌞` | `⌜α⌝ → α` | Eval (data→code) | ✅ DONE |
+| `⌞̃` | `α → ⌜α⌝` | Quasiquote (template with unquote) | ✅ DONE (Day 32 Part 2) |
+| `~` | `α → α` | Unquote (evaluate in quasiquote) | ✅ DONE (Day 32 Part 2) |
 
 ### Pattern Matching (1) ✅
 | Symbol | Type | Meaning | Status |
@@ -96,6 +98,14 @@ Everything is a **Cell**:
 
 ; Multiple clauses
 (∇ #50 (⌜ ((#42 :is-42) (n (⊗ n #2)))))  ; → #100
+
+; Quasiquote and Unquote (Day 32 Part 2)
+(≔ x #42)
+(⌞̃ (⊕ #1 (~ x)))  ; → (⊕ #1 #42) - unquote evaluates x
+
+; Build expressions programmatically
+(≔ make-add (λ (a) (λ (b) (⌞̃ (⊕ (~ a) (~ b))))))
+((make-add #3) #4)  ; → (⊕ #3 #4)
 
 ; Pair patterns (Day 17)
 (∇ (⟨⟩ #1 #2) (⌜ (((⟨⟩ x y) (⊕ x y)))))  ; → #3
@@ -183,6 +193,55 @@ The warnings help identify:
 - **Incomplete ADT handling** when not all variants are covered
 
 Warnings are non-fatal and do not stop execution.
+
+---
+
+### Quasiquote and Unquote (Day 32 Part 2) ✅
+
+**Quasiquote** (`⌞̃`) is like quote but supports **unquote** (`~`) for selective evaluation. This enables code templating and macro construction.
+
+**Basic Usage:**
+```scheme
+; Without unquote - acts like quote
+(⌞̃ (⊕ #1 #2))  ; → (⊕ #1 #2)
+
+; With unquote - evaluates marked parts
+(≔ x #42)
+(⌞̃ (⊕ #1 (~ x)))  ; → (⊕ #1 #42)
+```
+
+**Multiple Unquotes:**
+```scheme
+(≔ a #10)
+(≔ b #20)
+(⌞̃ (⊕ (~ a) (~ b)))  ; → (⊕ #10 #20)
+```
+
+**Code Templates:**
+```scheme
+; Build expressions programmatically
+(≔ make-add (λ (a) (λ (b)
+  (⌞̃ (⊕ (~ a) (~ b))))))
+
+((make-add #3) #4)  ; → (⊕ #3 #4)
+```
+
+**Macro-Like Usage:**
+```scheme
+; Conditional builder
+(≔ make-gt (λ (a) (λ (b)
+  (⌞̃ (> (~ a) (~ b))))))
+
+(⌞ ((make-gt #10) #5))  ; → #t
+```
+
+**Key Features:**
+- ✅ **Selective evaluation** - Only unquoted parts evaluated
+- ✅ **Code as data** - Build expressions programmatically
+- ✅ **Template functions** - Create code generators
+- ✅ **Macro foundation** - Enables macro system (Day 33)
+
+---
 
 ### Comparison & Logic (5) ✅
 | Symbol | Type | Meaning | Status |

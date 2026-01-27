@@ -397,3 +397,37 @@ valgrind --leak-check=full ./guage < tests/core.test
 
 **Session Status: COMPLETE ✅**
 **Next Developer: Pick up from "Named Recursion" above**
+
+---
+
+## What's Next (Day 33: Macro Expansion)
+
+**Goal:** Implement macro definition and expansion
+
+**Phase 1: Macro Definition (⊤≔)**
+- Define macros that transform code before evaluation
+- Store macros in environment separate from functions
+- Syntax: `(⊤≔ name (λ (args...) template))`
+
+**Phase 2: Macro Expansion**
+- Detect macro calls during evaluation
+- Expand macro before evaluating
+- Handle recursive expansion
+- Test: when, unless, cond macros
+
+**Phase 3: Standard Macros**
+- let-binding syntax
+- cond multi-branch
+- and/or short-circuit
+- Test all in stdlib
+
+**Success Criteria:**
+- ✅ Macros defined and expanded
+- ✅ 30+ tests passing
+- ✅ Documentation complete
+- ✅ Standard macros in stdlib
+
+---
+
+**Session Status: DAY 32 PART 2 COMPLETE ✅**
+**Next: Day 33 - Macro Definition and Expansion**

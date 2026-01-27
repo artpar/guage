@@ -837,6 +837,43 @@ const char** extract_param_names(Cell* params) {
 /* Forward declaration */
 static Cell* eval_internal(EvalContext* ctx, Cell* env, Cell* expr);
 
+/* Evaluate quasiquote expression (supports unquote)
+ * Walks tree recursively, evaluating unquoted parts */
+static Cell* eval_quasiquote(EvalContext* ctx, Cell* env, Cell* expr) {
+    /* Check if this is an unquote form: (~ expr) */
+    if (cell_is_pair(expr)) {
+        Cell* first = cell_car(expr);
+        if (cell_is_symbol(first)) {
+            const char* sym = cell_get_symbol(first);
+            /* Check for unquote: ~ or unquote */
+            if (strcmp(sym, "~") == 0 || strcmp(sym, "unquote") == 0) {
+                /* Evaluate the unquoted expression */
+                Cell* rest = cell_cdr(expr);
+                if (cell_is_nil(rest)) {
+                    return cell_error("quasiquote-error",
+                        cell_symbol("unquote-requires-argument"));
+                }
+                Cell* unquoted_expr = cell_car(rest);
+                return eval_internal(ctx, env, unquoted_expr);
+            }
+        }
+
+        /* Not an unquote - recursively process car and cdr */
+        Cell* new_car = eval_quasiquote(ctx, env, first);
+        Cell* rest = cell_cdr(expr);
+        Cell* new_cdr = eval_quasiquote(ctx, env, rest);
+
+        Cell* result = cell_cons(new_car, new_cdr);
+        cell_release(new_car);
+        cell_release(new_cdr);
+        return result;
+    }
+
+    /* Atoms (numbers, bools, symbols, nil) - return as-is */
+    cell_retain(expr);
+    return expr;
+}
+
 /* Evaluate list (for function application) */
 static Cell* eval_list(EvalContext* ctx, Cell* env, Cell* expr) {
     if (cell_is_nil(expr)) {
@@ -982,6 +1019,12 @@ static Cell* eval_internal(EvalContext* ctx, Cell* env, Cell* expr) {
                 Cell* arg = cell_car(rest);
                 cell_retain(arg);
                 return arg;
+            }
+
+            /* ⌞̃ - quasiquote (quote with unquote support) */
+            if (strcmp(sym, "⌞̃") == 0 || strcmp(sym, "quasiquote") == 0) {
+                Cell* arg = cell_car(rest);
+                return eval_quasiquote(ctx, env, arg);
             }
 
             /* ≔ - define */
