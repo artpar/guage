@@ -1,6 +1,7 @@
 #include "eval.h"
 #include "primitives.h"
 #include "debruijn.h"
+#include "pattern.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1074,6 +1075,24 @@ static Cell* eval_internal(EvalContext* ctx, Cell* env, Cell* expr) {
                 }
 
                 cell_release(cond_val);
+                return result;
+            }
+
+            /* ∇ - pattern match (special form) */
+            if (strcmp(sym, "∇") == 0) {
+                Cell* expr_unevaled = cell_car(rest);
+                Cell* clauses_sexpr = cell_car(cell_cdr(rest));
+
+                /* User should quote the whole clause list: (⌜ ((p1 r1) (p2 r2) ...)) */
+                /* Eval once to unquote, giving us the data structure */
+                Cell* clauses_data = eval_internal(ctx, env, clauses_sexpr);
+
+                /* Pass to pattern matching */
+                Cell* result = pattern_eval_match(expr_unevaled, clauses_data, ctx);
+
+                /* Clean up */
+                cell_release(clauses_data);
+
                 return result;
             }
         }

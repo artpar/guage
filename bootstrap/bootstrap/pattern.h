@@ -27,12 +27,10 @@ typedef struct {
  *   {success: true, bindings: ...} if match succeeded
  *   {success: false, bindings: NULL} if match failed
  *
- * Pattern types supported (Day 15):
- * - Wildcard: _ (always matches, no bindings)
- * - Number literals: #42
- * - Boolean literals: #t, #f
- * - Symbol literals: :foo
- * - Nil literal: ∅
+ * Pattern types supported:
+ * - Wildcard: _ (always matches, no bindings) - Day 15
+ * - Literals: #42, #t, #f, :foo, ∅ - Day 15
+ * - Variables: x, n, etc (binds value) - Day 16 ✅
  */
 MatchResult pattern_try_match(Cell* value, Cell* pattern);
 

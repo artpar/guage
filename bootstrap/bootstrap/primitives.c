@@ -109,21 +109,8 @@ Cell* prim_eval(Cell* args) {
     return eval(ctx, expr);
 }
 
-/* ∇ - pattern match */
-Cell* prim_match(Cell* args) {
-    /* Get arguments: expression and clauses */
-    Cell* expr = arg1(args);
-    Cell* clauses = arg2(args);
-
-    /* Get current eval context */
-    EvalContext* ctx = eval_get_current_context();
-    if (!ctx) {
-        return cell_error("no-context", expr);
-    }
-
-    /* Delegate to pattern matching module */
-    return pattern_eval_match(expr, clauses, ctx);
-}
+/* ∇ - pattern match is now a SPECIAL FORM in eval.c (not a primitive) */
+/* This ensures clauses are not evaluated before pattern matching */
 
 /* Comparison & Logic */
 
@@ -1676,8 +1663,7 @@ static Primitive primitives[] = {
     {"⌜", prim_quote, 1, {"Quote expression (prevent evaluation)", "α → α"}},
     {"⌞", prim_eval, 1, {"Evaluate expression as code", "α → β"}},
 
-    /* Pattern Matching */
-    {"∇", prim_match, 2, {"Pattern match expression against clauses", "α → [[pattern result]] → β"}},
+    /* Pattern Matching - ∇ is now a SPECIAL FORM in eval.c, not a primitive */
 
     /* Comparison & Logic */
     {"≡", prim_equal, 2, {"Test if two values are equal", "α → α → 𝔹"}},

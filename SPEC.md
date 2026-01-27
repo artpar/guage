@@ -53,26 +53,44 @@ Everything is a **Cell**:
 ### Pattern Matching (1) ✅
 | Symbol | Type | Meaning | Status |
 |--------|------|---------|--------|
-| `∇` | `α → [[⌜pattern⌝ result]] → β` | Pattern match expression | ✅ DONE (Day 15) |
+| `∇` | `α → [[⌜pattern⌝ result]] → β` | Pattern match expression | ✅ DONE (Day 16) |
 
-**Note:** As of Day 15, supports wildcard (_) and literal patterns (numbers, booleans, symbols, nil). Variable patterns (Day 16), pair patterns (Day 17), and ADT patterns (Day 18-19) coming soon.
+**Note:** As of Day 16, supports:
+- **Wildcard** (_) - matches anything
+- **Literals** - numbers, booleans, symbols, keywords
+- **Variables** - bind matched value to name (Day 16 ✅)
+- **Pair patterns** (Day 17) - coming soon
+- **ADT patterns** (Day 18-19) - coming soon
 
 **Syntax:**
 ```scheme
-(∇ expr
-   (⟨⟩ (⟨⟩ (⌜ pattern₁) (⟨⟩ result₁ ∅))
-       (⟨⟩ (⟨⟩ (⌜ pattern₂) (⟨⟩ result₂ ∅))
-           ∅)))
+; New clean syntax (Day 16+)
+(∇ value (⌜ ((pattern₁ result₁)
+             (pattern₂ result₂)
+             ...)))
 ```
+
+**Pattern Types:**
+- `_` - Wildcard (matches anything, no binding)
+- `#42`, `#t`, `:foo` - Literals (match exact value)
+- `x`, `n`, `value` - Variables (bind value to name)
 
 **Examples:**
 ```scheme
 ; Wildcard pattern
-(∇ #42 (⟨⟩ (⟨⟩ (⌜ _) (⟨⟩ :ok ∅)) ∅))  ; → :ok
+(∇ #42 (⌜ ((_ :ok))))  ; → :ok
 
-; Literal patterns
-(∇ #42 (⟨⟩ (⟨⟩ (⌜ #42) (⟨⟩ :matched ∅))
-           (⟨⟩ (⟨⟩ (⌜ _) (⟨⟩ :other ∅)) ∅)))  ; → :matched
+; Literal patterns with fallback
+(∇ #42 (⌜ ((#42 :matched) (_ :other))))  ; → :matched
+
+; Variable pattern (Day 16)
+(∇ #42 (⌜ ((x x))))  ; → #42 (x binds to #42)
+
+; Variable in computation
+(∇ #5 (⌜ ((n (⊗ n #2)))))  ; → #10
+
+; Multiple clauses
+(∇ #50 (⌜ ((#42 :is-42) (n (⊗ n #2)))))  ; → #100
 ```
 
 ### Comparison & Logic (5) ✅

@@ -3,6 +3,7 @@
 #include "eval.h"
 #include <string.h>
 #include <stdlib.h>
+#include <stdio.h>
 
 /* Helper: Check if pattern is wildcard (_) */
 static bool is_wildcard(Cell* pattern) {
@@ -10,6 +11,20 @@ static bool is_wildcard(Cell* pattern) {
         return false;
     }
     return strcmp(pattern->data.atom.symbol, "_") == 0;
+}
+
+/* Helper: Check if symbol is a keyword (starts with :) */
+static bool is_keyword(const char* sym) {
+    return sym && sym[0] == ':';
+}
+
+/* Helper: Check if pattern is a variable (non-keyword symbol, not wildcard) */
+static bool is_variable_pattern(Cell* pattern) {
+    if (!pattern || pattern->type != CELL_ATOM_SYMBOL) {
+        return false;
+    }
+    const char* sym = pattern->data.atom.symbol;
+    return !is_keyword(sym) && strcmp(sym, "_") != 0;
 }
 
 /* Helper: Check if two numbers are equal */
@@ -73,8 +88,21 @@ MatchResult pattern_try_match(Cell* value, Cell* pattern) {
         return failure;
     }
 
-    /* Symbol literal pattern */
+    /* Variable pattern - binds value to name (Day 16) */
+    if (is_variable_pattern(pattern)) {
+        /* Create binding: (symbol . value) */
+        Cell* var_symbol = cell_symbol(pattern->data.atom.symbol);
+        cell_retain(value);  /* Retain value for binding */
+        Cell* binding = cell_cons(var_symbol, value);
+
+        /* Return success with single binding */
+        MatchResult result = {.success = true, .bindings = binding};
+        return result;
+    }
+
+    /* Keyword symbol literal pattern (e.g., :foo) */
     if (pattern && pattern->type == CELL_ATOM_SYMBOL) {
+        /* At this point, it's a keyword (starts with :) */
         if (value && symbols_equal(value, pattern)) {
             return success;
         }
@@ -100,39 +128,64 @@ Cell* pattern_eval_match(Cell* expr, Cell* clauses, EvalContext* ctx) {
         return value;
     }
 
-    /* Try each clause in order */
-    Cell* current = clauses;
-    while (current && current->type == CELL_PAIR) {
-        Cell* clause = current->data.pair.car;
+    /* Clauses should be a list of pairs: ((pattern1 result1) (pattern2 result2) ...) */
+    /* Each clause is (pattern result) where pattern is data and result is an unevaluated expression */
 
-        /* Each clause should be a pair: [pattern result] */
+    /* Walk through the clause list */
+    Cell* current = clauses;
+    while (current && cell_is_pair(current)) {
+        Cell* clause = cell_car(current);
+
+        /* Each clause should be a pair (pattern result) or (pattern . (result)) */
         if (!clause || clause->type != CELL_PAIR) {
+            cell_release(value);
             return cell_error("invalid-clause", clause ? clause : cell_nil());
         }
 
+        /* Extract pattern and result */
         Cell* pattern = clause->data.pair.car;
         Cell* rest = clause->data.pair.cdr;
 
-        if (!rest || rest->type != CELL_PAIR) {
-            return cell_error("invalid-clause", clause);
+        /* Result can be in two formats:
+         * 1. (pattern result) -> rest is (result . nil), extract car
+         * 2. (pattern . result) -> rest is the result directly */
+        Cell* result_expr;
+        if (rest && rest->type == CELL_PAIR) {
+            result_expr = rest->data.pair.car;
+        } else {
+            result_expr = rest;
         }
 
-        Cell* result_expr = rest->data.pair.car;
-
-        /* Try to match the pattern */
+        /* Try to match the pattern against the value */
         MatchResult match = pattern_try_match(value, pattern);
 
         if (match.success) {
             /* Match succeeded! Evaluate the result expression */
-            /* For now (Day 15), we don't have variable bindings */
-            /* Just evaluate the result in the current context */
-            Cell* result = eval(ctx, result_expr);
+            Cell* result;
 
-            /* Clean up bindings if any */
             if (match.bindings) {
-                pattern_free_bindings(match.bindings);
+                /* Extend environment with pattern bindings */
+                Cell* old_env = ctx->env;
+                cell_retain(old_env);
+
+                /* Prepend bindings to environment */
+                ctx->env = cell_cons(match.bindings, old_env);
+
+                /* Evaluate result in extended environment */
+                result = eval(ctx, result_expr);
+
+                /* Restore old environment */
+                cell_release(ctx->env);
+                ctx->env = old_env;
+
+                /* Release bindings (we got ownership from pattern_try_match) */
+                cell_release(match.bindings);
+            } else {
+                /* No bindings, evaluate in current context */
+                result = eval(ctx, result_expr);
             }
 
+            cell_release(value);
             return result;
         }
 
@@ -141,7 +194,9 @@ Cell* pattern_eval_match(Cell* expr, Cell* clauses, EvalContext* ctx) {
     }
 
     /* No clause matched */
-    return cell_error("no-match", value);
+    Cell* error = cell_error("no-match", value);
+    cell_release(value);
+    return error;
 }
 
 /* Free bindings list */
