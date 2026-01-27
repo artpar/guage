@@ -1,18 +1,85 @@
-# Session Handoff: 2026-01-27 (Phase 2C: Data Structures Infrastructure)
+# Session Handoff: 2026-01-27 (Phase 2C Week 1 Day 3 Complete)
 
 ## Executive Summary
 
-Started **Phase 2C: Data Structures as First-Class Citizens**. Extended cell system to support user-defined structures (⊙, ⊚, ⊝) and compiler-generated graphs (CFG, DFG, CallGraph, DepGraph). This is a **critical prerequisite** for pattern matching - you can't match on structures without knowing what structures are.
+**Phase 2C Week 1 Day 3:** Implemented type registry and first three structure primitives. Can now define structure types, create instances, and access fields. Foundation complete for all structure operations.
 
 **Status:** Week 1 (Days 1-3) complete, ready for Days 4-7
-**Duration:** ~2 hours
+**Duration:** ~3 hours total across sessions
 **Major Outcomes:**
-1. Cell infrastructure extended with CELL_STRUCT and CELL_GRAPH types
-2. Three structure kinds defined: LEAF (⊙), NODE (⊚), GRAPH (⊝)
-3. Five graph types defined: CFG, DFG, CallGraph, DepGraph, Generic
-4. Reference counting and memory management implemented
-5. Complete specification and implementation plan created
-6. Code compiles cleanly, no memory leaks
+1. ✅ Cell infrastructure (CELL_STRUCT, CELL_GRAPH) - Days 1-2
+2. ✅ Type registry infrastructure - Day 3
+3. ✅ Three working structure primitives (⊙≔, ⊙, ⊙→) - Day 3
+4. ✅ Comprehensive test suite (8 tests passing) - Day 3
+5. ✅ Technical decisions documented - Day 3
+6. ✅ Code compiles cleanly, no memory leaks - All days
+
+---
+
+## 🆕 What's New This Session (Day 3)
+
+### Type Registry System
+**Implemented complete type registry for storing and looking up structure definitions:**
+
+```c
+// In EvalContext
+Cell* type_registry;  // Alist: (type_tag . schema)
+
+// Operations
+void eval_register_type(EvalContext* ctx, Cell* type_tag, Cell* schema);
+Cell* eval_lookup_type(EvalContext* ctx, Cell* type_tag);
+bool eval_has_type(EvalContext* ctx, Cell* type_tag);
+EvalContext* eval_get_current_context(void);  // For primitives
+```
+
+### First Three Structure Primitives
+**Working end-to-end structure definition and usage:**
+
+```scheme
+; Define a Point structure
+(⊙≔ (⌜ :Point) (⌜ :x) (⌜ :y))
+
+; Create an instance
+(≔ p (⊙ (⌜ :Point) #3 #4))
+
+; Access fields
+(⊙→ p (⌜ :x))  ; Returns #3
+(⊙→ p (⌜ :y))  ; Returns #4
+```
+
+**Primitives implemented:**
+- **⊙≔** - Define leaf structure type (variadic)
+- **⊙** - Create structure instance (variadic)
+- **⊙→** - Get field value (2 args)
+
+### Test Suite
+**Created `tests/structures.test` with 8 passing tests:**
+- Point structure (2 fields, 2 instances tested)
+- Rectangle structure (3 fields, 1 instance tested)
+- All field access operations validated
+
+### Technical Documentation
+**Created `TECHNICAL_DECISIONS.md`:**
+- Documents 12 major design decisions
+- Explains "why" for each choice
+- Includes code locations and examples
+- Living document for maintaining consistency
+
+### Files Modified
+```
+bootstrap/bootstrap/
+├── eval.h          (+8 lines)   - Type registry interface
+├── eval.c          (+82 lines)  - Registry implementation
+├── primitives.h    (+3 lines)   - Primitive declarations
+├── primitives.c    (+173 lines) - Three primitives
+└── tests/
+    └── structures.test (new)    - Test suite
+
+Documentation:
+├── SESSION_HANDOFF.md (updated)
+├── PHASE2C_PROGRESS.md (new)
+└── TECHNICAL_DECISIONS.md (new)
+```
 
 ---
 
@@ -698,18 +765,74 @@ Day 4 (Next):
 
 ---
 
-**Session Summary:**
-- Week 1 Days 1-2: Cell infrastructure with CELL_STRUCT and CELL_GRAPH
-- Week 1 Day 3: Type registry + 3 working structure primitives (⊙≔, ⊙, ⊙→)
-- Ready to complete remaining leaf primitives, then move to node structures (⊚)
+## Quick Start for Next Session
 
-**Next Session:** Week 1, Day 4 - Complete leaf primitives (⊙← and ⊙?), then start node primitives (⊚).
+**Immediate next steps (Day 4):**
 
-**Status:** Week 1 (Days 1-3) complete. Ready for Days 4-7.
+1. **Complete remaining leaf primitives:**
+   ```scheme
+   ; ⊙← - Update field (immutable, returns new struct)
+   (≔ p2 (⊙← p (⌜ :x) #5))
+
+   ; ⊙? - Type check predicate
+   (⊙? p (⌜ :Point))  ; Returns #t
+   ```
+
+2. **Add tests for new primitives** to `tests/structures.test`
+
+3. **Then start node primitives (Days 5-6):**
+   - ⊚≔ Define ADT with variants
+   - ⊚ Create node instance
+   - ⊚→ Get field value
+   - ⊚? Type and variant check
+
+**Key files to work with:**
+- `primitives.c` - Add new primitives after line 545
+- `primitives.h` - Add declarations after line 80
+- `tests/structures.test` - Add test cases
+- `TECHNICAL_DECISIONS.md` - Document new choices
+
+**Reference implementations:**
+- Look at `prim_struct_create` (line 442) for validation pattern
+- Look at `prim_struct_get_field` (line 516) for error handling
+- Registry access: `eval_get_current_context()` then `eval_lookup_type()`
+
+---
+
+## Session Summary
+
+**Accomplished this session (Day 3):**
+- ✅ Type registry infrastructure (3 operations, proper reference counting)
+- ✅ First 3 structure primitives working end-to-end
+- ✅ 8 comprehensive tests, all passing
+- ✅ Technical decisions documented for future reference
+- ✅ Zero memory leaks, clean compilation
+- ✅ All changes committed to git
+
+**Overall progress (Days 1-3):**
+- Week 1 Days 1-2: Cell infrastructure (CELL_STRUCT, CELL_GRAPH types)
+- Week 1 Day 3: Type registry + 3 leaf primitives (⊙≔, ⊙, ⊙→)
+- **15 primitives total needed:** 3 done, 12 remaining
+- **On schedule:** Days 4-7 will complete all 15 primitives
+
+**Next Session Goals (Day 4):**
+1. Implement ⊙← (update field)
+2. Implement ⊙? (type check)
+3. Test both primitives
+4. Begin node primitives (⊚) if time permits
+
+**Critical for Next Session:**
+- Read `TECHNICAL_DECISIONS.md` before implementing
+- Follow same patterns (alist storage, error handling, ref counting)
+- Test incrementally (one primitive at a time)
+- Update technical decisions if making new choices
+
+**Status:** Week 1 (Days 1-3) complete. Ready for Days 4-7. **On track!**
 
 **Prepared by:** Claude Sonnet 4.5
 **Date:** 2026-01-27
-**Time:** End of session
+**Session Duration:** ~2 hours
+**Total Phase 2C Time:** ~3 hours
 
 ---
 
