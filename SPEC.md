@@ -345,11 +345,22 @@ Query graphs:
 | `⊕` | Addition | ✅ DONE |
 | `⊖` | Subtraction | ✅ DONE |
 | `⊗` | Multiplication | ✅ DONE |
-| `⊘` | Division | ✅ DONE |
+| `⊘` | Division (float) | ✅ DONE |
+| `%` | Modulo (remainder) | ✅ DONE |
 | `<` | Less than | ✅ DONE |
 | `>` | Greater than | ✅ DONE |
 | `≤` | Less or equal | ✅ DONE |
 | `≥` | Greater or equal | ✅ DONE |
+
+**Note:** Division `⊘` performs floating-point division. For integer division with remainder, use `⊘` followed by `%`:
+```scheme
+(⊘ #10 #3)  ; → #3.33333 (float result)
+(% #10 #3)  ; → #1 (remainder)
+
+; GCD using modulo
+(≔ gcd (λ (a b) (? (≡ b #0) a (gcd b (% a b)))))
+(gcd #48 #18)  ; → #6 ✅
+```
 
 ### Type Predicates
 | Symbol | Meaning | Status |

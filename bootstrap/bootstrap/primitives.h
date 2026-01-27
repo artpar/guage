@@ -41,6 +41,7 @@ Cell* prim_add(Cell* args);       /* ⊕ - addition */
 Cell* prim_sub(Cell* args);       /* ⊖ - subtraction */
 Cell* prim_mul(Cell* args);       /* ⊗ - multiplication */
 Cell* prim_div(Cell* args);       /* ⊘ - division */
+Cell* prim_mod(Cell* args);       /* % - modulo */
 Cell* prim_lt(Cell* args);        /* < - less than */
 Cell* prim_gt(Cell* args);        /* > - greater than */
 Cell* prim_le(Cell* args);        /* ≤ - less than or equal */

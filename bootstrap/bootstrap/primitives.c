@@ -173,6 +173,17 @@ Cell* prim_div(Cell* args) {
     return cell_number(cell_get_number(a) / divisor);
 }
 
+/* % - modulo (remainder) */
+Cell* prim_mod(Cell* args) {
+    Cell* a = arg1(args);
+    Cell* b = arg2(args);
+    assert(cell_is_number(a) && cell_is_number(b));
+    double divisor = cell_get_number(b);
+    assert(divisor != 0.0);  /* Should be checked by refinement types */
+    /* Use fmod for floating point modulo */
+    return cell_number(fmod(cell_get_number(a), divisor));
+}
+
 /* < - less than */
 Cell* prim_lt(Cell* args) {
     Cell* a = arg1(args);
@@ -1427,6 +1438,7 @@ static Primitive primitives[] = {
     {"⊖", prim_sub, 2, {"Subtract second number from first", "ℕ → ℕ → ℕ"}},
     {"⊗", prim_mul, 2, {"Multiply two numbers", "ℕ → ℕ → ℕ"}},
     {"⊘", prim_div, 2, {"Divide first number by second", "ℕ → ℕ → ℕ"}},
+    {"%", prim_mod, 2, {"Modulo (remainder after division)", "ℕ → ℕ → ℕ"}},
     {"<", prim_lt, 2, {"Test if first number less than second", "ℕ → ℕ → 𝔹"}},
     {">", prim_gt, 2, {"Test if first number greater than second", "ℕ → ℕ → 𝔹"}},
     {"≤", prim_le, 2, {"Test if first number less than or equal to second", "ℕ → ℕ → 𝔹"}},

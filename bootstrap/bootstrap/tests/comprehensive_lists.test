@@ -1,0 +1,274 @@
+; Comprehensive List Operations Test Suite
+; Tests all aspects of list operations to prevent regressions
+; Created: 2026-01-27
+
+; =============================================================================
+; SECTION 1: Basic Operations (10 tests)
+; =============================================================================
+
+; Test 1.1: cons creates pair
+(⊨ (⌜ :cons-creates-pair) #t (⟨⟩? (⟨⟩ #1 #2)))
+
+; Test 1.2: car extracts first element
+(⊨ (⌜ :car-first-element) #1 (◁ (⟨⟩ #1 #2)))
+
+; Test 1.3: cdr extracts second element
+(⊨ (⌜ :cdr-second-element) #2 (▷ (⟨⟩ #1 #2)))
+
+; Test 1.4: nil? identifies empty list
+(⊨ (⌜ :nil-check) #t (∅? ∅))
+
+; Test 1.5: nil? rejects non-empty
+(⊨ (⌜ :nil-check-false) #f (∅? (⟨⟩ #1 ∅)))
+
+; Test 1.6: Empty list is not a pair
+(⊨ (⌜ :empty-not-pair) #f (⟨⟩? ∅))
+
+; Test 1.7: Single element list
+(≔ single (⟨⟩ #42 ∅))
+(⊨ (⌜ :single-elem-car) #42 (◁ single))
+(⊨ (⌜ :single-elem-cdr) #t (∅? (▷ single)))
+
+; Test 1.8: Two element list
+(≔ pair (⟨⟩ #1 (⟨⟩ #2 ∅)))
+(⊨ (⌜ :two-elem-first) #1 (◁ pair))
+(⊨ (⌜ :two-elem-second) #2 (◁ (▷ pair)))
+
+; Test 1.9: Nested pairs (not a list)
+(≔ nested (⟨⟩ (⟨⟩ #1 #2) (⟨⟩ #3 #4)))
+(⊨ (⌜ :nested-car-is-pair) #t (⟨⟩? (◁ nested)))
+(⊨ (⌜ :nested-cdr-is-pair) #t (⟨⟩? (▷ nested)))
+
+; =============================================================================
+; SECTION 2: List Construction (8 tests)
+; =============================================================================
+
+; Test 2.1: Build three-element list
+(≔ list3 (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅))))
+(⊨ (⌜ :list3-first) #1 (◁ list3))
+(⊨ (⌜ :list3-second) #2 (◁ (▷ list3)))
+(⊨ (⌜ :list3-third) #3 (◁ (▷ (▷ list3))))
+(⊨ (⌜ :list3-end) #t (∅? (▷ (▷ (▷ list3)))))
+
+; Test 2.2: Build list from function calls
+(≔ list-from-funcs (⟨⟩ (⊕ #1 #1) (⟨⟩ (⊗ #2 #2) (⟨⟩ (⊖ #5 #2) ∅))))
+(⊨ (⌜ :list-func-first) #2 (◁ list-from-funcs))
+(⊨ (⌜ :list-func-second) #4 (◁ (▷ list-from-funcs)))
+(⊨ (⌜ :list-func-third) #3 (◁ (▷ (▷ list-from-funcs))))
+
+; Test 2.3: Build list in lambda - THIS IS THE KEY TEST!
+(≔ make-list (λ (a b c) (⟨⟩ a (⟨⟩ b (⟨⟩ c ∅)))))
+(≔ result-list (make-list #10 #20 #30))
+(⊨ (⌜ :lambda-list-first) #10 (◁ result-list))
+(⊨ (⌜ :lambda-list-second) #20 (◁ (▷ result-list)))
+(⊨ (⌜ :lambda-list-third) #30 (◁ (▷ (▷ result-list))))
+
+; Test 2.4: Build nested lists
+(≔ nested-list (⟨⟩ (⟨⟩ #1 (⟨⟩ #2 ∅)) (⟨⟩ (⟨⟩ #3 (⟨⟩ #4 ∅)) ∅)))
+(⊨ (⌜ :nested-list-car-is-pair) #t (⟨⟩? (◁ nested-list)))
+
+; Test 2.5: Build list of lists
+(≔ list-of-lists (⟨⟩ list3 (⟨⟩ pair (⟨⟩ single ∅))))
+(⊨ (⌜ :list-of-lists-first) #1 (◁ (◁ list-of-lists)))
+
+; Test 2.6: Build heterogeneous list (numbers and booleans)
+; NOTE: Symbol literals don't work from files yet (bug to fix)
+(≔ hetero (⟨⟩ #42 (⟨⟩ #99 (⟨⟩ #t ∅))))
+(⊨ (⌜ :hetero-first) #42 (◁ hetero))
+(⊨ (⌜ :hetero-second) #99 (◁ (▷ hetero)))
+(⊨ (⌜ :hetero-third) #t (◁ (▷ (▷ hetero))))
+
+; Test 2.7: Deep nested structure (5 levels)
+(≔ deep (⟨⟩ #1 (⟨⟩ (⟨⟩ #2 (⟨⟩ (⟨⟩ #3 (⟨⟩ (⟨⟩ #4 (⟨⟩ #5 ∅)) ∅)) ∅)) ∅)))
+(⊨ (⌜ :deep-first) #1 (◁ deep))
+
+; =============================================================================
+; SECTION 3: List Traversal Functions (8 tests)
+; =============================================================================
+
+; Test 3.1: Length function
+(≔ length (λ (lst)
+  (? (∅? lst)
+     #0
+     (⊕ #1 (length (▷ lst))))))
+
+(⊨ (⌜ :length-empty) #0 (length ∅))
+(⊨ (⌜ :length-one) #1 (length single))
+(⊨ (⌜ :length-two) #2 (length pair))
+(⊨ (⌜ :length-three) #3 (length list3))
+
+; Test 3.2: Nth element access
+(≔ nth (λ (lst n)
+  (? (≡ n #0)
+     (◁ lst)
+     (nth (▷ lst) (⊖ n #1)))))
+
+(⊨ (⌜ :nth-0) #1 (nth list3 #0))
+(⊨ (⌜ :nth-1) #2 (nth list3 #1))
+(⊨ (⌜ :nth-2) #3 (nth list3 #2))
+
+; Test 3.3: Map function
+(≔ map (λ (f lst)
+  (? (∅? lst)
+     ∅
+     (⟨⟩ (f (◁ lst)) (map f (▷ lst))))))
+
+(≔ double (λ (x) (⊗ x #2)))
+(≔ doubled (map double list3))
+(⊨ (⌜ :map-first) #2 (◁ doubled))
+(⊨ (⌜ :map-second) #4 (◁ (▷ doubled)))
+(⊨ (⌜ :map-third) #6 (◁ (▷ (▷ doubled))))
+
+; Test 3.4: Filter function
+(≔ filter (λ (pred lst)
+  (? (∅? lst)
+     ∅
+     (? (pred (◁ lst))
+        (⟨⟩ (◁ lst) (filter pred (▷ lst)))
+        (filter pred (▷ lst))))))
+
+(≔ gt-two (λ (x) (> x #2)))
+(≔ filtered-list (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 (⟨⟩ #4 ∅)))))
+(≔ filtered (filter gt-two filtered-list))
+(⊨ (⌜ :filter-first) #3 (◁ filtered))
+(⊨ (⌜ :filter-second) #4 (◁ (▷ filtered)))
+
+; Test 3.5: Fold/reduce function
+(≔ fold (λ (f acc lst)
+  (? (∅? lst)
+     acc
+     (fold f (f acc (◁ lst)) (▷ lst)))))
+
+(≔ sum (fold (λ (a b) (⊕ a b)) #0 list3))
+(⊨ (⌜ :fold-sum) #6 sum)
+
+; Test 3.6: Reverse function (using global helper)
+(≔ rev-helper (λ (l acc)
+  (? (∅? l)
+     acc
+     (rev-helper (▷ l) (⟨⟩ (◁ l) acc)))))
+
+(≔ reverse (λ (lst) (rev-helper lst ∅)))
+
+(≔ reversed (reverse list3))
+(⊨ (⌜ :reverse-first) #3 (◁ reversed))
+(⊨ (⌜ :reverse-second) #2 (◁ (▷ reversed)))
+(⊨ (⌜ :reverse-third) #1 (◁ (▷ (▷ reversed))))
+
+; Test 3.7: Append function
+(≔ append (λ (l1 l2)
+  (? (∅? l1)
+     l2
+     (⟨⟩ (◁ l1) (append (▷ l1) l2)))))
+
+(≔ appended (append pair list3))
+(⊨ (⌜ :append-length) #5 (length appended))
+(⊨ (⌜ :append-first) #1 (◁ appended))
+(⊨ (⌜ :append-last) #3 (nth appended #4))
+
+; Test 3.8: Flatten function (one level)
+(≔ flatten (λ (lst)
+  (? (∅? lst)
+     ∅
+     (append (◁ lst) (flatten (▷ lst))))))
+
+(≔ flattened (flatten list-of-lists))
+(⊨ (⌜ :flatten-has-all) #6 (length flattened))
+
+; =============================================================================
+; SECTION 4: Higher-Order Functions with Lists (8 tests)
+; =============================================================================
+
+; Test 4.1: Pass list to lambda (already tested above, verify again)
+(≔ first (λ (lst) (◁ lst)))
+(⊨ (⌜ :pass-list-to-lambda) #1 (first list3))
+
+; Test 4.2: Return list from lambda
+(≔ make-pair (λ (a b) (⟨⟩ a (⟨⟩ b ∅))))
+(≔ made-pair (make-pair #7 #8))
+(⊨ (⌜ :return-list-first) #7 (◁ made-pair))
+(⊨ (⌜ :return-list-second) #8 (◁ (▷ made-pair)))
+
+; Test 4.3: Map with inline lambda
+(≔ incremented (map (λ (x) (⊕ x #1)) list3))
+(⊨ (⌜ :map-lambda-first) #2 (◁ incremented))
+(⊨ (⌜ :map-lambda-second) #3 (◁ (▷ incremented)))
+
+; Test 4.4: Filter with inline lambda
+(≔ gt-one (filter (λ (x) (> x #1)) list3))
+(⊨ (⌜ :filter-lambda-first) #2 (◁ gt-one))
+(⊨ (⌜ :filter-lambda-second) #3 (◁ (▷ gt-one)))
+
+; Test 4.5: List of lambdas
+(≔ funcs (⟨⟩ double (⟨⟩ (λ (x) (⊕ x #1)) (⟨⟩ (λ (x) (⊖ x #1)) ∅))))
+(⊨ (⌜ :list-of-lambdas-first) #84 ((◁ funcs) #42))
+(⊨ (⌜ :list-of-lambdas-second) #43 ((◁ (▷ funcs)) #42))
+(⊨ (⌜ :list-of-lambdas-third) #41 ((◁ (▷ (▷ funcs))) #42))
+
+; Test 4.6: Lambda returning lambda that uses list
+(≔ get-nth (λ (n) (λ (lst) (nth lst n))))
+(≔ get-second (get-nth #1))
+(⊨ (⌜ :lambda-lambda-list) #2 (get-second list3))
+
+; Test 4.7: Closure over list
+(≔ make-counter (λ (initial-list)
+  (λ () (length initial-list))))
+(≔ counter (make-counter list3))
+(⊨ (⌜ :closure-over-list) #3 (counter))
+
+; Test 4.8: Recursive function with list accumulator
+(≔ range-helper (λ (i acc)
+  (? (< i #0)
+     acc
+     (range-helper (⊖ i #1) (⟨⟩ i acc)))))
+
+(≔ range (λ (n) (range-helper n ∅)))
+
+(≔ range5 (range #5))
+(⊨ (⌜ :range-length) #6 (length range5))
+(⊨ (⌜ :range-first) #0 (◁ range5))
+(⊨ (⌜ :range-last) #5 (nth range5 #5))
+
+; =============================================================================
+; SECTION 5: Memory Management (5 tests)
+; =============================================================================
+
+; Test 5.1: Large list creation (100 elements)
+(≔ large-list (range #99))
+(⊨ (⌜ :large-list-length) #100 (length large-list))
+(⊨ (⌜ :large-list-first) #0 (◁ large-list))
+(⊨ (⌜ :large-list-last) #99 (nth large-list #99))
+
+; Test 5.2: Large list traversal
+(≔ large-sum (fold (λ (a b) (⊕ a b)) #0 large-list))
+(⊨ (⌜ :large-sum) #4950 large-sum)
+
+; Test 5.3: List creation in iteration
+(≔ repeat (λ (n)
+  (? (≡ n #0)
+     ∅
+     (⟨⟩ #1 (repeat (⊖ n #1))))))
+
+(≔ repeated (repeat #10))
+(⊨ (⌜ :repeated-length) #10 (length repeated))
+
+; Test 5.4: Nested list creation
+(≔ make-nested (λ (depth)
+  (? (≡ depth #0)
+     ∅
+     (⟨⟩ (make-nested (⊖ depth #1)) ∅))))
+
+(≔ nested-10 (make-nested #10))
+(⊨ (⌜ :nested-not-nil) #f (∅? nested-10))
+
+; Test 5.5: Complex list operations (sum of squares of numbers > 10 in range 0-20)
+(≔ complex-result
+  (fold (λ (a b) (⊕ a b)) #0
+    (map (λ (x) (⊗ x x))
+      (filter (λ (x) (> x #10))
+        (range #20)))))
+(⊨ (⌜ :complex-operations) #2485 complex-result)
+
+; =============================================================================
+; Summary: 45+ tests covering all aspects of list operations
+; =============================================================================
