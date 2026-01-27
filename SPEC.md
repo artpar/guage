@@ -156,6 +156,16 @@ Everything is a **Cell**:
 | `⊝→` | `⊝ → :symbol → α` | Query graph property | ✅ DONE |
 | `⊝?` | `α → :symbol → 𝔹` | Check graph type | ✅ DONE |
 
+**Graph Type Restrictions:**
+Graph types are currently restricted to 5 predefined types for metaprogramming:
+- `:generic` - General-purpose user-defined graphs
+- `:cfg` - Control Flow Graphs (from ⌂⟿)
+- `:dfg` - Data Flow Graphs (from ⌂⇝)
+- `:call` - Call Graphs (future)
+- `:dep` - Dependency Graphs (future)
+
+Use `:generic` for custom graph types. This restriction enables specialized graph algorithms and optimizations for compiler metaprogramming while still allowing user-defined graph structures.
+
 ---
 
 ## Planned Primitives (Not Yet Implemented)
@@ -328,14 +338,18 @@ Everything is a **Cell**:
 (⊙→ p :x)  ; → #3
 
 ; Node structure (recursive ADT)
-(⊚≔ :List [:Nil] [:Cons :head :tail])
-(≔ l (⊚ :List :Cons #1 (⊚ :List :Nil)))
+; Note: Variant definitions must be quoted!
+(⊚≔ :List (⌜ (:Nil)) (⌜ (:Cons :head :tail)))
+(≔ empty (⊚ :List :Nil))
+(≔ l (⊚ :List :Cons #1 empty))
+(⊚→ l :head)  ; → #1
 
 ; Graph structure
-(⊝≔ :Graph :nodes :edges)
-(≔ g (⊝ :Graph ∅ ∅))
-(≔ g (⊝⊕ g node-data))
-(≔ g (⊝⊗ g from-id to-id label))
+; Note: graph_type must be :generic, :cfg, :dfg, :call, or :dep
+(⊝≔ :MyGraph :generic :nodes :edges)
+(≔ g (⊝ :MyGraph))
+(≔ g (⊝⊕ g :node1))
+(≔ g (⊝⊗ g :node1 :node2 :edge-label))
 ```
 
 **Why Data Structures Matter:**
