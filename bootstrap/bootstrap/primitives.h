@@ -75,6 +75,8 @@ Cell* prim_doc_source(Cell* args);     /* ⌂⊛ - get source code */
 Cell* prim_struct_define_leaf(Cell* args);  /* ⊙≔ - define leaf type */
 Cell* prim_struct_create(Cell* args);       /* ⊙ - create struct instance */
 Cell* prim_struct_get_field(Cell* args);    /* ⊙→ - get field value */
+Cell* prim_struct_update_field(Cell* args); /* ⊙← - update field (immutable) */
+Cell* prim_struct_type_check(Cell* args);   /* ⊙? - check structure type */
 
 /* Primitive documentation structure */
 typedef struct {

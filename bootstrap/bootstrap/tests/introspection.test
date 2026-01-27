@@ -1,16 +1,17 @@
 ; Introspection Tests
 
-; Type-of tests
-(⊨ (⌜ :typeof-number) :number (⊙ #42))
-(⊨ (⌜ :typeof-bool) :bool (⊙ #t))
-(⊨ (⌜ :typeof-nil) :nil (⊙ ∅))
+; Note: ⊙ symbol is now used for structure primitives (Phase 2C)
+; Type-of tests disabled - type introspection moved to separate primitive (future)
+; (⊨ (⌜ :typeof-number) :number (⊙ #42))
+; (⊨ (⌜ :typeof-bool) :bool (⊙ #t))
+; (⊨ (⌜ :typeof-nil) :nil (⊙ ∅))
 
 ; Lambda introspection
 (≔ f1 (λ (x) x))
 (≔ f2 (λ (x y) (⊕ x y)))
 (≔ f3 (λ (a b c) (⊗ a (⊕ b c))))
 
-(⊨ (⌜ :typeof-lambda) :lambda (⊙ f1))
+; (⊨ (⌜ :typeof-lambda) :lambda (⊙ f1))
 (⊨ (⌜ :arity-1) #1 (⧉ f1))
 (⊨ (⌜ :arity-2) #2 (⧉ f2))
 (⊨ (⌜ :arity-3) #3 (⧉ f3))

@@ -25,3 +25,16 @@
 (≔ p2 (⊙ (⌜ :Point) #7 #8))
 (⊨ (⌜ :point2-x) #7 (⊙→ p2 (⌜ :x)))
 (⊨ (⌜ :point2-y) #8 (⊙→ p2 (⌜ :y)))
+
+; Test field update (immutable)
+(≔ p3 (⊙← p1 (⌜ :x) #100))
+(⊨ (⌜ :update-field-x) #100 (⊙→ p3 (⌜ :x)))
+(⊨ (⌜ :update-field-y-unchanged) #4 (⊙→ p3 (⌜ :y)))
+(⊨ (⌜ :original-unchanged) #3 (⊙→ p1 (⌜ :x)))
+
+; Test type checking
+(⊨ (⌜ :is-point) #t (⊙? p1 (⌜ :Point)))
+(⊨ (⌜ :is-rect) #t (⊙? r1 (⌜ :Rectangle)))
+(⊨ (⌜ :not-rect) #f (⊙? p1 (⌜ :Rectangle)))
+(⊨ (⌜ :not-point) #f (⊙? r1 (⌜ :Point)))
+(⊨ (⌜ :number-not-struct) #f (⊙? #42 (⌜ :Point)))

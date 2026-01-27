@@ -410,6 +410,109 @@ For large field lists, share field name lists between instances:
 
 ---
 
+## Phase 2C Day 4: Additional Structure Primitives
+
+### 13. Symbol Conflict Resolution: ⊙ Repurposed
+
+**Decision:** Remove `prim_type_of` from primitives table; ⊙ symbol exclusively for structures.
+
+**Why:**
+- **Priority:** Structure primitives are Phase 2C focus, type introspection is legacy
+- **Spec alignment:** SPEC.md marks type-of ⊙ as "❌ PLACEHOLDER"
+- **Consistency:** One symbol, one meaning - no ambiguity
+- **Future:** Type introspection can use different symbol when needed
+
+**Impact:**
+- Removed line 686 from primitives table
+- Updated introspection.test to comment out type-of tests
+- All structure tests continue passing
+
+**Code location:** `primitives.c` line 684 (commented), `tests/introspection.test` lines 4-6
+
+---
+
+### 14. Immutable Field Update Pattern
+
+**Decision:** ⊙← returns new structure with updated field, doesn't modify original.
+
+**Implementation:**
+```c
+// Build new field list
+Cell* new_fields = cell_nil();
+while (iterating old_fields) {
+    if (field matches) {
+        create new pair with new_value
+    } else {
+        retain existing pair
+    }
+}
+// Create new struct with new fields
+```
+
+**Why:**
+- **Functional purity:** No hidden mutations
+- **Predictable:** Original value unchanged after update
+- **Debuggable:** Can inspect old and new values
+- **Consistent:** Matches graph immutability from Days 1-2
+- **Thread-safe ready:** No shared mutable state
+
+**Example:**
+```scheme
+(≔ p1 (⊙ (⌜ :Point) #3 #4))
+(≔ p2 (⊙← p1 (⌜ :x) #100))
+(⊙→ p1 (⌜ :x))  ; Still #3 (original unchanged)
+(⊙→ p2 (⌜ :x))  ; Now #100 (new value)
+```
+
+**Code location:** `primitives.c` lines 557-629
+
+---
+
+### 15. Type Checking Returns Boolean
+
+**Decision:** ⊙? returns #t/#f, not error for type mismatches.
+
+**Why:**
+- **Predicate semantics:** Predicates return boolean, not error
+- **Composable:** Can use in conditionals directly
+- **Follows pattern:** Like ℕ?, 𝔹?, :?, etc.
+- **User-friendly:** No need for error handling on type checks
+
+**Example:**
+```scheme
+(? (⊙? value (⌜ :Point))
+   (process-point value)
+   (handle-non-point value))
+```
+
+**Special cases:**
+- Non-struct value → #f (not error)
+- Missing type tag arg → #f (not error)
+- Invalid type tag → error (only on malformed call)
+
+**Code location:** `primitives.c` lines 631-661
+
+---
+
+### 16. Field Update Error Handling
+
+**Decision:** Return error if field doesn't exist, not silently ignore.
+
+**Why:**
+- **Fail fast:** Catch typos and mistakes immediately
+- **Explicit:** User knows exactly what went wrong
+- **Consistent:** Matches ⊙→ behavior (error on missing field)
+- **Debuggable:** Error includes field name that wasn't found
+
+**Example:**
+```scheme
+(⊙← point (⌜ :z) #5)  ; Error: field not found - Point has no :z
+```
+
+**Code location:** `primitives.c` line 612
+
+---
+
 **Document Purpose:** This is a living document. Update it whenever making significant technical decisions. Explain the "why", not just the "what". Future you will thank you.
 
-**Last Updated:** 2026-01-27 - Phase 2C Week 1 Day 3
+**Last Updated:** 2026-01-27 - Phase 2C Week 1 Day 4

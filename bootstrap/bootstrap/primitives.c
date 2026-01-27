@@ -550,6 +550,118 @@ Cell* prim_struct_get_field(Cell* args) {
     return value;
 }
 
+/* ⊙← - Update field in leaf structure (immutable, returns new struct)
+ * Args: struct, field_name, new_value
+ * Example: (⊙← point :x #5)
+ * Returns: new struct with updated field
+ */
+Cell* prim_struct_update_field(Cell* args) {
+    if (!cell_is_pair(args)) {
+        return cell_error("⊙← requires struct, field name, and value", cell_nil());
+    }
+
+    Cell* structure = arg1(args);
+    if (!cell_is_struct(structure)) {
+        return cell_error("⊙← first arg must be struct", structure);
+    }
+
+    Cell* rest = cell_cdr(args);
+    if (!cell_is_pair(rest)) {
+        return cell_error("⊙← requires field name and value", cell_nil());
+    }
+
+    Cell* field_name = cell_car(rest);
+    if (!cell_is_symbol(field_name)) {
+        return cell_error("⊙← field name must be symbol", field_name);
+    }
+
+    Cell* rest2 = cell_cdr(rest);
+    if (!cell_is_pair(rest2)) {
+        return cell_error("⊙← requires new value", cell_nil());
+    }
+
+    Cell* new_value = cell_car(rest2);
+
+    /* Build new field list with updated value */
+    Cell* old_fields = cell_struct_fields(structure);
+    Cell* new_fields = cell_nil();
+    bool found = false;
+
+    /* Copy fields, replacing the one being updated */
+    Cell* curr = old_fields;
+    while (cell_is_pair(curr)) {
+        Cell* pair = cell_car(curr);  /* (field_name . value) */
+        Cell* name = cell_car(pair);
+
+        if (cell_equal(name, field_name)) {
+            /* This is the field to update */
+            cell_retain(name);
+            cell_retain(new_value);
+            Cell* new_pair = cell_cons(name, new_value);
+            new_fields = cell_cons(new_pair, new_fields);
+            found = true;
+        } else {
+            /* Keep existing field */
+            cell_retain(pair);
+            new_fields = cell_cons(pair, new_fields);
+        }
+
+        curr = cell_cdr(curr);
+    }
+
+    if (!found) {
+        cell_release(new_fields);
+        return cell_error("⊙← field not found", field_name);
+    }
+
+    /* Reverse to maintain order */
+    Cell* reversed = cell_nil();
+    while (cell_is_pair(new_fields)) {
+        Cell* pair = cell_car(new_fields);
+        cell_retain(pair);
+        reversed = cell_cons(pair, reversed);
+        Cell* next = cell_cdr(new_fields);
+        cell_release(new_fields);
+        new_fields = next;
+    }
+
+    /* Create new structure with updated fields */
+    Cell* type_tag = cell_struct_type_tag(structure);
+    cell_retain(type_tag);
+    Cell* result = cell_struct(STRUCT_LEAF, type_tag, NULL, reversed);
+
+    return result;
+}
+
+/* ⊙? - Check if value is structure of given type
+ * Args: value, type_tag
+ * Example: (⊙? point :Point)
+ * Returns: #t or #f
+ */
+Cell* prim_struct_type_check(Cell* args) {
+    if (!cell_is_pair(args)) {
+        return cell_bool(false);
+    }
+
+    Cell* value = arg1(args);
+    if (!cell_is_struct(value)) {
+        return cell_bool(false);
+    }
+
+    Cell* rest = cell_cdr(args);
+    if (!cell_is_pair(rest)) {
+        return cell_bool(false);
+    }
+
+    Cell* expected_type = cell_car(rest);
+    if (!cell_is_symbol(expected_type)) {
+        return cell_error("⊙? type tag must be symbol", expected_type);
+    }
+
+    Cell* actual_type = cell_struct_type_tag(value);
+    return cell_bool(cell_equal(actual_type, expected_type));
+}
+
 /* Forward declaration */
 static Primitive primitives[];
 /* Documentation primitives */
@@ -683,7 +795,7 @@ static Primitive primitives[] = {
     {"⟲", prim_trace, 1, {"Print value for debugging and return it", "α → α"}},
 
     /* Self-Introspection */
-    {"⊙", prim_type_of, 1, {"Get type of value as symbol", "α → :symbol"}},
+    /* Note: ⊙ symbol now used for structures (see below) */
     {"⧉", prim_arity, 1, {"Get arity of lambda", "λ → ℕ"}},
     {"⊛", prim_source, 1, {"Get source code of lambda", "λ → expression"}},
 
@@ -712,6 +824,8 @@ static Primitive primitives[] = {
     {"⊙≔", prim_struct_define_leaf, -1, {"Define leaf structure type with field names", ":symbol → [:symbol] → :symbol"}},
     {"⊙", prim_struct_create, -1, {"Create structure instance with field values", ":symbol → [α] → ⊙"}},
     {"⊙→", prim_struct_get_field, 2, {"Get field value from structure", "⊙ → :symbol → α"}},
+    {"⊙←", prim_struct_update_field, 3, {"Update field in structure (immutable)", "⊙ → :symbol → α → ⊙"}},
+    {"⊙?", prim_struct_type_check, 2, {"Check if value is structure of given type", "α → :symbol → 𝔹"}},
 
     {NULL, NULL, 0, {NULL, NULL}}
 };
