@@ -32,11 +32,11 @@
 (≔ special-form? (λ (expr)
   (? (∅? expr)
      #f
-     (? (≡ (◁ expr) :λ)
+     (? (≡ (◁ expr) (⌜ λ))
         #t
-        (? (≡ (◁ expr) :?)
+        (? (≡ (◁ expr) (⌜ ?))
            #t
-           (? (≡ (◁ expr) :≔)
+           (? (≡ (◁ expr) (⌜ ≔))
               #t
               #f))))))
 
@@ -66,19 +66,23 @@
 (≔ apply-fn (λ (fn) (λ (args) (λ (env)
   (? (:? fn)
      ((env-lookup env) fn)         ; Look up function name
-     (? (≡ (◁ fn) :closure)
-        ; Closure: extract params, body, closure-env
-        (? (⟨⟩? (▷ fn))
-           ; Get params and rest
-           (? (⟨⟩? (▷ (▷ fn)))
-              ; body-env-pair = (body . env)
-              ((eval (◁ (▷ (▷ fn))))    ; body
-               (((bind-params (◁ (▷ fn)))  ; params
-                 args)
-                (▷ (▷ (▷ fn)))))          ; closure-env
+     (? (⟨⟩? fn)
+        ; fn is a pair - check if it's a closure
+        (? (≡ (◁ fn) :closure)
+           ; Closure: extract params, body, closure-env
+           (? (⟨⟩? (▷ fn))
+              ; Get params and rest
+              (? (⟨⟩? (▷ (▷ fn)))
+                 ; body-env-pair = (body . env)
+                 ((eval (◁ (▷ (▷ fn))))    ; body
+                  (((bind-params (◁ (▷ fn)))  ; params
+                    args)
+                   (▷ (▷ (▷ fn)))))          ; closure-env
+                 (⚠ :invalid-closure-structure fn))
               (⚠ :invalid-closure-structure fn))
-           (⚠ :invalid-closure-structure fn))
-        (⚠ :not-a-function fn)))))))
+           (⚠ :not-a-closure fn))
+        ; fn is not a symbol or pair - might be a primitive
+        (⚠ :cannot-apply-primitive fn)))))))
 
 ;; Evaluate list of expressions
 (≔ eval-list-args (λ (exprs) (λ (env)
@@ -92,7 +96,7 @@
   ; Check for special forms first
   (? (special-form? expr)
      ; Handle special forms
-     (? (≡ (◁ expr) :λ)
+     (? (≡ (◁ expr) (⌜ λ))
         ; Lambda: (λ (params...) body)
         (? (⟨⟩? (▷ expr))
            (? (⟨⟩? (▷ (▷ expr)))
@@ -101,7 +105,7 @@
                env)
               (⚠ :lambda-missing-body expr))
            (⚠ :lambda-missing-params expr))
-        (? (≡ (◁ expr) :?)
+        (? (≡ (◁ expr) (⌜ ?))
            ; Conditional: (? cond then else)
            (? (⟨⟩? (▷ expr))
               (? (⟨⟩? (▷ (▷ expr)))
