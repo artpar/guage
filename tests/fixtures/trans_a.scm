@@ -1,1 +1,0 @@
-(⋘ "../../tests/fixtures/trans_b.scm") (≔ A (⊕ B #1))

@@ -1,1 +1,0 @@
-(⋘ "../../tests/fixtures/base_module.scm") (≔ DERIVED (⊕ BASE #1))

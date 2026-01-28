@@ -7,7 +7,7 @@
 ; ═══════════════════════════════════════════════════════════════
 
 ; Load required modules
-(⋘ "../../stdlib/list.scm")
+(⋘ "stdlib/list.scm")
 (⋘ "stdlib/macros.scm")
 (⋘ "stdlib/comprehensions.scm")
 

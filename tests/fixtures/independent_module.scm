@@ -1,1 +1,0 @@
-(≔ INDEPENDENT #42)

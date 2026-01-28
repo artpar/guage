@@ -1,1 +1,0 @@
-(⋘ "../../tests/fixtures/math_base.scm") (≔ add3 (λ (x y z) (add (add x y) z)))

@@ -1,1 +1,0 @@
-(⋘ "../../tests/fixtures/math_extended.scm") (≔ sum-list (λ (lst) (? (∅? (▷ lst)) (◁ lst) (add (◁ lst) (sum-list (▷ lst))))))
