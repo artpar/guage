@@ -57,7 +57,7 @@ Everything is a **Cell**:
 |--------|------|---------|--------|
 | `∇` | `α → [[⌜pattern⌝ result]] → β` | Pattern match expression | ✅ DONE (Day 16) |
 
-**Note:** As of Day 19, supports:
+**Note:** As of Day 58, supports:
 - **Wildcard** (_) - matches anything
 - **Literals** - numbers, booleans, symbols, keywords
 - **Variables** - bind matched value to name (Day 16 ✅)
@@ -65,6 +65,7 @@ Everything is a **Cell**:
 - **Leaf structure patterns** (⊙) - destructure simple structures (Day 18 ✅)
 - **Node/ADT patterns** (⊚) - destructure algebraic data types (Day 18 ✅)
 - **Exhaustiveness checking** - warnings for incomplete/unreachable patterns (Day 19 ✅)
+- **Guard conditions** - conditional matching with boolean expressions (Day 58 ✅)
 
 **Syntax:**
 ```scheme
@@ -81,6 +82,7 @@ Everything is a **Cell**:
 - `(⟨⟩ pat1 pat2)` - Pair destructuring (recursive matching)
 - `(⊙ :Type pat1 pat2 ...)` - Leaf structure destructuring (Day 18)
 - `(⊚ :Type :Variant pat1 ...)` - Node/ADT destructuring (Day 18)
+- `(pattern | guard-expr)` - Guard condition (Day 58)
 
 **Examples:**
 ```scheme
@@ -98,6 +100,35 @@ Everything is a **Cell**:
 
 ; Multiple clauses
 (∇ #50 (⌜ ((#42 :is-42) (n (⊗ n #2)))))  ; → #100
+
+; Guard conditions (Day 58) - conditional matching
+; Syntax: (pattern | guard-expr) result-expr
+; Guard is evaluated after pattern matches; if #t, use this clause; if #f, try next
+
+; Match positive numbers
+(∇ #5 (⌜ (((n | (> n #0)) :positive) (_ :non-positive))))  ; → :positive
+(∇ #-3 (⌜ (((n | (> n #0)) :positive) (_ :non-positive))))  ; → :non-positive
+
+; Complex boolean guards - positive even numbers
+(∇ #10 (⌜ (((n | (∧ (> n #0) (≡ (% n #2) #0))) :positive-even)
+          ((n | (> n #0)) :positive-odd)
+          (_ :other))))  ; → :positive-even
+
+; Guards with pattern bindings - uses bound variables
+(∇ #15 (⌜ (((x | (> x #10)) (⊕ x #100)) (_ #0))))  ; → #115
+
+; Guards with pair patterns
+(∇ (⟨⟩ #3 #4) (⌜ ((((⟨⟩ a b) | (≡ (⊕ a b) #7)) :sum-seven)
+                  ((⟨⟩ a b) :other))))  ; → :sum-seven
+
+; Guards with range checks
+(∇ #50 (⌜ (((n | (∧ (≥ n #0) (≤ n #100))) :in-range) (_ :out-of-range))))  ; → :in-range
+
+; Guards with ADT patterns
+(⊚≔ :Result (⌜ (:Ok :value)) (⌜ (:Err :error)))
+(∇ (⊚ :Result :Ok #150) (⌜ ((((⊚ :Result :Ok v) | (> v #100)) :large)
+                            ((⊚ :Result :Ok v) :small)
+                            ((⊚ :Result :Err e) :error))))  ; → :large
 
 ; Quasiquote and Unquote (Day 32 Part 2)
 (≔ x #42)

@@ -1,0 +1,180 @@
+;; Pattern Matching with Guard Conditions Tests
+;; Day 58 - Guard condition implementation
+
+;; Test 1: Simple numeric guard - positive numbers
+(⊨ :guard-positive #t
+   (≡ (∇ #5 (⌜ (((n | (> n #0)) :positive)
+              (_ :other))))
+      :positive))
+
+;; Test 2: Simple numeric guard - non-positive numbers
+(⊨ :guard-non-positive #t
+   (≡ (∇ #-3 (⌜ (((n | (> n #0)) :positive)
+               (_ :other))))
+      :other))
+
+;; Test 3: Guard with equality check
+(⊨ :guard-equals #t
+   (≡ (∇ #42 (⌜ (((n | (≡ n #42)) :matched)
+              (_ :other))))
+      :matched))
+
+;; Test 4: Guard with complex boolean logic - positive even
+(⊨ :guard-positive-even #t
+   (≡ (∇ #10 (⌜ (((n | (∧ (> n #0) (≡ (% n #2) #0))) :positive-even)
+               ((n | (> n #0)) :positive-odd)
+               (_ :other))))
+      :positive-even))
+
+;; Test 5: Guard with complex boolean logic - positive odd
+(⊨ :guard-positive-odd #t
+   (≡ (∇ #7 (⌜ (((n | (∧ (> n #0) (≡ (% n #2) #0))) :positive-even)
+              ((n | (> n #0)) :positive-odd)
+              (_ :other))))
+      :positive-odd))
+
+;; Test 6: Guard with complex boolean logic - negative
+(⊨ :guard-negative #t
+   (≡ (∇ #-5 (⌜ (((n | (∧ (> n #0) (≡ (% n #2) #0))) :positive-even)
+               ((n | (> n #0)) :positive-odd)
+               (_ :other))))
+      :other))
+
+;; Test 7: Guard with pair pattern - head > 10
+(⊨ :guard-pair-head-large #t
+   (≡ (∇ (⟨⟩ #15 #20) (⌜ ((((⟨⟩ h t) | (> h #10)) :large-head)
+                         ((⟨⟩ h t) :small-head))))
+      :large-head))
+
+;; Test 8: Guard with pair pattern - head ≤ 10
+(⊨ :guard-pair-head-small #t
+   (≡ (∇ (⟨⟩ #5 #20) (⌜ ((((⟨⟩ h t) | (> h #10)) :large-head)
+                        ((⟨⟩ h t) :small-head))))
+      :small-head))
+
+;; Test 9: Guard with variable binding - uses bound variable
+(⊨ :guard-uses-binding #t
+   (≡ (∇ #15 (⌜ (((x | (> x #10)) (⊕ x #100))
+              (_ #0))))
+      #115))
+
+;; Test 10: Guard with multiple variables - sum check
+(⊨ :guard-multiple-vars #t
+   (≡ (∇ (⟨⟩ #3 #4) (⌜ ((((⟨⟩ a b) | (≡ (⊕ a b) #7)) :sum-is-seven)
+                        ((⟨⟩ a b) :sum-not-seven))))
+      :sum-is-seven))
+
+;; Test 11: Guard with multiple variables - sum check fails
+(⊨ :guard-multiple-vars-fail #t
+   (≡ (∇ (⟨⟩ #3 #5) (⌜ ((((⟨⟩ a b) | (≡ (⊕ a b) #7)) :sum-is-seven)
+                        ((⟨⟩ a b) :sum-not-seven))))
+      :sum-not-seven))
+
+;; Test 12: Guard with range check
+(⊨ :guard-range-in #t
+   (≡ (∇ #50 (⌜ (((n | (∧ (≥ n #0) (≤ n #100))) :in-range)
+              (_ :out-of-range))))
+      :in-range))
+
+;; Test 13: Guard with range check - out of range
+(⊨ :guard-range-out #t
+   (≡ (∇ #150 (⌜ (((n | (∧ (≥ n #0) (≤ n #100))) :in-range)
+               (_ :out-of-range))))
+      :out-of-range))
+
+;; Test 14: Guard with wildcard pattern - should still work
+(⊨ :guard-wildcard #t
+   (≡ (∇ #42 (⌜ (((_ | #t) :matched))))
+      :matched))
+
+;; Test 15: No guard - backward compatibility
+(⊨ :no-guard-compat #t
+   (≡ (∇ #42 (⌜ ((n (⊗ n #2)))))
+      #84))
+
+;; Test 16: Mixed - some clauses with guards, some without
+(⊨ :mixed-guards #t
+   (≡ (∇ #7 (⌜ (((n | (≡ n #5)) :five)
+              (n (⊕ n #100)))))
+      #107))
+
+;; Test 17: Define leaf structure for guard tests
+(⊙≔ :Point :x :y)
+
+;; Test 18: Guard with leaf structure - distance check
+(⊨ :guard-struct-distance #t
+   (≡ (∇ (⊙ :Point #3 #4) (⌜ ((((⊙ :Point x y) | (≡ (⊕ (⊗ x x) (⊗ y y)) #25)) :on-circle)
+                            ((⊙ :Point x y) :not-on-circle))))
+      :on-circle))
+
+;; Test 19: Guard with leaf structure - distance check fails
+(⊨ :guard-struct-distance-fail #t
+   (≡ (∇ (⊙ :Point #2 #3) (⌜ ((((⊙ :Point x y) | (≡ (⊕ (⊗ x x) (⊗ y y)) #25)) :on-circle)
+                            ((⊙ :Point x y) :not-on-circle))))
+      :not-on-circle))
+
+;; Test 20: Define ADT for guard tests
+(⊚≔ :Result (⌜ (:Ok :value)) (⌜ (:Err :error)))
+
+;; Test 21: Guard with ADT - Ok variant with value > 100
+(⊨ :guard-adt-ok-large #t
+   (≡ (∇ (⊚ :Result :Ok #150) (⌜ ((((⊚ :Result :Ok v) | (> v #100)) :large-value)
+                                 ((⊚ :Result :Ok v) :small-value)
+                                 ((⊚ :Result :Err e) :error))))
+      :large-value))
+
+;; Test 22: Guard with ADT - Ok variant with value ≤ 100
+(⊨ :guard-adt-ok-small #t
+   (≡ (∇ (⊚ :Result :Ok #50) (⌜ ((((⊚ :Result :Ok v) | (> v #100)) :large-value)
+                                ((⊚ :Result :Ok v) :small-value)
+                                ((⊚ :Result :Err e) :error))))
+      :small-value))
+
+;; Test 23: Guard with ADT - Err variant (guard not checked)
+(⊨ :guard-adt-err #t
+   (≡ (∇ (⊚ :Result :Err :timeout) (⌜ ((((⊚ :Result :Ok v) | (> v #100)) :large-value)
+                                      ((⊚ :Result :Ok v) :small-value)
+                                      ((⊚ :Result :Err e) :error))))
+      :error))
+
+;; Test 24: Guard with nested logic - NOT
+(⊨ :guard-not #t
+   (≡ (∇ #5 (⌜ (((n | (¬ (≡ n #0))) :non-zero)
+              (_ :zero))))
+      :non-zero))
+
+;; Test 25: Guard with OR logic
+(⊨ :guard-or #t
+   (≡ (∇ #7 (⌜ (((n | (∨ (≡ n #5) (≡ n #7))) :five-or-seven)
+              (_ :other))))
+      :five-or-seven))
+
+;; Test 26: Guard with comparison chains
+(⊨ :guard-comparison-chain #t
+   (≡ (∇ #50 (⌜ (((n | (∧ (> n #10) (< n #100))) :medium)
+               ((n | (≥ n #100)) :large)
+               (_ :small))))
+      :medium))
+
+;; Test 27: All guards fail - should get :no-match error
+(⊨ :guard-all-fail #t
+   (⚠? (∇ #42 (⌜ (((n | (≡ n #5)) :five)
+                ((n | (≡ n #10)) :ten))))))
+
+;; Test 28: Guard returning non-boolean - should be treated as false
+(⊨ :guard-non-bool #t
+   (≡ (∇ #42 (⌜ (((n | n) :truthy)
+              (_ :other))))
+      :other))
+
+;; Test 29: Guard with arithmetic in guard expression
+(⊨ :guard-arithmetic #t
+   (≡ (∇ #8 (⌜ (((n | (≡ (⊘ n #2) #4)) :half-is-four)
+              (_ :other))))
+      :half-is-four))
+
+;; Test 30: Guard with list length check (using pairs)
+(⊨ :guard-list-length #t
+   (≡ (∇ (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅))) (⌜ ((((⟨⟩ a (⟨⟩ b (⟨⟩ c ∅))) | (> c #2)) :long-enough)
+                                        (_ :too-short))))
+      :long-enough))

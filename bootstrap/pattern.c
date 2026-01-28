@@ -58,6 +58,49 @@ static bool both_nil(Cell* a, Cell* b) {
            (b == NULL || b->type == CELL_ATOM_NIL);
 }
 
+/* Helper: Check if clause has guard syntax: (pattern | guard) */
+static bool has_guard(Cell* pattern_expr) {
+    /* Guard syntax: (pattern | guard)
+     * Must be a list with 3 elements: (pattern symbol-| guard) */
+    if (!pattern_expr || pattern_expr->type != CELL_PAIR) {
+        return false;
+    }
+
+    /* Need at least 2 more elements */
+    Cell* rest = cell_cdr(pattern_expr);
+    if (!rest || rest->type != CELL_PAIR) {
+        return false;
+    }
+
+    /* Second element should be the pipe symbol "|" */
+    Cell* second = cell_car(rest);
+    if (!second || second->type != CELL_ATOM_SYMBOL) {
+        return false;
+    }
+    if (strcmp(second->data.atom.symbol, "|") != 0) {
+        return false;
+    }
+
+    /* Need the guard expression */
+    Cell* rest2 = cell_cdr(rest);
+    if (!rest2 || rest2->type != CELL_PAIR) {
+        return false;
+    }
+
+    return true;
+}
+
+/* Helper: Extract pattern and guard from guard syntax */
+static void extract_pattern_and_guard(Cell* pattern_expr, Cell** pattern_out, Cell** guard_out) {
+    /* Guard syntax: (pattern | guard) */
+    *pattern_out = cell_car(pattern_expr);
+
+    /* Skip the pipe symbol */
+    Cell* rest = cell_cdr(pattern_expr);
+    Cell* rest2 = cell_cdr(rest);
+    *guard_out = cell_car(rest2);
+}
+
 /* Helper: Check if pattern is a pair pattern (⟨⟩ pat1 pat2) */
 static bool is_pair_pattern(Cell* pattern) {
     /* Pattern must be a list: (⟨⟩ pat1 pat2) */
@@ -529,8 +572,8 @@ Cell* pattern_eval_match(Cell* expr, Cell* clauses, Cell* env, EvalContext* ctx)
             return cell_error("invalid-clause", clause ? clause : cell_nil());
         }
 
-        /* Extract pattern and result */
-        Cell* pattern = clause->data.pair.car;
+        /* Extract pattern (possibly with guard) and result */
+        Cell* pattern_expr = clause->data.pair.car;
         Cell* rest = clause->data.pair.cdr;
 
         /* Result can be in two formats:
@@ -543,10 +586,53 @@ Cell* pattern_eval_match(Cell* expr, Cell* clauses, Cell* env, EvalContext* ctx)
             result_expr = rest;
         }
 
+        /* Check if pattern has guard syntax: (pattern | guard) */
+        Cell* pattern;
+        Cell* guard_expr = NULL;
+        if (has_guard(pattern_expr)) {
+            extract_pattern_and_guard(pattern_expr, &pattern, &guard_expr);
+        } else {
+            pattern = pattern_expr;
+        }
+
         /* Try to match the pattern against the value */
         MatchResult match = pattern_try_match(value, pattern);
 
         if (match.success) {
+            /* If guard exists, evaluate it in extended environment */
+            if (guard_expr) {
+                Cell* extended_env = extend_env_with_bindings(match.bindings, env);
+
+                /* Temporarily set ctx->env for symbol lookup */
+                Cell* old_ctx_env = ctx->env;
+                cell_retain(extended_env);
+                ctx->env = extended_env;
+
+                /* Evaluate guard */
+                Cell* guard_result = eval(ctx, guard_expr);
+
+                /* Restore ctx->env */
+                ctx->env = old_ctx_env;
+                cell_release(extended_env);
+
+                /* Check if guard succeeded */
+                bool guard_passed = false;
+                if (guard_result && guard_result->type == CELL_ATOM_BOOL) {
+                    guard_passed = guard_result->data.atom.boolean;
+                }
+                cell_release(guard_result);
+
+                if (!guard_passed) {
+                    /* Guard failed - try next clause */
+                    if (match.bindings) {
+                        cell_release(match.bindings);
+                    }
+                    current = current->data.pair.cdr;
+                    continue;
+                }
+            }
+
+            /* Pattern matched and guard passed (or no guard) - evaluate result */
             /* Match succeeded! Evaluate the result expression */
             Cell* result;
 
