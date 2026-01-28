@@ -13,7 +13,8 @@ Purpose: Current project status and progress
 
 **System State:**
 - **Primitives:** 78 primitives (all categories)
-- **Tests:** 16/16 core + 42/43 string = 58 total (98% pass rate)
+- **Tests:** 16/16 core + 43/43 string = 59 total (100% pass rate)
+- **Stdlib:** 18 modules in bootstrap/stdlib/ (canonical location)
 - **Build:** Clean, no warnings
 - **Memory:** No leaks detected
 - **Status:** Turing complete, auto-documentation complete, string library complete
@@ -39,9 +40,9 @@ Purpose: Current project status and progress
 - Placeholders: `string-upcase` (≈↑), `string-downcase` (≈↓) - Need char→code primitive
 
 **Test Results:**
-- ✅ 42/43 tests passing (97.7% success rate)
+- ✅ 43/43 tests passing (100% success rate)
 - ✅ All core functions working correctly
-- ⚠ 1 test failing: ::word-count (test implementation issue, not library bug)
+- ✅ Fixed ::word-count test (moved helper to global scope)
 
 **Key Patterns Learned:**
 1. Use immediately-applied lambdas for local bindings: `((λ (var) body) value)`
@@ -52,6 +53,13 @@ Purpose: Current project status and progress
 **Duration:** ~3 hours
 **Files Created:** bootstrap/stdlib/string.scm, bootstrap/tests/string.test
 **Lines Added:** ~238 lines (implementation) + ~284 lines (tests)
+
+**Cleanup Work:**
+- Consolidated stdlib to bootstrap/stdlib/ (single source of truth)
+- Removed duplicate root stdlib/ directory
+- No symlinks - eliminated dual paths
+- Fixed 18 modules now in canonical location
+- All tests now load correctly
 
 ---
 
@@ -245,4 +253,4 @@ c7214d8 docs: Add Day 43 session summary
 
 ---
 
-**Status:** Auto-documentation complete ✅ | String library complete ✅ | 58 tests (98% pass rate) ✅ | Ready for advanced list utilities 🚀
+**Status:** Auto-documentation complete ✅ | String library complete ✅ | Stdlib consolidated ✅ | 59 tests (100% pass rate) ✅ | Ready for advanced list utilities 🚀
