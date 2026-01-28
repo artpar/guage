@@ -1,0 +1,25 @@
+;;;
+;;; Test quote directly
+;;;
+
+;;; Test 1: Quote returns correct value
+(≋ :quote-result)
+(≋ (⌜ (a b c)))
+
+;;; Test 2: Assign quote result to variable
+(≔ v (⌜ (d e f)))
+(≋ :variable-value)
+(≋ v)
+
+;;; Test 3: Pass quote result to primitive
+(≋ :quote-to-primitive)
+(≋ (◁ (⌜ (g h i))))
+
+;;; Test 4: Build list containing quote result
+(≋ :list-with-quote)
+(≋ (⟨⟩ (⌜ (j k l)) #42))
+
+;;; Test 5: Pass that list to closure
+(≔ id (λ (x) x))
+(≋ :list-through-closure)
+(≋ (id (⟨⟩ (⌜ (m n o)) #99)))

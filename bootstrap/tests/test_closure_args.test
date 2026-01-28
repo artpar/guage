@@ -1,0 +1,33 @@
+;;;
+;;; Test how arguments are passed to closures
+;;;
+
+;;; Test 1: Pass number through closure
+(≔ double (λ (x) (⊕ x x)))
+(≋ :pass-number)
+(≋ (double #21))
+
+;;; Test 2: Pass symbol through closure
+(≔ return-it (λ (x) x))
+(≋ :pass-symbol)
+(≋ (return-it :hello))
+
+;;; Test 3: Pass list created with cons through closure
+(≔ my-list (⟨⟩ #1 #2))
+(≔ get-car (λ (x) (◁ x)))
+(≋ :pass-cons-list)
+(≋ my-list)
+(≋ (get-car my-list))
+
+;;; Test 4: Define list inline and pass
+(≋ :pass-inline-list)
+(≋ (get-car (⟨⟩ #3 #4)))
+
+;;; Test 5: Pass quoted expression through closure - just return it
+(≔ quoted-list (⌜ (a b c)))
+(≋ :return-quoted)
+(≋ (return-it quoted-list))
+
+;;; Test 6: Pass quoted expression and try car
+(≋ :car-of-quoted-via-closure)
+(≋ (get-car quoted-list))

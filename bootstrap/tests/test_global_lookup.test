@@ -1,0 +1,33 @@
+;;;
+;;; Test global variable lookup through closures
+;;;
+
+;;; Test 1: Number global
+(≔ my-num #42)
+(≋ :my-num-direct)
+(≋ my-num)
+
+(≔ id (λ (x) x))
+(≋ :my-num-through-closure)
+(≋ (id my-num))
+
+;;; Test 2: Symbol global
+(≔ my-sym :hello)
+(≋ :my-sym-direct)
+(≋ my-sym)
+(≋ :my-sym-through-closure)
+(≋ (id my-sym))
+
+;;; Test 3: List global (not quoted)
+(≔ my-list (⟨⟩ #1 #2))
+(≋ :my-list-direct)
+(≋ my-list)
+(≋ :my-list-through-closure)
+(≋ (id my-list))
+
+;;; Test 4: Quoted list global
+(≔ my-quoted (⌜ (a b c)))
+(≋ :my-quoted-direct)
+(≋ my-quoted)
+(≋ :my-quoted-through-closure)
+(≋ (id my-quoted))

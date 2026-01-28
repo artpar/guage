@@ -1,0 +1,76 @@
+;;;
+;;; Step-by-step evaluator test - find exact crash point
+;;;
+
+(⋘ "bootstrap/stdlib/eval.scm")
+
+(≔ empty-env (env-empty))
+
+;;; Step 1: Test eval-atom with number
+(≋ :step-1-atom-number)
+(≋ ((eval-atom #42) empty-env))
+
+;;; Step 2: Test eval-atom with boolean
+(≋ :step-2-atom-bool)
+(≋ ((eval-atom #t) empty-env))
+
+;;; Step 3: Test eval-atom with nil
+(≋ :step-3-atom-nil)
+(≋ ((eval-atom ∅) empty-env))
+
+;;; Step 4: Check if quoted lambda is a list
+(≔ lambda-expr (⌜ (λ (:x) :x)))
+(≋ :step-4-is-list)
+(≋ (⟨⟩? lambda-expr))
+
+;;; Step 5: Check special-form? function
+(≋ :step-5-special-form-check)
+(≋ (special-form? lambda-expr))
+
+;;; Step 6: Get operator of lambda
+(≋ :step-6-lambda-operator)
+(≋ (◁ lambda-expr))
+
+;;; Step 7: Compare operator
+(≋ :step-7-compare-operator)
+(≋ (≡ (◁ lambda-expr) :λ))
+
+;;; Step 8: Get rest of lambda (params and body)
+(≋ :step-8-lambda-rest)
+(≋ (▷ lambda-expr))
+
+;;; Step 9: Check if rest is a list
+(≋ :step-9-rest-is-list)
+(≋ (⟨⟩? (▷ lambda-expr)))
+
+;;; Step 10: Get params
+(≋ :step-10-get-params)
+(≋ (◁ (▷ lambda-expr)))
+
+;;; Step 11: Get body list
+(≋ :step-11-get-body-list)
+(≋ (▷ (▷ lambda-expr)))
+
+;;; Step 12: Check if body list is a list
+(≋ :step-12-body-is-list)
+(≋ (⟨⟩? (▷ (▷ lambda-expr))))
+
+;;; Step 13: Get actual body expression
+(≋ :step-13-get-body)
+(≋ (◁ (▷ (▷ lambda-expr))))
+
+;;; Step 14: Try eval-lambda directly
+(≋ :step-14-eval-lambda)
+(≔ params (◁ (▷ lambda-expr)))
+(≔ body (◁ (▷ (▷ lambda-expr))))
+(≋ params)
+(≋ body)
+(≋ (((eval-lambda params) body) empty-env))
+
+;;; Step 15: Try full eval on number
+(≋ :step-15-eval-number)
+(≋ ((eval #42) empty-env))
+
+;;; Step 16: Try full eval on lambda (THIS MIGHT CRASH)
+(≋ :step-16-eval-lambda-FULL)
+(≋ ((eval lambda-expr) empty-env))

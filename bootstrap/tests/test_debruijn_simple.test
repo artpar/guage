@@ -1,0 +1,26 @@
+;;;
+;;; Test De Bruijn index resolution in lambda bodies
+;;;
+
+;;; Test 1: Identity function (should work)
+(≔ id (λ (x) x))
+(≋ :test-identity)
+(≋ (id #42))
+
+;;; Test 2: Function that returns a constant (should work)
+(≔ const-fn (λ (x) #100))
+(≋ :test-constant)
+(≋ (const-fn #42))
+
+;;; Test 3: Function that applies a primitive to its argument
+(≋ :test-primitive-on-arg)
+(≔ is-nil? (λ (x) (∅? x)))
+(≋ (is-nil? ∅))
+(≋ (is-nil? #42))
+
+;;; Test 4: Function that passes argument to another primitive
+(≔ get-head (λ (x) (◁ x)))
+(≋ :test-car-on-arg)
+(≔ my-list (⟨⟩ #1 #2))
+(≋ my-list)
+(≋ (get-head my-list))

@@ -1,0 +1,17 @@
+;;;
+;;; Minimal test - no stdlib, just quoted values through closures
+;;;
+
+;;; Test 1: Define quoted value and pass through identity
+(≔ my-quoted (⌜ (a b c)))
+(≋ :my-quoted-value)
+(≋ my-quoted)
+
+(≔ id (λ (x) x))
+(≋ :pass-through-id)
+(≋ (id my-quoted))
+
+;;; Test 2: Create closure and pass quoted value
+(≔ get-head (λ (x) (◁ x)))
+(≋ :try-car)
+(≋ (get-head my-quoted))

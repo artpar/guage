@@ -1,0 +1,15 @@
+;;;
+;;; Use trace to debug
+;;;
+
+(≔ id (λ (x) (⟲ :in-closure x)))
+
+;;; Test with quoted value
+(≋ :test-quoted)
+(≔ result (id (⌜ (a b c))))
+(≋ result)
+
+;;; Test with non-quoted list
+(≋ :test-non-quoted)
+(≔ result2 (id (⟨⟩ #1 #2)))
+(≋ result2)

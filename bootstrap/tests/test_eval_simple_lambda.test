@@ -1,0 +1,30 @@
+;;;
+;;; Test simple lambda application - isolate special-form? issue
+;;;
+
+;;; Test 1: Define a simple function that takes car
+(≔ get-first (λ (x) (◁ x)))
+
+;;; Test 2: Call it with a list
+(≋ :calling-get-first)
+(≔ test-list (⌜ (a b c)))
+(≋ test-list)
+(≋ (get-first test-list))
+
+;;; Test 3: Define a function that checks equality
+(≔ is-lambda? (λ (expr) (≡ (◁ expr) :λ)))
+
+;;; Test 4: Call it with quoted lambda
+(≋ :calling-is-lambda)
+(≔ lambda-expr (⌜ (λ (:x) :x)))
+(≋ lambda-expr)
+(≋ (is-lambda? lambda-expr))
+
+;;; Test 5: Try special-form? with explicit check
+(≔ special-form-test? (λ (e)
+  (? (∅? e)
+     #f
+     (≡ (◁ e) :λ))))
+
+(≋ :calling-special-form-test)
+(≋ (special-form-test? lambda-expr))

@@ -1,0 +1,32 @@
+;;;
+;;; Trace evaluation steps
+;;;
+
+;;; Step 1: Create and test quote directly
+(≋ :step1-create-quote)
+(≔ qval (⌜ (a b c)))
+(≋ qval)
+
+;;; Step 2: Create identity function
+(≋ :step2-create-id)
+(≔ id (λ (x) x))
+
+;;; Step 3: Test with non-quote value first
+(≋ :step3-test-with-number)
+(≋ (id #42))
+
+;;; Step 4: Test with the quote variable
+(≋ :step4-test-with-qval)
+(≋ (id qval))
+
+;;; Step 5: Test with inline quote
+(≋ :step5-test-with-inline)
+(≋ (id (⌜ (d e f))))
+
+;;; Step 6: Create a function that traces its argument
+(≋ :step6-create-tracer)
+(≔ tracer (λ (y) (⟲ y)))
+
+;;; Step 7: Call tracer with quote
+(≋ :step7-call-tracer)
+(tracer (⌜ (g h i)))

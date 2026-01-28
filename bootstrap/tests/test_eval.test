@@ -1,0 +1,162 @@
+;;;
+;;; Tests for S-Expression Evaluator
+;;;
+
+(⋘ "bootstrap/stdlib/eval.scm")
+
+;;; ===================================================================
+;;; Test 1: Evaluate atomic values
+;;; ===================================================================
+
+(≔ empty-env (env-empty))
+
+;; Numbers self-evaluate
+(⊨ :eval-number-zero
+   #0
+   ((eval #0) empty-env))
+
+(⊨ :eval-number-positive
+   #42
+   ((eval #42) empty-env))
+
+(⊨ :eval-number-negative
+   #-5
+   ((eval #-5) empty-env))
+
+;; Booleans self-evaluate
+(⊨ :eval-bool-true
+   #t
+   ((eval #t) empty-env))
+
+(⊨ :eval-bool-false
+   #f
+   ((eval #f) empty-env))
+
+;; Nil self-evaluates
+(⊨ :eval-nil
+   ∅
+   ((eval ∅) empty-env))
+
+;;; ===================================================================
+;;; Test 2: Symbol lookup
+;;; ===================================================================
+
+(≔ env-with-x (((env-extend empty-env) :x) #42))
+
+(⊨ :eval-symbol-lookup
+   #42
+   ((eval :x) env-with-x))
+
+;; Undefined symbol returns error
+(≔ result-undefined ((eval :undefined) empty-env))
+(⊨ :eval-symbol-undefined
+   #t
+   (⚠? result-undefined))
+
+;;; ===================================================================
+;;; Test 3: Lambda creation
+;;; ===================================================================
+
+;; Lambda creates closure
+(≔ identity-closure ((eval (⌜ (λ (:x) :x))) empty-env))
+
+(⊨ :eval-lambda-creates-closure
+   :closure
+   (◁ identity-closure))
+
+;;; ===================================================================
+;;; Test 4: Function application
+;;; ===================================================================
+
+;; Identity function
+(⊨ :eval-apply-identity
+   #42
+   ((eval (⌜ ((λ (:x) :x) #42))) empty-env))
+
+;; Constant function
+(⊨ :eval-apply-const
+   #100
+   ((eval (⌜ ((λ (:x) #100) #42))) empty-env))
+
+;;; ===================================================================
+;;; Test 5: Arithmetic with primitives
+;;; ===================================================================
+
+;; Environment with arithmetic primitives
+(≔ env-arith
+  (((env-extend
+    (((env-extend empty-env) :⊕) ⊕))
+   :⊗) ⊗))
+
+(⊨ :eval-add
+   #5
+   ((eval (⌜ (⊕ #2 #3))) env-arith))
+
+(⊨ :eval-multiply
+   #12
+   ((eval (⌜ (⊗ #3 #4))) env-arith))
+
+(⊨ :eval-nested-arithmetic
+   #14
+   ((eval (⌜ (⊕ (⊗ #2 #3) (⊗ #2 #4)))) env-arith))
+
+;;; ===================================================================
+;;; Test 6: Conditionals
+;;; ===================================================================
+
+;; Environment with comparison
+(≔ env-cond
+  (((env-extend env-arith) :>) >))
+
+(⊨ :eval-if-true
+   #1
+   ((eval (⌜ (? #t #1 #2))) env-cond))
+
+(⊨ :eval-if-false
+   #2
+   ((eval (⌜ (? #f #1 #2))) env-cond))
+
+(⊨ :eval-if-comparison
+   #100
+   ((eval (⌜ (? (> #5 #3) #100 #200))) env-cond))
+
+;;; ===================================================================
+;;; Test 7: Lambda with captured variables
+;;; ===================================================================
+
+(⊨ :eval-lambda-capture
+   #10
+   ((eval (⌜ ((λ (:x) ((λ (:y) (⊕ :x :y)) #3)) #7))) env-arith))
+
+;;; ===================================================================
+;;; Test 8: Multiple parameters
+;;; ===================================================================
+
+(⊨ :eval-lambda-two-params
+   #7
+   ((eval (⌜ ((λ (:x :y) (⊕ :x :y)) #3 #4))) env-arith))
+
+;;; ===================================================================
+;;; Test 9: Higher-order functions
+;;; ===================================================================
+
+;; Function that returns a function
+(⊨ :eval-higher-order
+   #10
+   ((eval (⌜ (((λ (:x) (λ (:y) (⊕ :x :y))) #3) #7))) env-arith))
+
+;;; ===================================================================
+;;; Test 10: Error cases
+;;; ===================================================================
+
+;; Empty application
+(≔ result-empty ((eval (⌜ ())) empty-env))
+(⊨ :eval-empty-application-is-error
+   #t
+   (⚠? result-empty))
+
+;; Non-function application
+(≔ result-not-fn ((eval (⌜ (#42 #1))) empty-env))
+(⊨ :eval-non-function-is-error
+   #t
+   (⚠? result-not-fn))

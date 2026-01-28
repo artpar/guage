@@ -1,0 +1,25 @@
+;;;
+;;; Test passing quotes to different targets
+;;;
+
+;;; Test 1: Quote to primitive ◁ (works)
+(≋ :to-car-primitive)
+(≋ (◁ (⌜ (a b c))))
+
+;;; Test 2: Quote to primitive ⊙ (type-of)
+(≋ :to-type-of)
+(≋ (⊙ (⌜ (d e f))))
+
+;;; Test 3: Quote to primitive ≟ (deep-equal)
+(≋ :to-deep-equal)
+(≋ (≟ (⌜ (g h)) (⌜ (g h))))
+
+;;; Test 4: Define closure and pass quote
+(≋ :to-closure)
+(≔ f (λ (x) x))
+(≋ (f (⌜ (i j k))))
+
+;;; Test 5: Nested closure
+(≋ :to-nested-closure)
+(≔ g (λ (y) (λ (z) z)))
+(≋ ((g #1) (⌜ (l m n))))

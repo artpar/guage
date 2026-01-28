@@ -1,0 +1,27 @@
+;;;
+;;; Test if quoted values are stored correctly
+;;;
+
+(≔ my-quoted (⌜ (a b c)))
+
+;;; Direct access works
+(≋ :direct-access)
+(≋ my-quoted)
+(≋ (◁ my-quoted))
+
+;;; Define identity AFTER the quoted value
+(≔ id (λ (x) x))
+
+;;; Try through closure
+(≋ :through-closure-after)
+(≋ (id my-quoted))
+
+;;; Now define quoted value AFTER identity
+(≔ id2 (λ (y) y))
+(≔ my-quoted2 (⌜ (d e f)))
+
+(≋ :direct-access-2)
+(≋ my-quoted2)
+
+(≋ :through-closure-before)
+(≋ (id2 my-quoted2))

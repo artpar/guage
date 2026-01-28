@@ -785,33 +785,63 @@ void eval_define(EvalContext* ctx, const char* name, Cell* value) {
 /* Lookup De Bruijn index in environment (for indexed environments) */
 Cell* env_lookup_index(Cell* env, int index) {
     Cell* current = env;
-    for (int i = 0; i < index; i++) {
+
+    /* Walk through the environment, skipping the marker if encountered */
+    for (int i = 0; i <= index; i++) {
         if (!cell_is_pair(current)) {
             return NULL;
         }
+
+        Cell* elem = cell_car(current);
+
+        /* Skip marker */
+        if (cell_is_symbol(elem)) {
+            const char* sym = cell_get_symbol(elem);
+            if (strcmp(sym, ":__indexed__") == 0) {
+                current = cell_cdr(current);
+                continue;  /* Don't count this as an index */
+            }
+        }
+
+        /* Found the element at the desired index */
+        if (i == index) {
+            cell_retain(elem);
+            return elem;
+        }
+
+        /* Continue to next element */
         current = cell_cdr(current);
     }
-    if (cell_is_pair(current)) {
-        Cell* value = cell_car(current);
-        cell_retain(value);
-        return value;
-    }
+
     return NULL;
 }
 
 /* Extend environment with argument values (prepend args to env) */
 Cell* extend_env(Cell* env, Cell* args) {
+    /* When creating an indexed environment from scratch, add a marker at the END
+     * to distinguish it from named environments. This allows both the C evaluator
+     * and the Guage self-hosting evaluator to work correctly. */
+
+    /* Base case: extend with the existing env (which might be nil or indexed) */
     if (cell_is_nil(args)) {
+        /* If env is empty and we're creating a new indexed env, add marker */
+        if (cell_is_nil(env)) {
+            Cell* marker = cell_symbol(":__indexed__");
+            Cell* result = cell_cons(marker, cell_nil());
+            cell_release(marker);
+            return result;
+        }
         cell_retain(env);
         return env;
     }
 
+    /* Recursive case: cons this arg onto the extended rest */
     Cell* first = cell_car(args);
     Cell* rest = cell_cdr(args);
     Cell* extended_rest = extend_env(env, rest);
     Cell* result = cell_cons(first, extended_rest);
-
     cell_release(extended_rest);
+
     return result;
 }
 
@@ -909,19 +939,28 @@ static Cell* eval_list(EvalContext* ctx, Cell* env, Cell* expr) {
 
 /* Check if environment is indexed (not named/assoc) */
 bool env_is_indexed(Cell* env) {
-    /* Indexed environment: (val1 val2 val3 ...) */
+    /* Indexed environment: (val1 val2 ... :__indexed__) with marker at end */
     /* Named environment: ((sym1 . val1) (sym2 . val2) ...) */
     if (cell_is_nil(env)) return true;  /* Empty env can be either */
     if (!cell_is_pair(env)) return false;
 
+    /* Walk the environment looking for the indexed marker */
+    Cell* current = env;
+    while (cell_is_pair(current)) {
+        Cell* elem = cell_car(current);
+        if (cell_is_symbol(elem)) {
+            const char* sym = cell_get_symbol(elem);
+            if (strcmp(sym, ":__indexed__") == 0) {
+                return true;  /* Found marker - this is indexed */
+            }
+        }
+        current = cell_cdr(current);
+    }
+
+    /* No marker found - check if it looks like a named environment */
     Cell* first = cell_car(env);
-    /* Named bindings look like: (symbol . value)
-     * Check if it's a pair whose car is a symbol */
     if (cell_is_pair(first)) {
         Cell* car_of_first = cell_car(first);
-        /* Named bindings use regular symbols (not keywords) as variable names.
-         * Keywords start with ':', so if the car is a keyword, this is data, not a binding.
-         * Only non-keyword symbols indicate named bindings. */
         if (cell_is_symbol(car_of_first)) {
             const char* sym = cell_get_symbol(car_of_first);
             if (sym[0] != ':') {
@@ -930,7 +969,7 @@ bool env_is_indexed(Cell* env) {
             }
         }
     }
-    /* First element is not a named binding, so it's an indexed environment */
+    /* Not a named binding and no marker - assume indexed for backwards compat */
     return true;
 }
 

@@ -1,0 +1,71 @@
+;;;
+;;; Tests for Environment Module (eval-env.scm)
+;;;
+
+(⋘ "bootstrap/stdlib/eval-env-v2.scm")
+
+;;; Test 1: Empty environment
+(⊨ :env-empty-is-nil
+   ∅
+   (env-empty))
+
+;;; Test 2: Extend environment with single binding
+(≔ env1 (((env-extend (env-empty)) :x) #42))
+(⊨ :env-extend-single
+   #42
+   ((env-lookup env1) :x))
+
+;;; Test 3: Extend environment with multiple bindings
+(≔ env2 (((env-extend env1) :y) #100))
+(⊨ :env-extend-multiple-first
+   #42
+   ((env-lookup env2) :x))
+(⊨ :env-extend-multiple-second
+   #100
+   ((env-lookup env2) :y))
+
+;;; Test 4: Lookup undefined variable returns error
+(≔ result-undefined ((env-lookup env1) :undefined))
+(⊨ :env-lookup-undefined-is-error
+   #t
+   (⚠? result-undefined))
+
+;;; Test 5: Shadowing - newer binding takes precedence
+(≔ env3 (((env-extend env1) :x) #999))
+(⊨ :env-shadowing
+   #999
+   ((env-lookup env3) :x))
+
+;;; Test 6: env-has? returns true for bound symbols
+(⊨ :env-has-true
+   #t
+   ((env-has? env1) :x))
+
+;;; Test 7: env-has? returns false for unbound symbols
+(⊨ :env-has-false
+   #f
+   ((env-has? env1) :undefined))
+
+;;; Test 8: env-from-list creates environment from bindings
+(≔ bindings (⟨⟩ (⟨⟩ :a #1) (⟨⟩ (⟨⟩ :b #2) (⟨⟩ (⟨⟩ :c #3) ∅))))
+(≔ env4 (env-from-list bindings))
+(⊨ :env-from-list-a
+   #1
+   ((env-lookup env4) :a))
+(⊨ :env-from-list-b
+   #2
+   ((env-lookup env4) :b))
+(⊨ :env-from-list-c
+   #3
+   ((env-lookup env4) :c))
+
+;;; Test 9: Chained lookups work correctly
+(≔ env-chain
+  (((env-extend
+    (((env-extend
+      (((env-extend (env-empty)) :x) #1))
+     :y) #2))
+   :z) #3))
+(⊨ :env-chain-x #1 ((env-lookup env-chain) :x))
+(⊨ :env-chain-y #2 ((env-lookup env-chain) :y))
+(⊨ :env-chain-z #3 ((env-lookup env-chain) :z))

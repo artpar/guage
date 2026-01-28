@@ -1,0 +1,19 @@
+;;;
+;;; Debug environment lookup
+;;;
+
+(⋘ "bootstrap/stdlib/eval-env.scm")
+
+;;; Create simple environment
+(≔ env1 (((env-extend (env-empty)) :x) #42))
+
+;;; Print environment structure
+(≋ env1)
+
+;;; Try to look up :x
+(≔ lookup-fn (env-lookup env1))
+(≋ lookup-fn)
+
+;;; Now apply to :x
+(≔ result (lookup-fn :x))
+(≋ result)
