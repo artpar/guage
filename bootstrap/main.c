@@ -456,6 +456,9 @@ void repl(void) {
     /* Initialize module registry */
     module_registry_init();
 
+    /* Add virtual <repl> module for REPL-defined symbols */
+    module_registry_add("<repl>");
+
     printf("Guage: The Ultralanguage\n");
     printf("Type expressions to evaluate. Ctrl+D to exit.\n");
     printf("Type :help for REPL commands.\n\n");

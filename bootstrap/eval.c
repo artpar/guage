@@ -737,10 +737,14 @@ void eval_define(EvalContext* ctx, const char* name, Cell* value) {
     Cell* binding = cell_cons(sym, value);
     ctx->env = cell_cons(binding, ctx->env);
 
-    /* If loading a module, track this symbol */
+    /* Track this symbol in module registry */
     const char* current_module = module_get_current_loading();
     if (current_module != NULL) {
+        /* Loading a module file - register in that module */
         module_registry_add_symbol(current_module, name);
+    } else {
+        /* REPL definition - register in virtual <repl> module */
+        module_registry_add_symbol("<repl>", name);
     }
 
     /* Generate documentation if value is a lambda */

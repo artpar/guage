@@ -607,12 +607,20 @@ All I/O operations return errors on failure:
 (⌂⊛ :⊕)
 ; → ⊙[::Provenance ⟨⟨::module "<primitive>"⟩ ∅⟩]
 
+; REPL-defined functions show <repl> module (Day 43)
+(≔ double (λ (x) (⊗ x #2)))
+(⌂⊛ :double)
+; → ⊙[::Provenance ⟨⟨::module "<repl>"⟩
+;                    ⟨⟨::line #0⟩
+;                     ⟨⟨::load-order #1⟩
+;                      ⟨⟨::defined-at #1769584932⟩ ∅⟩⟩⟩⟩]
+
 ; Undefined symbols return error
 (⌂⊛ :nonexistent)              ; → ⚠:symbol-not-found
 ```
 
 **Provenance Structure Fields:**
-- **:module** (string) - Module file path or "<primitive>"
+- **:module** (string) - Module file path, "<primitive>", or "<repl>"
 - **:line** (number) - Line number in source (currently 0, parser enhancement pending)
 - **:load-order** (number) - Sequential module load number (1, 2, 3...)
 - **:defined-at** (number) - Unix timestamp when module was loaded

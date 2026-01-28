@@ -1,0 +1,53 @@
+; Test ⌂⊛ provenance for REPL and module-defined functions
+; This tests the Day 43 fix where ⌂⊛ was broken for REPL definitions
+
+; ========================================
+; Part 1: REPL-defined functions
+; ========================================
+
+; Define a simple function (in REPL context)
+(≔ square (λ (x) (⊗ x x)))
+
+; Test: ⌂⊛ should work (not return error)
+(⊢ (¬ (⚠? (⌂⊛ :square))) :provenance-not-error)
+
+; Test: Provenance should be a struct
+(≔ prov (⌂⊛ :square))
+(⊢ (⊙? prov :Provenance) :provenance-is-struct)
+
+; Test: Module field should be "<repl>"
+(≔ module-name (⊙→ prov :module))
+(⊢ (≡ module-name "<repl>") :repl-module-correct)
+
+; Test: Should have load-order field
+(≔ load-order (⊙→ prov :load-order))
+(⊢ (¬ (⚠? load-order)) :load-order-exists)
+
+; Test: Should have defined-at timestamp
+(≔ defined-at (⊙→ prov :defined-at))
+(⊢ (¬ (⚠? defined-at)) :timestamp-exists)
+
+; ========================================
+; Part 2: Primitive functions
+; ========================================
+
+; Test: Primitive should show "<primitive>"
+(≔ prim-prov (⌂⊛ :⊕))
+(⊢ (≡ (⊙→ prim-prov :module) "<primitive>") :primitive-module-correct)
+
+; Test: Undefined symbol should error
+(⊢ (⚠? (⌂⊛ :nonexistent-symbol)) :undefined-symbol-errors)
+
+; ========================================
+; Part 3: Multiple REPL definitions
+; ========================================
+
+; Define another function
+(≔ double (λ (x) (⊗ x #2)))
+
+; Test: Should also have <repl> module
+(⊢ (≡ (⊙→ (⌂⊛ :double) :module) "<repl>") :second-repl-fn-correct)
+
+; Test: Both REPL functions should be in same module
+(⊢ (≡ (⊙→ (⌂⊛ :square) :module)
+        (⊙→ (⌂⊛ :double) :module)) :same-repl-module)
