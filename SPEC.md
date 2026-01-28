@@ -31,9 +31,9 @@ Everything is a **Cell**:
 
 **See:** `KEYWORDS.md` for complete specification.
 
-## Runtime Primitives (80 Total)
+## Runtime Primitives (102 Total)
 
-**Status:** 80 primitives implemented (6 placeholders, 74 fully functional + 6 placeholders = 80 total)
+**Status:** 102 primitives implemented (6 placeholders, 96 fully functional + 6 placeholders = 102 total)
 
 ### Core Lambda Calculus (3) ✅
 | Symbol | Type | Meaning | Status |
@@ -252,18 +252,78 @@ Warnings are non-fatal and do not stop execution.
 | `∨` | `𝔹 → 𝔹 → 𝔹` | Logical OR | ✅ DONE |
 | `¬` | `𝔹 → 𝔹` | Logical NOT | ✅ DONE |
 
-### Arithmetic (9) ✅
+### Arithmetic (10) ✅
 | Symbol | Type | Meaning | Status |
 |--------|------|---------|--------|
 | `⊕` | `ℕ → ℕ → ℕ` | Addition | ✅ DONE |
 | `⊖` | `ℕ → ℕ → ℕ` | Subtraction | ✅ DONE |
 | `⊗` | `ℕ → ℕ → ℕ` | Multiplication | ✅ DONE |
 | `⊘` | `ℕ → ℕ → ℕ` | Division (float) | ✅ DONE |
+| `÷` | `ℕ → ℕ → ℕ` | Integer division (floor) | ✅ DONE |
 | `%` | `ℕ → ℕ → ℕ` | Modulo (remainder) | ✅ DONE |
 | `<` | `ℕ → ℕ → 𝔹` | Less than | ✅ DONE |
 | `>` | `ℕ → ℕ → 𝔹` | Greater than | ✅ DONE |
 | `≤` | `ℕ → ℕ → 𝔹` | Less or equal | ✅ DONE |
 | `≥` | `ℕ → ℕ → 𝔹` | Greater or equal | ✅ DONE |
+
+### Math Operations (22) ✅
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `√` | `ℕ → ℕ` | Square root | ✅ DONE |
+| `^` | `ℕ → ℕ → ℕ` | Power (exponentiation) | ✅ DONE |
+| `\|` | `ℕ → ℕ` | Absolute value | ✅ DONE |
+| `⌊⌋` | `ℕ → ℕ` | Floor (round down) | ✅ DONE |
+| `⌈⌉` | `ℕ → ℕ` | Ceiling (round up) | ✅ DONE |
+| `⌊⌉` | `ℕ → ℕ` | Round (nearest integer) | ✅ DONE |
+| `min` | `ℕ → ℕ → ℕ` | Minimum of two numbers | ✅ DONE |
+| `max` | `ℕ → ℕ → ℕ` | Maximum of two numbers | ✅ DONE |
+| `sin` | `ℕ → ℕ` | Sine (radians) | ✅ DONE |
+| `cos` | `ℕ → ℕ` | Cosine (radians) | ✅ DONE |
+| `tan` | `ℕ → ℕ` | Tangent (radians) | ✅ DONE |
+| `asin` | `ℕ → ℕ` | Arcsine (radians) | ✅ DONE |
+| `acos` | `ℕ → ℕ` | Arccosine (radians) | ✅ DONE |
+| `atan` | `ℕ → ℕ` | Arctangent (radians) | ✅ DONE |
+| `atan2` | `ℕ → ℕ → ℕ` | Two-arg arctangent | ✅ DONE |
+| `log` | `ℕ → ℕ` | Natural logarithm | ✅ DONE |
+| `log10` | `ℕ → ℕ` | Base-10 logarithm | ✅ DONE |
+| `exp` | `ℕ → ℕ` | Exponential (e^x) | ✅ DONE |
+| `π` | `() → ℕ` | Pi constant | ✅ DONE |
+| `e` | `() → ℕ` | Euler's number | ✅ DONE |
+| `rand` | `() → ℕ` | Random [0,1) | ✅ DONE |
+| `rand-int` | `ℕ → ℕ` | Random integer [0,n) | ✅ DONE |
+
+**Examples:**
+```scheme
+;; Basic math
+(√ #16)                          ; → #4
+(^ #2 #8)                        ; → #256
+(| #-42)                         ; → #42
+(min #5 #3)                      ; → #3
+(max #5 #3)                      ; → #5
+
+;; Constants
+(π)                              ; → #3.14159...
+(e)                              ; → #2.71828...
+
+;; Trigonometry
+(sin (π))                        ; → ~0
+(cos (π))                        ; → #-1
+(tan (⊘ (π) #4))                 ; → ~1
+
+;; Logarithms
+(log (e))                        ; → #1
+(log10 #100)                     ; → #2
+(exp #2)                         ; → ~7.389
+
+;; Random
+(rand)                           ; → random in [0,1)
+(rand-int #10)                   ; → random in [0,10)
+
+;; Pythagorean theorem
+(≔ hypotenuse (λ (a) (λ (b)
+  (√ (⊕ (^ a #2) (^ b #2))))))
+((hypotenuse #3) #4)             ; → #5
+```
 
 ### Type Predicates (6) ✅
 | Symbol | Type | Meaning | Status |

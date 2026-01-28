@@ -250,6 +250,191 @@ Cell* prim_ge(Cell* args) {
     return cell_bool(cell_get_number(a) >= cell_get_number(b));
 }
 
+/* Math operations */
+
+/* √ - square root */
+Cell* prim_sqrt(Cell* args) {
+    Cell* a = arg1(args);
+    assert(cell_is_number(a));
+    double val = cell_get_number(a);
+    if (val < 0.0) {
+        return cell_error("sqrt-negative", a);
+    }
+    return cell_number(sqrt(val));
+}
+
+/* ^ - power (exponentiation) */
+Cell* prim_pow(Cell* args) {
+    Cell* base = arg1(args);
+    Cell* exp = arg2(args);
+    assert(cell_is_number(base) && cell_is_number(exp));
+    return cell_number(pow(cell_get_number(base), cell_get_number(exp)));
+}
+
+/* |n| - absolute value */
+Cell* prim_abs(Cell* args) {
+    Cell* a = arg1(args);
+    assert(cell_is_number(a));
+    return cell_number(fabs(cell_get_number(a)));
+}
+
+/* ⌊n⌋ - floor (round down) */
+Cell* prim_floor(Cell* args) {
+    Cell* a = arg1(args);
+    assert(cell_is_number(a));
+    return cell_number(floor(cell_get_number(a)));
+}
+
+/* ⌈n⌉ - ceiling (round up) */
+Cell* prim_ceil(Cell* args) {
+    Cell* a = arg1(args);
+    assert(cell_is_number(a));
+    return cell_number(ceil(cell_get_number(a)));
+}
+
+/* ⌊n⌉ - round (nearest integer) */
+Cell* prim_round(Cell* args) {
+    Cell* a = arg1(args);
+    assert(cell_is_number(a));
+    return cell_number(round(cell_get_number(a)));
+}
+
+/* min - minimum of two numbers */
+Cell* prim_min(Cell* args) {
+    Cell* a = arg1(args);
+    Cell* b = arg2(args);
+    assert(cell_is_number(a) && cell_is_number(b));
+    double av = cell_get_number(a);
+    double bv = cell_get_number(b);
+    return cell_number(av < bv ? av : bv);
+}
+
+/* max - maximum of two numbers */
+Cell* prim_max(Cell* args) {
+    Cell* a = arg1(args);
+    Cell* b = arg2(args);
+    assert(cell_is_number(a) && cell_is_number(b));
+    double av = cell_get_number(a);
+    double bv = cell_get_number(b);
+    return cell_number(av > bv ? av : bv);
+}
+
+/* sin - sine (radians) */
+Cell* prim_sin(Cell* args) {
+    Cell* a = arg1(args);
+    assert(cell_is_number(a));
+    return cell_number(sin(cell_get_number(a)));
+}
+
+/* cos - cosine (radians) */
+Cell* prim_cos(Cell* args) {
+    Cell* a = arg1(args);
+    assert(cell_is_number(a));
+    return cell_number(cos(cell_get_number(a)));
+}
+
+/* tan - tangent (radians) */
+Cell* prim_tan(Cell* args) {
+    Cell* a = arg1(args);
+    assert(cell_is_number(a));
+    return cell_number(tan(cell_get_number(a)));
+}
+
+/* asin - arcsine (returns radians) */
+Cell* prim_asin(Cell* args) {
+    Cell* a = arg1(args);
+    assert(cell_is_number(a));
+    double val = cell_get_number(a);
+    if (val < -1.0 || val > 1.0) {
+        return cell_error("asin-domain", a);
+    }
+    return cell_number(asin(val));
+}
+
+/* acos - arccosine (returns radians) */
+Cell* prim_acos(Cell* args) {
+    Cell* a = arg1(args);
+    assert(cell_is_number(a));
+    double val = cell_get_number(a);
+    if (val < -1.0 || val > 1.0) {
+        return cell_error("acos-domain", a);
+    }
+    return cell_number(acos(val));
+}
+
+/* atan - arctangent (returns radians) */
+Cell* prim_atan(Cell* args) {
+    Cell* a = arg1(args);
+    assert(cell_is_number(a));
+    return cell_number(atan(cell_get_number(a)));
+}
+
+/* atan2 - two-argument arctangent (y, x) */
+Cell* prim_atan2(Cell* args) {
+    Cell* y = arg1(args);
+    Cell* x = arg2(args);
+    assert(cell_is_number(y) && cell_is_number(x));
+    return cell_number(atan2(cell_get_number(y), cell_get_number(x)));
+}
+
+/* log - natural logarithm */
+Cell* prim_log(Cell* args) {
+    Cell* a = arg1(args);
+    assert(cell_is_number(a));
+    double val = cell_get_number(a);
+    if (val <= 0.0) {
+        return cell_error("log-domain", a);
+    }
+    return cell_number(log(val));
+}
+
+/* log10 - base-10 logarithm */
+Cell* prim_log10(Cell* args) {
+    Cell* a = arg1(args);
+    assert(cell_is_number(a));
+    double val = cell_get_number(a);
+    if (val <= 0.0) {
+        return cell_error("log10-domain", a);
+    }
+    return cell_number(log10(val));
+}
+
+/* exp - e^x */
+Cell* prim_exp(Cell* args) {
+    Cell* a = arg1(args);
+    assert(cell_is_number(a));
+    return cell_number(exp(cell_get_number(a)));
+}
+
+/* π - pi constant */
+Cell* prim_pi(Cell* args) {
+    (void)args;  /* unused */
+    return cell_number(M_PI);
+}
+
+/* e - Euler's number constant */
+Cell* prim_e(Cell* args) {
+    (void)args;  /* unused */
+    return cell_number(M_E);
+}
+
+/* rand - random number between 0 and 1 */
+Cell* prim_rand(Cell* args) {
+    (void)args;  /* unused */
+    return cell_number((double)rand() / (double)RAND_MAX);
+}
+
+/* rand-int - random integer from 0 to n-1 */
+Cell* prim_rand_int(Cell* args) {
+    Cell* n = arg1(args);
+    assert(cell_is_number(n));
+    int max = (int)cell_get_number(n);
+    if (max <= 0) {
+        return cell_error("rand-int-invalid", n);
+    }
+    return cell_number(rand() % max);
+}
+
 /* Type predicates */
 
 Cell* prim_is_number(Cell* args) {
@@ -2429,6 +2614,30 @@ static Primitive primitives[] = {
     {">", prim_gt, 2, {"Test if first number greater than second", "ℕ → ℕ → 𝔹"}},
     {"≤", prim_le, 2, {"Test if first number less than or equal to second", "ℕ → ℕ → 𝔹"}},
     {"≥", prim_ge, 2, {"Test if first number greater than or equal to second", "ℕ → ℕ → 𝔹"}},
+
+    /* Math operations */
+    {"√", prim_sqrt, 1, {"Square root", "ℕ → ℕ"}},
+    {"^", prim_pow, 2, {"Power (exponentiation)", "ℕ → ℕ → ℕ"}},
+    {"|", prim_abs, 1, {"Absolute value", "ℕ → ℕ"}},
+    {"⌊⌋", prim_floor, 1, {"Floor (round down to integer)", "ℕ → ℕ"}},
+    {"⌈⌉", prim_ceil, 1, {"Ceiling (round up to integer)", "ℕ → ℕ"}},
+    {"⌊⌉", prim_round, 1, {"Round to nearest integer", "ℕ → ℕ"}},
+    {"min", prim_min, 2, {"Minimum of two numbers", "ℕ → ℕ → ℕ"}},
+    {"max", prim_max, 2, {"Maximum of two numbers", "ℕ → ℕ → ℕ"}},
+    {"sin", prim_sin, 1, {"Sine (radians)", "ℕ → ℕ"}},
+    {"cos", prim_cos, 1, {"Cosine (radians)", "ℕ → ℕ"}},
+    {"tan", prim_tan, 1, {"Tangent (radians)", "ℕ → ℕ"}},
+    {"asin", prim_asin, 1, {"Arcsine (returns radians)", "ℕ → ℕ"}},
+    {"acos", prim_acos, 1, {"Arccosine (returns radians)", "ℕ → ℕ"}},
+    {"atan", prim_atan, 1, {"Arctangent (returns radians)", "ℕ → ℕ"}},
+    {"atan2", prim_atan2, 2, {"Two-argument arctangent (y, x)", "ℕ → ℕ → ℕ"}},
+    {"log", prim_log, 1, {"Natural logarithm", "ℕ → ℕ"}},
+    {"log10", prim_log10, 1, {"Base-10 logarithm", "ℕ → ℕ"}},
+    {"exp", prim_exp, 1, {"Exponential (e^x)", "ℕ → ℕ"}},
+    {"π", prim_pi, 0, {"Pi constant (3.14159...)", "ℕ"}},
+    {"e", prim_e, 0, {"Euler's number constant (2.71828...)", "ℕ"}},
+    {"rand", prim_rand, 0, {"Random number between 0 and 1", "() → ℕ"}},
+    {"rand-int", prim_rand_int, 1, {"Random integer from 0 to n-1", "ℕ → ℕ"}},
 
     /* Type predicates */
     {"ℕ?", prim_is_number, 1, {"Test if value is a number", "α → 𝔹"}},

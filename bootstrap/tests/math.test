@@ -1,0 +1,199 @@
+;;;
+;;; Math Library Tests
+;;;
+
+;;; ===================================================================
+;;; Basic Math Operations
+;;; ===================================================================
+
+;; Square root
+(⊨ :sqrt-4 #2 (√ #4))
+(⊨ :sqrt-9 #3 (√ #9))
+(⊨ :sqrt-16 #4 (√ #16))
+(⊨ :sqrt-0 #0 (√ #0))
+(⊨ :sqrt-1 #1 (√ #1))
+(⊨ :sqrt-negative-error #t (⚠? (√ #-1)))
+
+;; Power (exponentiation)
+(⊨ :pow-2-3 #8 (^ #2 #3))
+(⊨ :pow-2-8 #256 (^ #2 #8))
+(⊨ :pow-10-2 #100 (^ #10 #2))
+(⊨ :pow-5-0 #1 (^ #5 #0))
+(⊨ :pow-2-minus1 #0.5 (^ #2 #-1))
+
+;; Absolute value
+(⊨ :abs-positive #42 (| #42))
+(⊨ :abs-negative #42 (| #-42))
+(⊨ :abs-zero #0 (| #0))
+(⊨ :abs-float #3.14 (| #-3.14))
+
+;; Floor
+(⊨ :floor-positive #3 (⌊⌋ #3.7))
+(⊨ :floor-negative #-4 (⌊⌋ #-3.2))
+(⊨ :floor-int #5 (⌊⌋ #5))
+(⊨ :floor-zero #0 (⌊⌋ #0))
+
+;; Ceiling
+(⊨ :ceil-positive #4 (⌈⌉ #3.2))
+(⊨ :ceil-negative #-3 (⌈⌉ #-3.7))
+(⊨ :ceil-int #5 (⌈⌉ #5))
+(⊨ :ceil-zero #0 (⌈⌉ #0))
+
+;; Round
+(⊨ :round-up #4 (⌊⌉ #3.6))
+(⊨ :round-down #3 (⌊⌉ #3.4))
+(⊨ :round-half #4 (⌊⌉ #3.5))
+(⊨ :round-negative #-3 (⌊⌉ #-3.4))
+
+;; Min/Max
+(⊨ :min-5-3 #3 (min #5 #3))
+(⊨ :min-3-5 #3 (min #3 #5))
+(⊨ :min-equal #5 (min #5 #5))
+(⊨ :min-negative #-10 (min #-5 #-10))
+(⊨ :max-5-3 #5 (max #5 #3))
+(⊨ :max-3-5 #5 (max #3 #5))
+(⊨ :max-equal #5 (max #5 #5))
+(⊨ :max-negative #-5 (max #-5 #-10))
+
+;;; ===================================================================
+;;; Trigonometry
+;;; ===================================================================
+
+;; Constants
+(≔ pi-val (π))
+(≔ e-val (e))
+
+;; Test pi is approximately 3.14159
+(⊨ :pi-approx #t (∧ (> pi-val #3.14) (< pi-val #3.15)))
+
+;; Test e is approximately 2.71828
+(⊨ :e-approx #t (∧ (> e-val #2.71) (< e-val #2.72)))
+
+;; Sine
+(⊨ :sin-0 #0 (sin #0))
+;; sin(π) should be ~0 (within small tolerance)
+(≔ sin-pi (sin pi-val))
+(⊨ :sin-pi-near-zero #t (∧ (> sin-pi #-0.001) (< sin-pi #0.001)))
+;; sin(π/2) should be ~1
+(≔ sin-pi-half (sin (⊘ pi-val #2)))
+(⊨ :sin-pi-half-near-one #t (∧ (> sin-pi-half #0.999) (< sin-pi-half #1.001)))
+
+;; Cosine
+(⊨ :cos-0 #1 (cos #0))
+;; cos(π) should be ~-1
+(≔ cos-pi (cos pi-val))
+(⊨ :cos-pi-near-neg-one #t (∧ (> cos-pi #-1.001) (< cos-pi #-0.999)))
+;; cos(π/2) should be ~0
+(≔ cos-pi-half (cos (⊘ pi-val #2)))
+(⊨ :cos-pi-half-near-zero #t (∧ (> cos-pi-half #-0.001) (< cos-pi-half #0.001)))
+
+;; Tangent
+(⊨ :tan-0 #0 (tan #0))
+;; tan(π/4) should be ~1
+(≔ tan-pi-quarter (tan (⊘ pi-val #4)))
+(⊨ :tan-pi-quarter-near-one #t (∧ (> tan-pi-quarter #0.999) (< tan-pi-quarter #1.001)))
+
+;; Arcsine
+(⊨ :asin-0 #0 (asin #0))
+(⊨ :asin-1-near-pi-half #t (> (asin #1) #1.57))
+(⊨ :asin-domain-error #t (⚠? (asin #2)))
+(⊨ :asin-domain-error-neg #t (⚠? (asin #-2)))
+
+;; Arccosine
+(⊨ :acos-1 #0 (acos #1))
+(⊨ :acos-0-near-pi-half #t (> (acos #0) #1.57))
+(⊨ :acos-domain-error #t (⚠? (acos #2)))
+(⊨ :acos-domain-error-neg #t (⚠? (acos #-2)))
+
+;; Arctangent
+(⊨ :atan-0 #0 (atan #0))
+(⊨ :atan-1-near-pi-quarter #t (∧ (> (atan #1) #0.78) (< (atan #1) #0.79)))
+
+;; atan2 (two-argument arctangent)
+(⊨ :atan2-1-0-near-pi-half #t (> (atan2 #1 #0) #1.57))
+(⊨ :atan2-0-1 #0 (atan2 #0 #1))
+(⊨ :atan2-neg1-0-near-neg-pi-half #t (< (atan2 #-1 #0) #-1.57))
+
+;;; ===================================================================
+;;; Logarithms and Exponentials
+;;; ===================================================================
+
+;; Natural logarithm
+(⊨ :log-1 #0 (log #1))
+(⊨ :log-e #1 (log e-val))
+(⊨ :log-e-squared #2 (log (^ e-val #2)))
+(⊨ :log-domain-error #t (⚠? (log #0)))
+(⊨ :log-domain-error-neg #t (⚠? (log #-1)))
+
+;; Base-10 logarithm
+(⊨ :log10-1 #0 (log10 #1))
+(⊨ :log10-10 #1 (log10 #10))
+(⊨ :log10-100 #2 (log10 #100))
+(⊨ :log10-1000 #3 (log10 #1000))
+(⊨ :log10-domain-error #t (⚠? (log10 #0)))
+
+;; Exponential
+(⊨ :exp-0 #1 (exp #0))
+(⊨ :exp-1 e-val (exp #1))
+;; exp(2) should be approximately e^2 (within tolerance due to floating point)
+(≔ exp-2-val (exp #2))
+(⊨ :exp-2-approx #t (∧ (> exp-2-val #7.38) (< exp-2-val #7.40)))
+;; exp(log(x)) ≈ x (within floating point tolerance)
+(≔ exp-log-42 (exp (log #42)))
+(⊨ :exp-log-identity-approx #t (∧ (> exp-log-42 #41.99) (< exp-log-42 #42.01)))
+
+;;; ===================================================================
+;;; Random Numbers
+;;; ===================================================================
+
+;; Random float is in range [0, 1)
+(≔ r (rand))
+(⊨ :rand-non-negative #t (≥ r #0))
+(⊨ :rand-less-than-one #t (< r #1))
+
+;; Random int is in range [0, n)
+(≔ ri (rand-int #10))
+(⊨ :rand-int-non-negative #t (≥ ri #0))
+(⊨ :rand-int-less-than-n #t (< ri #10))
+
+;; Random int with invalid argument
+(⊨ :rand-int-zero-error #t (⚠? (rand-int #0)))
+(⊨ :rand-int-negative-error #t (⚠? (rand-int #-5)))
+
+;;; ===================================================================
+;;; Combined Operations
+;;; ===================================================================
+
+;; Pythagorean theorem: √(a² + b²)
+(≔ hypotenuse (λ (a) (λ (b)
+  (√ (⊕ (^ a #2) (^ b #2))))))
+
+(⊨ :pythagoras-3-4 #5 ((hypotenuse #3) #4))
+(⊨ :pythagoras-5-12 #13 ((hypotenuse #5) #12))
+
+;; Distance between two points
+(≔ distance (λ (x1) (λ (y1) (λ (x2) (λ (y2)
+  ((hypotenuse (⊖ x2 x1)) (⊖ y2 y1)))))))
+
+(⊨ :distance-origin-3-4 #5 ((((distance #0) #0) #3) #4))
+(⊨ :distance-1-1-to-4-5 #5 ((((distance #1) #1) #4) #5))
+
+;; Quadratic formula: (-b ± √(b²-4ac)) / 2a
+(≔ discriminant (λ (a) (λ (b) (λ (c)
+  (⊖ (^ b #2) (⊗ #4 (⊗ a c)))))))
+
+(⊨ :discriminant-1-neg5-6 #1 (((discriminant #1) #-5) #6))
+
+;; Geometric mean: √(a * b)
+(≔ geo-mean (λ (a) (λ (b) (√ (⊗ a b)))))
+
+(⊨ :geo-mean-4-9 #6 ((geo-mean #4) #9))
+(⊨ :geo-mean-1-100 #10 ((geo-mean #1) #100))
+
+;; Clamp function using min/max
+(≔ clamp (λ (val) (λ (lo) (λ (hi)
+  (max lo (min hi val))))))
+
+(⊨ :clamp-in-range #5 (((clamp #5) #0) #10))
+(⊨ :clamp-too-low #0 (((clamp #-5) #0) #10))
+(⊨ :clamp-too-high #10 (((clamp #15) #0) #10))

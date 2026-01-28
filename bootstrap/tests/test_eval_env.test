@@ -2,7 +2,7 @@
 ;;; Tests for Environment Module (eval-env.scm)
 ;;;
 
-(⋘ "bootstrap/stdlib/eval-env-v2.scm")
+(⋘ "bootstrap/stdlib/eval-env.scm")
 
 ;;; Test 1: Empty environment
 (⊨ :env-empty-is-nil
