@@ -9,17 +9,17 @@ Purpose: Current project status and progress
 
 ## Current Status 🎯
 
-**Latest Achievement:** Trampoline Phase 2 COMPLETE ✅ - All 7 handlers implemented and tested!
+**Latest Achievement:** Trampoline Phase 3C COMPLETE ✅ - Argument evaluation working, all integration tests pass!
 
 **System State:**
 - **Primitives:** 79 primitives (÷ integer division)
-- **Tests:** 33 Guage tests (27/33 passing, 82%) + 15 C unit tests (trampoline: 10 data structures + 5 handlers, 100% passing)
+- **Tests:** 33 Guage tests (27/33 passing, 82%) + 21 C unit tests (trampoline: 10 data structures + 5 handlers + 6 integration, 100% passing)
 - **Stdlib:** 18 modules in bootstrap/stdlib/ (canonical location)
 - **Build:** Clean, O2 optimized, 32MB stack
-- **Architecture:** Trampoline Phase 2 COMPLETE ✅ (data structures + all 7 handlers implemented & tested)
+- **Architecture:** Trampoline Phase 3C COMPLETE ✅ (full evaluation loop working, ready for production integration)
 - **Memory:** Stack overflow FIXED, reference counting implemented
 - **File Organization:** Single source of truth (no dual paths)
-- **Status:** Turing complete, production architecture Phase 2 complete, ready for Phase 3 integration
+- **Status:** Turing complete, trampoline evaluator fully functional, ready for Phase 3D integration
 
 ## Day 46 Summary (2026-01-28)
 
@@ -307,6 +307,102 @@ Handlers return boolean indicating if frame is done. Loop only destroys complete
 - Update all handler signatures to return bool
 - Update loop to respect done flag
 - Verify all integration tests pass
+
+---
+
+## Day 49 Summary (2026-01-28 Late Night - Phase 3B)
+
+**Goal:** Fix frame lifecycle bug - parent frames destroyed before receiving results
+
+**Implementation:**
+
+**Phase 3B Complete (~2 hours):**
+
+1. ✅ **Handler Return Values**
+   - Changed all 7 handlers to return `bool`
+   - `true` = frame is done (can destroy)
+   - `false` = frame needs continuation (wait for sub-frames)
+   - Updated function signatures in trampoline.h
+
+2. ✅ **Loop Frame Lifecycle**
+   - Track stack size before handler call
+   - If `frame_done == false`: insert frame below sub-frames
+   - If `frame_done == true`: destroy frame immediately
+   - Proper ordering: parent frames at bottom, children on top
+
+3. ✅ **Multi-Step State Machines**
+   - handle_eval_apply: 3 steps (eval func → eval args → apply)
+   - handle_eval_if: 2 steps (eval cond → choose branch)
+   - handle_eval_define: 2 steps (eval value → set global)
+
+**Test Results:**
+- ✅ 18/21 C unit tests passing
+- ✅ Frame state machine correctly progresses through steps
+- ✅ Values properly propagated from sub-frames to parents
+- ✅ No regressions in Guage test suite (27/33)
+
+**Bug Discovered:**
+Assertion failure in primitives.c:17 - `cell_is_pair(args)` fails when applying builtin functions.
+
+**Root Cause:**
+`handle_eval_args` is called but never returns proper argument list structure to parent EVAL_APPLY frame.
+
+**Files Modified:**
+- `bootstrap/trampoline.h` - Updated all handler signatures to return bool
+- `bootstrap/trampoline.c` - Updated loop frame lifecycle logic, all handlers return bool
+
+**Duration:** ~2 hours (implementation + debugging)
+**Lines Changed:** ~100 lines (signatures + loop logic)
+
+---
+
+## Day 49 Summary (2026-01-28 Late Night - Phase 3C)
+
+**Goal:** Fix argument evaluation bug - args not formatted as proper list
+
+**Implementation:**
+
+**Phase 3C Complete (~3 hours):**
+
+1. ✅ **handle_eval_args Rewrite**
+   - Multi-step state machine approach:
+     - Step 1: If value received → cons it onto accumulated, move to next arg
+     - Step 2: If args empty → reverse accumulated list and return
+     - Step 3: Otherwise → push eval for next arg, return false (wait)
+   - Key insight: Check value field FIRST before processing args
+   - Properly accumulates results across multiple iterations
+
+2. ✅ **List Structure Building**
+   - Cons each evaluated arg onto accumulated (builds in reverse)
+   - Reverse accumulated list when all args evaluated
+   - Produces proper list structure: (1 . (2 . nil))
+
+3. ✅ **Frame State Management**
+   - Update frame->expr to rest of args after processing each
+   - Update frame->accumulated_args with new consed value
+   - Proper reference counting throughout
+
+**Test Results:**
+- ✅ 21/21 C unit tests passing (100%)
+- ✅ All 3 integration tests passing:
+  - integration_arithmetic: (⊕ 1 2) → 3 ✅
+  - integration_comparison: (≡ 1 1) → #t ✅
+  - integration_nested_arithmetic: (⊗ (⊕ 1 2) 3) → 9 ✅
+- ✅ No regressions in Guage test suite (27/33)
+- ✅ Primitives now receive correctly formatted argument lists
+
+**Files Modified:**
+- `bootstrap/trampoline.c` - Complete rewrite of handle_eval_args (~50 lines)
+
+**Duration:** ~3 hours (implementation + debugging + testing)
+**Lines Changed:** ~50 lines (complete rewrite of handle_eval_args)
+
+**Next Steps:**
+- ⏳ Phase 3D: Complete integration (2-3 hours)
+- Replace main.c eval() with trampoline_eval()
+- Performance comparison between recursive and trampoline
+- Memory leak testing
+- Deep recursion testing (merge sort)
 
 ---
 
