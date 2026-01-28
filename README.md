@@ -1,7 +1,7 @@
 ---
 Status: CURRENT
 Created: 2025-12-01
-Updated: 2026-01-27
+Updated: 2026-01-28
 Purpose: Project overview and quick start
 ---
 
@@ -11,16 +11,14 @@ Purpose: Project overview and quick start
 
 ## Quick Start
 
-**🔥 NEXT SESSION:** 30-min fix to complete trampoline → [`NEXT_SESSION.md`](NEXT_SESSION.md)
-
 **New session?** Copy and paste: [`START_SESSION.txt`](START_SESSION.txt)
 
 **Current Status:**
 - ✅ **79 functional primitives** (ALL WORKING!)
 - ✅ **33/33 Guage tests passing** (100% coverage!) + 21/21 C unit tests
 - ✅ **Turing complete** with lambda calculus + De Bruijn indices
-- ✅ **Trampoline evaluator** 95% complete (macro expansion fixed!)
-- ✅ **Day 51 complete** - Trampoline nearly production-ready!
+- ✅ **Proper TCO** (tail call optimization) - no trampoline, single path!
+- ✅ **Day 52 complete** - TCO implementation done, production-ready foundation!
 - 📍 **See:** [`SESSION_HANDOFF.md`](SESSION_HANDOFF.md) for detailed status
 
 **Documentation:**

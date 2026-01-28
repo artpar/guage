@@ -30,6 +30,84 @@ Purpose: Current project status and progress
 - Single code path (no USE_TRAMPOLINE flag)
 - Foundation for advanced features (time-travel debugging, algebraic effects, etc.)
 
+## 🎯 For Next Session: What's Complete & What's Next
+
+### ✅ COMPLETE: TCO Implementation (Day 52)
+**Task:** Replace trampoline with proper tail call optimization
+**Status:** DONE - 33/33 tests passing, trampoline code removed
+**Commit:** `a50b86b` - "feat: Implement proper tail call optimization (TCO)"
+
+**What Was Done:**
+- Implemented `goto tail_call` pattern in eval_internal (bootstrap/eval.c)
+- TCO for: macro expansion, conditionals (?), lambda application
+- Inlined apply() into eval_internal for lambda TCO
+- Fixed use-after-free bug (retain body before releasing fn)
+- Added resource tracking (owned_env, owned_expr) for cleanup
+- Removed ~500 lines: trampoline.c, trampoline.h, USE_TRAMPOLINE flag
+- Updated Makefile, removed trampoline includes from all files
+- All tests passing with single evaluation path
+
+**Key Files Modified:**
+- `bootstrap/eval.c` - TCO implementation with goto pattern
+- `bootstrap/macro.c` - Simplified (no trampoline dispatch)
+- `bootstrap/primitives.c` - Removed USE_TRAMPOLINE conditionals
+- `bootstrap/main.c` - Removed trampoline header and flags
+- `Makefile` - Removed trampoline targets and build rules
+
+### 📋 Next Priorities (Choose One)
+
+**Priority 1: Language Features (Recommended)**
+Continue building Guage's feature set:
+- Pattern matching enhancements (∇ operator already exists)
+- List comprehensions (started but needs completion)
+- Module system improvements
+- Standard library expansion
+See: `docs/planning/WEEK_3_ROADMAP.md`
+
+**Priority 2: Self-Hosting Path**
+Begin work toward writing Guage compiler in Guage:
+- Parser in Guage (currently in C)
+- Macro expander in Guage
+- De Bruijn converter in Guage
+See: `CLAUDE.md` sections on self-hosting
+
+**Priority 3: Type System Foundation**
+Start dependent types infrastructure:
+- Type inference engine
+- Type checking pass
+- Refinement types
+See: `docs/reference/METAPROGRAMMING_VISION.md`
+
+**Priority 4: Performance Optimization**
+Now that architecture is clean:
+- Profile hot paths
+- Optimize cell allocation
+- Consider JIT compilation research
+
+### 🔍 How to Start Next Session
+
+1. **Verify current state:**
+   ```bash
+   cd /Users/artpar/workspace/code/guage
+   make test  # Should show 33/33 passing
+   ```
+
+2. **Review architecture:**
+   - Read `bootstrap/eval.c` lines 945-1273 (eval_internal with TCO)
+   - Note: tail_call label, owned_env/owned_expr pattern
+   - All tail positions use `goto tail_call`
+
+3. **Check what to work on:**
+   - Read `docs/planning/WEEK_3_ROADMAP.md` for planned features
+   - Read `docs/planning/TODO.md` for specific tasks
+   - Read `CLAUDE.md` for long-term vision
+
+4. **Quick reference:**
+   - Tests: `bash bootstrap/run_tests.sh`
+   - REPL: `make repl`
+   - Build: `make` (or `make rebuild` for clean build)
+   - Docs: `docs/INDEX.md` for navigation
+
 ## Day 52 Summary (2026-01-28 End of Day - TCO Implementation Complete!)
 
 **Goal:** Replace trampoline with proper tail call optimization

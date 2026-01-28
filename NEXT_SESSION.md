@@ -1,107 +1,149 @@
-# 🔥 NEXT SESSION PRIORITY: Trampoline Final Fix
+# 🎯 NEXT SESSION: Choose Your Path
 
-**Time Required:** 30 minutes
-**Impact:** Achieves 100% test coverage with trampoline evaluator (single source of truth)
-**Status:** 95% complete - ONE trivial fix needed
-
----
-
-## Quick Context
-
-The trampoline evaluator is fully functional! All features work:
-- ✅ Macro expansion (when, unless, ⧉)
-- ✅ Nested lambdas and closures
-- ✅ Curried functions (map, filter, fold)
-- ✅ Full list.scm (328 lines) loads when pasted directly
-
-**But:** Tests fail when loading via `(⋘ "bootstrap/stdlib/list.scm")` because the load primitive bypasses the trampoline.
+**Current State:** ✅ TCO Complete - 33/33 tests passing, production-ready foundation
+**Updated:** 2026-01-28 (Day 52 complete)
 
 ---
 
-## The Fix (5 minutes)
+## What Just Happened (Day 52)
 
-**File:** `bootstrap/primitives.c`
-**Line:** 1720
+We **replaced the trampoline** with **proper tail call optimization (TCO)**!
 
-**Change:**
-```c
-result = eval(ctx, expr);  /* OLD */
-```
+**Why?** Trampolines are a workaround for languages that can't have TCO. Guage is built from scratch - we can do it RIGHT.
 
-**To:**
-```c
-#if USE_TRAMPOLINE
-    result = trampoline_eval(ctx, expr);  /* NEW */
-#else
-    result = eval(ctx, expr);
-#endif
-```
+**Result:**
+- ✅ 33/33 tests passing (100%)
+- ✅ Simpler architecture (~500 lines of trampoline code removed)
+- ✅ Single evaluation path (no USE_TRAMPOLINE flag)
+- ✅ Zero overhead (no explicit stack frames)
+- ✅ Foundation for advanced features (continuations, effects, time-travel)
 
-**Also add** at top of file:
-```c
-#include "trampoline.h"
-```
+**Commit:** `a50b86b` - "feat: Implement proper tail call optimization (TCO)"
 
 ---
 
-## Test It (10 minutes)
+## 🚀 Next Session Options
+
+Choose one based on your priorities:
+
+### Option 1: Language Features (Recommended) ⭐
+
+**Goal:** Continue building Guage's feature set
+**Time:** 2-4 hours per feature
+**Impact:** User-facing functionality
+
+**Pick from:**
+1. **Pattern matching enhancements** (∇ operator exists, needs more patterns)
+2. **List comprehensions** (started, needs completion)
+3. **String operations** (split, join, regex)
+4. **Module system improvements** (imports, exports, namespaces)
+5. **Error handling improvements** (stack traces, better messages)
+
+**Start here:** `docs/planning/WEEK_3_ROADMAP.md`
+
+---
+
+### Option 2: Self-Hosting Path
+
+**Goal:** Begin writing Guage compiler in Guage
+**Time:** 1-2 weeks
+**Impact:** Major milestone
+
+**Steps:**
+1. Parser in Guage (currently in C)
+2. Macro expander in Guage
+3. De Bruijn converter in Guage
+4. Evaluator in Guage
+
+**Start here:** `CLAUDE.md` section "Self-Hosting Phase"
+
+---
+
+### Option 3: Type System Foundation
+
+**Goal:** Start dependent types infrastructure
+**Time:** 2-4 weeks
+**Impact:** Enables "ultralanguage" vision
+
+**Steps:**
+1. Type inference engine
+2. Type checking pass
+3. Refinement types
+4. Dependent types (gradual)
+
+**Start here:** `docs/reference/METAPROGRAMMING_VISION.md`
+
+---
+
+### Option 4: Performance Optimization
+
+**Goal:** Make Guage faster
+**Time:** 1-2 weeks
+**Impact:** Production readiness
+
+**Tasks:**
+1. Profile hot paths
+2. Optimize cell allocation (maybe arena allocator?)
+3. Benchmark recursive functions
+4. Consider JIT compilation research
+
+**Start here:** Profile with `time` and `valgrind`
+
+---
+
+## Quick Start Next Session
 
 ```bash
-# 1. Apply fix to primitives.c:1720
-# 2. Build
-make clean && make
+# 1. Navigate to project
+cd /Users/artpar/workspace/code/guage
 
-# 3. Test loading modules
-echo '(⋘ "bootstrap/stdlib/list.scm")' | timeout 10 ./bootstrap/guage
-# Should complete quickly, show all definitions
-
-# 4. Run full test suite
+# 2. Verify everything works
 make test
-# Expected: 33/33 passing ✅
+# Should see: 33/33 tests passing ✅
+
+# 3. Review TCO implementation (optional)
+# Read bootstrap/eval.c lines 945-1273
+# Note: tail_call label, owned_env/owned_expr cleanup pattern
+
+# 4. Pick an option above and start!
 ```
 
 ---
 
-## Big Bang Switch (10 minutes)
+## Key Files to Know
 
-Once tests pass, remove dual evaluator path:
+**Core implementation:**
+- `bootstrap/eval.c` - Evaluator with TCO (goto tail_call pattern)
+- `bootstrap/cell.c` - Data structures and memory management
+- `bootstrap/primitives.c` - Built-in operations (79 primitives)
+- `bootstrap/macro.c` - Macro expansion
 
-**1. Edit `bootstrap/main.c`:**
-- Delete USE_TRAMPOLINE flag definition
-- Change `#if USE_TRAMPOLINE ... #else ... #endif` to just `trampoline_eval(ctx, expr)`
+**Documentation:**
+- `SESSION_HANDOFF.md` - Current status, what's complete
+- `CLAUDE.md` - Philosophy, principles, long-term vision
+- `SPEC.md` - Language specification
+- `docs/INDEX.md` - Navigation hub for all docs
 
-**2. Edit `bootstrap/primitives.c`:**
-- Change `#if USE_TRAMPOLINE ... #endif` to just `trampoline_eval(ctx, expr)`
-
-**3. Test again:**
-```bash
-make clean && make test
-# Still 33/33 passing ✅
-```
-
----
-
-## Complete Documentation
-
-**Full details:** [docs/planning/TRAMPOLINE_FINAL_FIX.md](docs/planning/TRAMPOLINE_FINAL_FIX.md)
-
-**Current progress:** [SESSION_HANDOFF.md](SESSION_HANDOFF.md) (Day 51 section)
+**Planning:**
+- `docs/planning/TODO.md` - Specific tasks
+- `docs/planning/WEEK_3_ROADMAP.md` - Planned features
+- `docs/reference/METAPROGRAMMING_VISION.md` - Long-term goals
 
 ---
 
-## Why This Matters 🚀
+## Why TCO Matters 🚀
 
-The trampoline is the **architectural foundation** for:
-- Time-travel debugging
-- Continuations
-- Actor migration
-- Hot code swap
-- Effect system
+Proper TCO isn't just "nice to have" - it's **foundational** for:
 
-This unlocks the **ultralanguage vision**!
+- ✅ **Infinite recursion** without stack overflow
+- ✅ **Continuations** (capture and restore computation state)
+- ✅ **Algebraic effects** (effect handlers need TCO)
+- ✅ **Time-travel debugging** (step forward/backward through execution)
+- ✅ **Actor migration** (move running actors between machines)
+- ✅ **Hot code swap** (update code while it's running)
+
+This is what makes Guage an **"ultralanguage"** - not shortcuts, but the RIGHT foundation.
 
 ---
 
-**Confidence:** 99% - The fix is trivial and well-tested already.
-
-**After this:** We can move to Result/Either types, concurrency primitives, or self-hosting!
+**Recommendation:** Start with **Option 1 (Language Features)** to build momentum and user-facing value!
