@@ -953,10 +953,18 @@ static bool env_is_indexed(Cell* env) {
      * Check if it's a pair whose car is a symbol */
     if (cell_is_pair(first)) {
         Cell* car_of_first = cell_car(first);
-        /* If the car of the first element is a symbol, it's a named binding */
-        return !cell_is_symbol(car_of_first);
+        /* Named bindings use regular symbols (not keywords) as variable names.
+         * Keywords start with ':', so if the car is a keyword, this is data, not a binding.
+         * Only non-keyword symbols indicate named bindings. */
+        if (cell_is_symbol(car_of_first)) {
+            const char* sym = cell_get_symbol(car_of_first);
+            if (sym[0] != ':') {
+                /* Regular symbol - this is a named binding */
+                return false;
+            }
+        }
     }
-    /* First element is not a pair, so it's an indexed environment */
+    /* First element is not a named binding, so it's an indexed environment */
     return true;
 }
 

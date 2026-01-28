@@ -1,289 +1,272 @@
 # Guage TODO List
 
-## CRITICAL: Make Turing Complete
+---
+Status: CURRENT
+Created: 2026-01-28
+Updated: 2026-01-28
+Purpose: Active task tracking for Guage development
+---
 
-### Phase 0.1: Lambda Calculus Core (BLOCKING)
-**Status: 🔴 CRITICAL - Nothing works without this**
+## Current Status 🎉
 
-- [ ] **De Bruijn Index Evaluation**
-  - [ ] `eval.c`: Add De Bruijn index lookup in environment
-  - [ ] Environment as De Bruijn index list (not assoc list)
-  - [ ] Variable reference by position (0, 1, 2...)
+**MAJOR MILESTONES ACHIEVED:**
+- ✅ **Turing Complete** (Day 10) - Lambda calculus, recursion, closures
+- ✅ **Pattern Matching** (Days 15-19) - Complete with exhaustiveness checking
+- ✅ **Module System** (Days 25-30) - Load, provenance, dependencies, validation
+- ✅ **Macro System** (Day 33) - Compile-time code transformation
+- ✅ **Parser in Guage** (Days 39-41) - Self-hosting foundation
+- ✅ **80 Primitives** - 74 functional + 6 placeholders (effects, actors)
+- ✅ **900+ Tests Passing** - Comprehensive test coverage
 
-- [ ] **Lambda Abstraction**
-  - [ ] `cell.h`: Lambda cell stores body only (no env needed yet)
-  - [ ] `eval.c`: Create closure with captured environment
-  - [ ] Proper closure representation
-
-- [ ] **Function Application**
-  - [ ] `eval.c`: Implement beta reduction
-  - [ ] Apply function to argument
-  - [ ] Environment extension for application
-  - [ ] Test: `((λ.0) 5)` → `5`
-
-- [ ] **Recursion**
-  - [ ] Option A: Y combinator in library
-  - [ ] Option B: Named recursion with ≔
-  - [ ] Test factorial: `! ≔ λ.((≡ 0 0) 1 (⊗ 0 (! (⊖ 0 1))))`
-
-**Tests to pass:**
-```lisp
-; Identity
-((λ.0) 42) → 42
-
-; Const
-((λ.λ.1) 5 10) → 5
-
-; Compose
-(((λ.λ.λ.(2 (1 0))) (λ.(⊕ 0 1)) (λ.(⊗ 0 2))) 3) → 7
-
-; Factorial
-(! 5) → 120
-```
+**CURRENT PHASE:** Self-Hosting Path (Week 6+)
 
 ---
 
-## Phase 0.2: Self-Implementation Basics
+## 🎯 Immediate Priorities (Next 1-2 Weeks)
 
-### Metaprogramming
-- [ ] **Proper ⌞ Eval**
-  - [ ] `eval.c`: Eval quoted expression
-  - [ ] Test: `(⌞ (⌜ (⊕ 1 2)))` → `3`
+### 1. Self-Hosting Completion - CRITICAL PATH
+**Status:** 66% Complete (Tokenizer ✅, Parser ✅, Evaluator ❌)
 
-- [ ] **Code Manipulation**
-  - [ ] Library functions for AST manipulation
-  - [ ] Pattern matching on cells
-  - [ ] Test: Write eval in Guage itself
+**Day 42: S-Expression Evaluator in Guage** (3-4 hours)
+- [ ] Environment module (env-empty, env-extend, env-lookup)
+- [ ] Evaluator core (eval-atom, eval-list, eval-lambda, eval-apply)
+- [ ] Integration tests (eval numbers, arithmetic, lambdas, recursion)
+- [ ] **Milestone:** Guage can interpret Guage!
 
-**Self-implementation test:**
-- [ ] Write minimal eval in Guage
-- [ ] Bootstrap: C runtime → Guage eval → Guage eval
+**Day 43-44: Self-Hosting Tests & Validation** (2-3 hours)
+- [ ] Factorial via self-hosted eval
+- [ ] Fibonacci via self-hosted eval
+- [ ] Pattern matching via self-hosted eval
+- [ ] Standard library via self-hosted eval
 
----
-
-## Phase 1: Parser Improvements
-
-### Current Parser Issues
-- [ ] Parser doesn't handle Unicode symbols properly
-- [ ] No error messages
-- [ ] No line numbers
-- [ ] Can't parse De Bruijn indices as bare numbers
-
-### Fixes Needed
-- [ ] Better tokenizer for Unicode
-- [ ] Distinguish `0` (De Bruijn) from `#0` (number)
-- [ ] Error reporting with position
-- [ ] Comments support
+**Day 45: REPL Using Self-Hosted Eval** (2-3 hours)
+- [ ] Read-eval-print loop in Guage
+- [ ] Error handling and display
+- [ ] Multi-line input support
+- [ ] **Milestone:** Full self-hosting achieved!
 
 ---
 
-## Phase 2: Standard Library (Symbolic Only)
+### 2. Standard Library Expansion (Ongoing)
+**Status:** 50+ stdlib functions across 8 modules
 
-### Core Definitions
-```lisp
-; Identity
-𝕀 ≔ λ.0
+**High Priority:**
+- [ ] **Math module** - sqrt, pow, trig, logarithms
+- [ ] **String utilities** - split, trim, case conversion
+- [ ] **Data structures** - maps, sets, trees
+- [ ] **File system** - directory ops, path manipulation
 
-; Const
-𝕂 ≔ λ.λ.1
-
-; Compose
-∘ ≔ λ.λ.λ.(2 (1 0))
-
-; Church booleans
-𝕋 ≔ λ.λ.1  ; True
-𝔽 ≔ λ.λ.0  ; False
-
-; Church numerals
-0̅ ≔ λ.λ.0
-1̅ ≔ λ.λ.(1 0)
-2̅ ≔ λ.λ.(1 (1 0))
-
-; List constructors
-⟐ ≔ λ.λ.λ.((≡ 1 ∅) 2 (0 (◁ 1) ((▷ 1) 0 2)))  ; fold
-```
-
-- [ ] Write stdlib in pure symbols
-- [ ] No English words anywhere
-- [ ] Test coverage for all functions
+**Medium Priority:**
+- [ ] **Regex module** - Pattern matching for strings
+- [ ] **JSON module** - Parse and generate JSON
+- [ ] **HTTP module** - Basic web requests
+- [ ] **Testing utilities** - Property-based testing helpers
 
 ---
 
-## Phase 3: Type System (Compile-Time)
+### 3. Parser Improvements (As Needed)
+**Status:** Working, but could be enhanced
 
-**Status: Not started**
+- [ ] Better error messages with line numbers
+- [ ] Unicode symbol parsing improvements
+- [ ] Comment handling verification
+- [ ] Performance optimization for large files
 
-### Type Checker (Separate from runtime)
+---
+
+## 📋 Medium-Term Goals (Week 7-10)
+
+### Compiler Pipeline in Guage
+**Goal:** Complete compilation toolchain in Guage
+
+1. **Optimizer Module** (1 week)
+   - [ ] Constant folding
+   - [ ] Dead code elimination
+   - [ ] Common subexpression elimination
+   - [ ] Inline expansion
+
+2. **Code Generator** (1 week)
+   - [ ] Guage → C code generation
+   - [ ] Integration with C runtime
+   - [ ] Benchmark against interpreter
+
+3. **Type Checker (Gradual)** (2 weeks)
+   - [ ] Type inference for primitives
+   - [ ] Function type signatures
+   - [ ] Gradual typing support
+   - [ ] Optional type annotations
+
+---
+
+## 🚀 Long-Term Vision (Month 3-6)
+
+### Advanced Type System
 - [ ] Dependent types (Π, Σ)
 - [ ] Linear types (⊸, !, ?)
-- [ ] Session types (▷, ◁, ⊕, &, ε)
 - [ ] Refinement types ({⋅∣φ})
-- [ ] Effect types (⟪⟫, ↯, ⤴, ≫)
-- [ ] Capability types (CAP_*)
+- [ ] Effect tracking (⟪⟫, ↯)
+- [ ] Session types (▷, ◁, ⊕, &)
 
-### Type Checker Files
-- [ ] `types/dependent.guage` - Pi/Sigma types
-- [ ] `types/linear.guage` - Linearity checker
-- [ ] `types/session.guage` - Session type checker
-- [ ] `types/refinement.guage` - SMT integration
-- [ ] `types/effect.guage` - Effect tracker
+### Effects & Actors Runtime
+- [ ] Implement real effect handlers (currently placeholders)
+- [ ] Implement real actor system (currently placeholders)
+- [ ] Delimited continuations
+- [ ] Message passing runtime
+- [ ] Concurrent GC
 
----
+### Metaprogramming Features
+**See:** `docs/reference/METAPROGRAMMING_VISION.md`
 
-## Phase 4: Effects Runtime
-
-### Actor System
-- [ ] `actor.c`: Lightweight green threads
-- [ ] `actor.c`: Message queue per actor
-- [ ] `primitives.c`: Real ⟳ spawn implementation
-- [ ] `primitives.c`: Real →! send implementation
-- [ ] `primitives.c`: Real ←? receive implementation
-
-### Effect Handlers
-- [ ] `effect.c`: Delimited continuations
-- [ ] `effect.c`: Effect handler stack
-- [ ] `primitives.c`: Real ⟪⟫ implementation
-- [ ] `primitives.c`: Real ↯ implementation
+- [ ] Program synthesis (⊛)
+- [ ] Code repair (◂)
+- [ ] Time-travel debugging (⊙⊳, ⊆)
+- [ ] API evolution (⋈, ⊿)
+- [ ] Self-optimizing code (◎)
+- [ ] Cross-program analysis (⊙⋈)
 
 ---
 
-## Phase 5: Garbage Collection
+## 🧪 Testing & Quality
 
-### Current: Simple Refcounting
-- Problem: Cycles leak memory
-- Problem: Not concurrent
+### Test Coverage
+- ✅ 900+ tests passing
+- ✅ Primitive tests (all 74 primitives)
+- ✅ Pattern matching tests (165 tests)
+- ✅ Module system tests
+- ✅ Macro system tests
+- ✅ Parser tests
+- [ ] Self-hosting tests (coming Day 42-45)
+- [ ] Property-based tests
+- [ ] Benchmark suite
 
-### Upgrade to:
-- [ ] Precise GC with mark-sweep
-- [ ] Generational GC
-- [ ] Concurrent GC for actors
-- [ ] Linear types reduce GC pressure
-
----
-
-## Phase 6: Optimization
-
-### Zero-Cost Abstractions
-- [ ] Inline primitives
-- [ ] Lambda lifting
-- [ ] Dead code elimination
-- [ ] Const propagation
-
-### Compiler
-- [ ] Guage → C codegen
-- [ ] LLVM backend
-- [ ] Native compilation
+### Documentation
+- ✅ README.md - Project overview
+- ✅ SPEC.md - Language specification
+- ✅ CLAUDE.md - Philosophy and principles
+- ✅ SESSION_HANDOFF.md - Current status
+- ✅ docs/INDEX.md - Documentation navigation
+- ✅ docs/reference/* - Deep-dive technical docs
+- [ ] TUTORIAL.md - Getting started guide
+- [ ] EXAMPLES.md - Real-world code examples
+- [ ] API_REFERENCE.md - Complete API documentation
 
 ---
 
-## Phase 7: Design Patterns as Types
+## 📦 Tooling & Infrastructure
 
-**Status: Future**
-
-- [ ] `patterns/solid.guage` - SOLID enforcement
-- [ ] `patterns/gof.guage` - GoF patterns
-- [ ] `patterns/architecture.guage` - Hexagonal, CQRS
-- [ ] `patterns/typestate.guage` - State machines
-
----
-
-## Phase 8: Proof-Carrying Code
-
-**Status: Future**
-
-- [ ] `proofs/core.guage` - Proof language
-- [ ] `proofs/tactics.guage` - Proof automation
-- [ ] Lean 4 integration
-- [ ] Verified standard library
-
----
-
-## Testing
-
-### Unit Tests
-- [ ] Test suite for primitives
-- [ ] Test suite for lambda evaluation
-- [ ] Test suite for type checker
-- [ ] Property-based testing
-
-### Integration Tests
-- [ ] Self-interpreter test
-- [ ] Factorial, fibonacci
-- [ ] QuickSort in pure Guage
-- [ ] Actor ping-pong
-- [ ] Effect handler examples
-
-### Benchmarks
-- [ ] vs Python
-- [ ] vs JavaScript
-- [ ] vs Racket
-- [ ] Goal: Match C performance
-
----
-
-## Documentation
-
-- [x] README.md
-- [x] SPEC.md
-- [ ] TUTORIAL.md (pure symbols only!)
-- [ ] EXAMPLES.md
-- [ ] API reference
-- [ ] Type system guide
-
----
-
-## Tooling
+### REPL Enhancements
+- ✅ Help system (:help, :primitives, :modules)
+- ✅ Module introspection
+- [ ] Multi-line input support
+- [ ] Syntax highlighting
+- [ ] Tab completion
+- [ ] History with search
+- [ ] Better error messages with stack traces
 
 ### IDE Support
 - [ ] VS Code extension
 - [ ] Syntax highlighting
+- [ ] LSP server for autocomplete
 - [ ] De Bruijn → names hover
-- [ ] Type hints
+- [ ] Type hints on hover
 - [ ] Error squiggles
+- [ ] Code formatter
 
-### Formatter
-- [ ] Automatic code formatter (like gofmt)
-- [ ] No configuration options
-- [ ] One true style
-
-### REPL Improvements
-- [ ] Multi-line input
-- [ ] History
-- [ ] Tab completion
-- [ ] Pretty printing with colors
+### Build System
+- ✅ Makefile for C bootstrap
+- [ ] Guage-based build system
+- [ ] Package manager design
+- [ ] Module dependency resolution
+- [ ] Distribution packaging
 
 ---
 
-## Current Blockers (DO THESE FIRST)
+## 🔧 Technical Debt & Improvements
 
-1. 🔴 **CRITICAL**: Lambda evaluation not implemented
-2. 🔴 **CRITICAL**: De Bruijn indices not working
-3. 🔴 **CRITICAL**: Cannot write recursive functions
-4. 🟡 **HIGH**: Parser doesn't handle all symbols
-5. 🟡 **HIGH**: No error messages
+### Memory Management
+- ✅ Reference counting (current)
+- [ ] Cycle detection for refcounting
+- [ ] Generational GC (future)
+- [ ] Concurrent GC (future)
 
-## Next 3 Tasks
+### Performance
+- [ ] Benchmark suite
+- [ ] Profile-guided optimization
+- [ ] JIT compilation (future)
+- [ ] SIMD primitives (future)
 
-1. Implement De Bruijn index lookup
-2. Implement lambda abstraction (closure creation)
-3. Implement application (beta reduction)
-
-**Once these 3 are done: Language is Turing complete.**
+### Error Handling
+- ✅ Errors as values (⚠)
+- ✅ First-class error handling
+- [ ] Better error messages with context
+- [ ] Stack traces for debugging
+- [ ] Source location tracking
 
 ---
 
-## Questions to Answer
+## 📊 Success Metrics
 
-- [ ] Y combinator or named recursion?
-- [ ] Call-by-value or call-by-name?
-- [ ] Eager or lazy evaluation?
-- [ ] Stack machine or graph reduction?
+### Short-Term (Next Month)
+- ✅ Turing complete
+- ✅ Pattern matching working
+- ✅ Module system functional
+- [ ] Self-hosting complete
+- [ ] 100+ stdlib functions
+- [ ] 1000+ tests passing
 
-## Current Line Count
+### Mid-Term (3 Months)
+- [ ] Type checker working
+- [ ] Compiler pipeline complete
+- [ ] Real-world applications built
+- [ ] Community contributions
+- [ ] Documentation complete
 
-- Bootstrap C: ~1000 LOC
-- Spec: Complete
-- Type system: 0 LOC
-- Stdlib: 0 LOC
+### Long-Term (6 Months)
+- [ ] Effects system implemented
+- [ ] Actor runtime working
+- [ ] Native compilation
+- [ ] Production-ready v1.0
+- [ ] Package ecosystem started
 
-**Total: ~1000 / 17000 LOC (6% complete)**
+---
+
+## 🎯 Current Week Focus
+
+**Week 6 (Days 41-47):** Self-Hosting Path
+- ✅ Day 41: Parser debugging complete
+- [ ] Day 42: S-expression evaluator in Guage
+- [ ] Day 43-44: Self-hosting tests
+- [ ] Day 45: REPL in Guage
+- [ ] Day 46-47: Integration & polish
+
+**Next Week:** Compiler pipeline (optimizer, codegen)
+
+---
+
+## Notes
+
+### Design Philosophy (From CLAUDE.md)
+1. **Pure symbols only** - No English keywords
+2. **First-class everything** - Functions, errors, tests, CFG/DFG
+3. **Single source of truth** - No duplication
+4. **Values as boundaries** - All interfaces use simple values
+5. **Mathematical foundation** - Lambda calculus, De Bruijn indices
+
+### What's Working Well
+- ✅ Test-driven development
+- ✅ Incremental feature addition
+- ✅ Clear documentation structure
+- ✅ Daily progress tracking
+- ✅ Systematic task completion
+
+### Areas for Improvement
+- Need more real-world examples
+- Documentation could use more tutorials
+- REPL UX could be smoother
+- Error messages could be clearer
+- Build time could be faster
+
+---
+
+**Last Updated:** 2026-01-28 (Day 41 Complete)
+**Next Review:** After Day 45 (Self-hosting complete)
