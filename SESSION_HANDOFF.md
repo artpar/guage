@@ -44,6 +44,34 @@ Purpose: Current project status and progress
 **Test Count:** 14 core + 15 parser tests = **29/29 tests passing!**
 **Files Changed:** eval.c (env_is_indexed fix), stdlib/parser.scm (2 fixes)
 
+**Major Outcomes (Project Cleanup Session - 2026-01-28):**
+1. ✅ **Documentation Organization** - Moved 17 misplaced markdown files to proper archive locations
+2. ✅ **TODO.md Complete Rewrite** - Updated from "not Turing complete" to accurate current status
+3. ✅ **SESSION_HANDOFF.md Updates** - Corrected test counts (20→29), updated parser details
+4. ✅ **INDEX.md Quick Status** - Updated from Day 13 to Day 41 current state
+5. ✅ **Day 41 Archive Created** - Full documentation of parser completion and bug fixes
+6. ✅ **Empty Directory Cleanup** - Removed 6 empty placeholder directories
+7. ✅ **Bootstrap Flatten** - Eliminated redundant bootstrap/bootstrap/ nesting
+8. ✅ **Path Reference Updates** - Updated 27 files with corrected bootstrap/ paths
+9. ✅ **Documentation Governance** - Enforced single source of truth principles
+10. ✅ **40+ Files Committed** - Comprehensive cleanup and reorganization
+
+**Cleanup Details:**
+- Moved DAY_32-41 summaries to docs/archive/2026-01/sessions/
+- Moved PHASE2B documents to docs/archive/phases/
+- Removed 5 empty placeholder dirs: types/, core/, patterns/, proofs/, std/
+- Removed 1 empty test fixtures dir: bootstrap/tests/fixtures/
+- Flattened bootstrap/bootstrap/* → bootstrap/ (67 files moved)
+- Updated all path references in documentation (0 old references remain)
+- Archive now has 63 properly organized documents
+- Bootstrap directory now has clean, standard structure
+
+**Files Changed:**
+- First commit: 40 files (doc organization, TODO rewrite, stale doc updates)
+- Second commit: 94 files (directory flatten, 27 path reference updates)
+**Duration:** ~2 hours total cleanup work
+**Status:** Repository clean, organized, ready for Day 42!
+
 **Major Outcomes (Day 40):**
 1. ✅ **De Bruijn String Support** - Added CELL_ATOM_STRING handling to converter
 2. ✅ **Parser Unblocked** - Day 39 parser now loads without warnings
