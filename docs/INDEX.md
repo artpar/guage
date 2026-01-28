@@ -36,7 +36,6 @@ Deep-dive technical documentation that changes infrequently:
 
 Current roadmaps and active tasks:
 
-- **[Trampoline Quasiquote](planning/TRAMPOLINE_QUASIQUOTE.md) - 🔥 PRIORITY: 1-2 hours to 100% completion (85% → 100%)**
 - [Week 3 Roadmap](planning/WEEK_3_ROADMAP.md) - Pattern matching implementation plan
 - [TODO](planning/TODO.md) - Task tracking and priorities
 
@@ -210,37 +209,36 @@ SYMBOLIC_VOCABULARY.md           # Symbol catalog
 
 ## 📊 Quick Status
 
-**Last Updated:** 2026-01-28 (Day 51 - 🎉 Trampoline Phase 3E Complete! File loading works! 🎉)
+**Last Updated:** 2026-01-28 (Day 53/54 - Self-hosting evaluator 59% complete!)
 
 **System State:**
 - **Primitives:** 79 functional (÷ integer division)
-- **Tests:** 33/33 passing (100% ✅ recursive) | 28/33 passing (85% ✅ trampoline)
-- **C Unit Tests:** 21/21 passing (100% ✅)
-- **Build:** O2 optimized, 32MB stack, dual-mode evaluator
-- **Evaluator:** Recursive (default, stable) + Trampoline (85% functional, `-DUSE_TRAMPOLINE=1`)
-- **Status:** ✅ Turing complete + Auto-doc + String/List libraries + **Trampoline 85% production-ready!**
+- **Tests:** 53/55 passing (98% ✅) + 21/21 C unit tests passing (100% ✅)
+- **Build:** O2 optimized, 32MB stack, proper TCO
+- **Evaluator:** Single path - recursive with TCO (goto tail_call pattern)
+- **Self-Hosting:** 59% complete - pure lambda calculus working!
+- **Status:** ✅ Turing complete + Proper TCO + Auto-doc + String/List libraries
 
 **Recent Milestones:**
-- Day 51: **Trampoline Phase 3E complete!** Fixed prim_load + context issues (15/33 → 28/33 tests, 87% improvement!)
-- Day 50: **100% test coverage achieved!** Fixed last 2 tests (test expectations + parse error)
-- Day 49: Trampoline Phase 3D complete - Basic integration working
-- Days 47-49: Trampoline evaluator (data structures → handlers → integration) - 6 days total
-- Day 46: Stack overflow fixed + Sort bugs + Trampoline plan
+- Day 53/54: **Self-hosting evaluator 59% complete!** Pure lambda calculus working (13/22 tests)
+- Day 52: **TCO implementation complete!** Proper tail call optimization with goto pattern
+- Day 50: **100% test coverage achieved!** Fixed last 6 tests (test expectations + parse error)
+- Day 46: Stack overflow fixed (32MB stack + O2 optimization)
 - Day 45: Advanced list utilities (14 functions, 47 tests)
 - Day 44: String library complete (8 functions, 43 tests)
 - Day 43: Provenance fix for REPL functions
 - Days 15-19: Pattern matching complete (165 tests)
 
 **Next Steps:**
-- 🔥 **PRIORITY:** Complete trampoline (1-2 hours) → Implement quasiquote → 100% coverage
+- **Option A:** Complete self-hosting (add primitive support, 3-4 hours)
+- **Option B:** Move to high-value features (RECOMMENDED: pattern matching, macros, stdlib)
 - Math library (3-4 hours) → sqrt, pow, trig, constants
 - Result/Either type (3-4 hours) → Railway-oriented programming
-- Additional string/list utilities
 
 **Overall Progress:**
-- **Week 7:** Day 51 complete (Trampoline Phase 3E milestone!)
-- **Focus:** Final push to 100% trampoline coverage, then language features
-- **Achievement:** Production-ready trampoline evaluator (85% → 100% in reach!)
+- **Week 7+:** Day 53/54 complete (Self-hosting evaluator milestone!)
+- **Focus:** Self-hosting 59% complete, decide next direction
+- **Achievement:** Pure lambda calculus evaluation working in Guage!
 
 ---
 

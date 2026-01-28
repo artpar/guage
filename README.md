@@ -17,7 +17,7 @@ Purpose: Project overview and quick start
 - ✅ **79 functional primitives** (ALL WORKING!)
 - ✅ **33/33 Guage tests passing** (100% coverage!) + 21/21 C unit tests
 - ✅ **Turing complete** with lambda calculus + De Bruijn indices
-- ✅ **Proper TCO** (tail call optimization) - no trampoline, single path!
+- ✅ **Proper TCO** (tail call optimization) - constant stack space!
 - ✅ **Day 52 complete** - TCO implementation done, production-ready foundation!
 - 📍 **See:** [`SESSION_HANDOFF.md`](SESSION_HANDOFF.md) for detailed status
 
