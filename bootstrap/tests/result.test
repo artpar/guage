@@ -1,0 +1,282 @@
+;;; Result/Either Type Tests
+;;; Tests for railway-oriented programming utilities
+
+;; Load Result library
+(⋘ "bootstrap/stdlib/result.scm")
+
+;; ============================================================================
+;; Basic Constructors
+;; ============================================================================
+
+(⊨ :ok-constructor
+   (⊚ :Result :Ok #42)
+   (ok #42))
+
+(⊨ :err-constructor
+   (⊚ :Result :Err :div-by-zero)
+   (err :div-by-zero))
+
+;; ============================================================================
+;; Predicates
+;; ============================================================================
+
+(⊨ :ok?-on-ok
+   #t
+   (ok? (ok #42)))
+
+(⊨ :ok?-on-err
+   #f
+   (ok? (err :fail)))
+
+(⊨ :err?-on-err
+   #t
+   (err? (err :fail)))
+
+(⊨ :err?-on-ok
+   #f
+   (err? (ok #42)))
+
+;; ============================================================================
+;; Map - Transform success value
+;; ============================================================================
+
+(⊨ :map-on-ok
+   (ok #84)
+   ((map (λ (𝕩) (⊗ 𝕩 #2))) (ok #42)))
+
+(⊨ :map-on-err
+   (err :fail)
+   ((map (λ (𝕩) (⊗ 𝕩 #2))) (err :fail)))
+
+(⊨ :map-chain
+   (ok #12)
+   ((map (λ (𝕩) (⊕ 𝕩 #2)))
+    ((map (λ (𝕩) (⊗ 𝕩 #2)))
+     (ok #5))))
+
+;; ============================================================================
+;; Map-Err - Transform error value
+;; ============================================================================
+
+(⊨ :map-err-on-err
+   (err :FAIL)
+   ((map-err (λ (𝕩) :FAIL)) (err :fail)))
+
+(⊨ :map-err-on-ok
+   (ok #42)
+   ((map-err (λ (𝕩) :FAIL)) (ok #42)))
+
+;; ============================================================================
+;; Flatmap - Monadic bind for Result
+;; ============================================================================
+
+(⊨ :flatmap-ok-to-ok
+   (ok #84)
+   ((flatmap (λ (𝕩) (ok (⊗ 𝕩 #2)))) (ok #42)))
+
+(⊨ :flatmap-ok-to-err
+   (err :too-large)
+   ((flatmap (λ (𝕩) (? (> 𝕩 #100) (err :too-large) (ok 𝕩))))
+    (ok #200)))
+
+(⊨ :flatmap-err-propagation
+   (err :initial-fail)
+   ((flatmap (λ (𝕩) (ok (⊗ 𝕩 #2)))) (err :initial-fail)))
+
+(⊨ :flatmap-chain
+   (ok #14)
+   ((flatmap (λ (𝕩) (ok (⊕ 𝕩 #2))))
+    ((flatmap (λ (𝕩) (ok (⊗ 𝕩 #2))))
+     (ok #6))))
+
+(⊨ :flatmap-chain-with-error
+   (err :negative)
+   ((flatmap (λ (𝕩) (ok (⊕ 𝕩 #2))))
+    ((flatmap (λ (𝕩) (? (< 𝕩 #0) (err :negative) (ok (⊗ 𝕩 #2)))))
+     (ok #-5))))
+
+;; ============================================================================
+;; Fold - Eliminate Result to single value
+;; ============================================================================
+
+(⊨ :fold-on-ok
+   #42
+   (((fold (λ (𝕩) 𝕩)) (λ (𝕩) #0)) (ok #42)))
+
+(⊨ :fold-on-err
+   #99
+   (((fold (λ (𝕩) #0)) (λ (𝕩) #99)) (err :fail)))
+
+(⊨ :fold-with-computation
+   #84
+   (((fold (λ (𝕩) (⊗ 𝕩 #2))) (λ (𝕩) #0)) (ok #42)))
+
+;; ============================================================================
+;; Unwrap - Extract value or error
+;; ============================================================================
+
+(⊨ :unwrap-ok
+   #42
+   (unwrap (ok #42)))
+
+(⊨ :unwrap-err-is-error
+   #t
+   (⚠? (unwrap (err :fail))))
+
+(⊨ :unwrap-or-on-ok
+   #42
+   ((unwrap-or #99) (ok #42)))
+
+(⊨ :unwrap-or-on-err
+   #99
+   ((unwrap-or #99) (err :fail)))
+
+(⊨ :unwrap-err-on-err
+   :fail
+   (unwrap-err (err :fail)))
+
+(⊨ :unwrap-err-on-ok-is-error
+   #t
+   (⚠? (unwrap-err (ok #42))))
+
+;; ============================================================================
+;; Combinators - and-then, or-else
+;; ============================================================================
+
+(⊨ :and-then-ok-ok
+   (ok #2)
+   ((and-then (ok #1)) (ok #2)))
+
+(⊨ :and-then-ok-err
+   (err :second-fail)
+   ((and-then (ok #1)) (err :second-fail)))
+
+(⊨ :and-then-err-ok
+   (err :first-fail)
+   ((and-then (err :first-fail)) (ok #2)))
+
+(⊨ :and-then-err-err
+   (err :first-fail)
+   ((and-then (err :first-fail)) (err :second-fail)))
+
+(⊨ :or-else-ok-ok
+   (ok #1)
+   ((or-else (ok #1)) (ok #2)))
+
+(⊨ :or-else-ok-err
+   (ok #1)
+   ((or-else (ok #1)) (err :fail)))
+
+(⊨ :or-else-err-ok
+   (ok #2)
+   ((or-else (err :fail)) (ok #2)))
+
+(⊨ :or-else-err-err
+   (err :second-fail)
+   ((or-else (err :first-fail)) (err :second-fail)))
+
+;; ============================================================================
+;; Real-World Examples
+;; ============================================================================
+
+;; Safe division
+(≔ safe-div (λ (𝕩) (λ (𝕪)
+  (? (≡ 𝕪 #0)
+     (err :div-by-zero)
+     (ok (⊘ 𝕩 𝕪))))))
+
+(⊨ :safe-div-ok
+   (ok #5)
+   ((safe-div #10) #2))
+
+(⊨ :safe-div-err
+   (err :div-by-zero)
+   ((safe-div #10) #0))
+
+;; Validation chain
+(≔ validate-positive (λ (𝕩)
+  (? (> 𝕩 #0)
+     (ok 𝕩)
+     (err :not-positive))))
+
+(≔ validate-even (λ (𝕩)
+  (? (≡ (% 𝕩 #2) #0)
+     (ok 𝕩)
+     (err :not-even))))
+
+(⊨ :validation-chain-ok
+   (ok #4)
+   ((flatmap validate-even)
+    ((flatmap validate-positive) (ok #4))))
+
+(⊨ :validation-chain-fail-first
+   (err :not-positive)
+   ((flatmap validate-even)
+    ((flatmap validate-positive) (ok #-4))))
+
+(⊨ :validation-chain-fail-second
+   (err :not-even)
+   ((flatmap validate-even)
+    ((flatmap validate-positive) (ok #3))))
+
+;; Railway-oriented programming - computation pipeline
+(≔ parse-int (λ (𝕩)
+  (? (ℕ? 𝕩)
+     (ok 𝕩)
+     (err :not-a-number))))
+
+(≔ validate-range (λ (𝕩)
+  (? (∧ (≥ 𝕩 #0) (≤ 𝕩 #100))
+     (ok 𝕩)
+     (err :out-of-range))))
+
+(≔ compute (λ (𝕩)
+  (ok (⊗ 𝕩 #2))))
+
+(≔ pipeline (λ (𝕩)
+  ((flatmap compute)
+   ((flatmap validate-range)
+    (parse-int 𝕩)))))
+
+(⊨ :pipeline-ok
+   (ok #100)
+   (pipeline #50))
+
+(⊨ :pipeline-fail-parse
+   (err :not-a-number)
+   (pipeline :not-a-number))
+
+(⊨ :pipeline-fail-range
+   (err :out-of-range)
+   (pipeline #200))
+
+;; Multiple error handling with or-else
+(≔ try-first (λ (𝕩)
+  (? (> 𝕩 #10)
+     (ok 𝕩)
+     (err :too-small))))
+
+(≔ try-second (λ (𝕩)
+  (? (≡ 𝕩 #5)
+     (ok (⊗ 𝕩 #10))
+     (err :not-five))))
+
+(⊨ :fallback-first-succeeds
+   (ok #20)
+   ((or-else (try-first #20)) (try-second #20)))
+
+(⊨ :fallback-second-succeeds
+   (ok #50)
+   ((or-else (try-first #5)) (try-second #5)))
+
+(⊨ :fallback-both-fail
+   (err :not-five)
+   ((or-else (try-first #3)) (try-second #3)))
+
+;; ============================================================================
+;; Summary
+;; ============================================================================
+
+(≋ "")
+(≋ "Result Type Tests Complete!")
+(≋ "✓ All railway-oriented programming patterns working")
