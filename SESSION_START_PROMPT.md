@@ -14,11 +14,13 @@ I'm working on **Guage**, a Turing-complete ultralanguage with pure symbolic syn
 
 ## Current State
 
-From `SESSION_HANDOFF.md`:
-- **Primitives:** 55 functional + 7 placeholders
-- **Tests:** 408+ passing
-- **Status:** Week 2 Day 13 complete, Week 3 ready
-- **Next:** [Check SESSION_HANDOFF.md "What's Next" section]
+**Read `SESSION_HANDOFF.md` for up-to-date status** - it contains:
+- Primitive count and test count
+- Recent milestones and achievements
+- What's next (Day N+1 options)
+- Complete progress history
+
+**Quick check:** Look for the "Executive Summary" and "What's Next 🎯" sections.
 
 ## Working Methodology
 

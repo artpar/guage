@@ -266,11 +266,11 @@
    (string-trim "  hello world  "))
 
 ; Word count (split by space, count elements)
+(≔ count-list (λ (lst)
+  (? (∅? lst) #0 (⊕ #1 (count-list (▷ lst))))))
+
 (≔ count-words (λ (s)
-  (≔ words (string-split s " "))
-  (≔ count-list (λ (lst)
-    (? (∅? lst) #0 (⊕ #1 (count-list (▷ lst))))))
-  (count-list words)))
+  (count-list (string-split s " "))))
 
 (⊨ :word-count
    #3
