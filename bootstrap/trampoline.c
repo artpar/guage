@@ -402,13 +402,57 @@ void handle_eval_expr(StackFrame* frame, EvalStack* stack) {
 
     /* Pair - function application or special form */
     if (cell_is_pair(expr)) {
-        /* TODO: Check for special forms (λ, ≔, ?, ⌜) */
-        /* TODO: Handle function application */
+        Cell* first = cell_car(expr);
+        Cell* rest = cell_cdr(expr);
 
-        /* For now, return error */
-        Cell* err = cell_error("not-implemented", cell_symbol("pair-eval"));
-        StackFrame* ret = frame_create_return(err);
-        stack_push(stack, ret);
+        /* Check for special forms - PURE SYMBOLS ONLY */
+        if (cell_is_symbol(first)) {
+            const char* sym = cell_get_symbol(first);
+
+            /* ⌜ - quote */
+            if (strcmp(sym, "⌜") == 0) {
+                Cell* arg = cell_car(rest);
+                StackFrame* quote_frame = frame_create_quote(arg);
+                stack_push(stack, quote_frame);
+                return;
+            }
+
+            /* ≔ - define */
+            if (strcmp(sym, "≔") == 0) {
+                Cell* name = cell_car(rest);
+                Cell* value_expr = cell_car(cell_cdr(rest));
+                StackFrame* define_frame = frame_create_define(name, value_expr, env);
+                stack_push(stack, define_frame);
+                return;
+            }
+
+            /* ? - conditional */
+            if (strcmp(sym, "?") == 0) {
+                Cell* cond_expr = cell_car(rest);
+                Cell* then_expr = cell_car(cell_cdr(rest));
+                Cell* else_expr = cell_car(cell_cdr(cell_cdr(rest)));
+                StackFrame* if_frame = frame_create_if(cond_expr, then_expr, else_expr, env);
+                stack_push(stack, if_frame);
+                return;
+            }
+
+            /* λ - lambda (note: lambda creation is done at parse time with De Bruijn conversion)
+             * If we see a raw λ here, it means it wasn't converted yet - this shouldn't happen
+             * in the trampoline evaluator as conversion happens before evaluation.
+             * For now, treat as an error. */
+            if (strcmp(sym, "λ") == 0) {
+                Cell* err = cell_error("invalid-lambda", cell_symbol("lambda-not-converted"));
+                StackFrame* ret = frame_create_return(err);
+                stack_push(stack, ret);
+                return;
+            }
+        }
+
+        /* Not a special form - function application */
+        /* Create EVAL_APPLY frame with full expression */
+        /* The handler will take care of evaluating func and args */
+        StackFrame* apply_frame = frame_create_apply(NULL, expr, env);
+        stack_push(stack, apply_frame);
         return;
     }
 
@@ -421,18 +465,102 @@ void handle_eval_expr(StackFrame* frame, EvalStack* stack) {
 /*
  * handle_eval_apply - Apply function to arguments
  *
- * Handles two cases:
- * 1. Primitives - call C function directly
- * 2. Lambdas - create new environment and evaluate body
+ * State machine using value and func fields:
+ * 1. func==NULL, value==NULL: need to evaluate function (expr has full expression)
+ * 2. func==NULL, value!=NULL: function evaluated, move to func field, eval args
+ * 3. func!=NULL, value!=NULL: both ready, apply function
  */
 void handle_eval_apply(StackFrame* frame, EvalStack* stack) {
     Cell* func = frame->func;
-    Cell* args = frame->expr;  /* Unevaluated arguments */
+    Cell* args_or_expr = frame->expr;
     Cell* env = frame->env;
+    Cell* value = frame->value;
 
-    /* TODO: Primitives and lambdas need to be implemented */
-    /* For now, return error */
-    Cell* err = cell_error("not-implemented", cell_symbol("apply"));
+    /* Step 1: Function not evaluated yet */
+    if (!func && !value) {
+        /* expr contains full expression: (func-expr arg1 arg2 ...) */
+        Cell* func_expr = cell_car(args_or_expr);
+        Cell* arg_exprs = cell_cdr(args_or_expr);
+
+        /* Update expr to store arg expressions for later */
+        if (frame->expr) cell_release(frame->expr);
+        frame->expr = arg_exprs;
+        if (arg_exprs) cell_retain(arg_exprs);
+
+        /* Evaluate function expression - result will go to value field */
+        StackFrame* eval_func = frame_create_eval(func_expr, env);
+        stack_push(stack, eval_func);
+        return;
+    }
+
+    /* Step 2: Function evaluated (in value field), move to func and eval args */
+    if (!func && value) {
+        /* Move evaluated function from value to func field */
+        frame->func = value;
+        cell_retain(value);
+        frame->value = NULL;  /* Clear value for next step */
+
+        /* Evaluate arguments - result will go to value field */
+        StackFrame* eval_args = frame_create_args(args_or_expr, env, 0);
+        stack_push(stack, eval_args);
+        return;
+    }
+
+    /* Step 3: Both function and evaluated arguments ready - apply! */
+    if (func && value) {
+        Cell* evaluated_args = value;
+
+        /* Handle primitives (CELL_BUILTIN) */
+        if (func->type == CELL_BUILTIN) {
+            Cell* (*builtin_fn)(Cell*) = (Cell* (*)(Cell*))func->data.atom.builtin;
+            Cell* result = builtin_fn(evaluated_args);
+            StackFrame* ret = frame_create_return(result);
+            stack_push(stack, ret);
+            return;
+        }
+
+        /* Handle lambdas (CELL_LAMBDA) */
+        if (func->type == CELL_LAMBDA) {
+            Cell* closure_env = func->data.lambda.env;
+            Cell* body = func->data.lambda.body;
+            int arity = func->data.lambda.arity;
+
+            /* Check argument count */
+            int arg_count = list_length(evaluated_args);
+            if (arg_count != arity) {
+                Cell* expected = cell_number(arity);
+                Cell* actual = cell_number(arg_count);
+                Cell* data = cell_cons(expected, cell_cons(actual, cell_nil()));
+                cell_release(expected);
+                cell_release(actual);
+                Cell* err = cell_error("arity-mismatch", data);
+                StackFrame* ret = frame_create_return(err);
+                stack_push(stack, ret);
+                return;
+            }
+
+            /* Create new environment: prepend args to closure env */
+            Cell* new_env = extend_env(closure_env, evaluated_args);
+
+            /* Evaluate body in new environment */
+            StackFrame* eval = frame_create_eval(body, new_env);
+            stack_push(stack, eval);
+
+            /* Cleanup */
+            cell_release(new_env);
+            return;
+        }
+
+        /* Not a function - error */
+        cell_retain(func);
+        Cell* err = cell_error("not-a-function", func);
+        StackFrame* ret = frame_create_return(err);
+        stack_push(stack, ret);
+        return;
+    }
+
+    /* Should not reach here */
+    Cell* err = cell_error("internal-error", cell_symbol("handle-eval-apply"));
     StackFrame* ret = frame_create_return(err);
     stack_push(stack, ret);
 }

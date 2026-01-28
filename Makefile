@@ -64,12 +64,11 @@ smoke: build
 	@echo "✓ Smoke tests passed!"
 
 # Test trampoline data structures (C unit tests)
-test-trampoline: $(BOOTSTRAP_DIR)/test_trampoline.c $(BOOTSTRAP_DIR)/trampoline.o $(BOOTSTRAP_DIR)/cell.o
+test-trampoline: $(BOOTSTRAP_DIR)/test_trampoline.c $(BOOTSTRAP_OBJECTS)
 	@echo "Building trampoline tests..."
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $(BOOTSTRAP_DIR)/test_trampoline \
 		$(BOOTSTRAP_DIR)/test_trampoline.c \
-		$(BOOTSTRAP_DIR)/trampoline.o \
-		$(BOOTSTRAP_DIR)/cell.o
+		$(filter-out $(BOOTSTRAP_DIR)/main.o, $(BOOTSTRAP_OBJECTS))
 	@echo "Running trampoline tests..."
 	@$(BOOTSTRAP_DIR)/test_trampoline
 

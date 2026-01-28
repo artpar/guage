@@ -63,4 +63,8 @@ void eval_register_type(EvalContext* ctx, Cell* type_tag, Cell* schema);
 Cell* eval_lookup_type(EvalContext* ctx, Cell* type_tag);
 bool eval_has_type(EvalContext* ctx, Cell* type_tag);
 
+/* Helper functions for trampoline evaluator */
+Cell* extend_env(Cell* env, Cell* args);
+int list_length(Cell* list);
+
 #endif /* GUAGE_EVAL_H */
