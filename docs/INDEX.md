@@ -24,8 +24,9 @@
 
 Deep-dive technical documentation that changes infrequently:
 
-- [Auto-Documentation Guide](reference/AUTO_DOCUMENTATION_GUIDE.md) - Complete guide to ⌂, ⌂∈, ⌂≔, ⌂⊛ (NEW!)
-- [Auto-Test Guide](reference/AUTO_TEST_GUIDE.md) - Complete guide to ⌂⊨ test generation (NEW!)
+- [Auto-Documentation Guide](reference/AUTO_DOCUMENTATION_GUIDE.md) - Complete guide to ⌂, ⌂∈, ⌂≔, ⌂⊛
+- [Auto-Test Guide](reference/AUTO_TEST_GUIDE.md) - Complete guide to ⌂⊨ test generation
+- [Pattern Matching Bug](reference/PATTERN_MATCHING_DEBRUIJN_BUG.md) - Known issue with ∇ and De Bruijn indices (NEW! 🐛)
 - [Metaprogramming Vision](reference/METAPROGRAMMING_VISION.md) - Vision, native features, long-term goals
 - [Data Structures](reference/DATA_STRUCTURES.md) - Structure primitives (⊙, ⊚, ⊝)
 - [Keywords](reference/KEYWORDS.md) - Self-evaluating symbols specification
