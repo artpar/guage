@@ -1215,8 +1215,9 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                 /* Eval once to unquote, giving us the data structure */
                 Cell* clauses_data = eval_internal(ctx, env, clauses_sexpr);
 
-                /* Pass to pattern matching */
-                Cell* result = pattern_eval_match(expr_unevaled, clauses_data, ctx);
+                /* Pass to pattern matching with current environment
+                 * This ensures De Bruijn indices in closures are dereferenced correctly */
+                Cell* result = pattern_eval_match(expr_unevaled, clauses_data, env, ctx);
 
                 /* Clean up */
                 cell_release(clauses_data);

@@ -42,11 +42,13 @@ MatchResult pattern_try_match(Cell* value, Cell* pattern);
  *
  * Syntax: (∇ expr [pattern₁ result₁] [pattern₂ result₂] ...)
  *
- * Evaluates expr, then tries each pattern clause in order.
+ * Evaluates expr in the given environment, then tries each pattern clause in order.
  * Returns the result of the first matching clause.
  * Returns error if no clause matches.
+ *
+ * env: Environment for evaluating the expression (needed for De Bruijn indices in closures)
  */
-Cell* pattern_eval_match(Cell* expr, Cell* clauses, EvalContext* ctx);
+Cell* pattern_eval_match(Cell* expr, Cell* clauses, Cell* env, EvalContext* ctx);
 
 /* Free bindings list */
 void pattern_free_bindings(Cell* bindings);

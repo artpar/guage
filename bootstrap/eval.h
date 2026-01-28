@@ -40,6 +40,9 @@ void eval_context_free(EvalContext* ctx);
 /* Evaluate expression */
 Cell* eval(EvalContext* ctx, Cell* expr);
 
+/* Evaluate expression in specific environment (for pattern matching with closures) */
+Cell* eval_internal(EvalContext* ctx, Cell* env, Cell* expr);
+
 /* Define global binding */
 void eval_define(EvalContext* ctx, const char* name, Cell* value);
 

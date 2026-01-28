@@ -487,13 +487,15 @@ MatchResult pattern_try_match(Cell* value, Cell* pattern) {
 }
 
 /* Evaluate a match expression */
-Cell* pattern_eval_match(Cell* expr, Cell* clauses, EvalContext* ctx) {
+Cell* pattern_eval_match(Cell* expr, Cell* clauses, Cell* env, EvalContext* ctx) {
     if (!ctx) {
         return cell_error("no-context", expr);
     }
 
-    /* Evaluate the expression to match */
-    Cell* value = eval(ctx, expr);
+    /* Evaluate the expression to match using the provided environment
+     * This is critical for De Bruijn indices in closures - we need the
+     * current indexed environment, not the global environment */
+    Cell* value = eval_internal(ctx, env, expr);
     if (!value) {
         return cell_error("eval-failed", expr);
     }
@@ -549,25 +551,33 @@ Cell* pattern_eval_match(Cell* expr, Cell* clauses, EvalContext* ctx) {
             Cell* result;
 
             if (match.bindings) {
-                /* Extend environment with pattern bindings */
-                Cell* old_env = ctx->env;
-                cell_retain(old_env);
+                /* Extend the LOCAL environment with pattern bindings
+                 * This creates: ((v . value) . [closure_params...]) */
+                Cell* extended_env = extend_env_with_bindings(match.bindings, env);
 
-                /* Extend environment with bindings */
-                ctx->env = extend_env_with_bindings(match.bindings, old_env);
+                /* Temporarily set ctx->env to the extended environment
+                 * This allows symbol lookup to find both pattern bindings (v) and closure params (converted to De Bruijn) */
+                Cell* old_ctx_env = ctx->env;
+                cell_retain(extended_env);
+                ctx->env = extended_env;
 
-                /* Evaluate result in extended environment */
+                /* Evaluate result - symbol lookup uses ctx->env, De Bruijn uses closure environment */
                 result = eval(ctx, result_expr);
 
-                /* Restore old environment */
-                cell_release(ctx->env);
-                ctx->env = old_env;
-
-                /* Release bindings (we got ownership from pattern_try_match) */
+                /* Restore original ctx->env */
+                ctx->env = old_ctx_env;
+                cell_release(extended_env);
                 cell_release(match.bindings);
             } else {
-                /* No bindings, evaluate in current context */
+                /* No bindings, but still need to temporarily set ctx->env for closure parameter access */
+                Cell* old_ctx_env = ctx->env;
+                cell_retain(env);
+                ctx->env = env;
+
                 result = eval(ctx, result_expr);
+
+                ctx->env = old_ctx_env;
+                cell_release(env);
             }
 
             cell_release(value);
