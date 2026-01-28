@@ -303,7 +303,7 @@ void stack_print(EvalStack* stack) {
  * 1. Sets it as the final result if stack is empty
  * 2. Passes it to the parent frame if stack has more frames
  */
-void handle_eval_return(StackFrame* frame, EvalStack* stack) {
+bool handle_eval_return(StackFrame* frame, EvalStack* stack) {
     Cell* value = frame->value;
 
     /* Debug */
@@ -320,7 +320,7 @@ void handle_eval_return(StackFrame* frame, EvalStack* stack) {
         fprintf(stderr, "DEBUG: Setting final result\n");
         fflush(stderr);
         stack_set_result(stack, value);
-        return;
+        return true;  /* Frame is done */
     }
 
     /* Get parent frame and store value */
@@ -340,6 +340,7 @@ void handle_eval_return(StackFrame* frame, EvalStack* stack) {
     }
 
     /* Parent will process value based on its state */
+    return true;  /* Frame is done */
 }
 
 /*
@@ -347,10 +348,11 @@ void handle_eval_return(StackFrame* frame, EvalStack* stack) {
  *
  * Simply returns the quoted expression as-is.
  */
-void handle_eval_quote(StackFrame* frame, EvalStack* stack) {
+bool handle_eval_quote(StackFrame* frame, EvalStack* stack) {
     /* Quote - return expression without evaluation */
     StackFrame* ret = frame_create_return(frame->expr);
     stack_push(stack, ret);
+    return true;  /* Frame is done */
 }
 
 /*
@@ -362,7 +364,7 @@ void handle_eval_quote(StackFrame* frame, EvalStack* stack) {
  * - Symbols -> lookup in environment
  * - Pairs -> function application or special forms
  */
-void handle_eval_expr(StackFrame* frame, EvalStack* stack) {
+bool handle_eval_expr(StackFrame* frame, EvalStack* stack) {
     Cell* expr = frame->expr;
     Cell* env = frame->env;
 
@@ -373,7 +375,7 @@ void handle_eval_expr(StackFrame* frame, EvalStack* stack) {
         /* Push return frame with the atom */
         StackFrame* ret = frame_create_return(expr);
         stack_push(stack, ret);
-        return;
+        return true;  /* Frame is done */
     }
 
     /* Keywords - self-evaluating (symbols starting with :) */
@@ -383,7 +385,7 @@ void handle_eval_expr(StackFrame* frame, EvalStack* stack) {
             /* Keyword - self-evaluating */
             StackFrame* ret = frame_create_return(expr);
             stack_push(stack, ret);
-            return;
+            return true;  /* Frame is done */
         }
     }
 
@@ -407,12 +409,12 @@ void handle_eval_expr(StackFrame* frame, EvalStack* stack) {
             Cell* err = cell_error("symbol-not-found", expr);
             StackFrame* ret = frame_create_return(err);
             stack_push(stack, ret);
-            return;
+            return true;  /* Frame is done */
         }
 
         StackFrame* ret = frame_create_return(value);
         stack_push(stack, ret);
-        return;
+        return true;  /* Frame is done */
     }
 
     /* Pair - function application or special form */
@@ -429,7 +431,7 @@ void handle_eval_expr(StackFrame* frame, EvalStack* stack) {
                 Cell* arg = cell_car(rest);
                 StackFrame* quote_frame = frame_create_quote(arg);
                 stack_push(stack, quote_frame);
-                return;
+                return true;  /* Frame is done */
             }
 
             /* ≔ - define */
@@ -438,7 +440,7 @@ void handle_eval_expr(StackFrame* frame, EvalStack* stack) {
                 Cell* value_expr = cell_car(cell_cdr(rest));
                 StackFrame* define_frame = frame_create_define(name, value_expr, env);
                 stack_push(stack, define_frame);
-                return;
+                return true;  /* Frame is done */
             }
 
             /* ? - conditional */
@@ -448,7 +450,7 @@ void handle_eval_expr(StackFrame* frame, EvalStack* stack) {
                 Cell* else_expr = cell_car(cell_cdr(cell_cdr(rest)));
                 StackFrame* if_frame = frame_create_if(cond_expr, then_expr, else_expr, env);
                 stack_push(stack, if_frame);
-                return;
+                return true;  /* Frame is done */
             }
 
             /* λ - lambda (note: lambda creation is done at parse time with De Bruijn conversion)
@@ -459,7 +461,7 @@ void handle_eval_expr(StackFrame* frame, EvalStack* stack) {
                 Cell* err = cell_error("invalid-lambda", cell_symbol("lambda-not-converted"));
                 StackFrame* ret = frame_create_return(err);
                 stack_push(stack, ret);
-                return;
+                return true;  /* Frame is done */
             }
         }
 
@@ -468,13 +470,15 @@ void handle_eval_expr(StackFrame* frame, EvalStack* stack) {
         /* The handler will take care of evaluating func and args */
         StackFrame* apply_frame = frame_create_apply(NULL, expr, env);
         stack_push(stack, apply_frame);
-        return;
+        return true;  /* Frame is done */
     }
 
     /* Unknown type - error */
     Cell* err = cell_error("invalid-expr", expr);
     StackFrame* ret = frame_create_return(err);
     stack_push(stack, ret);
+
+    return true;  /* Frame is done */
 }
 
 /*
@@ -485,7 +489,7 @@ void handle_eval_expr(StackFrame* frame, EvalStack* stack) {
  * 2. func==NULL, value!=NULL: function evaluated, move to func field, eval args
  * 3. func!=NULL, value!=NULL: both ready, apply function
  */
-void handle_eval_apply(StackFrame* frame, EvalStack* stack) {
+bool handle_eval_apply(StackFrame* frame, EvalStack* stack) {
     Cell* func = frame->func;
     Cell* args_or_expr = frame->expr;
     Cell* env = frame->env;
@@ -514,7 +518,7 @@ void handle_eval_apply(StackFrame* frame, EvalStack* stack) {
         /* Evaluate function expression - result will go to value field */
         StackFrame* eval_func = frame_create_eval(func_expr, env);
         stack_push(stack, eval_func);
-        return;
+        return false;  /* Frame needs continuation (wait for function evaluation) */
     }
 
     /* Step 2: Function evaluated (in value field), move to func and eval args */
@@ -527,7 +531,7 @@ void handle_eval_apply(StackFrame* frame, EvalStack* stack) {
         /* Evaluate arguments - result will go to value field */
         StackFrame* eval_args = frame_create_args(args_or_expr, env, 0);
         stack_push(stack, eval_args);
-        return;
+        return false;  /* Frame needs continuation (wait for args evaluation) */
     }
 
     /* Step 3: Both function and evaluated arguments ready - apply! */
@@ -540,7 +544,7 @@ void handle_eval_apply(StackFrame* frame, EvalStack* stack) {
             Cell* result = builtin_fn(evaluated_args);
             StackFrame* ret = frame_create_return(result);
             stack_push(stack, ret);
-            return;
+            return true;  /* Frame is done */
         }
 
         /* Handle lambdas (CELL_LAMBDA) */
@@ -560,7 +564,7 @@ void handle_eval_apply(StackFrame* frame, EvalStack* stack) {
                 Cell* err = cell_error("arity-mismatch", data);
                 StackFrame* ret = frame_create_return(err);
                 stack_push(stack, ret);
-                return;
+                return true;  /* Frame is done */
             }
 
             /* Create new environment: prepend args to closure env */
@@ -572,7 +576,7 @@ void handle_eval_apply(StackFrame* frame, EvalStack* stack) {
 
             /* Cleanup */
             cell_release(new_env);
-            return;
+            return true;  /* Frame is done */
         }
 
         /* Not a function - error */
@@ -580,13 +584,15 @@ void handle_eval_apply(StackFrame* frame, EvalStack* stack) {
         Cell* err = cell_error("not-a-function", func);
         StackFrame* ret = frame_create_return(err);
         stack_push(stack, ret);
-        return;
+        return true;  /* Frame is done */
     }
 
     /* Should not reach here */
     Cell* err = cell_error("internal-error", cell_symbol("handle-eval-apply"));
     StackFrame* ret = frame_create_return(err);
     stack_push(stack, ret);
+
+    return true;  /* Frame is done */
 }
 
 /*
@@ -594,7 +600,7 @@ void handle_eval_apply(StackFrame* frame, EvalStack* stack) {
  *
  * Process arguments one at a time, accumulating evaluated results.
  */
-void handle_eval_args(StackFrame* frame, EvalStack* stack) {
+bool handle_eval_args(StackFrame* frame, EvalStack* stack) {
     Cell* args = frame->expr;
     Cell* accumulated = frame->accumulated_args;
     Cell* env = frame->env;
@@ -603,7 +609,7 @@ void handle_eval_args(StackFrame* frame, EvalStack* stack) {
         /* All arguments evaluated - return accumulated list */
         StackFrame* ret = frame_create_return(accumulated);
         stack_push(stack, ret);
-        return;
+        return true;  /* Frame is done */
     }
 
     /* Get first argument */
@@ -619,6 +625,8 @@ void handle_eval_args(StackFrame* frame, EvalStack* stack) {
     /* Evaluate current argument */
     StackFrame* eval = frame_create_eval(arg, env);
     stack_push(stack, eval);
+
+    return true;  /* Frame is done (delegated to continuation) */
 }
 
 /*
@@ -626,14 +634,14 @@ void handle_eval_args(StackFrame* frame, EvalStack* stack) {
  *
  * Evaluates condition, then chooses then/else branch based on result.
  */
-void handle_eval_if(StackFrame* frame, EvalStack* stack) {
+bool handle_eval_if(StackFrame* frame, EvalStack* stack) {
     Cell* cond_value = frame->value;
 
     if (!cond_value) {
         /* Condition not evaluated yet - evaluate it first */
         StackFrame* eval = frame_create_eval(frame->expr, frame->env);
         stack_push(stack, eval);
-        return;
+        return false;  /* Frame needs continuation (wait for condition evaluation) */
     }
 
     /* Condition evaluated - choose branch */
@@ -649,6 +657,8 @@ void handle_eval_if(StackFrame* frame, EvalStack* stack) {
 
     StackFrame* eval = frame_create_eval(branch, frame->env);
     stack_push(stack, eval);
+
+    return true;  /* Frame is done */
 }
 
 /*
@@ -656,14 +666,14 @@ void handle_eval_if(StackFrame* frame, EvalStack* stack) {
  *
  * Evaluates value expression, then defines symbol in global environment.
  */
-void handle_eval_define(StackFrame* frame, EvalStack* stack) {
+bool handle_eval_define(StackFrame* frame, EvalStack* stack) {
     Cell* value = frame->value;
 
     if (!value) {
         /* Value not evaluated yet - evaluate it first */
         StackFrame* eval = frame_create_eval(frame->expr, frame->env);
         stack_push(stack, eval);
-        return;
+        return false;  /* Frame needs continuation (wait for value evaluation) */
     }
 
     /* Value evaluated - define in global environment */
@@ -676,6 +686,8 @@ void handle_eval_define(StackFrame* frame, EvalStack* stack) {
     /* Return the value */
     StackFrame* ret = frame_create_return(value);
     stack_push(stack, ret);
+
+    return true;  /* Frame is done */
 }
 
 /* ========== Trampoline Evaluator Entry Point ========== */
@@ -745,7 +757,7 @@ Cell* trampoline_eval(EvalContext* ctx, Cell* expr) {
 void trampoline_loop(EvalStack* stack) {
     int iteration = 0;
     while (!stack_is_empty(stack)) {
-        /* Get next frame to process */
+        /* Pop frame to process */
         StackFrame* frame = stack_pop(stack);
 
         if (!frame) {
@@ -761,34 +773,40 @@ void trampoline_loop(EvalStack* stack) {
                     iteration, frame_state_name(frame->state), stack_size(stack));
         }
 
+        /* Remember stack size before handler */
+        int size_before = stack_size(stack);
+
         /* Dispatch to appropriate handler based on frame state */
+        /* Handlers return true if frame is done (can destroy), false if needs continuation */
+        bool frame_done = false;
+
         switch (frame->state) {
             case EVAL_EXPR:
-                handle_eval_expr(frame, stack);
+                frame_done = handle_eval_expr(frame, stack);
                 break;
 
             case EVAL_APPLY:
-                handle_eval_apply(frame, stack);
+                frame_done = handle_eval_apply(frame, stack);
                 break;
 
             case EVAL_ARGS:
-                handle_eval_args(frame, stack);
+                frame_done = handle_eval_args(frame, stack);
                 break;
 
             case EVAL_RETURN:
-                handle_eval_return(frame, stack);
+                frame_done = handle_eval_return(frame, stack);
                 break;
 
             case EVAL_IF:
-                handle_eval_if(frame, stack);
+                frame_done = handle_eval_if(frame, stack);
                 break;
 
             case EVAL_DEFINE:
-                handle_eval_define(frame, stack);
+                frame_done = handle_eval_define(frame, stack);
                 break;
 
             case EVAL_QUOTE:
-                handle_eval_quote(frame, stack);
+                frame_done = handle_eval_quote(frame, stack);
                 break;
 
             default:
@@ -797,10 +815,38 @@ void trampoline_loop(EvalStack* stack) {
                 Cell* err = cell_error("invalid-state", cell_nil());
                 StackFrame* ret = frame_create_return(err);
                 stack_push(stack, ret);
+                frame_done = true;  /* Destroy frame on error */
                 break;
         }
 
-        /* Clean up processed frame */
-        frame_destroy(frame);
+        if (frame_done) {
+            /* Frame is complete - destroy it */
+            frame_destroy(frame);
+        } else {
+            /* Frame needs continuation - insert it below any sub-frames that were pushed */
+            int frames_pushed = stack_size(stack) - size_before;
+
+            if (frames_pushed == 0) {
+                /* No sub-frames pushed - just push frame back */
+                stack_push(stack, frame);
+            } else {
+                /* Sub-frames were pushed - insert frame below them */
+                /* Temporarily pop the sub-frames */
+                StackFrame** temp_frames = malloc(sizeof(StackFrame*) * frames_pushed);
+                for (int i = 0; i < frames_pushed; i++) {
+                    temp_frames[i] = stack_pop(stack);
+                }
+
+                /* Push the continuation frame */
+                stack_push(stack, frame);
+
+                /* Push the sub-frames back on top */
+                for (int i = frames_pushed - 1; i >= 0; i--) {
+                    stack_push(stack, temp_frames[i]);
+                }
+
+                free(temp_frames);
+            }
+        }
     }
 }
