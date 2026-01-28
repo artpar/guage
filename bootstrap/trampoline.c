@@ -872,6 +872,10 @@ Cell* trampoline_eval(EvalContext* ctx, Cell* expr) {
         return cell_error("invalid-args", cell_nil());
     }
 
+    /* Set current context for primitives (e.g., prim_load needs this) */
+    EvalContext* prev_ctx = eval_get_current_context();
+    eval_set_current_context(ctx);
+
     /* Create evaluation stack and store context */
     EvalStack* stack = stack_create();
     stack->ctx = (void*)ctx;
@@ -892,6 +896,9 @@ Cell* trampoline_eval(EvalContext* ctx, Cell* expr) {
 
     /* Clean up stack */
     stack_destroy(stack);
+
+    /* Restore previous context */
+    eval_set_current_context(prev_ctx);
 
     return result;
 }

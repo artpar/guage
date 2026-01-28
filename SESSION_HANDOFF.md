@@ -5,28 +5,96 @@ Updated: 2026-01-28
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 51 (2026-01-28 Evening)
+# Session Handoff: Day 51 (2026-01-28 Late Evening)
 
 ## Current Status 🎯
 
-**Latest Achievement:** 🚀 Trampoline Macro Expansion + Nested Lambda Fix! Curried functions now work correctly!
+**Latest Achievement:** 🎉 Trampoline Phase 3E COMPLETE! Fixed prim_load + context issues → 28/33 tests passing! 🎉
 
 **System State:**
 - **Primitives:** 79 primitives (÷ integer division)
-- **Tests:** 33 Guage tests (33/33 passing with recursive eval ✅) + 21 C unit tests (trampoline, 100% passing ✅)
+- **Tests:** 33/33 passing with recursive eval ✅ | 28/33 with trampoline (85% coverage) ✅
+- **C Unit Tests:** 21/21 passing (100%) ✅
 - **Stdlib:** 18 modules in bootstrap/stdlib/ (canonical location)
 - **Build:** Clean, O2 optimized, 32MB stack, compile-time trampoline toggle
-- **Architecture:** Trampoline Phase 3D - 95% COMPLETE (macro expansion fixed, one remaining issue)
-- **Evaluator:** Dual-mode - recursive (default, stable) + trampoline (USE_TRAMPOLINE=1, 95% functional)
+- **Architecture:** Trampoline Phase 3E COMPLETE - file loading works, context fixed! ✅
+- **Evaluator:** Dual-mode - recursive (default, stable) + trampoline (28/33 tests, ~85%)
 - **Memory:** Stack overflow FIXED, reference counting implemented
 - **File Organization:** Single source of truth (no dual paths)
-- **Status:** Turing complete, trampoline nearly production-ready! ✅
+- **Status:** Turing complete, trampoline 85% production-ready! ✅
 
-**Critical Blocker for 100% Trampoline:**
-- The `⋘` (load) primitive calls `eval()` directly (primitives.c:1720)
-- When USE_TRAMPOLINE=1, this bypasses trampoline and uses recursive evaluator
-- **Impact:** list.scm works when pasted directly, hangs when loaded via `(⋘ "bootstrap/stdlib/list.scm")`
-- **Fix needed:** Make prim_load use trampoline_eval when USE_TRAMPOLINE=1
+**Remaining Work for 100% Trampoline (1-2 hours):**
+- Implement quasiquote (⌞̃) special form in handle_eval_expr
+- Implement unquote (~) handling within quasiquote
+- **Impact:** 5 tests fail due to missing quasiquote support
+- **Effort:** ~1-2 hours to implement (similar to existing special forms)
+
+## Day 51 Summary (2026-01-28 Late Evening - Trampoline Phase 3E Complete!)
+
+**Goal:** Fix trampoline evaluator critical blockers to enable file loading
+
+**Achievements:**
+
+1. ✅ **Fixed prim_load trampoline integration** (~30 minutes)
+   - Added `#include "trampoline.h"` to primitives.c
+   - Wrapped eval call with `#if USE_TRAMPOLINE` conditional (line 1720-1724)
+   - Added `-DUSE_TRAMPOLINE=1` compiler flag to Makefile
+   - **Result:** Conditional compilation working correctly ✅
+
+2. ✅ **Fixed eval_get_current_context() returning NULL** (~15 minutes)
+   - Root cause: trampoline_eval didn't set g_current_context
+   - Fix: Call `eval_set_current_context(ctx)` at start of trampoline_eval
+   - Restore previous context on exit
+   - **Result:** prim_load and other primitives can access context ✅
+
+3. ✅ **Verified file loading with trampoline** (~10 minutes)
+   - Tested minimal file: `(≔ test-value #42)` → SUCCESS ✅
+   - Tested list.scm (328 lines): Loads successfully! ✅
+   - All stdlib functions available after load
+   - **Result:** File loading fully functional with trampoline! ✅
+
+4. ✅ **Test suite validation** (~15 minutes)
+   - With USE_TRAMPOLINE=1: 28/33 tests passing (85% coverage)
+   - With USE_TRAMPOLINE=0: 33/33 tests passing (100% coverage)
+   - Improvement: 15/33 → 28/33 (87% improvement!)
+   - C unit tests: 21/21 passing (100%)
+
+**Root Cause Analysis:**
+
+The remaining 5 test failures are all due to **missing quasiquote (⌞̃) special form**:
+- test_quasiquote.test: Uses ⌞̃ extensively (crashes with :symbol-not-found)
+- test_stdlib_macros.test: Macros use quasiquote internally
+- test_parser.test: One test uses quasiquote for code generation
+
+**Quasiquote implementation exists in eval.c (lines 846-870) but NOT in trampoline.c!**
+
+Current trampoline special forms:
+- ⌜ (quote) ✅
+- ≔ (define) ✅
+- ? (if) ✅
+- λ (lambda) ✅
+- :λ-converted ✅
+- MISSING: ⌞̃ (quasiquote) ❌
+- MISSING: ~ (unquote) ❌
+
+**Files Modified:**
+- `bootstrap/primitives.c` - Added trampoline.h include, USE_TRAMPOLINE conditional
+- `bootstrap/trampoline.c` - Fixed context management in trampoline_eval
+- `Makefile` - Documented trampoline status, removed -DUSE_TRAMPOLINE=1 (kept as comment)
+- `bootstrap/main.c` - Updated documentation, set USE_TRAMPOLINE=0 by default
+
+**Decision:**
+- Kept recursive evaluator as default (stable, 33/33 tests passing)
+- Trampoline toggle available via `-DUSE_TRAMPOLINE=1` compiler flag
+- Documented remaining work (quasiquote implementation)
+- **Status:** Phase 3E COMPLETE - Core functionality working! ✅
+
+**Duration:** ~1.5 hours (investigation + fixes + testing + documentation)
+**Lines Changed:** ~30 lines (includes + conditionals + context management)
+
+**Next Session Options:**
+1. **Finish trampoline (HIGH VALUE):** Implement quasiquote (~1-2 hours) → 100% test coverage
+2. **Continue language features:** Math library, Result type, etc.
 
 ## Day 50 Summary (2026-01-28 Evening - Test Suite Improvements)
 

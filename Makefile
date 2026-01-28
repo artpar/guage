@@ -10,6 +10,8 @@ TESTS_DIR = $(BOOTSTRAP_DIR)/tests
 # Build configuration
 CC = gcc
 CFLAGS = -Wall -Wextra -std=c11 -g -O2 -fno-omit-frame-pointer
+# NOTE: Add -DUSE_TRAMPOLINE=1 to enable trampoline evaluator (28/33 tests passing)
+# Remaining work: Implement quasiquote (⌞̃) and unquote (~) special forms in trampoline
 LDFLAGS = -Wl,-stack_size,0x2000000  # 32MB stack (increased from default 8MB)
 
 # Source files (all in bootstrap/)
@@ -50,10 +52,19 @@ $(BOOTSTRAP_DIR)/%.o: $(BOOTSTRAP_DIR)/%.c
 # Testing targets
 # ============================================================================
 
-# Run full test suite (29 tests across 15 test files)
+# Run full test suite (33 Guage tests)
 test: build
 	@echo "Running full Guage test suite..."
-	@cd $(BOOTSTRAP_DIR) && ./run_tests.sh
+	@$(BOOTSTRAP_DIR)/run_tests.sh
+
+# Run a single test file (usage: make test-one TEST=bootstrap/tests/basic.test)
+test-one: build
+	@if [ -z "$(TEST)" ]; then \
+		echo "Usage: make test-one TEST=bootstrap/tests/basic.test"; \
+		exit 1; \
+	fi
+	@echo "Running single test: $(TEST)"
+	@$(BOOTSTRAP_EXECUTABLE) < $(TEST)
 
 # Quick smoke test (just verify interpreter works)
 smoke: build
@@ -72,14 +83,21 @@ test-trampoline: $(BOOTSTRAP_DIR)/test_trampoline.c $(BOOTSTRAP_OBJECTS)
 	@echo "Running trampoline tests..."
 	@$(BOOTSTRAP_DIR)/test_trampoline
 
+# View test results summary (quick overview)
+test-summary: build
+	@echo "Running tests and showing summary only..."
+	@$(BOOTSTRAP_DIR)/run_tests.sh 2>&1 | grep -A 10 "Test Summary"
+
 # ============================================================================
 # Running targets
 # ============================================================================
 
-# Start the REPL
+# Start the REPL (from project root)
 repl: build
-	@echo "Starting Guage REPL..."
+	@echo "Starting Guage REPL from project root..."
+	@echo "Note: Use 'bootstrap/stdlib/...' paths in (⋘ ...) commands"
 	@echo "Type :help for help, :quit to exit"
+	@echo ""
 	@$(BOOTSTRAP_EXECUTABLE)
 
 # Run a specific file
@@ -164,7 +182,10 @@ help:
 	@echo "  make distclean    - Deep clean (includes temp files)"
 	@echo ""
 	@echo "Testing:"
-	@echo "  make test         - Run full test suite (29 tests)"
+	@echo "  make test         - Run full test suite (33 tests)"
+	@echo "  make test-one TEST=path - Run a single test file"
+	@echo "  make test-summary - Show only test results summary"
+	@echo "  make test-trampoline - Run C unit tests (trampoline)"
 	@echo "  make smoke        - Quick smoke test"
 	@echo ""
 	@echo "Running:"

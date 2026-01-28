@@ -6,6 +6,7 @@
 #include "type.h"
 #include "testgen.h"
 #include "module.h"
+#include "trampoline.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
@@ -1716,7 +1717,11 @@ Cell* prim_load(Cell* args) {
         if (expression_count > 0) {
             cell_release(result);
         }
+#if USE_TRAMPOLINE
+        result = trampoline_eval(ctx, expr);
+#else
         result = eval(ctx, expr);
+#endif
         cell_release(expr);
 
         if (cell_is_error(result)) {
