@@ -525,7 +525,73 @@ valgrind --leak-check=full ./guage < tests/core.test
 
 ---
 
-**Session Status: DAY 37 COMPLETE ✅**
-**Test Status:** 212 total test cases across 9 test files
-**Total Functions:** 80+ primitives + 20 list operations + 26 sorting functions = 126+ functions
-**Next Developer:** Continue with pattern matching (Day 38), string operations, or map/set data structures
+### Day 38: Parser Improvements ✅ (2026-01-27)
+
+**Implemented line/column tracking and improved error messages in C parser:**
+
+**Files Modified:**
+- `main.c` - Added line/column tracking to parser (80 lines)
+
+**Features:**
+- Line and column number tracking during tokenization
+- Better error messages with location information
+- Improved diagnostics for syntax errors
+
+**Tests:** All existing tests still pass ✅
+
+**Documentation:** See `DAY_38_SUMMARY.md` for details
+
+---
+
+### Day 39: S-Expression Tokenizer ✅ (2026-01-28)
+
+**Implemented complete S-expression tokenizer in pure Guage:**
+
+**Files Created:**
+- `stdlib/parser.scm` - 18 tokenizer functions (290 lines)
+- `tests/test_parser.scm` - 15 comprehensive tests
+- `DAY_39_FINAL.md` - Complete technical documentation
+
+**Functions Implemented (Tokenizer Only):**
+1. **Character Classification (4):** space?, digit?, paren?, special?
+2. **Token Helpers (7):** →token, token-type, token-val, skip-ws, skip-comment, read-number, read-symbol, read-string
+3. **Tokenizer (2):** tokenize-one, tokenize-loop
+
+**Test Results:**
+```scheme
+(≈⊙tokenize "42") → ⟨⟨::number "42"⟩ ∅⟩ ✅
+(≈⊙tokenize "(+ 1 2)") → tokens for all elements ✅
+(≈⊙tokenize "hello world") → two symbol tokens ✅
+```
+
+**Technical Achievements:**
+- Solved character comparison issues (~50 fixes to use `(≈→ "c" #0)` pattern)
+- Established lambda binding patterns for Guage
+- Rewrote tokenize-loop to avoid nested lambda limitations
+- All tokenization working correctly
+
+**Parser Status:** ⚠ Blocked
+
+**Blocking Issue:**
+- De Bruijn converter doesn't handle 3-4 level nested lambdas correctly
+- Parser functions (`parse-one`, `parse-list`, `parse`) need deep nesting
+- Shows `:λ-converted` symbols in function descriptions when conversion fails
+
+**Next Steps:**
+1. **Fix De Bruijn converter** (C code) - Enables natural Guage code
+2. **Rewrite parser** without nested lambdas - Tedious but doable
+3. **Proceed to Day 40** (evaluator) - Return to parser later
+
+**Documentation:** See `DAY_39_FINAL.md` for comprehensive technical details
+
+**Tests:** Tokenizer tests pass ✅ | Parser tests pending De Bruijn fix ⚠
+
+---
+
+**Session Status: DAY 39 TOKENIZER COMPLETE ✅ | PARSER BLOCKED ⚠**
+**Test Status:** 212 existing tests + tokenizer tests passing
+**Total Functions:** 126 existing + 18 tokenizer = 144+ functions
+**Blocking:** De Bruijn converter nested lambda limitation (3-4 levels)
+**Next Developer:**
+- **Option A:** Fix De Bruijn converter in C to handle nested lambdas
+- **Option B:** Proceed to Day 40 (evaluator), return to parser later
