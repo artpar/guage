@@ -66,5 +66,7 @@ bool eval_has_type(EvalContext* ctx, Cell* type_tag);
 /* Helper functions for trampoline evaluator */
 Cell* extend_env(Cell* env, Cell* args);
 int list_length(Cell* list);
+Cell* env_lookup_index(Cell* env, int index);
+bool env_is_indexed(Cell* env);
 
 #endif /* GUAGE_EVAL_H */

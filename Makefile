@@ -219,4 +219,5 @@ $(BOOTSTRAP_DIR)/trampoline.o: $(BOOTSTRAP_DIR)/trampoline.c $(BOOTSTRAP_DIR)/tr
                                 $(BOOTSTRAP_DIR)/cell.h
 $(BOOTSTRAP_DIR)/main.o: $(BOOTSTRAP_DIR)/main.c $(BOOTSTRAP_DIR)/cell.h \
                           $(BOOTSTRAP_DIR)/primitives.h $(BOOTSTRAP_DIR)/eval.h \
-                          $(BOOTSTRAP_DIR)/debug.h $(BOOTSTRAP_DIR)/module.h
+                          $(BOOTSTRAP_DIR)/debug.h $(BOOTSTRAP_DIR)/module.h \
+                          $(BOOTSTRAP_DIR)/trampoline.h

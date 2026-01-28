@@ -6,6 +6,18 @@
 #include "primitives.h"
 #include "eval.h"
 #include "module.h"
+#include "trampoline.h"
+
+/* Compile-time flag to enable trampoline evaluator
+ * NOTE: Trampoline evaluator is functional for basic cases but not production-ready
+ * - Basic arithmetic: ✅ Working
+ * - Lambdas: ✅ Working
+ * - Simple recursion: ✅ Working
+ * - Complex stdlib code: ❌ Causes segfaults (needs debugging)
+ * Default: 0 (use stable recursive evaluator) */
+#ifndef USE_TRAMPOLINE
+#define USE_TRAMPOLINE 0  /* 1 = trampoline, 0 = recursive */
+#endif
 
 #define MAX_INPUT 4096
 
@@ -557,7 +569,11 @@ void repl(void) {
             }
 
             /* Evaluate */
+#if USE_TRAMPOLINE
+            Cell* result = trampoline_eval(ctx, expr);
+#else
             Cell* result = eval(ctx, expr);
+#endif
 
             /* Print result */
             cell_print(result);

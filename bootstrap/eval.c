@@ -946,7 +946,7 @@ static Cell* apply(EvalContext* ctx, Cell* fn, Cell* args) {
 }
 
 /* Check if environment is indexed (not named/assoc) */
-static bool env_is_indexed(Cell* env) {
+bool env_is_indexed(Cell* env) {
     /* Indexed environment: (val1 val2 val3 ...) */
     /* Named environment: ((sym1 . val1) (sym2 . val2) ...) */
     if (cell_is_nil(env)) return true;  /* Empty env can be either */

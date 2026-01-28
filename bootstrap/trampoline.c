@@ -1,5 +1,7 @@
 #include "trampoline.h"
 #include "eval.h"  /* For EvalContext, eval_lookup, eval_lookup_env */
+#include "debruijn.h"  /* For lambda De Bruijn conversion */
+#include "module.h"  /* For module_get_current_loading */
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -353,10 +355,32 @@ bool handle_eval_expr(StackFrame* frame, EvalStack* stack) {
     Cell* expr = frame->expr;
     Cell* env = frame->env;
 
-    /* Atoms - self-evaluating */
-    if (cell_is_number(expr) || cell_is_bool(expr) ||
-        cell_is_nil(expr) || cell_is_error(expr) ||
-        cell_is_string(expr)) {
+    /* Numbers - check if De Bruijn index or literal */
+    if (cell_is_number(expr)) {
+        /* Only try to interpret as De Bruijn index if env is indexed */
+        if (env_is_indexed(env)) {
+            double num = cell_get_number(expr);
+            if (num >= 0 && num == (int)num) {
+                /* Try as De Bruijn index */
+                Cell* value = env_lookup_index(env, (int)num);
+                if (value != NULL) {
+                    StackFrame* ret = frame_create_return(value);
+                    stack_push(stack, ret);
+                    cell_release(value);  /* env_lookup_index retains, we consumed it */
+                    return true;  /* Frame is done */
+                }
+                /* Fall through to error below */
+            }
+        }
+        /* Not an index or indexed env - literal number */
+        StackFrame* ret = frame_create_return(expr);
+        stack_push(stack, ret);
+        return true;  /* Frame is done */
+    }
+
+    /* Other atoms - self-evaluating */
+    if (cell_is_bool(expr) || cell_is_nil(expr) ||
+        cell_is_error(expr) || cell_is_string(expr)) {
         /* Push return frame with the atom */
         StackFrame* ret = frame_create_return(expr);
         stack_push(stack, ret);
@@ -438,13 +462,54 @@ bool handle_eval_expr(StackFrame* frame, EvalStack* stack) {
                 return true;  /* Frame is done */
             }
 
-            /* λ - lambda (note: lambda creation is done at parse time with De Bruijn conversion)
-             * If we see a raw λ here, it means it wasn't converted yet - this shouldn't happen
-             * in the trampoline evaluator as conversion happens before evaluation.
-             * For now, treat as an error. */
+            /* λ - lambda */
             if (strcmp(sym, "λ") == 0) {
-                Cell* err = cell_error("invalid-lambda", cell_symbol("lambda-not-converted"));
-                StackFrame* ret = frame_create_return(err);
+                Cell* params = cell_car(rest);
+                Cell* body_expr = cell_car(cell_cdr(rest));
+
+                /* Count parameters and convert to array of names */
+                int arity = 0;
+                Cell* p = params;
+                while (!cell_is_nil(p)) {
+                    arity++;
+                    p = cell_cdr(p);
+                }
+
+                /* Extract parameter names */
+                const char** param_names = malloc(sizeof(const char*) * arity);
+                p = params;
+                for (int i = 0; i < arity; i++) {
+                    Cell* param = cell_car(p);
+                    if (!cell_is_symbol(param)) {
+                        free(param_names);
+                        Cell* err = cell_error("invalid-lambda-param", param);
+                        StackFrame* ret = frame_create_return(err);
+                        stack_push(stack, ret);
+                        return true;
+                    }
+                    param_names[i] = cell_get_symbol(param);
+                    p = cell_cdr(p);
+                }
+
+                /* Create conversion context */
+                NameContext* ctx_convert = context_new(param_names, arity, NULL);
+
+                /* Convert body to De Bruijn indices */
+                Cell* converted_body = debruijn_convert(body_expr, ctx_convert);
+
+                /* Closure env: use indexed env if we're in a lambda, empty if top-level */
+                Cell* closure_env = env ? env : cell_nil();
+
+                /* Create lambda cell with closure environment */
+                Cell* lambda = cell_lambda(closure_env, converted_body, arity,
+                                          module_get_current_loading(), 0);
+
+                /* Cleanup */
+                context_free(ctx_convert);
+                free(param_names);
+
+                /* Return the lambda */
+                StackFrame* ret = frame_create_return(lambda);
                 stack_push(stack, ret);
                 return true;  /* Frame is done */
             }
