@@ -6,6 +6,9 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+/* Forward declarations for mutually recursive helpers */
+static bool is_pair_pattern(Cell* pattern);
+
 /* Helper: Check if pattern is wildcard (_) */
 static bool is_wildcard(Cell* pattern) {
     if (!pattern || pattern->type != CELL_ATOM_SYMBOL) {
@@ -156,6 +159,258 @@ static void extract_as_pattern(Cell* pattern, Cell** name_out, Cell** subpattern
     Cell* rest = cell_cdr(pattern);
     Cell* rest2 = cell_cdr(rest);
     *subpattern_out = cell_car(rest2);
+}
+
+/* Helper: Check if pattern is an or-pattern: (∨ pattern₁ pattern₂ ...)
+ * Or-pattern syntax: (∨ pat1 pat2 ...) - list with ∨ as first element
+ * Must have at least 2 alternatives (3+ total elements)
+ */
+static bool is_or_pattern(Cell* pattern) {
+    /* Must be a list */
+    if (!pattern || pattern->type != CELL_PAIR) {
+        return false;
+    }
+
+    /* First element should be the logical-or symbol "∨" */
+    Cell* first = cell_car(pattern);
+    if (!first || first->type != CELL_ATOM_SYMBOL) {
+        return false;
+    }
+    if (strcmp(first->data.atom.symbol, "∨") != 0) {
+        return false;
+    }
+
+    /* Need at least 2 alternatives */
+    Cell* rest = cell_cdr(pattern);
+    if (!rest || rest->type != CELL_PAIR) {
+        return false;
+    }
+
+    /* Second alternative */
+    Cell* rest2 = cell_cdr(rest);
+    if (!rest2 || rest2->type != CELL_PAIR) {
+        return false;
+    }
+
+    return true;
+}
+
+/* Helper: Extract alternatives from or-pattern
+ * Input: (∨ pat1 pat2 pat3 ...)
+ * Output: list of alternative patterns (pat1 pat2 pat3 ...)
+ */
+static Cell* extract_or_alternatives(Cell* pattern) {
+    /* Or-pattern syntax: (∨ pat1 pat2 ...) */
+    /* Return the rest after ∨ symbol */
+    return cell_cdr(pattern);
+}
+
+/* Helper: Extract all variable bindings from a pattern (for consistency checking)
+ * Returns a list of variable names (symbols) that this pattern would bind
+ * Used to ensure or-pattern alternatives bind the same variables
+ */
+static Cell* extract_pattern_variables(Cell* pattern) {
+    if (!pattern) {
+        return cell_nil();
+    }
+
+    /* Wildcard _ binds nothing */
+    if (is_wildcard(pattern)) {
+        return cell_nil();
+    }
+
+    /* Variable pattern binds itself */
+    if (is_variable_pattern(pattern)) {
+        cell_retain(pattern);
+        return cell_cons(pattern, cell_nil());
+    }
+
+    /* Literal patterns bind nothing */
+    if (pattern->type == CELL_ATOM_NUMBER ||
+        pattern->type == CELL_ATOM_BOOL ||
+        pattern->type == CELL_ATOM_NIL ||
+        (pattern->type == CELL_ATOM_SYMBOL && is_keyword(pattern->data.atom.symbol))) {
+        return cell_nil();
+    }
+
+    /* As-pattern (name @ subpattern) binds name + subpattern variables */
+    if (is_as_pattern(pattern)) {
+        Cell* name;
+        Cell* subpattern;
+        extract_as_pattern(pattern, &name, &subpattern);
+
+        Cell* subvars = extract_pattern_variables(subpattern);
+        cell_retain(name);
+        Cell* result = cell_cons(name, subvars);
+        cell_release(subvars);
+        return result;
+    }
+
+    /* Or-pattern (∨ pat1 pat2 ...) - check first alternative
+     * (All alternatives must bind same variables, verified separately) */
+    if (is_or_pattern(pattern)) {
+        Cell* alternatives = extract_or_alternatives(pattern);
+        if (alternatives && alternatives->type == CELL_PAIR) {
+            return extract_pattern_variables(cell_car(alternatives));
+        }
+        return cell_nil();
+    }
+
+    /* Pair pattern (⟨⟩ pat1 pat2) recursively extracts from both */
+    if (is_pair_pattern(pattern)) {
+        Cell* rest = cell_cdr(pattern);  /* Skip ⟨⟩ symbol */
+        Cell* pat1 = cell_car(rest);
+        Cell* pat2 = cell_car(cell_cdr(rest));
+
+        Cell* vars1 = extract_pattern_variables(pat1);
+        Cell* vars2 = extract_pattern_variables(pat2);
+
+        /* Merge the variable lists */
+        Cell* merged = cell_nil();
+        Cell* current = vars1;
+        while (current && current->type == CELL_PAIR) {
+            Cell* var = cell_car(current);
+            cell_retain(var);
+            Cell* new_cons = cell_cons(var, merged);
+            cell_release(merged);
+            merged = new_cons;
+            current = cell_cdr(current);
+        }
+
+        current = vars2;
+        while (current && current->type == CELL_PAIR) {
+            Cell* var = cell_car(current);
+            cell_retain(var);
+            Cell* new_cons = cell_cons(var, merged);
+            cell_release(merged);
+            merged = new_cons;
+            current = cell_cdr(current);
+        }
+
+        cell_release(vars1);
+        cell_release(vars2);
+        return merged;
+    }
+
+    /* Structure patterns (⊙ Type ...) and ADT patterns (⊚ Type Variant ...)
+     * Extract variables from field patterns */
+    if (pattern->type == CELL_PAIR) {
+        Cell* first = cell_car(pattern);
+        if (first && first->type == CELL_ATOM_SYMBOL) {
+            const char* sym = first->data.atom.symbol;
+            if (strcmp(sym, "⊙") == 0 || strcmp(sym, "⊚") == 0) {
+                /* Skip structure symbol and type/variant, extract from fields */
+                Cell* rest = cell_cdr(pattern);
+                if (rest && rest->type == CELL_PAIR) {
+                    rest = cell_cdr(rest);  /* Skip type */
+                    if (strcmp(sym, "⊚") == 0 && rest && rest->type == CELL_PAIR) {
+                        rest = cell_cdr(rest);  /* Skip variant for ADT */
+                    }
+
+                    /* Extract variables from all fields */
+                    Cell* vars = cell_nil();
+                    while (rest && rest->type == CELL_PAIR) {
+                        Cell* field_pat = cell_car(rest);
+                        Cell* field_vars = extract_pattern_variables(field_pat);
+
+                        /* Merge field_vars into vars */
+                        Cell* current = field_vars;
+                        while (current && current->type == CELL_PAIR) {
+                            Cell* var = cell_car(current);
+                            cell_retain(var);
+                            Cell* new_cons = cell_cons(var, vars);
+                            cell_release(vars);
+                            vars = new_cons;
+                            current = cell_cdr(current);
+                        }
+                        cell_release(field_vars);
+
+                        rest = cell_cdr(rest);
+                    }
+                    return vars;
+                }
+            }
+        }
+    }
+
+    /* Unknown pattern type - assume no variables */
+    return cell_nil();
+}
+
+/* Helper: Check if two variable lists are equivalent (same variables, order doesn't matter) */
+static bool variable_lists_equal(Cell* vars1, Cell* vars2) {
+    /* Count variables in each list */
+    int count1 = 0, count2 = 0;
+    Cell* c1 = vars1;
+    while (c1 && c1->type == CELL_PAIR) {
+        count1++;
+        c1 = cell_cdr(c1);
+    }
+    c1 = vars2;
+    while (c1 && c1->type == CELL_PAIR) {
+        count2++;
+        c1 = cell_cdr(c1);
+    }
+
+    if (count1 != count2) {
+        return false;
+    }
+
+    /* Check that every variable in vars1 exists in vars2 */
+    Cell* current1 = vars1;
+    while (current1 && current1->type == CELL_PAIR) {
+        Cell* var1 = cell_car(current1);
+        bool found = false;
+
+        Cell* current2 = vars2;
+        while (current2 && current2->type == CELL_PAIR) {
+            Cell* var2 = cell_car(current2);
+            if (symbols_equal(var1, var2)) {
+                found = true;
+                break;
+            }
+            current2 = cell_cdr(current2);
+        }
+
+        if (!found) {
+            return false;
+        }
+        current1 = cell_cdr(current1);
+    }
+
+    return true;
+}
+
+/* Helper: Check variable consistency across or-pattern alternatives
+ * All alternatives must bind the same set of variables
+ * Returns true if consistent, false otherwise
+ */
+static bool check_or_pattern_consistency(Cell* alternatives) {
+    if (!alternatives || alternatives->type != CELL_PAIR) {
+        return true;  /* Empty or invalid - no inconsistency */
+    }
+
+    /* Extract variables from first alternative (reference) */
+    Cell* first_alt = cell_car(alternatives);
+    Cell* ref_vars = extract_pattern_variables(first_alt);
+
+    /* Check all remaining alternatives */
+    Cell* current = cell_cdr(alternatives);
+    bool consistent = true;
+    while (current && current->type == CELL_PAIR && consistent) {
+        Cell* alt = cell_car(current);
+        Cell* alt_vars = extract_pattern_variables(alt);
+
+        if (!variable_lists_equal(ref_vars, alt_vars)) {
+            consistent = false;
+        }
+
+        cell_release(alt_vars);
+        current = cell_cdr(current);
+    }
+
+    cell_release(ref_vars);
+    return consistent;
 }
 
 /* Helper: Check if pattern is a pair pattern (⟨⟩ pat1 pat2) */
@@ -351,6 +606,42 @@ MatchResult pattern_try_match(Cell* value, Cell* pattern) {
         Cell* merged = merge_bindings(whole_binding, submatch.bindings);
         MatchResult result = {.success = true, .bindings = merged};
         return result;
+    }
+
+    /* Or-pattern: (∨ pattern₁ pattern₂ ...) (Day 60)
+     * Try each alternative in order, first match wins
+     * Example: (∨ #0 #1 #2) matches 0, 1, or 2
+     */
+    if (is_or_pattern(pattern)) {
+        /* Extract alternatives */
+        Cell* alternatives = extract_or_alternatives(pattern);
+
+        /* Check variable consistency across alternatives */
+        if (!check_or_pattern_consistency(alternatives)) {
+            /* Inconsistent variable bindings - this is a pattern error
+             * Return failure (ideally should be a compile-time error) */
+            return failure;
+        }
+
+        /* Try each alternative in order */
+        Cell* current = alternatives;
+        while (current && current->type == CELL_PAIR) {
+            Cell* alt_pattern = cell_car(current);
+
+            /* Try to match this alternative */
+            MatchResult alt_match = pattern_try_match(value, alt_pattern);
+
+            if (alt_match.success) {
+                /* This alternative matched - return its bindings */
+                return alt_match;
+            }
+
+            /* Try next alternative */
+            current = cell_cdr(current);
+        }
+
+        /* No alternative matched */
+        return failure;
     }
 
     /* Nil pattern */

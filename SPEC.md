@@ -57,7 +57,7 @@ Everything is a **Cell**:
 |--------|------|---------|--------|
 | `∇` | `α → [[⌜pattern⌝ result]] → β` | Pattern match expression | ✅ DONE (Day 16) |
 
-**Note:** As of Day 59, supports:
+**Note:** As of Day 60, supports:
 - **Wildcard** (_) - matches anything
 - **Literals** - numbers, booleans, symbols, keywords
 - **Variables** - bind matched value to name (Day 16 ✅)
@@ -67,6 +67,7 @@ Everything is a **Cell**:
 - **Exhaustiveness checking** - warnings for incomplete/unreachable patterns (Day 19 ✅)
 - **Guard conditions** - conditional matching with boolean expressions (Day 58 ✅)
 - **As-patterns** - bind both whole value and parts (Day 59 ✅)
+- **Or-patterns** - match multiple alternatives (Day 60 ✅)
 
 **Syntax:**
 ```scheme
@@ -85,6 +86,7 @@ Everything is a **Cell**:
 - `(⊚ :Type :Variant pat1 ...)` - Node/ADT destructuring (Day 18)
 - `(pattern | guard-expr)` - Guard condition (Day 58)
 - `(name @ pattern)` - As-pattern, binds both whole and parts (Day 59)
+- `(∨ pat1 pat2 ...)` - Or-pattern, match alternatives (Day 60)
 
 **Examples:**
 ```scheme
@@ -158,6 +160,37 @@ Everything is a **Cell**:
 ; As-patterns combined with guards
 (∇ (⟨⟩ #5 #10) (⌜ ((((pair @ (⟨⟩ a b)) | (> a #0)) pair)
                    (_ :failed))))  ; → ⟨#5 #10⟩
+
+; Or-patterns (Day 60) - match multiple alternatives (first match wins)
+; Syntax: (∨ pattern₁ pattern₂ pattern₃ ...)
+; Important: All alternatives MUST bind the same variables (or none)
+; This is standard in OCaml and Rust
+
+; Match multiple literal values
+(∇ #1 (⌜ (((∨ #0 #1 #2) :small) (_ :other))))  ; → :small
+
+; Match multiple symbols
+(∇ :blue (⌜ (((∨ :red :green :blue) :primary) (_ :other))))  ; → :primary
+
+; Match multiple ADT variants
+(⊚≔ :Option (⌜ (:None)) (⌜ (:Some :value)))
+(∇ (⊚ :Option :None) (⌜ (((∨ (⊚ :Option :None) (⊚ :Option :Some #42)) :matched)
+                          (_ :other))))  ; → :matched
+
+; Or-patterns with variables (both must bind same variables)
+(⊚≔ :Result (⌜ (:Ok :value)) (⌜ (:Err :error)))
+(∇ (⊚ :Result :Ok #42) (⌜ (((∨ (⊚ :Result :Ok v) (⊚ :Result :Err v)) v)
+                            (_ :other))))  ; → #42
+
+; Nested or-patterns
+(∇ #1 (⌜ (((∨ (∨ #0 #1) #2) :matched) (_ :other))))  ; → :matched
+
+; Or-patterns with guards
+(∇ #42 (⌜ ((((∨ x x) | (> x #0)) x) (_ :failed))))  ; → #42
+
+; Or-patterns combined with as-patterns
+(∇ #1 (⌜ (((whole @ (∨ #0 #1 #2)) (⟨⟩ whole whole))
+           (_ :other))))  ; → ⟨#1 #1⟩
 
 ; Quasiquote and Unquote (Day 32 Part 2)
 (≔ x #42)

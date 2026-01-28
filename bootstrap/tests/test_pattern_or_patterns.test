@@ -1,0 +1,291 @@
+;; Test Suite: Or-Patterns for Pattern Matching (Day 60)
+;; Or-patterns match multiple alternatives (first match wins)
+;; Syntax: (∨ pattern₁ pattern₂ ...)
+;; Example: (∨ #0 #1 #2) matches 0, 1, or 2
+;;
+;; IMPORTANT: All alternatives must bind the same variables (or none)
+;; This is standard in OCaml and Rust
+
+;; ============================================================================
+;; Basic Or-Patterns with Literals
+;; ============================================================================
+
+;; Test 1: Or-pattern with 2 alternatives - match first
+;; Pattern: (∨ #0 #1)
+;; Value: #0
+;; Expected: Matches first alternative
+(⊨ :or-two-first
+    :zero
+    (∇ #0 (⌜ (((∨ #0 #1) :zero)
+              (_ :other)))))
+
+;; Test 2: Or-pattern with 2 alternatives - match second
+;; Pattern: (∨ #0 #1)
+;; Value: #1
+;; Expected: Matches second alternative
+(⊨ :or-two-second
+    :one
+    (∇ #1 (⌜ (((∨ #0 #1) :one)
+              (_ :other)))))
+
+;; Test 3: Or-pattern with 2 alternatives - no match
+;; Pattern: (∨ #0 #1)
+;; Value: #2
+;; Expected: Falls through to wildcard
+(⊨ :or-two-nomatch
+    :other
+    (∇ #2 (⌜ (((∨ #0 #1) :matched)
+              (_ :other)))))
+
+;; Test 4: Or-pattern with 3 alternatives
+;; Pattern: (∨ #0 #1 #2)
+;; Tests all three alternatives
+(⊨ :or-three-first
+    :small
+    (∇ #0 (⌜ (((∨ #0 #1 #2) :small)
+              (_ :other)))))
+
+(⊨ :or-three-second
+    :small
+    (∇ #1 (⌜ (((∨ #0 #1 #2) :small)
+              (_ :other)))))
+
+(⊨ :or-three-third
+    :small
+    (∇ #2 (⌜ (((∨ #0 #1 #2) :small)
+              (_ :other)))))
+
+;; Test 5: Or-pattern with 4+ alternatives
+;; Pattern: (∨ #0 #1 #2 #3 #4)
+(⊨ :or-many-alternatives
+    :digit
+    (∇ #3 (⌜ (((∨ #0 #1 #2 #3 #4) :digit)
+              (_ :other)))))
+
+;; ============================================================================
+;; Or-Patterns with Symbols and Booleans
+;; ============================================================================
+
+;; Test 6: Or-pattern with symbols
+;; Pattern: (∨ :red :green :blue)
+(⊨ :or-symbols
+    :primary
+    (∇ :blue (⌜ (((∨ :red :green :blue) :primary)
+                 (_ :other)))))
+
+;; Test 7: Or-pattern with booleans
+;; Pattern: (∨ #t #f)
+(⊨ :or-booleans-true
+    :boolean
+    (∇ #t (⌜ (((∨ #t #f) :boolean)
+             (_ :other)))))
+
+(⊨ :or-booleans-false
+    :boolean
+    (∇ #f (⌜ (((∨ #t #f) :boolean)
+             (_ :other)))))
+
+;; ============================================================================
+;; Or-Patterns with Pairs (Same Structure, Different Values)
+;; ============================================================================
+
+;; Test 8: Or-pattern with pair patterns (same structure)
+;; Pattern: (∨ (⟨⟩ #1 #2) (⟨⟩ #3 #4))
+;; Both alternatives bind no variables (all literals)
+(⊨ :or-pairs-first
+    :pair-one
+    (∇ (⟨⟩ #1 #2) (⌜ (((∨ (⟨⟩ #1 #2) (⟨⟩ #3 #4)) :pair-one)
+                       (_ :other)))))
+
+(⊨ :or-pairs-second
+    :pair-two
+    (∇ (⟨⟩ #3 #4) (⌜ (((∨ (⟨⟩ #1 #2) (⟨⟩ #3 #4)) :pair-two)
+                       (_ :other)))))
+
+;; Test 9: Or-pattern with pair patterns with variables
+;; Pattern: (∨ (⟨⟩ #1 x) (⟨⟩ #2 x))
+;; Both alternatives bind variable x
+(⊨ :or-pairs-variables
+    #10
+    (∇ (⟨⟩ #2 #10) (⌜ (((∨ (⟨⟩ #1 x) (⟨⟩ #2 x)) x)
+                        (_ :other)))))
+
+;; ============================================================================
+;; Or-Patterns with ADTs
+;; ============================================================================
+
+;; Define Option ADT for tests
+(⊚≔ :Option (⌜ (:None)) (⌜ (:Some :value)))
+
+;; Test 10: Or-pattern with ADT - both alternatives bind nothing
+;; Pattern: (∨ (⊚ :Option :None) (⊚ :Option :Some #42))
+(⊨ :or-adt-none
+    :matched
+    (∇ (⊚ :Option :None) (⌜ (((∨ (⊚ :Option :None) (⊚ :Option :Some #42)) :matched)
+                              (_ :other)))))
+
+(⊨ :or-adt-some-specific
+    :matched
+    (∇ (⊚ :Option :Some #42) (⌜ (((∨ (⊚ :Option :None) (⊚ :Option :Some #42)) :matched)
+                                  (_ :other)))))
+
+;; Define Result ADT for tests
+(⊚≔ :Result (⌜ (:Ok :value)) (⌜ (:Err :error)))
+
+;; Test 11: Or-pattern matching specific Result values
+;; Pattern: (∨ (⊚ :Result :Ok #0) (⊚ :Result :Ok #1))
+(⊨ :or-adt-specific-first
+    :zero-ok
+    (∇ (⊚ :Result :Ok #0) (⌜ (((∨ (⊚ :Result :Ok #0) (⊚ :Result :Ok #1)) :zero-ok)
+                               (_ :other)))))
+
+(⊨ :or-adt-specific-second
+    :one-ok
+    (∇ (⊚ :Result :Ok #1) (⌜ (((∨ (⊚ :Result :Ok #0) (⊚ :Result :Ok #1)) :one-ok)
+                               (_ :other)))))
+
+;; Test 12: Or-pattern with ADT - both alternatives bind same variable
+;; Pattern: (∨ (⊚ :Result :Ok v) (⊚ :Result :Err v))
+;; Both bind variable v (different field, but same name)
+(⊨ :or-adt-same-variable
+    #42
+    (∇ (⊚ :Result :Ok #42) (⌜ (((∨ (⊚ :Result :Ok v) (⊚ :Result :Err v)) v)
+                                (_ :other)))))
+
+(⊨ :or-adt-same-variable-err
+    :failed
+    (∇ (⊚ :Result :Err :failed) (⌜ (((∨ (⊚ :Result :Ok v) (⊚ :Result :Err v)) v)
+                                     (_ :other)))))
+
+;; ============================================================================
+;; Or-Patterns Combined with Guards
+;; ============================================================================
+
+;; Test 13: Or-pattern with guard condition - bind variable
+;; Pattern: ((∨ x x) | (> x #0))
+;; Both alternatives bind same variable x, guard checks it's positive
+;; Note: (∨ x x) is redundant but valid - demonstrates guard works
+(⊨ :or-guard-pass
+    #42
+    (∇ #42 (⌜ ((((∨ x x) | (> x #0)) x)
+               (_ :failed)))))
+
+;; Test 14: Or-pattern guard fails - negative value
+(⊨ :or-guard-fail
+    :failed
+    (∇ #-5 (⌜ ((((∨ x x) | (> x #0)) x)
+               (_ :failed)))))
+
+;; ============================================================================
+;; Or-Patterns Combined with As-Patterns
+;; ============================================================================
+
+;; Test 15: Or-pattern combined with as-pattern
+;; Pattern: whole@(∨ #0 #1 #2)
+;; Binds whole value and matches alternatives
+(⊨ :or-as-pattern
+    (⟨⟩ #1 #1)
+    (∇ #1 (⌜ (((whole @ (∨ #0 #1 #2)) (⟨⟩ whole whole))
+              (_ :other)))))
+
+;; Test 16: As-pattern inside or-pattern alternatives
+;; Pattern: (∨ (pair@(⟨⟩ #1 #2)) (pair@(⟨⟩ #3 #4)))
+;; Both alternatives bind same variable name 'pair'
+(⊨ :as-inside-or-first
+    (⟨⟩ #1 #2)
+    (∇ (⟨⟩ #1 #2) (⌜ (((∨ (pair @ (⟨⟩ #1 #2)) (pair @ (⟨⟩ #3 #4))) pair)
+                       (_ :other)))))
+
+(⊨ :as-inside-or-second
+    (⟨⟩ #3 #4)
+    (∇ (⟨⟩ #3 #4) (⌜ (((∨ (pair @ (⟨⟩ #1 #2)) (pair @ (⟨⟩ #3 #4))) pair)
+                       (_ :other)))))
+
+;; ============================================================================
+;; Nested Or-Patterns
+;; ============================================================================
+
+;; Test 17: Nested or-patterns
+;; Pattern: (∨ (∨ #0 #1) #2)
+;; Outer or has two alternatives: inner or and #2
+(⊨ :nested-or-inner-first
+    :matched
+    (∇ #0 (⌜ (((∨ (∨ #0 #1) #2) :matched)
+              (_ :other)))))
+
+(⊨ :nested-or-inner-second
+    :matched
+    (∇ #1 (⌜ (((∨ (∨ #0 #1) #2) :matched)
+              (_ :other)))))
+
+(⊨ :nested-or-outer
+    :matched
+    (∇ #2 (⌜ (((∨ (∨ #0 #1) #2) :matched)
+              (_ :other)))))
+
+;; Test 18: Or-pattern in pair component
+;; Pattern: (⟨⟩ (∨ #1 #2) (∨ #3 #4))
+(⊨ :or-in-pair
+    :matched
+    (∇ (⟨⟩ #1 #4) (⌜ (((⟨⟩ (∨ #1 #2) (∨ #3 #4)) :matched)
+                       (_ :other)))))
+
+;; ============================================================================
+;; Edge Cases
+;; ============================================================================
+
+;; Test 19: Or-pattern with wildcard alternatives
+;; Pattern: (∨ _ _)
+;; Both alternatives are wildcard (both bind nothing)
+(⊨ :or-wildcard
+    :matched
+    (∇ #999 (⌜ (((∨ _ _) :matched)
+               (_ :never)))))
+
+;; Test 20: Or-pattern with all same literal (redundant)
+;; Pattern: (∨ #42 #42)
+;; Both alternatives are same - tests first-match semantics
+(⊨ :or-redundant
+    :matched
+    (∇ #42 (⌜ (((∨ #42 #42) :matched)
+               (_ :other)))))
+
+;; Test 21: Or-pattern with nil
+;; Pattern: (∨ ∅ ∅)
+(⊨ :or-nil
+    :empty
+    (∇ ∅ (⌜ (((∨ ∅ ∅) :empty)
+             (_ :other)))))
+
+;; ============================================================================
+;; Real-World Examples
+;; ============================================================================
+
+;; Test 22: Arithmetic operator classification
+;; Classify operators into groups
+(⊨ :realworld-operator-arithmetic
+    :arithmetic
+    (∇ :mul (⌜ (((∨ :add :sub :mul :div) :arithmetic)
+                ((∨ :eq :ne :lt :gt) :comparison)
+                (_ :unknown)))))
+
+(⊨ :realworld-operator-comparison
+    :comparison
+    (∇ :lt (⌜ (((∨ :add :sub :mul :div) :arithmetic)
+               ((∨ :eq :ne :lt :gt) :comparison)
+               (_ :unknown)))))
+
+;; Test 23: State machine - match multiple valid states
+;; Pattern: (∨ :idle :running :paused)
+(⊨ :realworld-state-machine
+    :active
+    (∇ :running (⌜ (((∨ :idle :running :paused) :active)
+                    ((∨ :stopped :error) :inactive)
+                    (_ :unknown)))))
+
+;; Test 24: Multiple constant values
+;; Pattern: (∨ #100 #200 #300)
+(⊨ :realworld-constants
+    :valid
+    (∇ #200 (⌜ (((∨ #100 #200 #300) :valid)
+               (_ :invalid)))))
