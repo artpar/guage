@@ -306,29 +306,14 @@ void stack_print(EvalStack* stack) {
 bool handle_eval_return(StackFrame* frame, EvalStack* stack) {
     Cell* value = frame->value;
 
-    /* Debug */
-    static int return_call = 0;
-    return_call++;
-    if (return_call <= 20) {
-        fprintf(stderr, "DEBUG handle_eval_return #%d: value=%p, stack_empty=%d\n",
-                return_call, (void*)value, stack_is_empty(stack));
-        fflush(stderr);
-    }
-
     if (stack_is_empty(stack)) {
         /* No parent - this is the final result */
-        fprintf(stderr, "DEBUG: Setting final result\n");
-        fflush(stderr);
         stack_set_result(stack, value);
         return true;  /* Frame is done */
     }
 
     /* Get parent frame and store value */
     StackFrame* parent = stack_peek(stack);
-
-    fprintf(stderr, "DEBUG: Storing value in parent frame (state=%s)\n",
-            frame_state_name(parent->state));
-    fflush(stderr);
 
     /* Store value in parent's value field */
     if (parent->value) {
@@ -495,15 +480,6 @@ bool handle_eval_apply(StackFrame* frame, EvalStack* stack) {
     Cell* env = frame->env;
     Cell* value = frame->value;
 
-    /* Debug */
-    static int apply_call = 0;
-    apply_call++;
-    if (apply_call <= 20) {
-        fprintf(stderr, "DEBUG handle_eval_apply #%d: func=%p, value=%p\n",
-                apply_call, (void*)func, (void*)value);
-        fflush(stderr);
-    }
-
     /* Step 1: Function not evaluated yet */
     if (!func && !value) {
         /* expr contains full expression: (func-expr arg1 arg2 ...) */
@@ -598,35 +574,68 @@ bool handle_eval_apply(StackFrame* frame, EvalStack* stack) {
 /*
  * handle_eval_args - Evaluate argument list left-to-right
  *
- * Process arguments one at a time, accumulating evaluated results.
+ * Multi-step state machine:
+ * 1. Value set? Cons it onto accumulated and continue with rest
+ * 2. Args empty? Reverse accumulated and return
+ * 3. Otherwise: Eval first arg, wait for result
  */
 bool handle_eval_args(StackFrame* frame, EvalStack* stack) {
     Cell* args = frame->expr;
     Cell* accumulated = frame->accumulated_args;
+    Cell* value = frame->value;
     Cell* env = frame->env;
 
+    /* Step 1: Value received - cons onto accumulated and move to next arg */
+    if (value) {
+        /* Cons evaluated arg onto accumulated list (building in reverse) */
+        Cell* new_accumulated = cell_cons(value, accumulated);
+        cell_retain(new_accumulated);
+
+        /* Update frame state */
+        if (frame->accumulated_args) {
+            cell_release(frame->accumulated_args);
+        }
+        frame->accumulated_args = new_accumulated;
+        accumulated = new_accumulated;
+
+        /* Clear value */
+        cell_release(frame->value);
+        frame->value = NULL;
+
+        /* Move to next argument */
+        Cell* rest = cell_cdr(args);
+        if (frame->expr) cell_release(frame->expr);
+        frame->expr = rest;
+        if (rest) cell_retain(rest);
+        args = rest;
+
+        /* Fall through to check if done or continue */
+    }
+
+    /* Step 2: Check if all arguments processed */
     if (cell_is_nil(args)) {
-        /* All arguments evaluated - return accumulated list */
-        StackFrame* ret = frame_create_return(accumulated);
+        /* All arguments evaluated - reverse accumulated list and return */
+        /* Reverse the list (we built it backwards) */
+        Cell* reversed = cell_nil();
+        Cell* current = accumulated;
+        while (cell_is_pair(current)) {
+            Cell* head = cell_car(current);
+            reversed = cell_cons(head, reversed);
+            current = cell_cdr(current);
+        }
+
+        StackFrame* ret = frame_create_return(reversed);
         stack_push(stack, ret);
         return true;  /* Frame is done */
     }
 
-    /* Get first argument */
+    /* Step 3: Evaluate next argument */
+
     Cell* arg = cell_car(args);
-    Cell* rest = cell_cdr(args);
-
-    /* Push frame to continue with rest after this arg evaluates */
-    StackFrame* cont = frame_create_args(rest, env, frame->arg_index + 1);
-    cont->accumulated_args = accumulated;
-    if (accumulated) cell_retain(accumulated);
-    stack_push(stack, cont);
-
-    /* Evaluate current argument */
     StackFrame* eval = frame_create_eval(arg, env);
     stack_push(stack, eval);
 
-    return true;  /* Frame is done (delegated to continuation) */
+    return false;  /* Frame needs continuation (wait for arg evaluation) */
 }
 
 /*
@@ -755,7 +764,6 @@ Cell* trampoline_eval(EvalContext* ctx, Cell* expr) {
  *   stack - Evaluation stack with initial frame(s)
  */
 void trampoline_loop(EvalStack* stack) {
-    int iteration = 0;
     while (!stack_is_empty(stack)) {
         /* Pop frame to process */
         StackFrame* frame = stack_pop(stack);
@@ -764,13 +772,6 @@ void trampoline_loop(EvalStack* stack) {
             /* Should never happen, but guard against it */
             fprintf(stderr, "Error: Popped NULL frame from non-empty stack\n");
             break;
-        }
-
-        /* Debug: Print frame state every 100 iterations */
-        iteration++;
-        if (iteration % 100 == 0) {
-            fprintf(stderr, "DEBUG: iteration %d, state=%s, stack_size=%d\n",
-                    iteration, frame_state_name(frame->state), stack_size(stack));
         }
 
         /* Remember stack size before handler */
