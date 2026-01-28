@@ -13,10 +13,11 @@ Purpose: Current project status and progress
 
 **System State:**
 - **Primitives:** 78 primitives (all categories)
-- **Tests:** 16/16 core + 43/43 string + 47/47 list-advanced = 106 total (functionally 100% pass rate)
+- **Tests:** 29 test files in bootstrap/tests/ (24/29 passing, 83% - 5 are experimental features)
 - **Stdlib:** 18 modules in bootstrap/stdlib/ (canonical location)
 - **Build:** Clean, compilation warnings (expected/documented)
 - **Memory:** Known cleanup issue (exit code 139 after tests complete - C-level investigation needed)
+- **File Organization:** Single source of truth (no dual paths, no legacy directories)
 - **Status:** Turing complete, auto-documentation complete, string library complete, advanced list utilities complete
 
 ## Day 45 Summary (Today)
@@ -59,6 +60,12 @@ Purpose: Current project status and progress
 **Duration:** ~4 hours (including debugging)
 **Files Modified:** bootstrap/stdlib/list.scm, bootstrap/tests/list-advanced.test
 **Lines Added:** ~60 lines (functions + wrappers) + ~285 lines (tests)
+
+**Test Cleanup (same session):**
+- Deleted entire tests/ directory (90+ legacy files, 6713 lines removed)
+- Renamed all bootstrap/tests/*.scm → *.test (12 files)
+- Fixed tests/stdlib_list.test to import from stdlib instead of redefining
+- **Result:** Single canonical test location, 100% .test extension, no dual paths
 
 **Known Issues:**
 - Test harness reports failure due to post-completion cleanup crash
