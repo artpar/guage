@@ -841,7 +841,7 @@ const char** extract_param_names(Cell* params) {
 }
 
 /* Forward declaration */
-static Cell* eval_internal(EvalContext* ctx, Cell* env, Cell* expr);
+Cell* eval_internal(EvalContext* ctx, Cell* env, Cell* expr);
 
 /* Evaluate quasiquote expression (supports unquote)
  * Walks tree recursively, evaluating unquoted parts */
@@ -905,45 +905,7 @@ static Cell* eval_list(EvalContext* ctx, Cell* env, Cell* expr) {
 }
 
 /* Apply function to arguments */
-static Cell* apply(EvalContext* ctx, Cell* fn, Cell* args) {
-    if (fn->type == CELL_BUILTIN) {
-        /* Call builtin primitive */
-        Cell* (*builtin_fn)(Cell*) = (Cell* (*)(Cell*))fn->data.atom.builtin;
-        return builtin_fn(args);
-    }
-
-    if (fn->type == CELL_LAMBDA) {
-        /* Extract lambda components */
-        Cell* closure_env = fn->data.lambda.env;
-        Cell* body = fn->data.lambda.body;
-        int arity = fn->data.lambda.arity;
-
-        /* Check argument count */
-        int arg_count = list_length(args);
-        if (arg_count != arity) {
-            Cell* expected = cell_number(arity);
-            Cell* actual = cell_number(arg_count);
-            Cell* data = cell_cons(expected, cell_cons(actual, cell_nil()));
-            cell_release(expected);
-            cell_release(actual);
-            return cell_error("arity-mismatch", data);
-        }
-
-        /* Create new environment: prepend args to closure env */
-        Cell* new_env = extend_env(closure_env, args);
-
-        /* Evaluate body in new environment */
-        Cell* result = eval_internal(ctx, new_env, body);
-
-        /* Cleanup */
-        cell_release(new_env);
-
-        return result;
-    }
-
-    cell_retain(fn);
-    return cell_error("not-a-function", fn);
-}
+/* apply() function removed - inlined into eval_internal for TCO */
 
 /* Check if environment is indexed (not named/assoc) */
 bool env_is_indexed(Cell* env) {
@@ -972,8 +934,13 @@ bool env_is_indexed(Cell* env) {
     return true;
 }
 
-/* Evaluate expression */
-static Cell* eval_internal(EvalContext* ctx, Cell* env, Cell* expr) {
+/* Evaluate expression with proper tail call optimization */
+Cell* eval_internal(EvalContext* ctx, Cell* env, Cell* expr) {
+    Cell* owned_env = NULL;   /* Track owned environments for cleanup */
+    Cell* owned_expr = NULL;  /* Track owned expressions for cleanup */
+
+tail_call:  /* TCO: loop back here instead of recursive call */
+    /* Note: owned resources released right before setting new ones */
     /* Macro expansion pass - expand macros before evaluation */
     if (cell_is_pair(expr)) {
         Cell* first = cell_car(expr);
@@ -983,10 +950,15 @@ static Cell* eval_internal(EvalContext* ctx, Cell* env, Cell* expr) {
             if (cell_is_error(expanded)) {
                 return expanded;
             }
-            /* Evaluate the expanded code */
-            Cell* result = eval_internal(ctx, env, expanded);
-            cell_release(expanded);
-            return result;
+            /* Evaluate the expanded code - TAIL CALL */
+            /* Release previous owned_expr before replacing */
+            if (owned_expr) {
+                cell_release(owned_expr);
+            }
+
+            expr = expanded;
+            owned_expr = expanded;  /* Track for cleanup */
+            goto tail_call;
         }
     }
 
@@ -1182,16 +1154,17 @@ static Cell* eval_internal(EvalContext* ctx, Cell* env, Cell* expr) {
                 Cell* else_expr = cell_car(cell_cdr(cell_cdr(rest)));
 
                 Cell* cond_val = eval_internal(ctx, env, cond_expr);
-                Cell* result;
 
+                /* TCO: Branch evaluation is in tail position */
                 if (cell_is_bool(cond_val) && cell_get_bool(cond_val)) {
-                    result = eval_internal(ctx, env, then_expr);
+                    cell_release(cond_val);
+                    expr = then_expr;
+                    goto tail_call;
                 } else {
-                    result = eval_internal(ctx, env, else_expr);
+                    cell_release(cond_val);
+                    expr = else_expr;
+                    goto tail_call;
                 }
-
-                cell_release(cond_val);
-                return result;
             }
 
             /* ∇ - pattern match (special form) */
@@ -1238,11 +1211,65 @@ static Cell* eval_internal(EvalContext* ctx, Cell* env, Cell* expr) {
 
         Cell* args = eval_list(ctx, env, rest);
 
-        Cell* result = apply(ctx, fn, args);
+        /* Inline apply() for TCO */
+        if (fn->type == CELL_BUILTIN) {
+            /* Call builtin primitive - not a tail call */
+            Cell* (*builtin_fn)(Cell*) = (Cell* (*)(Cell*))fn->data.atom.builtin;
+            Cell* result = builtin_fn(args);
+            cell_release(fn);
+            cell_release(args);
+            return result;
+        }
 
-        cell_release(fn);
+        if (fn->type == CELL_LAMBDA) {
+            /* Extract lambda components */
+            Cell* closure_env = fn->data.lambda.env;
+            Cell* body = fn->data.lambda.body;
+            int arity = fn->data.lambda.arity;
+
+            /* Check argument count */
+            int arg_count = list_length(args);
+            if (arg_count != arity) {
+                Cell* expected = cell_number(arity);
+                Cell* actual = cell_number(arg_count);
+                Cell* data = cell_cons(expected, cell_cons(actual, cell_nil()));
+                cell_release(expected);
+                cell_release(actual);
+                cell_release(fn);
+                cell_release(args);
+                return cell_error("arity-mismatch", data);
+            }
+
+            /* Retain body before releasing fn (body points into fn) */
+            cell_retain(body);
+
+            /* Create new environment: prepend args to closure env */
+            Cell* new_env = extend_env(closure_env, args);
+
+            /* TCO: Lambda body evaluation is in tail position */
+            cell_release(fn);
+            cell_release(args);
+
+            /* Release previous owned_env/expr before replacing */
+            if (owned_env) {
+                cell_release(owned_env);
+            }
+            if (owned_expr) {
+                cell_release(owned_expr);
+            }
+
+            env = new_env;
+            owned_env = new_env;  /* Track for cleanup */
+            expr = body;
+            owned_expr = body;     /* Track for cleanup */
+            goto tail_call;
+        }
+
+        /* Not a function */
         cell_release(args);
-
+        cell_retain(fn);
+        Cell* result = cell_error("not-a-function", fn);
+        cell_release(fn);
         return result;
     }
 

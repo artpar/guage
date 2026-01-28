@@ -386,4 +386,4 @@ With this context, I'm ready to:
 4. Follow governance rules
 5. Leave system in clean, documented state
 
-**What feature should we work on next?**
+**What should we work on next?**

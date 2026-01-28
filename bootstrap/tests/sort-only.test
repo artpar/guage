@@ -1,5 +1,5 @@
 ; Just sort tests
-(⋘ "stdlib/list.scm")
+(⋘ "bootstrap/stdlib/list.scm")
 
 (⊨ :sort-ascending
    (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 (⟨⟩ #4 ∅))))

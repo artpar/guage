@@ -3,8 +3,8 @@
 ; ═══════════════════════════════════════════════════════════════
 
 ; Load dependencies
-(⋘ "stdlib/macros.scm")
-(⋘ "stdlib/parser.scm")
+(⋘ "bootstrap/stdlib/macros.scm")
+(⋘ "bootstrap/stdlib/parser.scm")
 
 ; ───────────────────────────────────────────────────────────────
 ; Test Tokenization

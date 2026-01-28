@@ -1,5 +1,5 @@
 ; Minimal crash reproduction - exactly 47 dummy tests then the problematic one
-(⋘ "stdlib/list.scm")
+(⋘ "bootstrap/stdlib/list.scm")
 
 ; 47 dummy tests (lightweight)
 (⊨ :t1 #1 #1)

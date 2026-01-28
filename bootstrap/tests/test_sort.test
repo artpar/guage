@@ -3,7 +3,7 @@
 ; ═══════════════════════════════════════════════════════════════
 
 ; Load sorting library
-(⋘ "stdlib/sort.scm")
+(⋘ "bootstrap/stdlib/sort.scm")
 
 ; ────────────────────────────────────────────────────────────────
 ; HELPER: List equality
@@ -280,26 +280,26 @@
 ; Test partition with all less than pivot
 (⊨ :partition-all-less
    #t
-   (≔ result (((⊙partition ⊙≤) #10) (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅))))
-      (? ((list-equal? (◁ result)) (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅))))
-         ((list-equal? (◁ (▷ result))) empty-list)
-         #f)))
+   ((λ (result)
+      (∧ ((list-equal? (◁ result)) (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅))))
+          ((list-equal? (▷ result)) empty-list)))
+    (((⊙partition ⊙≤) #10) (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅))))))
 
 ; Test partition with all greater than pivot
 (⊨ :partition-all-greater
    #t
-   (≔ result (((⊙partition ⊙≤) #0) (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅))))
-      (? ((list-equal? (◁ result)) empty-list)
-         ((list-equal? (◁ (▷ result))) (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅))))
-         #f)))
+   ((λ (result)
+      (∧ ((list-equal? (◁ result)) empty-list)
+          ((list-equal? (▷ result)) (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅))))))
+    (((⊙partition ⊙≤) #0) (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅))))))
 
 ; Test partition with mixed elements
 (⊨ :partition-mixed
    #t
-   (≔ result (((⊙partition ⊙≤) #3) (⟨⟩ #1 (⟨⟩ #4 (⟨⟩ #2 (⟨⟩ #5 ∅)))))
-      (? ((list-equal? (◁ result)) (⟨⟩ #2 (⟨⟩ #1 ∅)))
-         ((list-equal? (◁ (▷ result))) (⟨⟩ #5 (⟨⟩ #4 ∅)))
-         #f)))
+   ((λ (result)
+      (∧ ((list-equal? (◁ result)) (⟨⟩ #1 (⟨⟩ #2 ∅)))
+          ((list-equal? (▷ result)) (⟨⟩ #4 (⟨⟩ #5 ∅)))))
+    (((⊙partition ⊙≤) #3) (⟨⟩ #1 (⟨⟩ #4 (⟨⟩ #2 (⟨⟩ #5 ∅)))))))
 
 ; ────────────────────────────────────────────────────────────────
 ; VERIFICATION: All algorithms produce same result

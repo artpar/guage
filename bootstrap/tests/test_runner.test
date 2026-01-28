@@ -204,22 +204,21 @@
 
 ; Generate coverage report by category
 (≔ coverage-by-category (λ ()
-  ⟨
-    ⟨:category :arithmetic :count (length (flatten (arithmetic-tests)))⟩
-    ⟨:category :comparison :count (length (flatten (comparison-tests)))⟩
-    ⟨:category :logic :count (length (flatten (logic-tests)))⟩
-    ⟨:category :type-predicates :count (length (flatten (type-predicate-tests)))⟩
-    ⟨:category :lists :count (length (flatten (list-tests)))⟩
-    ⟨:category :metaprogramming :count (length (flatten (meta-tests)))⟩
-    ⟨:category :debug :count (length (flatten (debug-tests)))⟩
-    ⟨:category :introspection :count (length (flatten (introspection-tests)))⟩
-    ⟨:category :testing :count (length (flatten (testing-tests)))⟩
-    ⟨:category :documentation :count (length (flatten (doc-tests)))⟩
-    ⟨:category :cfg-dfg :count (length (flatten (cfg-dfg-tests)))⟩
-    ⟨:category :structures-leaf :count (length (flatten (structure-leaf-tests)))⟩
-    ⟨:category :structures-node :count (length (flatten (structure-node-tests)))⟩
-    ⟨:category :graphs :count (length (flatten (graph-tests)))⟩
-  ⟩))
+  (⟨⟩ ⟨:category :arithmetic :count (length (flatten (arithmetic-tests)))⟩
+  (⟨⟩ ⟨:category :comparison :count (length (flatten (comparison-tests)))⟩
+  (⟨⟩ ⟨:category :logic :count (length (flatten (logic-tests)))⟩
+  (⟨⟩ ⟨:category :type-predicates :count (length (flatten (type-predicate-tests)))⟩
+  (⟨⟩ ⟨:category :lists :count (length (flatten (list-tests)))⟩
+  (⟨⟩ ⟨:category :metaprogramming :count (length (flatten (meta-tests)))⟩
+  (⟨⟩ ⟨:category :debug :count (length (flatten (debug-tests)))⟩
+  (⟨⟩ ⟨:category :introspection :count (length (flatten (introspection-tests)))⟩
+  (⟨⟩ ⟨:category :testing :count (length (flatten (testing-tests)))⟩
+  (⟨⟩ ⟨:category :documentation :count (length (flatten (doc-tests)))⟩
+  (⟨⟩ ⟨:category :cfg-dfg :count (length (flatten (cfg-dfg-tests)))⟩
+  (⟨⟩ ⟨:category :structures-leaf :count (length (flatten (structure-leaf-tests)))⟩
+  (⟨⟩ ⟨:category :structures-node :count (length (flatten (structure-node-tests)))⟩
+  (⟨⟩ ⟨:category :graphs :count (length (flatten (graph-tests)))⟩
+  ∅))))))))))))))
 
 ; ============ Execute Test Run ============
 

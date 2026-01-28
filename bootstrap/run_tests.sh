@@ -2,6 +2,7 @@
 
 # Guage Test Harness
 # Runs all .test files and reports results
+# ALWAYS run from project root: /path/to/guage/
 
 set -e
 
@@ -14,26 +15,41 @@ PASSED=0
 FAILED=0
 TOTAL=0
 
+# Verify we have the executable (must be at project root)
+if [ ! -f "bootstrap/guage" ]; then
+    echo "${RED}Error: bootstrap/guage not found${NC}"
+    echo "You must run this script from the project root directory"
+    echo "Current directory: $(pwd)"
+    exit 1
+fi
+
+GUAGE="bootstrap/guage"
+TESTS_DIR="bootstrap/tests"
+
 echo "═══════════════════════════════════════"
 echo "  Guage Test Harness"
 echo "═══════════════════════════════════════"
+echo "  Root: $(pwd)"
+echo "  Executable: $GUAGE"
+echo "  Tests: $TESTS_DIR"
+echo "═══════════════════════════════════════"
 echo
 
-# Find all .test files
-TEST_FILES=$(find . -name "*.test" -type f)
+# Find all .test files (relative to project root)
+TEST_FILES=$(find "$TESTS_DIR" -name "*.test" -type f 2>/dev/null | sort)
 
 if [ -z "$TEST_FILES" ]; then
-    echo "${YELLOW}No .test files found${NC}"
+    echo "${YELLOW}No .test files found in $TESTS_DIR${NC}"
     exit 0
 fi
 
-# Run each test file
+# Run each test file (all paths relative to project root)
 for test_file in $TEST_FILES; do
     echo "Running: $test_file"
     TOTAL=$((TOTAL + 1))
 
-    # Run test with timeout
-    if timeout 5 ./guage < "$test_file" > /tmp/guage_test_$$.out 2>&1; then
+    # Run test with timeout (no cd, everything from project root)
+    if timeout 5 "$GUAGE" < "$test_file" > /tmp/guage_test_$$.out 2>&1; then
         # Check for failures in output
         if grep -q "✗ FAIL" /tmp/guage_test_$$.out || grep -q "⚠:test-failed" /tmp/guage_test_$$.out; then
             echo "${RED}  ✗ FAILED${NC}"

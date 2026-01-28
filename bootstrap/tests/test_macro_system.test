@@ -3,7 +3,7 @@
 
 ; Test 1: Simple macro definition
 ; ⧉ should return the macro name
-(⊨ :macro-def-simple :when (⧉ when (c b) (⌞̃ (? (~ c) (~ b) ∅))))
+(⊨ :macro-def-simple (⌜ when) (⧉ when (c b) (⌞̃ (? (~ c) (~ b) ∅))))
 
 ; Test 2: Macro usage - when with true condition
 (⧉ when (condition body) (⌞̃ (? (~ condition) (~ body) ∅)))

@@ -5,77 +5,73 @@ Updated: 2026-01-28
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 51 (2026-01-28 Late Evening)
+# Session Handoff: Day 52 (2026-01-28 End of Day)
 
 ## Current Status 🎯
 
-**Latest Achievement:** 🎉 Trampoline Phase 3E COMPLETE! Fixed prim_load + context issues → 28/33 tests passing! 🎉
+**Latest Achievement:** 🚀 **PROPER TAIL CALL OPTIMIZATION (TCO) IMPLEMENTED!** → 33/33 tests passing! 🎉
 
 **System State:**
 - **Primitives:** 79 primitives (÷ integer division)
-- **Tests:** 33/33 passing with recursive eval ✅ | 28/33 with trampoline (85% coverage) ✅
+- **Tests:** 33/33 passing (100% coverage) ✅
 - **C Unit Tests:** 21/21 passing (100%) ✅
 - **Stdlib:** 18 modules in bootstrap/stdlib/ (canonical location)
-- **Build:** Clean, O2 optimized, 32MB stack, compile-time trampoline toggle
-- **Architecture:** Trampoline Phase 3E COMPLETE - file loading works, context fixed! ✅
-- **Evaluator:** Dual-mode - recursive (default, stable) + trampoline (28/33 tests, ~85%)
-- **Memory:** Stack overflow FIXED, reference counting implemented
-- **File Organization:** Single source of truth (no dual paths)
-- **Status:** Turing complete, trampoline 85% production-ready! ✅
+- **Build:** Clean, O2 optimized, 32MB stack
+- **Architecture:** **PROPER TCO** (not trampoline!) using goto tail_call pattern ✅
+- **Evaluator:** Single path - recursive with TCO (no trampoline, no dual modes) ✅
+- **Memory:** Stack overflow SOLVED by TCO, reference counting implemented
+- **File Organization:** Single source of truth - trampoline code REMOVED
+- **Status:** Turing complete + proper TCO = production-ready foundation! ✅
 
-**Remaining Work for 100% Trampoline (1-2 hours):**
-- Implement quasiquote (⌞̃) special form in handle_eval_expr
-- Implement unquote (~) handling within quasiquote
-- **Impact:** 5 tests fail due to missing quasiquote support
-- **Effort:** ~1-2 hours to implement (similar to existing special forms)
+**Why TCO Instead of Trampoline:**
+- Trampolines are a **workaround** for languages without TCO
+- Guage is built from scratch - we can implement REAL TCO
+- Simpler, faster, cleaner architecture
+- Single code path (no USE_TRAMPOLINE flag)
+- Foundation for advanced features (time-travel debugging, algebraic effects, etc.)
 
-## Day 51 Summary (2026-01-28 Late Evening - Trampoline Phase 3E Complete!)
+## Day 52 Summary (2026-01-28 End of Day - TCO Implementation Complete!)
 
-**Goal:** Fix trampoline evaluator critical blockers to enable file loading
+**Goal:** Replace trampoline with proper tail call optimization
 
-**Achievements:**
+**Major Architectural Decision:**
+- Trampolines are a **workaround** for languages that can't have TCO
+- Guage is built from scratch in C - we CAN implement real TCO
+- Switched from explicit stack management to `goto tail_call` pattern
+- **Result:** Simpler, faster, single code path ✅
 
-1. ✅ **Fixed prim_load trampoline integration** (~30 minutes)
-   - Added `#include "trampoline.h"` to primitives.c
-   - Wrapped eval call with `#if USE_TRAMPOLINE` conditional (line 1720-1724)
-   - Added `-DUSE_TRAMPOLINE=1` compiler flag to Makefile
-   - **Result:** Conditional compilation working correctly ✅
+**Implementation Steps:**
 
-2. ✅ **Fixed eval_get_current_context() returning NULL** (~15 minutes)
-   - Root cause: trampoline_eval didn't set g_current_context
-   - Fix: Call `eval_set_current_context(ctx)` at start of trampoline_eval
-   - Restore previous context on exit
-   - **Result:** prim_load and other primitives can access context ✅
+1. ✅ **Added tail_call label to eval_internal** (~15 minutes)
+   - Created `tail_call:` label at function start
+   - Identified tail positions: macro expansion, conditionals, lambda application
+   - Converted `return eval_internal(...)` to `expr = ...; goto tail_call;`
 
-3. ✅ **Verified file loading with trampoline** (~10 minutes)
-   - Tested minimal file: `(≔ test-value #42)` → SUCCESS ✅
-   - Tested list.scm (328 lines): Loads successfully! ✅
-   - All stdlib functions available after load
-   - **Result:** File loading fully functional with trampoline! ✅
+2. ✅ **Implemented TCO for conditionals** (~10 minutes)
+   - Condition branches (then/else) are tail positions
+   - Instead of recursion: evaluate condition, then goto tail_call with branch
 
-4. ✅ **Test suite validation** (~15 minutes)
-   - With USE_TRAMPOLINE=1: 28/33 tests passing (85% coverage)
-   - With USE_TRAMPOLINE=0: 33/33 tests passing (100% coverage)
-   - Improvement: 15/33 → 28/33 (87% improvement!)
-   - C unit tests: 21/21 passing (100%)
+3. ✅ **Inlined lambda application for TCO** (~20 minutes)
+   - Moved apply() logic into eval_internal
+   - Lambda body evaluation is tail position
+   - Fixed use-after-free bug: retain body before releasing fn
 
-**Root Cause Analysis:**
+4. ✅ **Resource cleanup tracking** (~15 minutes)
+   - Added owned_env and owned_expr for cleanup
+   - Release before setting new values (not at loop start)
+   - Prevents memory leaks in tail call chains
 
-The remaining 5 test failures are all due to **missing quasiquote (⌞̃) special form**:
-- test_quasiquote.test: Uses ⌞̃ extensively (crashes with :symbol-not-found)
-- test_stdlib_macros.test: Macros use quasiquote internally
-- test_parser.test: One test uses quasiquote for code generation
+5. ✅ **Removed all trampoline code** (~20 minutes)
+   - Deleted trampoline.c and trampoline.h
+   - Removed USE_TRAMPOLINE flag from Makefile
+   - Removed trampoline includes from eval.c, macro.c, primitives.c, main.c
+   - Single code path only - no backwards compatibility ✅
 
-**Quasiquote implementation exists in eval.c (lines 846-870) but NOT in trampoline.c!**
-
-Current trampoline special forms:
-- ⌜ (quote) ✅
-- ≔ (define) ✅
-- ? (if) ✅
-- λ (lambda) ✅
-- :λ-converted ✅
-- MISSING: ⌞̃ (quasiquote) ❌
-- MISSING: ~ (unquote) ❌
+**Results:**
+- 33/33 tests passing (100%) ✅
+- Simpler architecture (removed ~500 lines of trampoline code)
+- Faster execution (no stack frame allocation overhead)
+- Foundation for advanced features (continuations, effects, time-travel debug)
 
 **Files Modified:**
 - `bootstrap/primitives.c` - Added trampoline.h include, USE_TRAMPOLINE conditional

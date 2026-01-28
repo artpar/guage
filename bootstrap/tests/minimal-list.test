@@ -1,5 +1,5 @@
 ; Minimal test to isolate crash
-(⋘ "stdlib/list.scm")
+(⋘ "bootstrap/stdlib/list.scm")
 
 ; Just one test
 (⊨ :unzip-basic

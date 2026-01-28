@@ -128,15 +128,14 @@ Cell* macro_apply(MacroEntry* macro, Cell* args, EvalContext* ctx) {
         return bindings;
     }
 
-    // Save current environment and temporarily replace it with macro environment
+    // Evaluate macro body in the macro environment
+    // The body is a quasiquoted template, so evaluating it produces expanded code
+    // Save and restore environment for macro parameter binding
     Cell* old_env = ctx->env;
     ctx->env = bindings;
 
-    // Evaluate macro body in the macro environment
-    // The body is a quasiquoted template, so evaluating it produces expanded code
     Cell* expanded = eval(ctx, macro->body);
 
-    // Restore original environment
     ctx->env = old_env;
 
     // Cleanup

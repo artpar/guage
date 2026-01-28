@@ -281,9 +281,9 @@
      l2
      (? (∅? l2)
         l1
-        (? ((cmp (◁ l1)) (◁ l2))
-           (⟨⟩ (◁ l1) (((⊴-merge cmp) (▷ l1)) l2))
-           (⟨⟩ (◁ l2) (((⊴-merge cmp) l1) (▷ l2))))))))))
+        (? ((cmp (◁ l2)) (◁ l1))
+           (⟨⟩ (◁ l2) (((⊴-merge cmp) l1) (▷ l2)))
+           (⟨⟩ (◁ l1) (((⊴-merge cmp) (▷ l1)) l2)))))))))
 
 ; Helper for merge sort
 (≔ ⊴-sort (λ (cmp) (λ (lst)

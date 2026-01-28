@@ -6,21 +6,8 @@
 #include "primitives.h"
 #include "eval.h"
 #include "module.h"
-#include "trampoline.h"
 
-/* Compile-time flag to enable trampoline evaluator
- * Current status: 28/33 tests passing (85% coverage)
- * Completed fixes:
- *   - prim_load now uses trampoline_eval when USE_TRAMPOLINE=1 ✅
- *   - eval_set_current_context() called in trampoline_eval ✅
- *   - Macros, lambdas, closures all working ✅
- * Remaining work (5% - ~1-2 hours):
- *   - Implement quasiquote (⌞̃) special form in handle_eval_expr
- *   - Implement unquote (~) handling in quasiquote
- * To enable: Add -DUSE_TRAMPOLINE=1 to Makefile CFLAGS */
-#ifndef USE_TRAMPOLINE
-#define USE_TRAMPOLINE 0  /* 0 = recursive (stable), 1 = trampoline (28/33 tests) */
-#endif
+/* Evaluator uses proper tail call optimization (TCO) - no trampoline needed */
 
 #define MAX_INPUT 4096
 

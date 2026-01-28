@@ -7,9 +7,9 @@
 ; ═══════════════════════════════════════════════════════════════
 
 ; Load required modules
-(⋘ "stdlib/list.scm")
-(⋘ "stdlib/macros.scm")
-(⋘ "stdlib/comprehensions.scm")
+(⋘ "bootstrap/stdlib/list.scm")
+(⋘ "bootstrap/stdlib/macros.scm")
+(⋘ "bootstrap/stdlib/comprehensions.scm")
 
 ; ═══════════════════════════════════════════════════════════════
 ; Phase 1: Range Generation Tests

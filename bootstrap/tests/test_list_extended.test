@@ -5,7 +5,7 @@
 ; ═══════════════════════════════════════════════════════════════
 
 ; Load the extended list operations
-(⋘ "stdlib/list_extended.scm")
+(⋘ "bootstrap/stdlib/list_extended.scm")
 
 ; ───────────────────────────────────────────────────────────────
 ; ZIP OPERATIONS (6 tests)
