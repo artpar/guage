@@ -2,6 +2,7 @@
 #include "eval.h"  /* For EvalContext, eval_lookup, eval_lookup_env */
 #include "debruijn.h"  /* For lambda De Bruijn conversion */
 #include "module.h"  /* For module_get_current_loading */
+#include "macro.h"  /* For macro expansion */
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -211,6 +212,18 @@ StackFrame* frame_create_quote(Cell* expr) {
     return frame;
 }
 
+StackFrame* frame_create_macro(Cell* expr, Cell* env) {
+    StackFrame* frame = frame_create_base(EVAL_MACRO);
+    frame->expr = expr;
+    frame->env = env;
+
+    /* Retain references */
+    if (expr) cell_retain(expr);
+    if (env) cell_retain(env);
+
+    return frame;
+}
+
 void frame_destroy(StackFrame* frame) {
     if (!frame) return;
 
@@ -238,6 +251,7 @@ const char* frame_state_name(FrameState state) {
         case EVAL_IF:     return "EVAL_IF";
         case EVAL_DEFINE: return "EVAL_DEFINE";
         case EVAL_QUOTE:  return "EVAL_QUOTE";
+        case EVAL_MACRO:  return "EVAL_MACRO";
         default:          return "UNKNOWN";
     }
 }
@@ -343,6 +357,46 @@ bool handle_eval_quote(StackFrame* frame, EvalStack* stack) {
 }
 
 /*
+ * handle_eval_macro - Expand macro call and evaluate result
+ *
+ * Expands a macro call using macro_expand, then evaluates the expanded code.
+ */
+bool handle_eval_macro(StackFrame* frame, EvalStack* stack) {
+    Cell* expr = frame->expr;
+    Cell* env = frame->env;
+
+    if (!stack->ctx) {
+        /* Need context for macro expansion */
+        Cell* err = cell_error("no-context", cell_nil());
+        StackFrame* ret = frame_create_return(err);
+        stack_push(stack, ret);
+        return true;  /* Frame is done */
+    }
+
+    EvalContext* ctx = (EvalContext*)stack->ctx;
+
+    /* Expand macro */
+    Cell* expanded = macro_expand(expr, ctx);
+
+    if (!expanded) {
+        /* Expansion failed - return error */
+        Cell* err = cell_error("macro-expansion-failed", expr);
+        StackFrame* ret = frame_create_return(err);
+        stack_push(stack, ret);
+        return true;  /* Frame is done */
+    }
+
+    /* Evaluate expanded expression */
+    StackFrame* eval = frame_create_eval(expanded, env);
+    stack_push(stack, eval);
+
+    /* Cleanup */
+    cell_release(expanded);
+
+    return true;  /* Frame is done */
+}
+
+/*
  * handle_eval_expr - Evaluate expressions (atoms, symbols, pairs)
  *
  * This is the main dispatcher that handles different expression types:
@@ -431,9 +485,37 @@ bool handle_eval_expr(StackFrame* frame, EvalStack* stack) {
         Cell* first = cell_car(expr);
         Cell* rest = cell_cdr(expr);
 
+        /* Check for macro calls first (before special forms) */
+        if (macro_is_macro_call(expr)) {
+            StackFrame* macro_frame = frame_create_macro(expr, env);
+            stack_push(stack, macro_frame);
+            return true;  /* Frame is done */
+        }
+
         /* Check for special forms - PURE SYMBOLS ONLY */
         if (cell_is_symbol(first)) {
             const char* sym = cell_get_symbol(first);
+
+            /* :λ-converted - already converted nested lambda */
+            if (strcmp(sym, ":λ-converted") == 0) {
+                /* Parse: (:λ-converted (param1 param2 ...) converted_body) */
+                Cell* params = cell_car(rest);
+                Cell* converted_body = cell_car(cell_cdr(rest));
+
+                /* Body is already converted, don't convert again */
+                int arity = list_length(params);
+
+                /* Closure env: use indexed env if we're in a lambda, empty if top-level */
+                Cell* closure_env = env_is_indexed(env) ? env : cell_nil();
+
+                /* Create lambda cell with closure environment */
+                Cell* lambda = cell_lambda(closure_env, converted_body, arity,
+                                          module_get_current_loading(), 0);
+
+                StackFrame* ret = frame_create_return(lambda);
+                stack_push(stack, ret);
+                return true;  /* Frame is done */
+            }
 
             /* ⌜ - quote */
             if (strcmp(sym, "⌜") == 0) {
@@ -498,7 +580,7 @@ bool handle_eval_expr(StackFrame* frame, EvalStack* stack) {
                 Cell* converted_body = debruijn_convert(body_expr, ctx_convert);
 
                 /* Closure env: use indexed env if we're in a lambda, empty if top-level */
-                Cell* closure_env = env ? env : cell_nil();
+                Cell* closure_env = env_is_indexed(env) ? env : cell_nil();
 
                 /* Create lambda cell with closure environment */
                 Cell* lambda = cell_lambda(closure_env, converted_body, arity,
@@ -873,6 +955,10 @@ void trampoline_loop(EvalStack* stack) {
 
             case EVAL_QUOTE:
                 frame_done = handle_eval_quote(frame, stack);
+                break;
+
+            case EVAL_MACRO:
+                frame_done = handle_eval_macro(frame, stack);
                 break;
 
             default:

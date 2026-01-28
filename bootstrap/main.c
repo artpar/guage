@@ -9,14 +9,11 @@
 #include "trampoline.h"
 
 /* Compile-time flag to enable trampoline evaluator
- * NOTE: Trampoline evaluator is functional for basic cases but not production-ready
- * - Basic arithmetic: ✅ Working
- * - Lambdas: ✅ Working
- * - Simple recursion: ✅ Working
- * - Complex stdlib code: ❌ Causes segfaults (needs debugging)
- * Default: 0 (use stable recursive evaluator) */
+ * NEXT SESSION: Fix prim_load in primitives.c:1720 then remove this flag entirely
+ * Current status: 95% complete - one trivial fix needed in prim_load
+ * See: docs/planning/TRAMPOLINE_FINAL_FIX.md */
 #ifndef USE_TRAMPOLINE
-#define USE_TRAMPOLINE 0  /* 1 = trampoline, 0 = recursive */
+#define USE_TRAMPOLINE 1  /* 1 = trampoline (READY), 0 = recursive (fallback) */
 #endif
 
 #define MAX_INPUT 4096

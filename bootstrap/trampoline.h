@@ -14,6 +14,7 @@ typedef enum {
     EVAL_IF,        /* Conditional branch */
     EVAL_DEFINE,    /* Global definition */
     EVAL_QUOTE,     /* Quote - return literal */
+    EVAL_MACRO,     /* Macro expansion */
 } FrameState;
 
 /* Stack Frame - represents one step of computation */
@@ -99,6 +100,9 @@ StackFrame* frame_create_define(Cell* symbol, Cell* value_expr, Cell* env);
 /* Create frame for quote */
 StackFrame* frame_create_quote(Cell* expr);
 
+/* Create frame for macro expansion */
+StackFrame* frame_create_macro(Cell* expr, Cell* env);
+
 /* Destroy frame */
 void frame_destroy(StackFrame* frame);
 
@@ -131,6 +135,10 @@ bool handle_eval_define(StackFrame* frame, EvalStack* stack);
 /* Handle EVAL_QUOTE state - quote (return literal)
  * Returns: true if frame is done (can destroy), false if needs continuation */
 bool handle_eval_quote(StackFrame* frame, EvalStack* stack);
+
+/* Handle EVAL_MACRO state - macro expansion
+ * Returns: true if frame is done (can destroy), false if needs continuation */
+bool handle_eval_macro(StackFrame* frame, EvalStack* stack);
 
 /* ========== Debug Utilities ========== */
 
