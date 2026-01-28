@@ -43,6 +43,7 @@ typedef struct EvalStack {
     int capacity;              /* Allocated capacity */
     int size;                  /* Current number of frames */
     Cell* result;              /* Final result */
+    void* ctx;                 /* Global evaluation context (EvalContext*) */
 } EvalStack;
 
 /* ========== EvalStack Operations ========== */
@@ -99,6 +100,29 @@ StackFrame* frame_create_quote(Cell* expr);
 
 /* Destroy frame */
 void frame_destroy(StackFrame* frame);
+
+/* ========== State Handlers ========== */
+
+/* Handle EVAL_EXPR state - evaluate expressions (atoms, symbols, pairs) */
+void handle_eval_expr(StackFrame* frame, EvalStack* stack);
+
+/* Handle EVAL_APPLY state - apply function to arguments */
+void handle_eval_apply(StackFrame* frame, EvalStack* stack);
+
+/* Handle EVAL_ARGS state - evaluate argument list left-to-right */
+void handle_eval_args(StackFrame* frame, EvalStack* stack);
+
+/* Handle EVAL_RETURN state - propagate return value to parent */
+void handle_eval_return(StackFrame* frame, EvalStack* stack);
+
+/* Handle EVAL_IF state - conditional branching */
+void handle_eval_if(StackFrame* frame, EvalStack* stack);
+
+/* Handle EVAL_DEFINE state - global definition */
+void handle_eval_define(StackFrame* frame, EvalStack* stack);
+
+/* Handle EVAL_QUOTE state - quote (return literal) */
+void handle_eval_quote(StackFrame* frame, EvalStack* stack);
 
 /* ========== Debug Utilities ========== */
 

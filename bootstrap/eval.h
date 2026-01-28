@@ -43,8 +43,11 @@ Cell* eval(EvalContext* ctx, Cell* expr);
 /* Define global binding */
 void eval_define(EvalContext* ctx, const char* name, Cell* value);
 
-/* Lookup variable */
+/* Lookup variable in context */
 Cell* eval_lookup(EvalContext* ctx, const char* name);
+
+/* Lookup variable in local environment (for trampoline) */
+Cell* eval_lookup_env(Cell* env, const char* name);
 
 /* Find user function documentation by name (for primitives to use) */
 FunctionDoc* eval_find_user_doc(const char* name);

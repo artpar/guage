@@ -9,17 +9,17 @@ Purpose: Current project status and progress
 
 ## Current Status 🎯
 
-**Latest Achievement:** Trampoline Phase 1 COMPLETE ✅ - Data structures implemented and tested
+**Latest Achievement:** Trampoline Phase 2A MOSTLY COMPLETE ✅ - 6/7 handlers implemented
 
 **System State:**
 - **Primitives:** 79 primitives (÷ integer division)
-- **Tests:** 33 Guage tests (27/33 passing, 82%) + 10 C unit tests (trampoline)
+- **Tests:** 33 Guage tests (27/33 passing, 82%) + 10 C unit tests (trampoline data structures)
 - **Stdlib:** 18 modules in bootstrap/stdlib/ (canonical location)
 - **Build:** Clean, O2 optimized, 32MB stack
-- **Architecture:** Trampoline Phase 1/3 complete (data structures)
+- **Architecture:** Trampoline Phase 2A/3 ~80% complete (data structures + 6/7 handlers)
 - **Memory:** Stack overflow FIXED, reference counting implemented
 - **File Organization:** Single source of truth (no dual paths)
-- **Status:** Turing complete, production architecture in progress
+- **Status:** Turing complete, production architecture implementation in progress
 
 ## Day 46 Summary (2026-01-28)
 
@@ -82,6 +82,99 @@ Created comprehensive plan for **Trampoline Evaluator**:
 
 **Duration:** ~6 hours (investigation + fixes + planning)
 **Lines Changed:** ~50 lines (fixes) + ~2000 lines (documentation)
+
+---
+
+## Day 48 Summary (2026-01-28 Late Evening)
+
+**Goal:** Implement Trampoline Phase 2 - State Handlers
+
+**Implementation:**
+
+**Phase 2A Complete (~80%):**
+
+Implemented 6 out of 7 state handlers:
+
+1. ✅ **handle_eval_return()** - Propagate return values to parent frames
+   - Sets final result if stack empty
+   - Stores value in parent frame otherwise
+   - Proper reference counting
+
+2. ✅ **handle_eval_quote()** - Quote literal (⌜)
+   - Returns expression without evaluation
+   - Single line implementation
+
+3. ✅ **handle_eval_expr()** - Evaluate expressions (PARTIAL)
+   - Atoms: numbers, booleans, nil, errors, strings → self-evaluating
+   - Keywords (:foo) → self-evaluating
+   - Symbols → lookup in local env, then global context
+   - Pairs → TODO (needs special form detection + function application)
+
+4. ✅ **handle_eval_args()** - Evaluate argument list
+   - Left-to-right evaluation
+   - Accumulates evaluated values
+   - Handles empty list
+
+5. ✅ **handle_eval_if()** - Conditional branching (?)
+   - Evaluates condition first
+   - Chooses then/else branch based on result
+   - Only #f and nil are false
+
+6. ✅ **handle_eval_define()** - Global definition (≔)
+   - Evaluates value expression first
+   - Defines in global EvalContext
+   - Returns the value
+
+7. ⏳ **handle_eval_apply()** - Function application (STUB)
+   - TODO: Primitive function calls
+   - TODO: Lambda application with De Bruijn indices
+   - Currently returns error "not-implemented"
+
+**Files Modified:**
+- `bootstrap/trampoline.h` - Added 7 handler declarations
+- `bootstrap/trampoline.c` - Implemented 6/7 handlers (~260 lines)
+- `bootstrap/eval.h` - Added eval_lookup_env declaration
+
+**Build Status:**
+- ✅ Clean compilation
+- ⚠️  3 warnings (expected - unused vars in stub handler)
+- ✅ No errors
+
+**Architecture Decisions:**
+
+1. **Context Management:** Used void* for ctx to avoid circular dependencies
+2. **Environment Lookup:** Uses eval_lookup_env for local envs, eval_lookup for global
+3. **Truth Values:** Only #f and nil are false (matches existing evaluator)
+4. **Incremental Implementation:** Stubs allow compilation while developing
+
+**Remaining Work for Phase 2:**
+
+**Phase 2B (Complete handle_eval_apply):** ~2-3 hours
+- Detect and call primitive functions
+- Apply lambdas with De Bruijn indices
+- Create new environments for function calls
+- Error handling
+
+**Phase 2C (Complete handle_eval_expr):** ~2 hours
+- Detect special forms (λ, ≔, ?, ⌜)
+- Handle function application (evaluate func, then args)
+- Wire all pieces together
+
+**Phase 2 Testing:** ~1-2 hours
+- Add C unit tests for each handler
+- Test edge cases
+- Verify reference counting
+- Target: 20+ new tests passing
+
+**Duration:** ~3 hours (Phase 2A partial)
+**Lines Added:** ~260 lines (handlers) + declarations
+**Files Modified:** 3 files
+
+**Next Steps:**
+- Complete handle_eval_apply (primitives + lambdas)
+- Complete handle_eval_expr (special forms + application)
+- Add comprehensive unit tests
+- Then move to Phase 3 (integration)
 
 ---
 
@@ -275,24 +368,33 @@ Created comprehensive plan for **Trampoline Evaluator**:
 
 ### CRITICAL: Trampoline Evaluator (Production Architecture)
 
-**Status:** ✅ Phase 1 complete, 🔧 Phase 2 next (state handlers)
+**Status:** ✅ Phase 1 complete, 🔧 Phase 2A ~80% complete, ⏳ Phase 2B/C remaining
 
-**Priority 1: Trampoline Phase 2 - State Handlers** (Day 48, ~6 hours)
-- **Goal:** Implement evaluation logic for all frame states
-- **What to implement:**
-  1. `handle_eval_expr()` - Evaluate expressions (atoms, symbols, pairs)
-  2. `handle_eval_apply()` - Apply functions to arguments
-  3. `handle_eval_args()` - Evaluate argument lists left-to-right
-  4. `handle_eval_return()` - Propagate return values to parent frames
-  5. Special forms: λ, ≔, ?, ⌜ (quote)
-- **Testing:** Unit tests for each handler
-- **Plan:** `docs/reference/TRAMPOLINE_EVALUATOR.md`
+**Priority 1: Complete Trampoline Phase 2** (2-3 hours remaining)
+
+**Immediate (Phase 2B - Complete handle_eval_apply):**
+1. Add primitive function detection and calling
+2. Add lambda application with De Bruijn indices
+3. Create new environments for function calls
+4. Add error handling
+
+**Then (Phase 2C - Complete handle_eval_expr):**
+1. Detect special forms: λ, ≔, ?, ⌜
+2. Handle function application (evaluate func, then args)
+3. Wire special forms to appropriate handlers
+
+**Testing (Phase 2 Final):**
+1. Add C unit tests for each handler (~20 tests)
+2. Test edge cases (nil, errors, empty lists)
+3. Verify reference counting (no leaks)
+4. All handlers tested independently
 
 **Completed:**
 - ✅ Phase 1: Data structures (StackFrame, EvalStack, 10 tests passing)
+- ✅ Phase 2A: 6/7 handlers (~260 lines, compiles cleanly)
 
 **Remaining:**
-- 🔧 Phase 2: State handlers (Day 48, ~6 hours)
+- 🔧 Phase 2B/C: Complete handlers + tests (2-3 hours)
 - ⏳ Phase 3: Integration & testing (Day 49, ~6 hours)
 
 **Priority 2: Fix Remaining Test Failures** (1-2 hours - optional)
