@@ -1,23 +1,58 @@
 ---
 Status: CURRENT
 Created: 2026-01-28
-Updated: 2026-01-28
-Purpose: Planning document for pattern matching enhancements (Days 58+)
+Updated: 2026-01-28 (Day 59 - Phase 2 Complete)
+Purpose: Planning document for pattern matching enhancements (Days 58-60)
 ---
 
 # Pattern Matching Enhancements
 
-## Current State (Day 57)
+## 🚀 Quick Start for Day 60
 
-✅ **Pattern Matching Bug FIXED**
-- `∇` now works correctly with De Bruijn indices in nested lambdas
-- 57/58 tests passing (98%)
-- 14 comprehensive pattern matching tests
-- Solid foundation for enhancements
+**Task:** Implement Or-Patterns (`(pattern₁ | pattern₂)` syntax)
+**Time:** 3-4 hours
+**Priority:** MEDIUM (next in sequence)
+
+**What to implement:**
+- Syntax: `name@pattern` binds both whole value AND pattern parts
+- Example: `pair@(⟨⟩ a b)` binds `pair`, `a`, and `b`
+- Works with all pattern types (literals, pairs, structures, ADTs)
+
+**Implementation steps:**
+1. Add `is_as_pattern()` helper to detect `@` syntax
+2. Add `extract_as_pattern()` to parse `name@subpattern`
+3. Modify `pattern_try_match()` to:
+   - Detect as-pattern syntax
+   - Match subpattern recursively
+   - Add binding for `name` → original value
+   - Merge with subpattern bindings
+4. Write 10+ comprehensive tests
+5. Update SPEC.md with syntax and examples
+
+**See:** Phase 2 section below for detailed implementation plan
+
+---
+
+## Progress Overview
+
+**Phase 1 (Day 58):** ✅ **COMPLETE** - Guard Conditions (2.5 hours)
+**Phase 2 (Day 59):** ✅ **COMPLETE** - As-Patterns (2.5 hours)
+**Phase 3 (Day 60):** ⏳ **NEXT** - Or-Patterns (3-4 hours estimated)
+**Phase 4 (Optional):** ⏳ **PLANNED** - View Patterns (2-3 hours estimated)
+
+## Current State (Day 59 End)
+
+✅ **Pattern Matching with Guard Conditions and As-Patterns**
+- `∇` works with De Bruijn indices in closures (Day 57)
+- Guard conditions fully implemented (Day 58)
+- As-patterns fully implemented (Day 59)
+- 59/60 tests passing (98%)
+- 72 pattern matching tests (14 De Bruijn + 30 guards + 28 as-patterns)
+- World-class pattern matching achieved
 
 ## Motivation
 
-Pattern matching is currently functional but basic. Adding advanced features would make Guage's pattern matching world-class:
+Pattern matching enhancements make Guage comparable to Haskell, OCaml, and Rust:
 
 **Current Capabilities:**
 - ✅ Literal patterns (#42, :foo, #t, #f)
@@ -26,16 +61,20 @@ Pattern matching is currently functional but basic. Adding advanced features wou
 - ✅ Pair patterns (⟨⟩ a b) - destructures pairs
 - ✅ Leaf structure patterns (⊙ :Type fields...)
 - ✅ Node/ADT patterns (⊚ :Type :Variant fields...)
+- ✅ **Guard conditions (pattern | guard-expr)** - Day 58 ✅
+- ✅ **As-patterns (name @ pattern)** - Day 59 ✅
 
-**Missing Features:**
-- ❌ Guard conditions - conditional matching
-- ❌ As-patterns - bind whole and parts
-- ❌ Or-patterns - multiple alternatives
-- ❌ View patterns - transform before matching
+**Remaining Features:**
+- ⏳ Or-patterns - multiple alternatives (Day 60 NEXT)
+- ⏳ View patterns - transform before matching (Optional)
 
-## Proposed Enhancements
+## Enhancements
 
-### 1. Guard Conditions (Priority: HIGH)
+### 1. Guard Conditions ✅ **COMPLETE** (Day 58)
+
+**Status:** DONE - 30 tests passing, fully integrated
+**Time Taken:** 2.5 hours (estimated 2-3 hours)
+**Impact:** HIGH - Pattern matching now world-class
 
 **Syntax:** `(pattern | guard-expr) result-expr`
 
@@ -44,7 +83,7 @@ Pattern matching is currently functional but basic. Adding advanced features wou
 **Examples:**
 ```scheme
 ;; Match positive even numbers
-(∇ x (⌜ ((n | (∧ (> n #0) (≡ (⊘ n #2) #0))) :positive-even)
+(∇ x (⌜ ((n | (∧ (> n #0) (≡ (% n #2) #0))) :positive-even)
        ((n | (> n #0)) :positive-odd)
        (_ :negative-or-zero)))
 
@@ -59,15 +98,25 @@ Pattern matching is currently functional but basic. Adding advanced features wou
              ((⊚ :Result :Err e) :error))))
 ```
 
-**Implementation:**
-- Parse `(pattern | guard)` syntax
-- After pattern matches, evaluate guard in extended environment
-- If guard returns #t, use this clause
-- If guard returns #f, try next clause
+**Implementation Completed:**
+- ✅ Parse `(pattern | guard)` syntax
+- ✅ After pattern matches, evaluate guard in extended environment
+- ✅ If guard returns #t, use this clause
+- ✅ If guard returns #f, try next clause
+- ✅ Fully backward compatible with patterns without guards
+- ✅ All pattern types work with guards
 
-**Estimated Time:** 2-3 hours
+**Files Modified:**
+- `bootstrap/pattern.c` - Added guard parsing and evaluation
+- `bootstrap/tests/test_pattern_guards.test` - 30 comprehensive tests
+- `SPEC.md` - Updated with guard syntax
+- `docs/archive/2026-01/sessions/SESSION_END_DAY_58.md` - Session notes
 
-### 2. As-Patterns (Priority: MEDIUM)
+### 2. As-Patterns ✅ **COMPLETE** (Day 59)
+
+**Status:** DONE - 28 tests passing, fully integrated
+**Time Taken:** 2.5 hours (estimated 2-3 hours)
+**Impact:** MEDIUM - More expressive pattern matching
 
 **Syntax:** `name@pattern`
 
@@ -76,23 +125,39 @@ Pattern matching is currently functional but basic. Adding advanced features wou
 **Examples:**
 ```scheme
 ;; Bind pair and its components
-(∇ p (⌜ ((pair@(⟨⟩ a b) (⟨⟩ pair a b)))))  ; Returns: ⟨⟨#1 #2⟩ #1 #2⟩
+(∇ (⟨⟩ #1 #2) (⌜ (((pair @ (⟨⟩ a b)) (⟨⟩ pair (⟨⟩ a b))))))
+; → ⟨⟨#1 #2⟩ ⟨#1 #2⟩⟩
 
 ;; Bind Result and its value
-(∇ r (⌜ ((ok@(⊚ :Result :Ok v) (⟨⟩ ok v))
-         (err@(⊚ :Result :Err e) (⟨⟩ err e)))))
+(∇ (⊚ :Result :Ok #42) (⌜ (((ok @ (⊚ :Result :Ok v)) (⟨⟩ ok v)))))
+; → ⟨⊚[:Result :Ok #42] #42⟩
 
 ;; Clone a list node
-(∇ lst (⌜ ((node@(⟨⟩ h t) (⟨⟩ h node))))  ; Returns: ⟨head original-list⟩
+(∇ (⟨⟩ #42 (⟨⟩ #99 ∅)) (⌜ (((node @ (⟨⟩ h t)) (⟨⟩ h node)))))
+; → ⟨#42 ⟨#42 ⟨#99 ∅⟩⟩⟩
+
+;; Nested as-patterns
+(∇ (⟨⟩ #5 #6) (⌜ (((outer @ (inner @ (⟨⟩ a b))) (⟨⟩ outer inner)))))
+; → ⟨⟨#5 #6⟩ ⟨#5 #6⟩⟩
+
+;; As-patterns with guards
+(∇ (⟨⟩ #5 #10) (⌜ ((((pair @ (⟨⟩ a b)) | (> a #0)) pair)
+                   (_ :failed))))  ; → ⟨#5 #10⟩
 ```
 
-**Implementation:**
-- Parse `name@subpattern` syntax
-- Match subpattern as normal
-- Add binding: name → original value
-- Merge all bindings
+**Implementation Completed:**
+- ✅ Parse `name@subpattern` syntax with `is_as_pattern()` and `extract_as_pattern()`
+- ✅ Match subpattern recursively
+- ✅ Add binding: name → original value
+- ✅ Merge whole-value binding with subpattern bindings
+- ✅ Works with all pattern types (literals, pairs, structures, ADTs)
+- ✅ Combines seamlessly with guards
 
-**Estimated Time:** 2-3 hours
+**Files Modified:**
+- `bootstrap/pattern.c` - Added as-pattern parsing and matching
+- `bootstrap/tests/test_pattern_as_patterns.test` - 28 comprehensive tests
+- `SPEC.md` - Updated with as-pattern syntax
+- `docs/planning/PATTERN_MATCHING_ENHANCEMENTS.md` - Updated status
 
 ### 3. Or-Patterns (Priority: MEDIUM)
 
@@ -155,32 +220,42 @@ Pattern matching is currently functional but basic. Adding advanced features wou
 
 **Estimated Time:** 2-3 hours
 
-## Total Estimated Time
+## Time Tracking
 
-- **Guard Conditions:** 2-3 hours (HIGH priority)
-- **As-Patterns:** 2-3 hours (MEDIUM priority)
-- **Or-Patterns:** 3-4 hours (MEDIUM priority)
-- **View Patterns:** 2-3 hours (LOW priority)
+- **Phase 1 - Guard Conditions:** ✅ 2.5 hours actual (estimated 2-3 hours)
+- **Phase 2 - As-Patterns:** ✅ 2.5 hours actual (estimated 2-3 hours)
+- **Phase 3 - Or-Patterns:** ⏳ 3-4 hours estimated (NEXT)
+- **Phase 4 - View Patterns:** ⏳ 2-3 hours estimated (optional)
 
-**Total:** 9-13 hours (1-2 sessions)
+**Total Completed:** 5 hours (Days 58-59)
+**Total Remaining:** 5-7 hours (Days 60+)
+**Overall Estimate:** 10-12 hours (1.5-2 sessions)
 
 ## Implementation Strategy
 
-### Phase 1: Guards (Day 58)
+### Phase 1: Guards (Day 58) ✅ **COMPLETE**
 
-1. **Design syntax** - Decide on guard separator (`|` vs `:` vs other)
-2. **Parse guards** - Extend pattern parser
-3. **Evaluate guards** - After pattern match, before result
-4. **Test** - Write comprehensive guard tests
-5. **Document** - Update SPEC.md with examples
+1. ✅ **Design syntax** - Chose `|` separator (clear, distinct)
+2. ✅ **Parse guards** - Extended pattern parser with `has_guard()` and `extract_pattern_and_guard()`
+3. ✅ **Evaluate guards** - After pattern match, before result, in extended environment
+4. ✅ **Test** - 30 comprehensive guard tests covering all use cases
+5. ✅ **Document** - Updated SPEC.md with syntax and examples
 
-### Phase 2: As-Patterns (Day 59)
+**Result:** Guard conditions fully integrated, 58/59 tests passing
 
-1. **Design syntax** - Decide on `@` vs other separator
-2. **Parse as-patterns** - Extend pattern parser
-3. **Bind whole value** - Add to bindings list
-4. **Test** - Nested as-patterns, complex structures
-5. **Document** - Update SPEC.md
+### Phase 2: As-Patterns (Day 59) ✅ **COMPLETE**
+
+**Completed:** Successful implementation in 2.5 hours
+
+1. ✅ **Design syntax** - Used `@` separator (clear, standard in Haskell/Rust)
+2. ✅ **Parse as-patterns** - Detect `name@pattern` syntax with helpers
+3. ✅ **Bind whole value** - Add binding for `name` pointing to original value
+4. ✅ **Merge bindings** - Combine whole-value binding with pattern bindings
+5. ✅ **Test** - 28 comprehensive tests covering all cases
+6. ✅ **Document** - Updated SPEC.md with syntax and examples
+
+**Actual Time:** 2.5 hours
+**Result:** All 28 tests passing, no regressions
 
 ### Phase 3: Or-Patterns (Day 60)
 
@@ -268,6 +343,7 @@ Once basic enhancements are complete:
 
 ---
 
-**Status:** PLANNED - Ready to implement
+**Status:** IN PROGRESS - Phases 1-2 complete, Phase 3 next
 **Priority:** HIGH - Pattern matching is core feature
-**Next Session:** Start with Guard Conditions (Day 58)
+**Next Session:** Implement Or-Patterns (Day 60)
+**Completion:** 2/4 phases done (50% complete, 5/12 hours spent)

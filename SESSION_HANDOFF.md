@@ -5,42 +5,44 @@ Updated: 2026-01-28
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 58 Complete (2026-01-28 Evening)
+# Session Handoff: Day 59 Complete (2026-01-28 Evening)
 
 ## 🎯 For Next Session: Start Here
 
-**Session 58 just completed:** Guard Conditions for Pattern Matching (~2.5 hours, 30 new tests, 58/59 passing)
+**Session 59 just completed:** As-Patterns for Pattern Matching (~2.5 hours, 28 new tests, 59/60 passing)
 
-**🚀 Quick Start for Day 59:**
+**🚀 Quick Start for Day 60:**
 1. **Read:** `docs/planning/PATTERN_MATCHING_ENHANCEMENTS.md` - Complete roadmap
-2. **Verify:** Run `make test` to confirm 58/59 tests passing
-3. **Start:** Implement As-Patterns (2-3 hours, MEDIUM priority)
-   - Syntax: `name@pattern`
-   - Bind both whole value AND its parts
+2. **Verify:** Run `make test` to confirm 59/60 tests passing
+3. **Start:** Implement Or-Patterns (3-4 hours, MEDIUM priority)
+   - Syntax: `(pattern₁ | pattern₂ | pattern₃)`
+   - Match any of several alternatives
    - Next enhancement in pattern matching roadmap
 
 **Current System State:**
 - ✅ 102 primitives (stable)
-- ✅ 58/59 tests passing (98%) - **+30 new guard tests!**
-- ✅ **Guard conditions COMPLETE** - `(pattern | guard-expr) result-expr` syntax working!
-- ✅ Pattern matching fully functional with guards
+- ✅ 59/60 tests passing (98%) - **+28 new as-pattern tests!**
+- ✅ **As-patterns COMPLETE** - `name@pattern` syntax binds whole value AND parts!
+- ✅ **Guard conditions COMPLETE** - `(pattern | guard-expr)` syntax working!
+- ✅ Pattern matching fully functional with guards and as-patterns
 - ✅ Result/Either type production-ready
 - ✅ Math library complete (22 primitives, 88 tests)
 - ✅ Self-hosting 59% complete (pure lambda calculus works)
 
 **Documentation for Continuity:**
-- 📋 Planning: `docs/planning/PATTERN_MATCHING_ENHANCEMENTS.md` - 3 enhancements remaining
+- 📋 Planning: `docs/planning/PATTERN_MATCHING_ENHANCEMENTS.md` - 2 enhancements remaining
 - ✅ Phase 1 Complete: Guard Conditions (Day 58)
-- 📋 Next Phase: As-Patterns (Day 59)
+- ✅ Phase 2 Complete: As-Patterns (Day 59)
+- 📋 Next Phase: Or-Patterns (Day 60)
 
 ## Current Status 🎯
 
-**Latest Achievement:** ✅ **GUARD CONDITIONS COMPLETE** → Pattern matching now supports conditional guards! (Day 58)
+**Latest Achievement:** ✅ **AS-PATTERNS COMPLETE** → Bind both whole value AND parts with `name@pattern`! (Day 59)
 
 **System State:**
 - **Primitives:** 102 primitives (stable) ✅
-- **Tests:** 58/59 main tests passing (98%) ✅ **+30 new guard tests!**
-- **Pattern Tests:** 14/14 De Bruijn tests + 30/30 guard tests passing (100%) ✅
+- **Tests:** 59/60 main tests passing (98%) ✅ **+28 new as-pattern tests!**
+- **Pattern Tests:** 14/14 De Bruijn tests + 30/30 guard tests + 28/28 as-pattern tests passing (100%) ✅
 - **Math Tests:** 88/88 passing (100%) ✅
 - **Result Tests:** 44/44 passing (100%) ✅
 - **C Unit Tests:** 21/21 passing (100%) ✅
@@ -58,6 +60,84 @@ Purpose: Current project status and progress
 - **Status:** Turing complete + proper TCO + self-hosting pure lambda calculus! 🚀
 
 ## 🎯 For Next Session: What's Complete & What's Next
+
+### ✅ COMPLETE: As-Patterns for Pattern Matching (Day 59)
+**Task:** Implement as-patterns to bind both whole value and its parts
+**Status:** DONE - 59/60 tests passing (up from 58/59), 28 new comprehensive tests
+**Time:** ~2.5 hours
+**Impact:** MEDIUM - Pattern matching now more expressive and convenient
+
+**Feature Description:**
+As-patterns allow binding both the entire matched value AND its destructured parts simultaneously. This is extremely useful when you need to reference both the whole structure and its components.
+
+**Syntax:**
+```scheme
+name@pattern
+```
+
+**Examples:**
+```scheme
+; Bind pair and its components
+(∇ (⟨⟩ #1 #2) (⌜ (((pair @ (⟨⟩ a b)) (⟨⟩ pair (⟨⟩ a b))))))
+; → ⟨⟨#1 #2⟩ ⟨#1 #2⟩⟩
+; pair = ⟨#1 #2⟩, a = #1, b = #2
+
+; Bind Result.Ok and its value
+(∇ (⊚ :Result :Ok #42) (⌜ (((ok @ (⊚ :Result :Ok v)) (⟨⟩ ok v)))))
+; → ⟨⊚[:Result :Ok #42] #42⟩
+
+; Nested as-patterns
+(∇ (⟨⟩ #5 #6) (⌜ (((outer @ (inner @ (⟨⟩ a b))) (⟨⟩ outer inner)))))
+; → ⟨⟨#5 #6⟩ ⟨#5 #6⟩⟩
+
+; Clone a list node with as-pattern
+(∇ (⟨⟩ #42 (⟨⟩ #99 ∅)) (⌜ (((node @ (⟨⟩ h t)) (⟨⟩ h node)))))
+; → ⟨#42 ⟨#42 ⟨#99 ∅⟩⟩⟩
+
+; As-patterns combined with guards
+(∇ (⟨⟩ #5 #10) (⌜ ((((pair @ (⟨⟩ a b)) | (> a #0)) pair)
+                   (_ :failed))))  ; → ⟨#5 #10⟩
+```
+
+**Implementation Details:**
+1. Added `is_as_pattern()` helper to detect `name@pattern` syntax
+2. Added `extract_as_pattern()` to parse name and subpattern
+3. Modified `pattern_try_match()` to:
+   - Detect as-pattern syntax early (after wildcard check)
+   - Recursively match subpattern against value
+   - If subpattern matches, create binding for whole value
+   - Merge whole-value binding with subpattern bindings
+4. Fully compatible with all pattern types (literals, pairs, structures, ADTs, guards)
+
+**Files Modified:**
+- `bootstrap/pattern.c` - Added as-pattern parsing and matching
+- `bootstrap/tests/test_pattern_as_patterns.test` - 28 comprehensive tests (NEW!)
+- `SPEC.md` - Updated pattern matching section with as-pattern syntax and examples
+- `SESSION_HANDOFF.md` - Documented Day 59 progress
+
+**Test Coverage:**
+- ✅ 28/28 as-pattern tests passing
+- Tests cover: literals, pairs, nested as-patterns, lists, ADTs, leaf structures
+- Tests include: multiple clauses, guards combination, edge cases
+- Real-world examples: cloning nodes, validation, nested extraction
+
+**Test Results:**
+- ✅ 59/60 tests passing (up from 58/59) - **+1 test file added (28 tests)!**
+- ✅ All 28 new as-pattern tests passing
+- ✅ No regressions in existing tests
+- ✅ Works with all pattern types (literals, pairs, structures, ADTs)
+- ✅ Combines seamlessly with guards
+
+**Why This Matters:**
+- More expressive pattern matching (like Haskell, OCaml, Rust)
+- Avoid re-computing or re-matching to get the whole value
+- Cleaner code when you need both whole and parts
+- Enables patterns like cloning, validation, logging
+- Foundation for advanced functional programming patterns
+
+**Next Steps:**
+- Phase 3: Or-Patterns (Day 60) - Match multiple alternatives
+- Phase 4: View Patterns (Optional) - Transform before matching
 
 ### ✅ COMPLETE: Guard Conditions for Pattern Matching (Day 58)
 **Task:** Implement guard conditions for conditional pattern matching
@@ -651,17 +731,18 @@ Used Address Sanitizer to discover the crash was **stack overflow during evaluat
 
 ## What's Next 🎯
 
-### 🎉 MILESTONE: Guard Conditions Complete! 🎉
+### 🎉 MILESTONE: As-Patterns Complete! 🎉
 
-**Current State:** 102 primitives, 58/59 tests passing (98%), pattern matching with guards!
+**Current State:** 102 primitives, 59/60 tests passing (98%), pattern matching with guards and as-patterns!
 
-**Completed Today (Day 58):**
-- ✅ **Guard Conditions Implemented** - `(pattern | guard-expr) result-expr` syntax working!
-- ✅ 30 comprehensive tests added
-- ✅ +30 tests passing (58/59, up from 57/58)
-- ✅ Pattern matching now world-class
+**Completed Today (Day 59):**
+- ✅ **As-Patterns Implemented** - `name@pattern` syntax binds whole value AND parts!
+- ✅ 28 comprehensive tests added
+- ✅ +1 test file passing (59/60, up from 58/59)
+- ✅ Pattern matching now comparable to Haskell, OCaml, Rust
 
 **Recent Progress:**
+- Day 59: As-Patterns Complete (28 tests, bind whole and parts)
 - Day 58: Guard Conditions Complete (30 tests, conditional pattern matching)
 - Day 57: Pattern Matching Bug Fixed (De Bruijn indices in closures)
 - Day 56: Result/Either Type (9 functions, 44 tests, railway-oriented programming)
@@ -669,7 +750,7 @@ Used Address Sanitizer to discover the crash was **stack overflow during evaluat
 
 **Recommended Next Steps:**
 
-### 🔥 HIGH PRIORITY: Pattern Matching Enhancements (7-10 hours remaining)
+### 🔥 HIGH PRIORITY: Pattern Matching Enhancements (3-7 hours remaining)
 
 **Why:** Continue building world-class pattern matching
 
@@ -680,16 +761,16 @@ Used Address Sanitizer to discover the crash was **stack overflow during evaluat
 - Conditional pattern matching
 - Example: `(n | (> n #0)) :positive`
 
-**Phase 2 - As-Patterns (Day 59, 2-3 hours):** ⏭️ **START HERE for Day 59!**
+**Phase 2 - As-Patterns (Day 59, 2-3 hours):** ✅ **COMPLETE!**
 - Syntax: `name@pattern`
 - Bind whole value AND parts
-- Example: `pair@(⟨⟩ a b)`
-- Next enhancement after guard conditions
+- Example: `pair@(⟨⟩ a b)` binds pair, a, and b
 
-**Phase 3 - Or-Patterns (Day 60, 3-4 hours):**
-- Syntax: `(pattern₁ | pattern₂)`
+**Phase 3 - Or-Patterns (Day 60, 3-4 hours):** ⏭️ **START HERE for Day 60!**
+- Syntax: `(pattern₁ | pattern₂ | pattern₃)`
 - Match multiple alternatives
 - Example: `(#0 | #1 | #2) :small`
+- Next enhancement after as-patterns
 
 **Phase 4 - View Patterns (Optional, 2-3 hours):**
 - Syntax: `(→ transform pattern)`
@@ -796,9 +877,9 @@ ab5d611 fix: Critical bug - quoted values through closures (Day 53/54)
 
 ---
 
-**Status:** Guard Conditions complete (30 tests) | 102 total primitives | 58/59 tests passing (98%) | Pattern matching world-class!
+**Status:** As-Patterns complete (28 tests) | 102 total primitives | 59/60 tests passing (98%) | Pattern matching world-class!
 
 ---
 
-**Session End:** Day 58 complete (2026-01-28 evening)
-**Next Session:** As-Patterns implementation (2-3 hours) - Bind whole value AND parts with `name@pattern` syntax
+**Session End:** Day 59 complete (2026-01-28 evening)
+**Next Session:** Or-Patterns implementation (3-4 hours) - Match multiple alternatives with `(pattern₁ | pattern₂)` syntax

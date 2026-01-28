@@ -1,0 +1,268 @@
+;; Test Suite: As-Patterns for Pattern Matching (Day 59)
+;; As-patterns bind both the whole value AND its parts
+;; Syntax: name@pattern
+;; Example: pair@(⟨⟩ a b) binds pair, a, and b
+
+;; ============================================================================
+;; Basic As-Patterns
+;; ============================================================================
+
+;; Test 1: As-pattern with literal
+;; Pattern: x@#42
+;; Value: #42
+;; Expected: Binds x → #42, returns x which is #42
+(⊨ :as-literal
+    #42
+    (∇ #42 (⌜ (((x @ #42) x)))))
+
+;; Test 2: As-pattern with pair
+;; Pattern: pair@(⟨⟩ a b)
+;; Value: ⟨#1 #2⟩
+;; Expected: Binds pair → ⟨#1 #2⟩, a → #1, b → #2
+;; Result: Return the whole pair
+(⊨ :as-pair-whole
+    (⟨⟩ #1 #2)
+    (∇ (⟨⟩ #1 #2) (⌜ (((pair @ (⟨⟩ a b)) pair)))))
+
+;; Test 3: As-pattern with pair - access parts
+;; Pattern: pair@(⟨⟩ a b)
+;; Value: ⟨#1 #2⟩
+;; Expected: Binds pair → ⟨#1 #2⟩, a → #1, b → #2
+;; Result: Return first element
+(⊨ :as-pair-part
+    #1
+    (∇ (⟨⟩ #1 #2) (⌜ (((pair @ (⟨⟩ a b)) a)))))
+
+;; Test 4: As-pattern with pair - use all bindings
+;; Pattern: pair@(⟨⟩ a b)
+;; Value: ⟨#3 #4⟩
+;; Expected: Binds pair → ⟨#3 #4⟩, a → #3, b → #4
+;; Result: Return ⟨pair a b⟩
+(⊨ :as-pair-all-bindings
+    (⟨⟩ (⟨⟩ #3 #4) (⟨⟩ #3 #4))
+    (∇ (⟨⟩ #3 #4) (⌜ (((pair @ (⟨⟩ a b)) (⟨⟩ pair (⟨⟩ a b)))))))
+
+;; Test 5: As-pattern with variable
+;; Pattern: whole@x
+;; Value: #99
+;; Expected: Binds whole → #99, x → #99
+(⊨ :as-variable
+    (⟨⟩ #99 #99)
+    (∇ #99 (⌜ (((whole @ x) (⟨⟩ whole x))))))
+
+;; ============================================================================
+;; Nested As-Patterns
+;; ============================================================================
+
+;; Test 6: Nested as-patterns - double nesting
+;; Pattern: outer@(inner@(⟨⟩ a b))
+;; Value: ⟨#5 #6⟩
+;; Expected: outer → ⟨#5 #6⟩, inner → ⟨#5 #6⟩, a → #5, b → #6
+(⊨ :nested-as-double
+    (⟨⟩ (⟨⟩ #5 #6) (⟨⟩ (⟨⟩ #5 #6) (⟨⟩ #5 #6)))
+    (∇ (⟨⟩ #5 #6) (⌜ (((outer @ (inner @ (⟨⟩ a b))) (⟨⟩ outer (⟨⟩ inner (⟨⟩ a b))))))))
+
+;; Test 7: As-pattern on nested pair structure
+;; Pattern: lst@(⟨⟩ h (t@(⟨⟩ h2 t2)))
+;; Value: ⟨#1 ⟨#2 #3⟩⟩
+;; Expected: lst → ⟨#1 ⟨#2 #3⟩⟩, h → #1, t → ⟨#2 #3⟩, h2 → #2, t2 → #3
+(⊨ :nested-as-structure
+    (⟨⟩ (⟨⟩ #1 (⟨⟩ #2 #3)) (⟨⟩ #2 #3))
+    (∇ (⟨⟩ #1 (⟨⟩ #2 #3)) (⌜ (((lst @ (⟨⟩ h (t @ (⟨⟩ h2 t2)))) (⟨⟩ lst t))))))
+
+;; ============================================================================
+;; As-Patterns with Lists
+;; ============================================================================
+
+;; Test 8: As-pattern with single-element list
+;; Pattern: lst@(⟨⟩ x ∅)
+;; Value: ⟨#42 ∅⟩
+;; Expected: lst → ⟨#42 ∅⟩, x → #42
+(⊨ :as-singleton-list
+    (⟨⟩ (⟨⟩ #42 ∅) #42)
+    (∇ (⟨⟩ #42 ∅) (⌜ (((lst @ (⟨⟩ x ∅)) (⟨⟩ lst x))))))
+
+;; Test 9: As-pattern with two-element list
+;; Pattern: lst@(⟨⟩ a (⟨⟩ b ∅))
+;; Value: ⟨#10 ⟨#20 ∅⟩⟩
+;; Expected: lst → ⟨#10 ⟨#20 ∅⟩⟩, a → #10, b → #20
+(⊨ :as-two-element-list
+    (⟨⟩ (⟨⟩ #10 (⟨⟩ #20 ∅)) (⟨⟩ #10 #20))
+    (∇ (⟨⟩ #10 (⟨⟩ #20 ∅)) (⌜ (((lst @ (⟨⟩ a (⟨⟩ b ∅))) (⟨⟩ lst (⟨⟩ a b)))))))
+
+;; ============================================================================
+;; As-Patterns with Structures (ADTs)
+;; ============================================================================
+
+;; Define Option ADT for tests
+(⊚≔ :Option (⌜ (:None)) (⌜ (:Some :value)))
+
+;; Test 10: As-pattern with ADT - Some variant
+;; Pattern: opt@(⊚ :Option :Some v)
+;; Value: ⊚[:Option :Some #100]
+;; Expected: opt → whole value, v → #100
+(⊨ :as-adt-some
+    #100
+    (∇ (⊚ :Option :Some #100) (⌜ (((opt @ (⊚ :Option :Some v)) v)))))
+
+;; Test 11: As-pattern with ADT - return whole and part
+;; Pattern: opt@(⊚ :Option :Some v)
+;; Value: ⊚[:Option :Some #50]
+;; Expected: opt → whole value, v → #50
+;; Result: ⟨opt v⟩
+(⊨ :as-adt-whole-and-part
+    #t
+    (∇ (⊚ :Option :Some #50) (⌜ (((opt @ (⊚ :Option :Some v))
+                                   (∧ (⊚? opt :Option :Some) (≡ v #50)))))))
+
+;; Define Result ADT for tests
+(⊚≔ :Result (⌜ (:Ok :value)) (⌜ (:Err :error)))
+
+;; Test 12: As-pattern with Result.Ok
+;; Pattern: res@(⊚ :Result :Ok val)
+;; Value: ⊚[:Result :Ok #42]
+;; Expected: res → whole value, val → #42
+(⊨ :as-result-ok
+    (⟨⟩ #t #42)
+    (∇ (⊚ :Result :Ok #42) (⌜ (((res @ (⊚ :Result :Ok val))
+                                (⟨⟩ (⊚? res :Result :Ok) val))))))
+
+;; Test 13: As-pattern with Result.Err
+;; Pattern: res@(⊚ :Result :Err e)
+;; Value: ⊚[:Result :Err :failure]
+;; Expected: res → whole value, e → :failure
+(⊨ :as-result-err
+    :failure
+    (∇ (⊚ :Result :Err :failure) (⌜ (((res @ (⊚ :Result :Err e)) e)))))
+
+;; ============================================================================
+;; As-Patterns with Leaf Structures
+;; ============================================================================
+
+;; Define Point structure for tests
+(⊙≔ :Point :x :y)
+
+;; Test 14: As-pattern with leaf structure
+;; Pattern: pt@(⊙ :Point x y)
+;; Value: ⊙[:Point #3 #4]
+;; Expected: pt → whole point, x → #3, y → #4
+(⊨ :as-leaf-structure
+    (⟨⟩ #t (⟨⟩ #3 #4))
+    (∇ (⊙ :Point #3 #4) (⌜ (((pt @ (⊙ :Point x y))
+                             (⟨⟩ (⊙? pt :Point) (⟨⟩ x y)))))))
+
+;; ============================================================================
+;; As-Patterns with Multiple Clauses
+;; ============================================================================
+
+;; Test 15: As-patterns in multiple clauses
+;; Pattern matching with fallback
+(⊨ :as-multiple-clauses-first
+    :matched-some
+    (∇ (⊚ :Option :Some #42) (⌜ (((opt @ (⊚ :Option :Some v)) :matched-some)
+                                  ((opt @ (⊚ :Option :None)) :matched-none)))))
+
+(⊨ :as-multiple-clauses-second
+    :matched-none
+    (∇ (⊚ :Option :None) (⌜ (((opt @ (⊚ :Option :Some v)) :matched-some)
+                             ((opt @ (⊚ :Option :None)) :matched-none)))))
+
+;; ============================================================================
+;; As-Patterns with Guards (Combination)
+;; ============================================================================
+
+;; Test 16: As-pattern combined with guard condition
+;; Pattern: (pair@(⟨⟩ a b) | (> a #0))
+;; Tests that a > 0, returns pair if true
+(⊨ :as-with-guard-pass
+    (⟨⟩ #5 #10)
+    (∇ (⟨⟩ #5 #10) (⌜ ((((pair @ (⟨⟩ a b)) | (> a #0)) pair)
+                       (_ :failed)))))
+
+(⊨ :as-with-guard-fail
+    :failed
+    (∇ (⟨⟩ #-5 #10) (⌜ ((((pair @ (⟨⟩ a b)) | (> a #0)) pair)
+                        (_ :failed)))))
+
+;; Test 17: As-pattern with complex guard - sum check
+;; Pattern: (pair@(⟨⟩ a b) | (≡ (⊕ a b) #10))
+;; Tests that a + b = 10
+(⊨ :as-guard-sum-check-pass
+    (⟨⟩ #3 #7)
+    (∇ (⟨⟩ #3 #7) (⌜ ((((pair @ (⟨⟩ a b)) | (≡ (⊕ a b) #10)) pair)
+                      (_ :failed)))))
+
+(⊨ :as-guard-sum-check-fail
+    :failed
+    (∇ (⟨⟩ #3 #8) (⌜ ((((pair @ (⟨⟩ a b)) | (≡ (⊕ a b) #10)) pair)
+                      (_ :failed)))))
+
+;; ============================================================================
+;; Edge Cases
+;; ============================================================================
+
+;; Test 18: As-pattern with wildcard subpattern
+;; Pattern: x@_
+;; Value: #42
+;; Expected: x → #42
+(⊨ :as-wildcard
+    #42
+    (∇ #42 (⌜ (((x @ _) x)))))
+
+;; Test 19: As-pattern with nil
+;; Pattern: empty@∅
+;; Value: ∅
+;; Expected: empty → ∅
+(⊨ :as-nil
+    #t
+    (∇ ∅ (⌜ (((empty @ ∅) (∅? empty))))))
+
+;; Test 20: As-pattern match failure
+;; Pattern: pair@(⟨⟩ a b)
+;; Value: #42 (not a pair)
+;; Expected: No match, fallback to wildcard
+(⊨ :as-match-failure
+    :not-matched
+    (∇ #42 (⌜ (((pair @ (⟨⟩ a b)) :matched)
+               (_ :not-matched)))))
+
+;; Test 21: As-pattern with boolean
+;; Pattern: flag@#t
+;; Value: #t
+;; Expected: flag → #t
+(⊨ :as-boolean
+    #t
+    (∇ #t (⌜ (((flag @ #t) flag)))))
+
+;; Test 22: As-pattern with symbol
+;; Pattern: sym@:hello
+;; Value: :hello
+;; Expected: sym → :hello
+(⊨ :as-symbol
+    :hello
+    (∇ :hello (⌜ (((sym @ :hello) sym)))))
+
+;; ============================================================================
+;; Real-World Examples
+;; ============================================================================
+
+;; Test 23: Clone a list node with as-pattern
+;; Returns both the head and the original node
+(⊨ :realworld-clone-node
+    (⟨⟩ #42 (⟨⟩ #42 (⟨⟩ #99 ∅)))
+    (∇ (⟨⟩ #42 (⟨⟩ #99 ∅)) (⌜ (((node @ (⟨⟩ h t)) (⟨⟩ h node))))))
+
+;; Test 24: Validate and extract from Result with as-pattern
+;; Use the whole Result value and its inner value
+(⊨ :realworld-result-validation
+    :valid
+    (∇ (⊚ :Result :Ok #100) (⌜ ((((res @ (⊚ :Result :Ok v)) | (> v #50)) :valid)
+                                 ((res @ (⊚ :Result :Ok v)) :invalid)
+                                 ((res @ (⊚ :Result :Err e)) :error)))))
+
+;; Test 25: Nested structure extraction with multiple as-patterns
+;; Extract multiple levels with as-patterns for clarity
+(⊨ :realworld-nested-extraction
+    (⟨⟩ (⟨⟩ (⟨⟩ #1 (⟨⟩ #2 #3)) (⟨⟩ #2 #3)) #1)
+    (∇ (⟨⟩ #1 (⟨⟩ #2 #3))
+       (⌜ (((outer @ (⟨⟩ h (inner @ (⟨⟩ h2 t2)))) (⟨⟩ (⟨⟩ outer inner) h))))))

@@ -57,7 +57,7 @@ Everything is a **Cell**:
 |--------|------|---------|--------|
 | `∇` | `α → [[⌜pattern⌝ result]] → β` | Pattern match expression | ✅ DONE (Day 16) |
 
-**Note:** As of Day 58, supports:
+**Note:** As of Day 59, supports:
 - **Wildcard** (_) - matches anything
 - **Literals** - numbers, booleans, symbols, keywords
 - **Variables** - bind matched value to name (Day 16 ✅)
@@ -66,6 +66,7 @@ Everything is a **Cell**:
 - **Node/ADT patterns** (⊚) - destructure algebraic data types (Day 18 ✅)
 - **Exhaustiveness checking** - warnings for incomplete/unreachable patterns (Day 19 ✅)
 - **Guard conditions** - conditional matching with boolean expressions (Day 58 ✅)
+- **As-patterns** - bind both whole value and parts (Day 59 ✅)
 
 **Syntax:**
 ```scheme
@@ -83,6 +84,7 @@ Everything is a **Cell**:
 - `(⊙ :Type pat1 pat2 ...)` - Leaf structure destructuring (Day 18)
 - `(⊚ :Type :Variant pat1 ...)` - Node/ADT destructuring (Day 18)
 - `(pattern | guard-expr)` - Guard condition (Day 58)
+- `(name @ pattern)` - As-pattern, binds both whole and parts (Day 59)
 
 **Examples:**
 ```scheme
@@ -129,6 +131,33 @@ Everything is a **Cell**:
 (∇ (⊚ :Result :Ok #150) (⌜ ((((⊚ :Result :Ok v) | (> v #100)) :large)
                             ((⊚ :Result :Ok v) :small)
                             ((⊚ :Result :Err e) :error))))  ; → :large
+
+; As-patterns (Day 59) - bind both whole value AND parts
+; Syntax: (name @ pattern)
+; Binds 'name' to the whole value and also matches the subpattern
+
+; Bind pair and its components
+(∇ (⟨⟩ #1 #2) (⌜ (((pair @ (⟨⟩ a b)) (⟨⟩ pair (⟨⟩ a b))))))
+; → ⟨⟨#1 #2⟩ ⟨#1 #2⟩⟩
+; pair = ⟨#1 #2⟩, a = #1, b = #2
+
+; Bind Result.Ok and its value
+(⊚≔ :Result (⌜ (:Ok :value)) (⌜ (:Err :error)))
+(∇ (⊚ :Result :Ok #42) (⌜ (((ok @ (⊚ :Result :Ok v)) (⟨⟩ ok v)))))
+; → ⟨⊚[:Result :Ok #42] #42⟩
+
+; Nested as-patterns
+(∇ (⟨⟩ #5 #6) (⌜ (((outer @ (inner @ (⟨⟩ a b))) (⟨⟩ outer inner)))))
+; → ⟨⟨#5 #6⟩ ⟨#5 #6⟩⟩
+; outer = ⟨#5 #6⟩, inner = ⟨#5 #6⟩, a = #5, b = #6
+
+; Clone a list node with as-pattern
+(∇ (⟨⟩ #42 (⟨⟩ #99 ∅)) (⌜ (((node @ (⟨⟩ h t)) (⟨⟩ h node)))))
+; → ⟨#42 ⟨#42 ⟨#99 ∅⟩⟩⟩
+
+; As-patterns combined with guards
+(∇ (⟨⟩ #5 #10) (⌜ ((((pair @ (⟨⟩ a b)) | (> a #0)) pair)
+                   (_ :failed))))  ; → ⟨#5 #10⟩
 
 ; Quasiquote and Unquote (Day 32 Part 2)
 (≔ x #42)

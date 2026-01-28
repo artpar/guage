@@ -101,6 +101,63 @@ static void extract_pattern_and_guard(Cell* pattern_expr, Cell** pattern_out, Ce
     *guard_out = cell_car(rest2);
 }
 
+/* Helper: Check if pattern is an as-pattern: name@subpattern
+ * As-pattern syntax: (name @ subpattern) - a list with 3 elements
+ * Where:
+ * - name is a variable (non-keyword symbol, not wildcard)
+ * - @ is the separator symbol
+ * - subpattern is any valid pattern
+ */
+static bool is_as_pattern(Cell* pattern) {
+    /* Must be a list with at least 3 elements */
+    if (!pattern || pattern->type != CELL_PAIR) {
+        return false;
+    }
+
+    /* First element should be a variable (non-keyword symbol, not wildcard) */
+    Cell* first = cell_car(pattern);
+    if (!is_variable_pattern(first)) {
+        return false;
+    }
+
+    /* Need at least 2 more elements */
+    Cell* rest = cell_cdr(pattern);
+    if (!rest || rest->type != CELL_PAIR) {
+        return false;
+    }
+
+    /* Second element should be the @ symbol */
+    Cell* second = cell_car(rest);
+    if (!second || second->type != CELL_ATOM_SYMBOL) {
+        return false;
+    }
+    if (strcmp(second->data.atom.symbol, "@") != 0) {
+        return false;
+    }
+
+    /* Need the subpattern */
+    Cell* rest2 = cell_cdr(rest);
+    if (!rest2 || rest2->type != CELL_PAIR) {
+        return false;
+    }
+
+    return true;
+}
+
+/* Helper: Extract name and subpattern from as-pattern syntax
+ * Input: (name @ subpattern)
+ * Output: name_out = name symbol, subpattern_out = subpattern
+ */
+static void extract_as_pattern(Cell* pattern, Cell** name_out, Cell** subpattern_out) {
+    /* As-pattern syntax: (name @ subpattern) */
+    *name_out = cell_car(pattern);
+
+    /* Skip the @ symbol */
+    Cell* rest = cell_cdr(pattern);
+    Cell* rest2 = cell_cdr(rest);
+    *subpattern_out = cell_car(rest2);
+}
+
 /* Helper: Check if pattern is a pair pattern (⟨⟩ pat1 pat2) */
 static bool is_pair_pattern(Cell* pattern) {
     /* Pattern must be a list: (⟨⟩ pat1 pat2) */
@@ -267,6 +324,33 @@ MatchResult pattern_try_match(Cell* value, Cell* pattern) {
     /* Wildcard always matches, no bindings */
     if (is_wildcard(pattern)) {
         return success;
+    }
+
+    /* As-pattern: name@subpattern (Day 59)
+     * Binds both the whole value (to name) AND the pattern parts (via subpattern)
+     * Example: pair@(⟨⟩ a b) binds pair → whole value, a → car, b → cdr
+     */
+    if (is_as_pattern(pattern)) {
+        /* Extract name and subpattern */
+        Cell* name_symbol;
+        Cell* subpattern;
+        extract_as_pattern(pattern, &name_symbol, &subpattern);
+
+        /* Try to match subpattern against value */
+        MatchResult submatch = pattern_try_match(value, subpattern);
+        if (!submatch.success) {
+            /* Subpattern didn't match */
+            return failure;
+        }
+
+        /* Create binding for the whole value: name → value */
+        cell_retain(value);  /* Retain value for binding */
+        Cell* whole_binding = cell_cons(name_symbol, value);
+
+        /* Merge whole_binding with subpattern bindings */
+        Cell* merged = merge_bindings(whole_binding, submatch.bindings);
+        MatchResult result = {.success = true, .bindings = merged};
+        return result;
     }
 
     /* Nil pattern */
