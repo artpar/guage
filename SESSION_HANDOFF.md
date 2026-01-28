@@ -11,10 +11,13 @@ Purpose: Current project status and progress
 
 **Session 57 just completed:** Pattern matching bug fix - De Bruijn indices in closures (2 hours, 14 new tests, 57/58 passing)
 
-**Quick Start for Next Session:**
-1. Run `make test` to verify 57/58 tests passing
-2. Pattern matching (`∇`) now works correctly in nested lambdas!
-3. Choose next task from "What's Next" section below
+**🚀 Quick Start for Day 58:**
+1. **Read:** `docs/planning/PATTERN_MATCHING_ENHANCEMENTS.md` - Complete roadmap for next 1-2 sessions
+2. **Verify:** Run `make test` to confirm 57/58 tests passing
+3. **Start:** Implement Guard Conditions (2-3 hours, HIGH priority)
+   - Syntax: `(pattern | guard-expr) result-expr`
+   - Examples in planning doc
+   - Foundation for advanced pattern matching
 
 **Current System State:**
 - ✅ 102 primitives (stable)
@@ -23,6 +26,11 @@ Purpose: Current project status and progress
 - ✅ Result/Either type production-ready
 - ✅ Math library complete (22 primitives, 88 tests)
 - ✅ Self-hosting 59% complete (pure lambda calculus works)
+
+**Documentation for Continuity:**
+- 📋 Planning: `docs/planning/PATTERN_MATCHING_ENHANCEMENTS.md` - 4 enhancements planned
+- 🐛 Bug Fixed: `docs/reference/PATTERN_MATCHING_DEBRUIJN_BUG.md` - Complete fix documentation
+- 📝 Session End: `docs/archive/2026-01/sessions/SESSION_END_DAY_57.md` - Detailed notes
 
 ## Current Status 🎯
 
@@ -584,17 +592,32 @@ Used Address Sanitizer to discover the crash was **stack overflow during evaluat
 
 **Recommended Next Steps:**
 
-### 🔥 HIGH PRIORITY: Pattern Matching Enhancements (2-3 hours)
+### 🔥 HIGH PRIORITY: Pattern Matching Enhancements (9-13 hours total)
 
 **Why:** Build on the bug fix with powerful new features
 
-**Tasks:**
-1. ✅ **Bug Fixed** (Day 57 Complete!) - `∇` now works with De Bruijn indices in all contexts
-2. **Add Enhancements** (2-3 hours) - Next session:
-   - Guard conditions: `(pattern | guard) expr` - conditional matching
-   - As-patterns: `x@(⟨⟩ a b)` - bind both whole and parts
-   - Or-patterns: `(pattern₁ | pattern₂)` - multiple alternatives
-   - View patterns: `(→ transform pattern)` - transform before match
+**Plan:** See `docs/planning/PATTERN_MATCHING_ENHANCEMENTS.md` for complete roadmap
+
+**Phase 1 - Guard Conditions (Day 58, 2-3 hours):**
+- Syntax: `(pattern | guard-expr) result-expr`
+- Conditional pattern matching
+- Example: `(n | (> n #0)) :positive`
+- **START HERE for Day 58!**
+
+**Phase 2 - As-Patterns (Day 59, 2-3 hours):**
+- Syntax: `name@pattern`
+- Bind whole value AND parts
+- Example: `pair@(⟨⟩ a b)`
+
+**Phase 3 - Or-Patterns (Day 60, 3-4 hours):**
+- Syntax: `(pattern₁ | pattern₂)`
+- Match multiple alternatives
+- Example: `(#0 | #1 | #2) :small`
+
+**Phase 4 - View Patterns (Optional, 2-3 hours):**
+- Syntax: `(→ transform pattern)`
+- Transform before matching
+- Example: `(→ # n) | (> n #10)`
 
 **Impact:** HIGH - Would make pattern matching world-class
 
