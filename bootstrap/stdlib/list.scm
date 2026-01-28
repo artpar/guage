@@ -295,7 +295,7 @@
           (((⊴-merge cmp) ((⊴-sort cmp) left)) ((⊴-sort cmp) right)))
          ((↓ mid) lst)))
          ((↑ mid) lst)))
-        (⊘ (# lst) #2)))))))
+        (÷ (# lst) #2)))))))
 
 ; ⊴ :: (α → α → 𝔹) → [α] → [α]
 ; Sort - sort with comparison function (merge sort)

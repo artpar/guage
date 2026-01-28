@@ -9,12 +9,13 @@ TESTS_DIR = $(BOOTSTRAP_DIR)/tests
 
 # Build configuration
 CC = gcc
-CFLAGS = -Wall -Wextra -std=c11 -g -O2
-LDFLAGS =
+CFLAGS = -Wall -Wextra -std=c11 -g -O2 -fno-omit-frame-pointer
+LDFLAGS = -Wl,-stack_size,0x2000000  # 32MB stack (increased from default 8MB)
 
 # Source files (all in bootstrap/)
 SOURCES = cell.c primitives.c debruijn.c debug.c eval.c cfg.c dfg.c \
-          pattern.c pattern_check.c type.c testgen.c module.c macro.c main.c
+          pattern.c pattern_check.c type.c testgen.c module.c macro.c \
+          trampoline.c main.c
 OBJECTS = $(SOURCES:.c=.o)
 EXECUTABLE = guage
 
@@ -61,6 +62,16 @@ smoke: build
 	@echo "(⊗ #3 #4)" | $(BOOTSTRAP_EXECUTABLE)
 	@echo "(⟨⟩ #1 #2)" | $(BOOTSTRAP_EXECUTABLE)
 	@echo "✓ Smoke tests passed!"
+
+# Test trampoline data structures (C unit tests)
+test-trampoline: $(BOOTSTRAP_DIR)/test_trampoline.c $(BOOTSTRAP_DIR)/trampoline.o $(BOOTSTRAP_DIR)/cell.o
+	@echo "Building trampoline tests..."
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $(BOOTSTRAP_DIR)/test_trampoline \
+		$(BOOTSTRAP_DIR)/test_trampoline.c \
+		$(BOOTSTRAP_DIR)/trampoline.o \
+		$(BOOTSTRAP_DIR)/cell.o
+	@echo "Running trampoline tests..."
+	@$(BOOTSTRAP_DIR)/test_trampoline
 
 # ============================================================================
 # Running targets
@@ -205,6 +216,8 @@ $(BOOTSTRAP_DIR)/module.o: $(BOOTSTRAP_DIR)/module.c $(BOOTSTRAP_DIR)/module.h \
 $(BOOTSTRAP_DIR)/macro.o: $(BOOTSTRAP_DIR)/macro.c $(BOOTSTRAP_DIR)/macro.h \
                            $(BOOTSTRAP_DIR)/cell.h $(BOOTSTRAP_DIR)/eval.h \
                            $(BOOTSTRAP_DIR)/primitives.h
+$(BOOTSTRAP_DIR)/trampoline.o: $(BOOTSTRAP_DIR)/trampoline.c $(BOOTSTRAP_DIR)/trampoline.h \
+                                $(BOOTSTRAP_DIR)/cell.h
 $(BOOTSTRAP_DIR)/main.o: $(BOOTSTRAP_DIR)/main.c $(BOOTSTRAP_DIR)/cell.h \
                           $(BOOTSTRAP_DIR)/primitives.h $(BOOTSTRAP_DIR)/eval.h \
                           $(BOOTSTRAP_DIR)/debug.h $(BOOTSTRAP_DIR)/module.h
