@@ -26,7 +26,7 @@ Deep-dive technical documentation that changes infrequently:
 
 - [Auto-Documentation Guide](reference/AUTO_DOCUMENTATION_GUIDE.md) - Complete guide to ⌂, ⌂∈, ⌂≔, ⌂⊛
 - [Auto-Test Guide](reference/AUTO_TEST_GUIDE.md) - Complete guide to ⌂⊨ test generation
-- [Pattern Matching Bug](reference/PATTERN_MATCHING_DEBRUIJN_BUG.md) - Known issue with ∇ and De Bruijn indices (NEW! 🐛)
+- [Pattern Matching De Bruijn Bug](reference/PATTERN_MATCHING_DEBRUIJN_BUG.md) - ✅ FIXED (Day 57) - ∇ works with De Bruijn indices
 - [Metaprogramming Vision](reference/METAPROGRAMMING_VISION.md) - Vision, native features, long-term goals
 - [Data Structures](reference/DATA_STRUCTURES.md) - Structure primitives (⊙, ⊚, ⊝)
 - [Keywords](reference/KEYWORDS.md) - Self-evaluating symbols specification
@@ -37,7 +37,8 @@ Deep-dive technical documentation that changes infrequently:
 
 Current roadmaps and active tasks:
 
-- [Week 3 Roadmap](planning/WEEK_3_ROADMAP.md) - Pattern matching implementation plan
+- [Pattern Matching Enhancements](planning/PATTERN_MATCHING_ENHANCEMENTS.md) - Guards, as-patterns, or-patterns (Days 58+)
+- [Week 3 Roadmap](planning/WEEK_3_ROADMAP.md) - Pattern matching implementation plan (COMPLETED ✅)
 - [TODO](planning/TODO.md) - Task tracking and priorities
 
 ## 🗄️ Historical Archive
