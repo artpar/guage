@@ -401,6 +401,49 @@ Strings are enclosed in double quotes with escape sequences:
 (≈< "apple" "banana")        ; → #t
 ```
 
+**Higher-Level String Library:**
+
+The `stdlib/string.scm` module provides higher-level string manipulation utilities built on the primitive operations above:
+
+| Function | Alias | Description |
+|----------|-------|-------------|
+| `string-split` | `≈÷` | Split string by delimiter or into characters |
+| `string-join` | `≈⊗` | Join list of strings with delimiter |
+| `string-trim` | `≈⊏⊐` | Trim whitespace from both ends |
+| `string-contains?` | `≈∈?` | Check if substring exists |
+| `string-replace` | `≈⇔` | Replace all occurrences |
+| `string-split-lines` | `≈÷⊳` | Split by newlines |
+| `string-index-of` | `≈⊳` | Find substring position (or ∅) |
+
+**Examples:**
+```scheme
+(⋘ "stdlib/string.scm")
+
+; Split and join
+(string-split "a,b,c" ",")          ; → ⟨"a" ⟨"b" ⟨"c" ∅⟩⟩⟩
+(≈÷ "hello" "")                     ; → ⟨"h" ⟨"e" ⟨"l" ⟨"l" ⟨"o" ∅⟩⟩⟩⟩⟩
+(string-join ⟨"a" ⟨"b" ∅⟩⟩ ",")     ; → "a,b"
+
+; Trim whitespace
+(string-trim "  hello  ")           ; → "hello"
+(≈⊏⊐ "\n\ttest\t\n")                ; → "test"
+
+; Search and replace
+(string-contains? "hello world" "world")  ; → #t
+(≈∈? "test" "xyz")                       ; → #f
+(string-index-of "hello world" "world")  ; → #6
+(≈⊳ "test" "xyz")                        ; → ∅
+(string-replace "hello world" "world" "there")  ; → "hello there"
+(≈⇔ "aaa" "a" "b")                       ; → "bbb"
+
+; Real-world usage
+(string-split-lines "a\nb\nc")      ; → ⟨"a" ⟨"b" ⟨"c" ∅⟩⟩⟩
+(≈÷ "Alice,30,Engineer" ",")        ; → CSV parsing
+(≈⊗ words " ")                      ; → Sentence building
+```
+
+See `bootstrap/tests/string.test` for comprehensive examples (42 passing tests).
+
 ### I/O Operations (8) ✅
 | Symbol | Type | Meaning | Status |
 |--------|------|---------|--------|
@@ -532,10 +575,12 @@ All I/O operations return errors on failure:
 ; Load standard library modules
 (⋘ "stdlib/list.scm")          ; List operations
 (⋘ "stdlib/option.scm")        ; Option/Result types
+(⋘ "stdlib/string.scm")        ; String manipulation
 (⋘ "stdlib/math.scm")          ; Math utilities
 
 ; Use loaded functions
 (map inc (list #1 #2 #3))      ; → ⟨#2 ⟨#3 ⟨#4 ∅⟩⟩⟩
+(string-split "a,b,c" ",")     ; → ⟨"a" ⟨"b" ⟨"c" ∅⟩⟩⟩
 ```
 
 **Error Handling:**

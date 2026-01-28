@@ -1,0 +1,284 @@
+#!/usr/bin/env guage
+; Test suite for stdlib/string.scm
+; Tests all string manipulation utilities
+
+(≋ "Testing String Library...")
+
+; Load the string library
+(⋘ "stdlib/string.scm")
+
+; ============================================================================
+; Test: string-split (≈÷)
+; ============================================================================
+
+(≋ "Testing string-split...")
+
+; Basic split
+(⊨ :split-basic
+   (⟨⟩ "a" (⟨⟩ "b" (⟨⟩ "c" ∅)))
+   (string-split "a,b,c" ","))
+
+; Split with empty string (character split)
+(⊨ :split-chars
+   (⟨⟩ "h" (⟨⟩ "e" (⟨⟩ "l" (⟨⟩ "l" (⟨⟩ "o" ∅)))))
+   (string-split "hello" ""))
+
+; Split empty string
+(⊨ :split-empty
+   ∅
+   (string-split "" ","))
+
+; Split with no delimiter found
+(⊨ :split-none
+   (⟨⟩ "hello" ∅)
+   (string-split "hello" ","))
+
+; Split with multi-char delimiter
+(⊨ :split-multi
+   (⟨⟩ "hello" (⟨⟩ "world" ∅))
+   (string-split "hello::world" "::"))
+
+; Alias test
+(⊨ :split-alias
+   (⟨⟩ "a" (⟨⟩ "b" ∅))
+   (≈÷ "a,b" ","))
+
+; ============================================================================
+; Test: string-join (≈⊗)
+; ============================================================================
+
+(≋ "Testing string-join...")
+
+; Basic join
+(⊨ :join-basic
+   "a,b,c"
+   (string-join (⟨⟩ "a" (⟨⟩ "b" (⟨⟩ "c" ∅))) ","))
+
+; Join empty list
+(⊨ :join-empty
+   ""
+   (string-join ∅ ","))
+
+; Join single element
+(⊨ :join-single
+   "hello"
+   (string-join (⟨⟩ "hello" ∅) ","))
+
+; Join with space
+(⊨ :join-space
+   "hello world"
+   (string-join (⟨⟩ "hello" (⟨⟩ "world" ∅)) " "))
+
+; Alias test
+(⊨ :join-alias
+   "a,b"
+   (≈⊗ (⟨⟩ "a" (⟨⟩ "b" ∅)) ","))
+
+; Round-trip test (split then join)
+(⊨ :split-join-roundtrip
+   "a,b,c"
+   (string-join (string-split "a,b,c" ",") ","))
+
+; ============================================================================
+; Test: string-trim
+; ============================================================================
+
+(≋ "Testing string-trim...")
+
+; Trim left
+(⊨ :trim-left-basic
+   "hello"
+   (string-trim-left "  hello"))
+
+; Trim left (no whitespace)
+(⊨ :trim-left-none
+   "hello"
+   (string-trim-left "hello"))
+
+; Trim right
+(⊨ :trim-right-basic
+   "hello"
+   (string-trim-right "hello  "))
+
+; Trim right (no whitespace)
+(⊨ :trim-right-none
+   "hello"
+   (string-trim-right "hello"))
+
+; Trim both
+(⊨ :trim-both
+   "hello"
+   (string-trim "  hello  "))
+
+; Trim both (no whitespace)
+(⊨ :trim-both-none
+   "hello"
+   (string-trim "hello"))
+
+; Alias test
+(⊨ :trim-alias
+   "hello"
+   (≈⊏⊐ "  hello  "))
+
+; ============================================================================
+; Test: string-contains? (≈∈?)
+; ============================================================================
+
+(≋ "Testing string-contains?...")
+
+; Contains found
+(⊨ :contains-found
+   #t
+   (string-contains? "hello world" "world"))
+
+; Contains not found
+(⊨ :contains-not-found
+   #f
+   (string-contains? "hello" "xyz"))
+
+; Contains at start
+(⊨ :contains-start
+   #t
+   (string-contains? "hello world" "hello"))
+
+; Contains at end
+(⊨ :contains-end
+   #t
+   (string-contains? "hello world" "world"))
+
+; Contains empty string (always true)
+(⊨ :contains-empty
+   #t
+   (string-contains? "hello" ""))
+
+; Alias test
+(⊨ :contains-alias
+   #t
+   (≈∈? "hello world" "world"))
+
+; ============================================================================
+; Test: string-replace (≈⇔)
+; ============================================================================
+
+(≋ "Testing string-replace...")
+
+; Replace basic
+(⊨ :replace-basic
+   "hello there"
+   (string-replace "hello world" "world" "there"))
+
+; Replace multiple occurrences
+(⊨ :replace-multiple
+   "bbb"
+   (string-replace "aaa" "a" "b"))
+
+; Replace not found
+(⊨ :replace-not-found
+   "hello"
+   (string-replace "hello" "xyz" "abc"))
+
+; Replace empty old (should return unchanged)
+(⊨ :replace-empty-old
+   "hello"
+   (string-replace "hello" "" "x"))
+
+; Replace with empty string (delete)
+(⊨ :replace-delete
+   "heo"
+   (string-replace "hello" "l" ""))
+
+; Alias test
+(⊨ :replace-alias
+   "hello there"
+   (≈⇔ "hello world" "world" "there"))
+
+; ============================================================================
+; Test: string-split-lines (≈÷⊳)
+; ============================================================================
+
+(≋ "Testing string-split-lines...")
+
+; Split lines basic
+(⊨ :split-lines-basic
+   (⟨⟩ "a" (⟨⟩ "b" (⟨⟩ "c" ∅)))
+   (string-split-lines "a\nb\nc"))
+
+; Split lines single line
+(⊨ :split-lines-single
+   (⟨⟩ "hello" ∅)
+   (string-split-lines "hello"))
+
+; Alias test
+(⊨ :split-lines-alias
+   (⟨⟩ "a" (⟨⟩ "b" ∅))
+   (≈÷⊳ "a\nb"))
+
+; ============================================================================
+; Test: string-index-of (≈⊳)
+; ============================================================================
+
+(≋ "Testing string-index-of...")
+
+; Index-of found
+(⊨ :index-of-found
+   #6
+   (string-index-of "hello world" "world"))
+
+; Index-of not found
+(⊨ :index-of-not-found
+   ∅
+   (string-index-of "hello" "xyz"))
+
+; Index-of at start
+(⊨ :index-of-start
+   #0
+   (string-index-of "hello world" "hello"))
+
+; Index-of empty string (returns 0)
+(⊨ :index-of-empty
+   #0
+   (string-index-of "hello" ""))
+
+; Alias test
+(⊨ :index-of-alias
+   #6
+   (≈⊳ "hello world" "world"))
+
+; ============================================================================
+; Integration Tests
+; ============================================================================
+
+(≋ "Testing integration scenarios...")
+
+; Parse CSV line
+(⊨ :csv-parse
+   (⟨⟩ "Alice" (⟨⟩ "30" (⟨⟩ "Engineer" ∅)))
+   (string-split "Alice,30,Engineer" ","))
+
+; Build CSV line
+(⊨ :csv-build
+   "Alice,30,Engineer"
+   (string-join (⟨⟩ "Alice" (⟨⟩ "30" (⟨⟩ "Engineer" ∅))) ","))
+
+; Clean user input
+(⊨ :clean-input
+   "hello world"
+   (string-trim "  hello world  "))
+
+; Word count (split by space, count elements)
+(≔ count-words (λ (s)
+  (≔ words (string-split s " "))
+  (≔ count-list (λ (lst)
+    (? (∅? lst) #0 (⊕ #1 (count-list (▷ lst))))))
+  (count-list words)))
+
+(⊨ :word-count
+   #3
+   (count-words "hello world test"))
+
+; URL path parsing
+(⊨ :url-parse
+   (⟨⟩ "" (⟨⟩ "api" (⟨⟩ "users" (⟨⟩ "123" ∅))))
+   (string-split "/api/users/123" "/"))
+
+(≋ "\n✅ All string library tests passed!")
