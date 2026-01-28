@@ -99,7 +99,7 @@ Cell* debruijn_convert(Cell* expr, NameContext* ctx) {
     }
 
     /* Other self-evaluating literals */
-    if (cell_is_bool(expr) || cell_is_nil(expr)) {
+    if (cell_is_bool(expr) || cell_is_nil(expr) || cell_is_string(expr)) {
         cell_retain(expr);
         return expr;
     }
