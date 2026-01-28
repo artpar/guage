@@ -14,7 +14,7 @@ LDFLAGS = -Wl,-stack_size,0x2000000  # 32MB stack (increased from default 8MB)
 
 # Source files (all in bootstrap/)
 SOURCES = cell.c primitives.c debruijn.c debug.c eval.c cfg.c dfg.c \
-          pattern.c pattern_check.c type.c testgen.c module.c macro.c main.c
+          pattern.c pattern_check.c type.c testgen.c module.c macro.c linenoise.c main.c
 OBJECTS = $(SOURCES:.c=.o)
 EXECUTABLE = guage
 
@@ -223,6 +223,8 @@ $(BOOTSTRAP_DIR)/module.o: $(BOOTSTRAP_DIR)/module.c $(BOOTSTRAP_DIR)/module.h \
 $(BOOTSTRAP_DIR)/macro.o: $(BOOTSTRAP_DIR)/macro.c $(BOOTSTRAP_DIR)/macro.h \
                            $(BOOTSTRAP_DIR)/cell.h $(BOOTSTRAP_DIR)/eval.h \
                            $(BOOTSTRAP_DIR)/primitives.h
+$(BOOTSTRAP_DIR)/linenoise.o: $(BOOTSTRAP_DIR)/linenoise.c $(BOOTSTRAP_DIR)/linenoise.h
 $(BOOTSTRAP_DIR)/main.o: $(BOOTSTRAP_DIR)/main.c $(BOOTSTRAP_DIR)/cell.h \
                           $(BOOTSTRAP_DIR)/primitives.h $(BOOTSTRAP_DIR)/eval.h \
-                          $(BOOTSTRAP_DIR)/debug.h $(BOOTSTRAP_DIR)/module.h
+                          $(BOOTSTRAP_DIR)/debug.h $(BOOTSTRAP_DIR)/module.h \
+                          $(BOOTSTRAP_DIR)/linenoise.h

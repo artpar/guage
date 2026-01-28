@@ -6,6 +6,7 @@
 #include "primitives.h"
 #include "eval.h"
 #include "module.h"
+#include "linenoise.h"
 
 /* Evaluator uses proper tail call optimization (TCO) - no trampoline needed */
 
@@ -449,6 +450,74 @@ static void handle_modules_command(EvalContext* ctx) {
     printf("└─────────────────────────────────────────────────────────┘\n\n");
 }
 
+/* Tab completion callback for linenoise */
+static void completion_callback(const char *buf, linenoiseCompletions *lc) {
+    /* Complete REPL commands */
+    if (buf[0] == ':') {
+        const char *commands[] = {":help", ":primitives", ":modules", NULL};
+        for (int i = 0; commands[i]; i++) {
+            if (strncmp(buf, commands[i], strlen(buf)) == 0) {
+                linenoiseAddCompletion(lc, commands[i]);
+            }
+        }
+        return;
+    }
+
+    /* Complete common primitive names and special forms */
+    const char *symbols[] = {
+        /* Special forms */
+        "λ", "≔", "?", "∇", "⌜", "⌞",
+        /* Constants */
+        "#t", "#f", "∅",
+        /* Core */
+        "⟨⟩", "◁", "▷",
+        /* Arithmetic */
+        "⊕", "⊖", "⊗", "⊘", "÷", "%", "<", ">", "≤", "≥",
+        /* Logic */
+        "≡", "≢", "∧", "∨", "¬",
+        /* Type predicates */
+        "ℕ?", "𝔹?", ":?", "∅?", "⟨⟩?", "#?", "≈?", "⚠?",
+        /* Debug */
+        "⚠", "⊢", "⟲", "⧉", "⊛", "≟", "⊨",
+        /* I/O */
+        "≋", "≋≈", "≋←", "≋⊳", "≋⊲", "≋⊕", "≋?", "≋∅?",
+        /* Modules */
+        "⋘", "⋖", "⌂⊚", "⌂⊚→",
+        /* Strings */
+        "≈", "≈#", "≈⊙", "≈⊕", "≈⊂", "≈≡", "≈<", "≈>", "≈→",
+        /* Structures */
+        "⊙≔", "⊙", "⊙→", "⊙←", "⊙?",
+        "⊚≔", "⊚", "⊚→", "⊚?",
+        "⊝≔", "⊝", "⊝⊕", "⊝⊗", "⊝→", "⊝?",
+        /* Math */
+        "√", "^", "|", "⌊⌋", "⌈⌉", "⌊⌉", "min", "max",
+        "sin", "cos", "tan", "asin", "acos", "atan", "atan2",
+        "log", "log10", "exp", "π", "e", "rand", "rand-int",
+        /* CFG/DFG */
+        "⌂⇝", "⌂⇝⊳",
+        /* Auto-doc */
+        "⌂", "⌂∈", "⌂≔", "⌂⊛", "⌂⊨",
+        NULL
+    };
+
+    for (int i = 0; symbols[i]; i++) {
+        if (strncmp(buf, symbols[i], strlen(buf)) == 0) {
+            linenoiseAddCompletion(lc, symbols[i]);
+        }
+    }
+}
+
+/* Get home directory path for history file */
+static const char* get_history_path(void) {
+    static char path[512];
+    const char* home = getenv("HOME");
+    if (home) {
+        snprintf(path, sizeof(path), "%s/.guage_history", home);
+        return path;
+    }
+    return NULL;
+}
+
 /* REPL */
 void repl(void) {
     char input[MAX_INPUT];
@@ -475,21 +544,52 @@ void repl(void) {
 
     printf("Ready.\n\n");
 
-    accumulated[0] = '\0';
-    int balance = 0;
+    /* Setup linenoise */
     int is_interactive = isatty(fileno(stdin));
 
-    while (1) {
-        if (is_interactive && balance == 0) {
-            printf("guage> ");
-        } else if (is_interactive && balance > 0) {
-            printf("...    ");
-        }
-        fflush(stdout);
+    if (is_interactive) {
+        /* Enable multi-line mode for better editing */
+        linenoiseSetMultiLine(1);
 
-        if (fgets(input, MAX_INPUT, stdin) == NULL) {
-            if (is_interactive) printf("\n");
-            break;
+        /* Set up tab completion */
+        linenoiseSetCompletionCallback(completion_callback);
+
+        /* Load command history */
+        const char* history_file = get_history_path();
+        if (history_file) {
+            linenoiseHistoryLoad(history_file);
+            linenoiseHistorySetMaxLen(1000);  /* Keep last 1000 commands */
+        }
+    }
+
+    accumulated[0] = '\0';
+    int balance = 0;
+
+    while (1) {
+        char* line;
+
+        if (is_interactive) {
+            /* Use linenoise for interactive mode */
+            const char* prompt = (balance == 0) ? "guage> " : "...    ";
+            line = linenoise(prompt);
+
+            if (line == NULL) {
+                /* Ctrl+D pressed */
+                printf("\n");
+                break;
+            }
+
+            /* Copy to input buffer */
+            strncpy(input, line, MAX_INPUT - 1);
+            input[MAX_INPUT - 1] = '\0';
+            strncat(input, "\n", MAX_INPUT - strlen(input) - 1);  /* Add newline */
+
+            linenoiseFree(line);
+        } else {
+            /* Use fgets for non-interactive mode (pipes, files) */
+            if (fgets(input, MAX_INPUT, stdin) == NULL) {
+                break;
+            }
         }
 
         /* Skip empty lines when not accumulating */
@@ -568,6 +668,25 @@ void repl(void) {
             /* Print result */
             cell_print(result);
             printf("\n");
+
+            /* Add to history (only for interactive mode) */
+            if (is_interactive) {
+                /* Trim trailing newlines from accumulated input */
+                char* trimmed = accumulated;
+                size_t len = strlen(trimmed);
+                while (len > 0 && (trimmed[len-1] == '\n' || trimmed[len-1] == '\r')) {
+                    trimmed[len-1] = '\0';
+                    len--;
+                }
+                if (len > 0) {
+                    linenoiseHistoryAdd(trimmed);
+                    /* Save history periodically */
+                    const char* history_file = get_history_path();
+                    if (history_file) {
+                        linenoiseHistorySave(history_file);
+                    }
+                }
+            }
 
             /* Cleanup */
             cell_release(expr);
