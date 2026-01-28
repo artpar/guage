@@ -24,6 +24,8 @@
 
 Deep-dive technical documentation that changes infrequently:
 
+- [Auto-Documentation Guide](reference/AUTO_DOCUMENTATION_GUIDE.md) - Complete guide to ⌂, ⌂∈, ⌂≔, ⌂⊛ (NEW!)
+- [Auto-Test Guide](reference/AUTO_TEST_GUIDE.md) - Complete guide to ⌂⊨ test generation (NEW!)
 - [Metaprogramming Vision](reference/METAPROGRAMMING_VISION.md) - Vision, native features, long-term goals
 - [Data Structures](reference/DATA_STRUCTURES.md) - Structure primitives (⊙, ⊚, ⊝)
 - [Keywords](reference/KEYWORDS.md) - Self-evaluating symbols specification
@@ -207,14 +209,15 @@ SYMBOLIC_VOCABULARY.md           # Symbol catalog
 
 ## 📊 Quick Status
 
-**Last Updated:** 2026-01-28 (Day 41 Complete - Parser Working!)
+**Last Updated:** 2026-01-28 (Day 42 Complete - Auto-Doc Deep Dive!)
 
 **System State:**
 - **Primitives:** 80 total (74 functional + 6 placeholders)
-- **Tests:** 900+ passing (comprehensive coverage)
-- **Status:** ✅ Turing complete + Pattern matching + Module system + Macros + **Parser in Guage!**
+- **Tests:** 29 passing (14 core + 15 parser)
+- **Status:** ✅ Turing complete + Pattern matching + Module system + Macros + Parser + **Auto-Doc!**
 
 **Recent Milestones:**
+- Day 42: Auto-doc deep dive (650+ lines comprehensive guides)
 - Day 41: Parser complete (15 tests passing, 3 critical bugs fixed)
 - Day 40: De Bruijn string support (parser unblocked)
 - Day 39: S-expression tokenizer in Guage (18 functions)
@@ -223,14 +226,14 @@ SYMBOLIC_VOCABULARY.md           # Symbol catalog
 - Days 15-19: Pattern matching complete (165 tests)
 
 **Next Steps:**
-- Day 42: S-expression evaluator in Guage (self-hosting 66%→100%)
-- Day 43-44: Self-hosting tests & validation
-- Day 45: REPL in Guage (full meta-circular interpreter)
+- Day 43: Fix ⌂⊛ provenance for REPL functions OR expand stdlib
+- Day 44-45: Property-based testing primitives or markdown export
+- Day 46+: Continue building practical utilities
 
 **Overall Progress:**
-- **Self-Hosting:** 66% complete (Tokenizer ✅ Parser ✅ Evaluator next)
-- **Week 6:** Day 41 complete
-- **Estimated to MVP:** Self-hosting by Day 45, then compiler pipeline
+- **Auto-Documentation:** Complete guides + working formatters
+- **Week 6:** Day 42 complete
+- **Focus:** Making Guage truly usable for real development work
 
 ---
 
