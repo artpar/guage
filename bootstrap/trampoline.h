@@ -2,6 +2,7 @@
 #define TRAMPOLINE_H
 
 #include "cell.h"
+#include "eval.h"  /* For EvalContext */
 #include <stdbool.h>
 
 /* Frame State - what kind of computation this frame represents */
@@ -134,5 +135,13 @@ void frame_print(StackFrame* frame);
 
 /* Print entire stack for debugging */
 void stack_print(EvalStack* stack);
+
+/* ========== Trampoline Evaluator ========== */
+
+/* Main evaluation loop - processes frames until stack empty */
+void trampoline_loop(EvalStack* stack);
+
+/* Trampoline evaluator entry point - evaluates expression using explicit stack */
+Cell* trampoline_eval(EvalContext* ctx, Cell* expr);
 
 #endif /* TRAMPOLINE_H */

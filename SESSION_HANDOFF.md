@@ -240,6 +240,76 @@ Implemented 6 out of 7 state handlers:
 
 ---
 
+## Day 49 Summary (2026-01-28 Late Night - Phase 3A)
+
+**Goal:** Implement Trampoline Phase 3A - Entry Point & Evaluation Loop
+
+**Implementation:**
+
+**Phase 3A Complete (~4 hours):**
+
+1. ✅ **trampoline_eval() Entry Point**
+   - Signature: `Cell* trampoline_eval(EvalContext* ctx, Cell* expr)`
+   - Creates EvalStack with context
+   - Pushes initial EVAL_EXPR frame
+   - Calls evaluation loop
+   - Returns final result
+
+2. ✅ **trampoline_loop() Main Loop**
+   - While stack not empty: pop frame, dispatch handler
+   - Switch statement on frame->state
+   - Calls appropriate handler for each state type
+   - Frame lifecycle management
+
+3. ✅ **Integration Tests Added** (6 tests, 3 passing)
+   - test_integration_atoms (numbers, bools, nil) ✅
+   - test_integration_keywords (:foo, :test) ✅
+   - test_integration_quote (⌜ expr) ✅
+   - test_integration_arithmetic ((⊕ 1 2)) ❌
+   - test_integration_comparison ((≡ 1 1)) (not tested yet)
+   - test_integration_nested_arithmetic (not tested yet)
+
+**Critical Bug Found:**
+
+When handlers push sub-frames and return, the current frame is destroyed by the loop. This breaks the state machine because parent frames cannot receive results from child computations.
+
+**Example:**
+- Expression: `(⊕ 1 2)`
+- Expected: Evaluate function, evaluate args, apply → result #3
+- Actual: Evaluate function → return builtin ⊕ as final result
+
+**Root Cause:**
+```c
+void trampoline_loop(EvalStack* stack) {
+    StackFrame* frame = stack_pop(stack);
+    // ... dispatch to handler ...
+    frame_destroy(frame);  // ← Destroys frame even if it needs continuation
+}
+```
+
+**Solution Planned:**
+Handlers return boolean indicating if frame is done. Loop only destroys completed frames.
+
+**Files Modified:**
+- `bootstrap/trampoline.c` - Added trampoline_eval(), trampoline_loop() (~120 lines)
+- `bootstrap/trampoline.h` - Added function declarations
+- `bootstrap/test_trampoline.c` - Added 6 integration tests (~200 lines)
+
+**Documentation Created:**
+- `DAY_49_TRAMPOLINE_BUG.md` - Complete bug analysis and fix plan
+
+**Duration:** ~4 hours (implementation + debugging)
+**Lines Added:** ~320 lines (functions + tests + debug)
+**Test Results:** 18/21 C unit tests passing (3 integration tests failing on bug)
+
+**Next Steps:**
+- ⏳ Phase 3B: Fix frame lifecycle bug (2-3 hours)
+- Update all handler signatures to return bool
+- Update loop to respect done flag
+- Verify all integration tests pass
+
+---
+
 ## Day 47 Summary (2026-01-28 Evening)
 
 **Goal:** Implement Trampoline Phase 1 - Data Structures
@@ -430,32 +500,45 @@ Implemented 6 out of 7 state handlers:
 
 ### CRITICAL: Trampoline Evaluator (Production Architecture)
 
-**Status:** ✅ Phase 1 complete, ✅ Phase 2 complete, ⏳ Phase 3 next
+**Status:** ✅ Phase 1 complete, ✅ Phase 2 complete, ✅ Phase 3A complete, ⏳ Phase 3B next
 
-**Priority 1: Trampoline Phase 3 - Integration** (~6 hours)
+**Priority 1: Trampoline Phase 3B - Fix Frame Lifecycle Bug** (~3-4 hours)
 
-**Phase 3: Wire Trampoline into Main Evaluator:**
-1. Create `trampoline_eval()` entry point function
-2. Main evaluation loop: Process frames until stack empty
-3. Handler dispatch based on frame state
-4. Context setup (global env, type registry)
-5. Integration testing with existing Guage tests
+**Critical Bug:** Parent frames destroyed before receiving results from child computations
 
-**Phase 3 Testing:**
-1. Add integration tests (complete expressions)
+**Fix Plan:**
+1. Update handler signatures: `bool handle_*(StackFrame*, EvalStack*)` returns true if done
+2. Handlers return false when pushing sub-frames (frame needs continuation)
+3. Update trampoline_loop to only destroy frames when handler returns true
+4. Test all 7 handlers with new signature
+5. Verify all 6 integration tests pass
+
+**See:** `DAY_49_TRAMPOLINE_BUG.md` for complete analysis and solution options
+
+**Phase 3C: Complete Integration Testing** (~2 hours)
+1. Add remaining integration tests (define, if, lambda)
 2. Test with stdlib loading
-3. Test with complex recursion
-4. Performance comparison with recursive eval
+3. Test deep recursion (merge sort)
+4. Performance comparison
 5. Memory leak testing
+
+**Phase 3D: Switch to Trampoline** (~2 hours)
+1. Update main.c to use trampoline_eval
+2. Keep old eval for comparison
+3. Run full test suite (33 Guage tests)
+4. Document performance differences
 
 **Completed:**
 - ✅ Phase 1: Data structures (StackFrame, EvalStack, 10 tests passing)
 - ✅ Phase 2: All 7 handlers (handle_eval_expr, handle_eval_apply, etc.)
 - ✅ Phase 2 Testing: 15/15 C unit tests passing
+- ✅ Phase 3A: Entry point & evaluation loop
 
 **Remaining:**
-- ⏳ Phase 3: Integration & testing (Day 49, ~6 hours)
-- ⏳ Phase 4: Switch to trampoline as default (Day 50, ~2 hours)
+- ⏳ Phase 3B: Fix frame lifecycle (~3-4 hours)
+- ⏳ Phase 3C: Integration testing (~2 hours)
+- ⏳ Phase 3D: Switch to trampoline (~2 hours)
+- **Total:** ~7-8 hours remaining for Phase 3
 
 **Priority 2: Fix Remaining Test Failures** (1-2 hours - optional)
 - 3 minor failures (sorting stability, cleanup assertions)
@@ -552,9 +635,9 @@ e9a6585 refactor: Consolidate all tests to bootstrap/tests/*.test
 
 ---
 
-**Status:** Trampoline Phase 2 COMPLETE ✅ | 15/15 C unit tests passing ✅ | All 7 handlers implemented & tested ✅ | Phase 3 next 🚀
+**Status:** Trampoline Phase 3A COMPLETE ✅ | Entry point & loop implemented ✅ | Critical bug found & documented ✅ | Phase 3B next (fix frame lifecycle) 🔧
 
 ---
 
-**Session End:** Day 48 complete (2026-01-28 late night)
-**Next Session:** Trampoline Phase 3 - Integration & full evaluation loop
+**Session End:** Day 49 Phase 3A complete (2026-01-28 late night)
+**Next Session:** Trampoline Phase 3B - Fix frame lifecycle bug

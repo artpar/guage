@@ -306,14 +306,29 @@ void stack_print(EvalStack* stack) {
 void handle_eval_return(StackFrame* frame, EvalStack* stack) {
     Cell* value = frame->value;
 
+    /* Debug */
+    static int return_call = 0;
+    return_call++;
+    if (return_call <= 20) {
+        fprintf(stderr, "DEBUG handle_eval_return #%d: value=%p, stack_empty=%d\n",
+                return_call, (void*)value, stack_is_empty(stack));
+        fflush(stderr);
+    }
+
     if (stack_is_empty(stack)) {
         /* No parent - this is the final result */
+        fprintf(stderr, "DEBUG: Setting final result\n");
+        fflush(stderr);
         stack_set_result(stack, value);
         return;
     }
 
     /* Get parent frame and store value */
     StackFrame* parent = stack_peek(stack);
+
+    fprintf(stderr, "DEBUG: Storing value in parent frame (state=%s)\n",
+            frame_state_name(parent->state));
+    fflush(stderr);
 
     /* Store value in parent's value field */
     if (parent->value) {
@@ -475,6 +490,15 @@ void handle_eval_apply(StackFrame* frame, EvalStack* stack) {
     Cell* args_or_expr = frame->expr;
     Cell* env = frame->env;
     Cell* value = frame->value;
+
+    /* Debug */
+    static int apply_call = 0;
+    apply_call++;
+    if (apply_call <= 20) {
+        fprintf(stderr, "DEBUG handle_eval_apply #%d: func=%p, value=%p\n",
+                apply_call, (void*)func, (void*)value);
+        fflush(stderr);
+    }
 
     /* Step 1: Function not evaluated yet */
     if (!func && !value) {
@@ -652,4 +676,131 @@ void handle_eval_define(StackFrame* frame, EvalStack* stack) {
     /* Return the value */
     StackFrame* ret = frame_create_return(value);
     stack_push(stack, ret);
+}
+
+/* ========== Trampoline Evaluator Entry Point ========== */
+
+/* Forward declaration */
+void trampoline_loop(EvalStack* stack);
+
+/*
+ * trampoline_eval - Main entry point for trampoline evaluation
+ *
+ * Evaluates an expression using the trampoline architecture (explicit stack).
+ * This replaces the recursive eval() with a loop-based approach that:
+ * - Never overflows the C call stack
+ * - Enables future features (continuations, time-travel debugging, coroutines)
+ * - Makes the evaluation process inspectable and controllable
+ *
+ * Arguments:
+ *   ctx - Global evaluation context (environment, primitives, type registry)
+ *   expr - Expression to evaluate
+ *
+ * Returns:
+ *   Evaluated result (caller must release)
+ */
+Cell* trampoline_eval(EvalContext* ctx, Cell* expr) {
+    if (!ctx || !expr) {
+        return cell_error("invalid-args", cell_nil());
+    }
+
+    /* Create evaluation stack and store context */
+    EvalStack* stack = stack_create();
+    stack->ctx = (void*)ctx;
+
+    /* Push initial evaluation frame */
+    StackFrame* initial = frame_create_eval(expr, ctx->env);
+    stack_push(stack, initial);
+
+    /* Run evaluation loop until completion */
+    trampoline_loop(stack);
+
+    /* Extract final result */
+    Cell* result = stack_get_result(stack);
+    if (!result) {
+        result = cell_nil();  /* Default to nil if no result */
+    }
+    cell_retain(result);  /* Caller must release */
+
+    /* Clean up stack */
+    stack_destroy(stack);
+
+    return result;
+}
+
+/*
+ * trampoline_loop - Main evaluation loop
+ *
+ * Processes frames from the stack until empty, dispatching each frame
+ * to its appropriate handler. Handlers push new frames as needed to
+ * continue evaluation.
+ *
+ * The loop terminates when:
+ * 1. Stack becomes empty (evaluation complete)
+ * 2. An error frame is returned (propagates up)
+ *
+ * Arguments:
+ *   stack - Evaluation stack with initial frame(s)
+ */
+void trampoline_loop(EvalStack* stack) {
+    int iteration = 0;
+    while (!stack_is_empty(stack)) {
+        /* Get next frame to process */
+        StackFrame* frame = stack_pop(stack);
+
+        if (!frame) {
+            /* Should never happen, but guard against it */
+            fprintf(stderr, "Error: Popped NULL frame from non-empty stack\n");
+            break;
+        }
+
+        /* Debug: Print frame state every 100 iterations */
+        iteration++;
+        if (iteration % 100 == 0) {
+            fprintf(stderr, "DEBUG: iteration %d, state=%s, stack_size=%d\n",
+                    iteration, frame_state_name(frame->state), stack_size(stack));
+        }
+
+        /* Dispatch to appropriate handler based on frame state */
+        switch (frame->state) {
+            case EVAL_EXPR:
+                handle_eval_expr(frame, stack);
+                break;
+
+            case EVAL_APPLY:
+                handle_eval_apply(frame, stack);
+                break;
+
+            case EVAL_ARGS:
+                handle_eval_args(frame, stack);
+                break;
+
+            case EVAL_RETURN:
+                handle_eval_return(frame, stack);
+                break;
+
+            case EVAL_IF:
+                handle_eval_if(frame, stack);
+                break;
+
+            case EVAL_DEFINE:
+                handle_eval_define(frame, stack);
+                break;
+
+            case EVAL_QUOTE:
+                handle_eval_quote(frame, stack);
+                break;
+
+            default:
+                /* Unknown state - should never happen */
+                fprintf(stderr, "Error: Unknown frame state %d\n", frame->state);
+                Cell* err = cell_error("invalid-state", cell_nil());
+                StackFrame* ret = frame_create_return(err);
+                stack_push(stack, ret);
+                break;
+        }
+
+        /* Clean up processed frame */
+        frame_destroy(frame);
+    }
 }

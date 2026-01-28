@@ -390,6 +390,175 @@ void test_handle_eval_if() {
     printf("  ✓ PASS\n");
 }
 
+/* ========== Integration Tests ========== */
+
+void test_integration_atoms() {
+    printf("Test: integration_atoms (numbers, bools, nil)\n");
+    EvalContext* ctx = eval_context_new();
+
+    /* Test number */
+    Cell* expr1 = cell_number(42.0);
+    Cell* result1 = trampoline_eval(ctx, expr1);
+    assert(cell_is_number(result1));
+    assert(cell_get_number(result1) == 42.0);
+    cell_release(expr1);
+    cell_release(result1);
+
+    /* Test boolean true */
+    Cell* expr2 = cell_bool(true);
+    Cell* result2 = trampoline_eval(ctx, expr2);
+    assert(cell_is_bool(result2));
+    assert(cell_get_bool(result2) == true);
+    cell_release(expr2);
+    cell_release(result2);
+
+    /* Test boolean false */
+    Cell* expr3 = cell_bool(false);
+    Cell* result3 = trampoline_eval(ctx, expr3);
+    assert(cell_is_bool(result3));
+    assert(cell_get_bool(result3) == false);
+    cell_release(expr3);
+    cell_release(result3);
+
+    /* Test nil */
+    Cell* expr4 = cell_nil();
+    Cell* result4 = trampoline_eval(ctx, expr4);
+    assert(cell_is_nil(result4));
+    cell_release(expr4);
+    cell_release(result4);
+
+    eval_context_free(ctx);
+    printf("  ✓ PASS\n");
+}
+
+void test_integration_keywords() {
+    printf("Test: integration_keywords (:foo, :test)\n");
+    EvalContext* ctx = eval_context_new();
+
+    /* Test keyword :foo */
+    Cell* expr1 = cell_symbol(":foo");
+    Cell* result1 = trampoline_eval(ctx, expr1);
+    assert(cell_is_symbol(result1));
+    assert(strcmp(cell_get_symbol(result1), ":foo") == 0);
+    cell_release(expr1);
+    cell_release(result1);
+
+    /* Test keyword :test */
+    Cell* expr2 = cell_symbol(":test");
+    Cell* result2 = trampoline_eval(ctx, expr2);
+    assert(cell_is_symbol(result2));
+    assert(strcmp(cell_get_symbol(result2), ":test") == 0);
+    cell_release(expr2);
+    cell_release(result2);
+
+    eval_context_free(ctx);
+    printf("  ✓ PASS\n");
+}
+
+void test_integration_quote() {
+    printf("Test: integration_quote (⌜ expr)\n");
+    EvalContext* ctx = eval_context_new();
+
+    /* Create quoted expression: (⌜ (⊕ 1 2)) */
+    Cell* inner = cell_cons(cell_symbol("⊕"),
+                           cell_cons(cell_number(1.0),
+                           cell_cons(cell_number(2.0), cell_nil())));
+    Cell* expr = cell_cons(cell_symbol("⌜"), cell_cons(inner, cell_nil()));
+
+    Cell* result = trampoline_eval(ctx, expr);
+
+    /* Result should be the inner expression, unevaluated */
+    assert(cell_is_pair(result));
+    assert(cell_is_symbol(result->data.pair.car));
+    assert(strcmp(cell_get_symbol(result->data.pair.car), "⊕") == 0);
+
+    cell_release(expr);
+    cell_release(result);
+    eval_context_free(ctx);
+    printf("  ✓ PASS\n");
+}
+
+void test_integration_arithmetic() {
+    printf("Test: integration_arithmetic ((⊕ 1 2))\n");
+    EvalContext* ctx = eval_context_new();
+
+    /* Create expression: (⊕ 1 2) */
+    Cell* expr = cell_cons(cell_symbol("⊕"),
+                          cell_cons(cell_number(1.0),
+                          cell_cons(cell_number(2.0), cell_nil())));
+
+    printf("  Expression created, calling trampoline_eval...\n");
+    fflush(stdout);
+
+    Cell* result = trampoline_eval(ctx, expr);
+
+    printf("  Returned from trampoline_eval\n");
+    printf("  Result type: ");
+    if (cell_is_number(result)) printf("number=%f\n", cell_get_number(result));
+    else if (cell_is_bool(result)) printf("bool=%d\n", cell_get_bool(result));
+    else if (cell_is_nil(result)) printf("nil\n");
+    else if (cell_is_error(result)) printf("error\n");
+    else if (cell_is_symbol(result)) printf("symbol=%s\n", cell_get_symbol(result));
+    else if (cell_is_pair(result)) printf("pair\n");
+    else if (result->type == CELL_BUILTIN) printf("builtin\n");
+    else printf("unknown (type=%d)\n", result->type);
+    fflush(stdout);
+
+    /* Should evaluate to 3.0 */
+    assert(cell_is_number(result));
+    assert(cell_get_number(result) == 3.0);
+
+    cell_release(expr);
+    cell_release(result);
+    eval_context_free(ctx);
+    printf("  ✓ PASS\n");
+}
+
+void test_integration_comparison() {
+    printf("Test: integration_comparison ((≡ 1 1))\n");
+    EvalContext* ctx = eval_context_new();
+
+    /* Create expression: (≡ 1 1) */
+    Cell* expr = cell_cons(cell_symbol("≡"),
+                          cell_cons(cell_number(1.0),
+                          cell_cons(cell_number(1.0), cell_nil())));
+
+    Cell* result = trampoline_eval(ctx, expr);
+
+    /* Should evaluate to #t */
+    assert(cell_is_bool(result));
+    assert(cell_get_bool(result) == true);
+
+    cell_release(expr);
+    cell_release(result);
+    eval_context_free(ctx);
+    printf("  ✓ PASS\n");
+}
+
+void test_integration_nested_arithmetic() {
+    printf("Test: integration_nested_arithmetic ((⊗ (⊕ 1 2) 3))\n");
+    EvalContext* ctx = eval_context_new();
+
+    /* Create expression: (⊗ (⊕ 1 2) 3) = (* (+ 1 2) 3) = 9 */
+    Cell* inner = cell_cons(cell_symbol("⊕"),
+                           cell_cons(cell_number(1.0),
+                           cell_cons(cell_number(2.0), cell_nil())));
+    Cell* expr = cell_cons(cell_symbol("⊗"),
+                          cell_cons(inner,
+                          cell_cons(cell_number(3.0), cell_nil())));
+
+    Cell* result = trampoline_eval(ctx, expr);
+
+    /* Should evaluate to 9.0 */
+    assert(cell_is_number(result));
+    assert(cell_get_number(result) == 9.0);
+
+    cell_release(expr);
+    cell_release(result);
+    eval_context_free(ctx);
+    printf("  ✓ PASS\n");
+}
+
 int main() {
     printf("Running Trampoline Data Structure Tests\n");
     printf("========================================\n\n");
@@ -417,6 +586,16 @@ int main() {
     test_handle_eval_expr_atoms();
     test_handle_eval_expr_keyword();
     test_handle_eval_if();
+
+    /* Integration tests */
+    printf("\nIntegration Tests\n");
+    printf("-----------------\n");
+    test_integration_atoms();
+    test_integration_keywords();
+    test_integration_quote();
+    test_integration_arithmetic();
+    test_integration_comparison();
+    test_integration_nested_arithmetic();
 
     printf("\n========================================\n");
     printf("All tests passed! ✓\n");
