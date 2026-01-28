@@ -439,23 +439,35 @@ Use **symbolic documentation**:
 ### Code Organization
 
 ```
-bootstrap/
-├── cell.{c,h}        - Core data structures
-├── eval.{c,h}        - Evaluator
-├── debruijn.{c,h}    - De Bruijn conversion
-├── debug.{c,h}       - Stack traces
-├── primitives.{c,h}  - Built-in operations
-├── main.c            - Parser and REPL
-└── tests/            - Test suite
+/
+├── Makefile          - Build system (root level)
+├── .gitignore        - Git ignore patterns (root level)
+├── README.md         - Project overview
+├── SPEC.md           - Language specification
+├── CLAUDE.md         - This file
+├── SESSION_HANDOFF.md - Current status
+├── docs/             - Documentation
+└── bootstrap/        - C implementation
+    ├── cell.{c,h}        - Core data structures
+    ├── eval.{c,h}        - Evaluator
+    ├── debruijn.{c,h}    - De Bruijn conversion
+    ├── debug.{c,h}       - Stack traces
+    ├── primitives.{c,h}  - Built-in operations
+    ├── main.c            - Parser and REPL
+    ├── stdlib/           - Standard library (Guage code)
+    └── tests/            - Test suite
 ```
 
 ### Build and Test
 
 ```bash
-make clean && make      # Build
-./guage                 # REPL
-./run_tests.sh          # Run tests
-./guage < file.scm      # Run file
+make                    # Build (from project root)
+make test               # Run full test suite (29 tests)
+make repl               # Start REPL
+make help               # Show all available targets
+make run FILE=file.scm  # Run a specific file
+make clean              # Clean build artifacts
+make rebuild            # Clean and rebuild from scratch
 ```
 
 ## Success Metrics
