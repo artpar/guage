@@ -211,17 +211,18 @@ SYMBOLIC_VOCABULARY.md           # Symbol catalog
 
 ## 📊 Quick Status
 
-**Last Updated:** 2026-01-28 (Day 57 - Pattern matching bug fixed! 🎉)
+**Last Updated:** 2026-01-28 (Day 58 - Guard conditions implemented! 🎉)
 
 **System State:**
 - **Primitives:** 102 functional (stable)
-- **Tests:** 57/58 passing (98% ✅) **+1 fixed!** + 14/14 pattern tests (100% ✅) + 88/88 math tests (100% ✅) + 44/44 result tests (100% ✅) + 21/21 C unit tests (100% ✅)
+- **Tests:** 58/59 passing (98% ✅) + 30/30 guard tests (100% ✅) + 14/14 pattern tests (100% ✅) + 88/88 math tests (100% ✅) + 44/44 result tests (100% ✅) + 21/21 C unit tests (100% ✅)
 - **Build:** O2 optimized, 32MB stack, proper TCO
 - **Evaluator:** Single path - recursive with TCO (goto tail_call pattern)
 - **Self-Hosting:** 59% complete - pure lambda calculus working
-- **Status:** ✅ Turing complete + Proper TCO + Auto-doc + String/List/Math libraries + **Pattern matching fully functional!**
+- **Status:** ✅ Turing complete + Proper TCO + Auto-doc + String/List/Math libraries + **Pattern matching with guard conditions!**
 
 **Recent Milestones:**
+- Day 58: **Guard conditions implemented!** Conditional pattern matching with `(pattern | guard)` syntax (30 tests)
 - Day 57: **Pattern matching bug FIXED!** `∇` works with De Bruijn indices in closures (14 tests, +1 test fixed)
 - Day 56: **Result/Either type complete!** Railway-oriented programming (9 functions, 44 tests)
 - Day 55: **Math library complete!** 22 new primitives (√, ^, trig, log, π, e, rand) + 88 tests
@@ -235,14 +236,14 @@ SYMBOLIC_VOCABULARY.md           # Symbol catalog
 - Days 15-19: Pattern matching complete (165 tests)
 
 **Next Steps:**
-- **Option A:** Pattern matching enhancements (2-3 hours) → Guard conditions, as-patterns, or-patterns
-- **Option B:** Property-based testing (4-5 hours) → QuickCheck-style testing
-- **Option C:** Markdown export (2-3 hours) → Generate API docs from modules
+- **Option A (Day 59):** As-Patterns (2-3 hours) → `name@pattern` syntax to bind whole and parts
+- **Option B (Day 60):** Or-Patterns (3-4 hours) → `(pattern₁ | pattern₂)` multiple alternatives
+- **Option C:** View Patterns (2-3 hours) → `(→ transform pattern)` transform before matching
 
 **Overall Progress:**
-- **Week 7+:** Day 57 complete (Pattern matching bug fix milestone!)
-- **Focus:** Core language features now solid - ready for advanced patterns
-- **Achievement:** Pattern matching now fully functional in all contexts!
+- **Week 7+:** Day 58 complete (Guard conditions implemented!)
+- **Focus:** Pattern matching enhancements - making Guage world-class
+- **Achievement:** Conditional pattern matching comparable to Haskell, OCaml, Rust!
 
 ---
 
