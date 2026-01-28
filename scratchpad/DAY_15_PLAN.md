@@ -68,8 +68,8 @@ x                      ; Bind to variable
 
 ### Phase 1: Core Infrastructure (2 hours)
 
-**File:** `bootstrap/bootstrap/pattern.c` (new file)
-**File:** `bootstrap/bootstrap/pattern.h` (new file)
+**File:** `bootstrap/pattern.c` (new file)
+**File:** `bootstrap/pattern.h` (new file)
 
 **Data Structures:**
 ```c

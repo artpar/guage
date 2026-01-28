@@ -11,8 +11,8 @@
 ### 1. Core Infrastructure ✅
 
 **Files Created:**
-- `bootstrap/bootstrap/pattern.h` - Pattern matching interface
-- `bootstrap/bootstrap/pattern.c` - Pattern matching implementation
+- `bootstrap/pattern.h` - Pattern matching interface
+- `bootstrap/pattern.c` - Pattern matching implementation
 
 **Data Structures:**
 ```c

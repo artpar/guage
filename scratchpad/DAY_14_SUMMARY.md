@@ -17,7 +17,7 @@ Purpose: Day 14 completion summary
 
 ### 1. Core Implementation
 
-**File:** `bootstrap/bootstrap/primitives.c`
+**File:** `bootstrap/primitives.c`
 
 ```c
 Cell* prim_eval(Cell* args) {

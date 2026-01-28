@@ -439,7 +439,7 @@ Use **symbolic documentation**:
 ### Code Organization
 
 ```
-bootstrap/bootstrap/
+bootstrap/
 ├── cell.{c,h}        - Core data structures
 ├── eval.{c,h}        - Evaluator
 ├── debruijn.{c,h}    - De Bruijn conversion

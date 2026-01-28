@@ -219,7 +219,7 @@
 ## File Structure
 
 ```
-bootstrap/bootstrap/
+bootstrap/
 ├── cell.h              # [MODIFY] Add CELL_STRUCT, CELL_GRAPH
 ├── cell.c              # [MODIFY] Extend constructors, refcount
 ├── structure.h         # [NEW] Structure primitive declarations

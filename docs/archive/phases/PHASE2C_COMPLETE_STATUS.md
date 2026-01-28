@@ -485,7 +485,7 @@ Well-documented decisions
 
 ### Day 8-10: CFG Generation
 
-**File:** `bootstrap/bootstrap/cfg.c`, `cfg.h`
+**File:** `bootstrap/cfg.c`, `cfg.h`
 
 **Core Algorithm:**
 ```c
@@ -538,7 +538,7 @@ if (cell_is_lambda(value)) {
 
 ### Day 10-12: DFG Generation
 
-**File:** `bootstrap/bootstrap/dfg.c`, `dfg.h`
+**File:** `bootstrap/dfg.c`, `dfg.h`
 
 **Core Algorithm:**
 ```c
@@ -577,7 +577,7 @@ Cell* generate_dfg(Cell* lambda_body) {
 
 ### Day 13: Call Graph
 
-**File:** `bootstrap/bootstrap/callgraph.c`, `callgraph.h`
+**File:** `bootstrap/callgraph.c`, `callgraph.h`
 
 **Core Algorithm:**
 ```c
@@ -611,7 +611,7 @@ Cell* generate_callgraph(Cell* env, Cell* lambda_body) {
 
 ### Day 14: Dependency Graph
 
-**File:** `bootstrap/bootstrap/depgraph.c`, `depgraph.h`
+**File:** `bootstrap/depgraph.c`, `depgraph.h`
 
 **Core Algorithm:**
 ```c

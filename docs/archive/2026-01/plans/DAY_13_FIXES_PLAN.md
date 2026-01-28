@@ -60,7 +60,7 @@ The symbol `:?` starts with a colon, which triggers keyword self-evaluation. Whe
 5. Add regression tests
 
 **Files to Modify:**
-- `bootstrap/bootstrap/eval.c` (eval function, application case)
+- `bootstrap/eval.c` (eval function, application case)
 - `tests/test_type_predicates.scm` (add tests)
 
 **Test Cases:**
@@ -167,7 +167,7 @@ Square bracket syntax `[...]` is being parsed incorrectly:
 
 **Files to Modify:**
 - `SPEC.md` (update examples - Option B)
-- `bootstrap/bootstrap/main.c` (add bracket parsing - Option A)
+- `bootstrap/main.c` (add bracket parsing - Option A)
 - `tests/test_adt.scm` (comprehensive ADT tests)
 
 **Test Cases:**
@@ -294,7 +294,7 @@ Is this restriction intentional or a bug?
 **Files to Modify:**
 - `SPEC.md` (document types - Option A)
 - `CONSISTENCY_AUDIT.md` (update Issue 3 status)
-- `bootstrap/bootstrap/primitives.c` (remove check - Option B)
+- `bootstrap/primitives.c` (remove check - Option B)
 
 **Test Cases:**
 ```scheme
@@ -446,7 +446,7 @@ Is this restriction intentional or a bug?
 - `tests/test_adt_comprehensive.scm`
 
 ### Modify
-- `bootstrap/bootstrap/eval.c` (`:?` fix)
+- `bootstrap/eval.c` (`:?` fix)
 - `SPEC.md` (ADT syntax, graph types)
 - `CONSISTENCY_AUDIT.md` (update Issue 3 status)
 - `SESSION_HANDOFF.md` (update after fixes)
@@ -457,7 +457,7 @@ Is this restriction intentional or a bug?
 
 ```bash
 # After Phase 1
-git add bootstrap/bootstrap/eval.c tests/test_type_predicates_fixed.scm
+git add bootstrap/eval.c tests/test_type_predicates_fixed.scm
 git commit -m "fix: :? primitive now works correctly (special case in eval)"
 
 git add SPEC.md CONSISTENCY_AUDIT.md

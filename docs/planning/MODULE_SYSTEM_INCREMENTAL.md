@@ -51,7 +51,7 @@ Purpose: Step-by-step implementation plan for first module system
 
 #### Step 1.1: Module Registry Data Structure (45 min)
 
-**File:** `bootstrap/bootstrap/module.h` (NEW)
+**File:** `bootstrap/module.h` (NEW)
 
 ```c
 // Module registry entry
@@ -78,7 +78,7 @@ Cell* module_registry_list_symbols(const char* module_name);
 void module_registry_free();
 ```
 
-**File:** `bootstrap/bootstrap/module.c` (NEW)
+**File:** `bootstrap/module.c` (NEW)
 
 ```c
 #include "module.h"
@@ -190,7 +190,7 @@ void module_registry_free() {
 
 #### Step 1.2: Integrate with `⋘` (load) (30 min)
 
-**File:** `bootstrap/bootstrap/primitives.c`
+**File:** `bootstrap/primitives.c`
 
 ```c
 // Enhanced prim_load to track module
@@ -207,7 +207,7 @@ Cell* prim_load(Cell* args, Env* env) {
 }
 ```
 
-**File:** `bootstrap/bootstrap/eval.c`
+**File:** `bootstrap/eval.c`
 
 ```c
 // Track current loading module (global state)
@@ -233,7 +233,7 @@ Cell* env_define(Env* env, Cell* name, Cell* value) {
 
 #### Step 1.3: Implement `⌂⊚` Primitive (45 min)
 
-**File:** `bootstrap/bootstrap/primitives.c`
+**File:** `bootstrap/primitives.c`
 
 ```c
 Cell* prim_module_info(Cell* args, Env* env) {
@@ -334,7 +334,7 @@ env_define(env, symbol_create("⌂⊚"),
 
 #### Step 2.1: Extend Definition Metadata (45 min)
 
-**File:** `bootstrap/bootstrap/cell.h`
+**File:** `bootstrap/cell.h`
 
 ```c
 // Add to Cell struct (for CELL_LAMBDA)
@@ -346,7 +346,7 @@ typedef struct {
 } LambdaData;
 ```
 
-**File:** `bootstrap/bootstrap/cell.c`
+**File:** `bootstrap/cell.c`
 
 ```c
 // Update cell_lambda_create() to accept metadata
@@ -368,7 +368,7 @@ Cell* cell_lambda_create_with_metadata(
 
 #### Step 2.2: Track Line Numbers in Parser (30 min)
 
-**File:** `bootstrap/bootstrap/main.c`
+**File:** `bootstrap/main.c`
 
 ```c
 // Add line tracking to parser
@@ -383,7 +383,7 @@ typedef struct {
 
 #### Step 2.3: Enhance `⌂⊛` to Return Metadata (45 min)
 
-**File:** `bootstrap/bootstrap/primitives.c`
+**File:** `bootstrap/primitives.c`
 
 ```c
 Cell* prim_source(Cell* args, Env* env) {
@@ -458,7 +458,7 @@ Cell* prim_source(Cell* args, Env* env) {
 
 #### Step 3.1: Implement `⋖` Primitive (60 min)
 
-**File:** `bootstrap/bootstrap/primitives.c`
+**File:** `bootstrap/primitives.c`
 
 ```c
 Cell* prim_import_from(Cell* args, Env* env) {
@@ -665,8 +665,8 @@ void module_track_dependencies(const char* module_name,
 ## Files to Create/Modify
 
 **New Files:**
-- `bootstrap/bootstrap/module.h` (100 lines)
-- `bootstrap/bootstrap/module.c` (300 lines)
+- `bootstrap/module.h` (100 lines)
+- `bootstrap/module.c` (300 lines)
 - `tests/test_module_registry.scm` (8 tests)
 - `tests/test_module_provenance.scm` (5 tests)
 - `tests/test_module_import.scm` (5 tests)
@@ -674,13 +674,13 @@ void module_track_dependencies(const char* module_name,
 - `tests/test_module_integration.scm` (10 tests)
 
 **Modified Files:**
-- `bootstrap/bootstrap/primitives.c` (+150 lines: ⌂⊚, ⋖, enhanced ⌂⊛)
-- `bootstrap/bootstrap/primitives.h` (+20 lines)
-- `bootstrap/bootstrap/eval.c` (+50 lines: tracking)
-- `bootstrap/bootstrap/cell.h` (+15 lines: metadata)
-- `bootstrap/bootstrap/cell.c` (+30 lines: metadata)
-- `bootstrap/bootstrap/main.c` (+20 lines: line tracking)
-- `bootstrap/bootstrap/Makefile` (+2 lines: module.c)
+- `bootstrap/primitives.c` (+150 lines: ⌂⊚, ⋖, enhanced ⌂⊛)
+- `bootstrap/primitives.h` (+20 lines)
+- `bootstrap/eval.c` (+50 lines: tracking)
+- `bootstrap/cell.h` (+15 lines: metadata)
+- `bootstrap/cell.c` (+30 lines: metadata)
+- `bootstrap/main.c` (+20 lines: line tracking)
+- `bootstrap/Makefile` (+2 lines: module.c)
 - `SPEC.md` (+100 lines: module system docs)
 - `SESSION_HANDOFF.md` (+50 lines: progress update)
 

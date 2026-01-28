@@ -4,7 +4,7 @@
 
 ### 1. Named Recursion in ≔ Definitions
 
-**Location:** `bootstrap/bootstrap/eval.c` lines 250-282
+**Location:** `bootstrap/eval.c` lines 250-282
 
 **Changes:**
 - Pre-bind function name to nil before evaluating lambda bodies
@@ -33,7 +33,7 @@ if (is_lambda) {
 
 ### 2. Fixed Number Literal vs De Bruijn Index Ambiguity
 
-**Location:** `bootstrap/bootstrap/debruijn.c` lines 77-87
+**Location:** `bootstrap/debruijn.c` lines 77-87
 
 **Problem:** Number literals like `#0` inside lambda bodies were being interpreted as De Bruijn index 0 (first parameter) during evaluation, causing incorrect behavior.
 

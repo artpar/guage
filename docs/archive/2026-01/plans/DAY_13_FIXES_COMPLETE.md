@@ -26,7 +26,7 @@
 - Preserve keyword behavior when `:?` used alone
 
 **Code Changes:**
-- `bootstrap/bootstrap/eval.c:1081-1105` - Added special case for `:?` in function application
+- `bootstrap/eval.c:1081-1105` - Added special case for `:?` in function application
 
 **Tests:** 13/13 passing
 - `tests/test_symbol_predicate_fix.scm` - Comprehensive :? tests
@@ -121,7 +121,7 @@
 
 ### Files Modified
 
-1. **`bootstrap/bootstrap/eval.c`**
+1. **`bootstrap/eval.c`**
    - Added `:?` special case in function application
    - Lines 1081-1105
 
@@ -262,7 +262,7 @@ Only 5 graph types allowed. Use `:generic` for custom graphs.
 
 ```bash
 # Commit 1: :? fix
-git add bootstrap/bootstrap/eval.c tests/test_symbol_predicate_fix.scm
+git add bootstrap/eval.c tests/test_symbol_predicate_fix.scm
 git commit -m "fix: :? primitive now works correctly in function position
 
 - Add special case in eval.c for :? symbol

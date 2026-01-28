@@ -126,8 +126,8 @@ This allows existing code using `(⧉ function)` for arity to continue working.
 ## Integration
 
 ### Files Created
-- `bootstrap/bootstrap/macro.h` - Interface (103 lines)
-- `bootstrap/bootstrap/macro.c` - Implementation (189 lines)
+- `bootstrap/macro.h` - Interface (103 lines)
+- `bootstrap/macro.c` - Implementation (189 lines)
 - `tests/test_macro_system.scm` - Test suite (95 lines, 20 tests)
 
 ### Files Modified

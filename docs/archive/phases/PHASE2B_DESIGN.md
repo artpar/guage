@@ -377,7 +377,7 @@ void doc_register_function(const char *name, Cell *lambda) {
 
 ### New Files
 
-**`bootstrap/bootstrap/user_docs.h`:**
+**`bootstrap/user_docs.h`:**
 ```c
 #ifndef USER_DOCS_H
 #define USER_DOCS_H
@@ -410,21 +410,21 @@ char *infer_type_signature(Cell *lambda);
 #endif
 ```
 
-**`bootstrap/bootstrap/user_docs.c`:**
+**`bootstrap/user_docs.c`:**
 - Implementation of all functions above
 
 ### Modified Files
 
-**`bootstrap/bootstrap/eval.c`:**
+**`bootstrap/eval.c`:**
 - Modify `eval_define()` to call `doc_register_function()`
 - Add `#include "user_docs.h"`
 
-**`bootstrap/bootstrap/primitives.c`:**
+**`bootstrap/primitives.c`:**
 - Extend `⌂` to check user functions if not a primitive
 - Extend `⌂∈` to check user functions if not a primitive
 - Extend `⌂≔` to return user function dependencies
 
-**`bootstrap/bootstrap/main.c`:**
+**`bootstrap/main.c`:**
 - Add `doc_registry_free()` on exit
 
 **`Makefile`:**

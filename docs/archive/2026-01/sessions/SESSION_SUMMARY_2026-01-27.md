@@ -81,18 +81,18 @@ These primitives had comprehensive tests including List and Tree ADTs with 22 te
 
 ### Code Files (5)
 
-1. **bootstrap/bootstrap/primitives.c** (+281 lines)
+1. **bootstrap/primitives.c** (+281 lines)
    - Added arg4 helper function
    - Implemented 6 graph primitives (⊝≔, ⊝, ⊝⊕, ⊝⊗, ⊝→, ⊝?)
    - Registered primitives in table
 
-2. **bootstrap/bootstrap/primitives.h** (+6 lines)
+2. **bootstrap/primitives.h** (+6 lines)
    - Added 6 graph primitive declarations
 
-3. **bootstrap/bootstrap/cell.c** (+1 line)
+3. **bootstrap/cell.c** (+1 line)
    - Fixed edge format to be proper list
 
-4. **bootstrap/bootstrap/tests/structures.test** (+19 lines)
+4. **bootstrap/tests/structures.test** (+19 lines)
    - Added 9 graph tests
    - Total: 46 structure tests
 

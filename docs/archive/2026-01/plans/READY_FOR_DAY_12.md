@@ -55,7 +55,7 @@ nothing to commit, working tree clean ✅
 ## Files Modified/Created
 
 **Code Changes:**
-- bootstrap/bootstrap/primitives.c (+220 lines)
+- bootstrap/primitives.c (+220 lines)
 - examples/self_testing_enhanced_demo.scm (new, 92 lines)
 - tests/test_runner.scm (new, 85 lines)
 

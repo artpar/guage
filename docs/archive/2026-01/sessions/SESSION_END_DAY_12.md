@@ -46,9 +46,9 @@
 
 **New Files:**
 1. `DAY_12_PLAN.md` - Comprehensive planning document
-2. `bootstrap/bootstrap/tests/test_runner.scm` - Complete infrastructure
-3. `bootstrap/bootstrap/tests/test_runner_simple.scm` - Debug version
-4. `bootstrap/bootstrap/tests/test_debug.scm` - Structure analysis tool
+2. `bootstrap/tests/test_runner.scm` - Complete infrastructure
+3. `bootstrap/tests/test_runner_simple.scm` - Debug version
+4. `bootstrap/tests/test_debug.scm` - Structure analysis tool
 
 **Modified Files:**
 1. `SESSION_HANDOFF.md` - Updated with Day 12 summary
@@ -168,7 +168,7 @@
 
 **For Next Developer:**
 
-1. **Test Runner Location:** `bootstrap/bootstrap/tests/test_runner.scm`
+1. **Test Runner Location:** `bootstrap/tests/test_runner.scm`
    - NOT in root `/tests/` (that's for .test data files)
    - Contains all infrastructure and helper functions
 

@@ -287,14 +287,14 @@ return: (⟨⟩ test1 (⟨⟩ test2 (⟨⟩ test3 ∅)))
 ## Files to Create/Modify
 
 **New Files:**
-- `bootstrap/bootstrap/type.h` - Type expression definitions
-- `bootstrap/bootstrap/type.c` - Type parser and utilities
-- `bootstrap/bootstrap/testgen.h` - Test generation interface
-- `bootstrap/bootstrap/testgen.c` - Test generation implementations
+- `bootstrap/type.h` - Type expression definitions
+- `bootstrap/type.c` - Type parser and utilities
+- `bootstrap/testgen.h` - Test generation interface
+- `bootstrap/testgen.c` - Test generation implementations
 
 **Modified Files:**
-- `bootstrap/bootstrap/primitives.c` - Update prim_doc_tests()
-- `bootstrap/bootstrap/Makefile` - Add type.c and testgen.c
+- `bootstrap/primitives.c` - Update prim_doc_tests()
+- `bootstrap/Makefile` - Add type.c and testgen.c
 
 **Test Files:**
 - `tests/test_auto_testing.scm` - Verify ⌂⊨ for all primitives

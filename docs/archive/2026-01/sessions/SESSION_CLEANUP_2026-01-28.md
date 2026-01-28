@@ -24,7 +24,7 @@ Purpose: Document comprehensive project cleanup and organization session
 
 ### 1. ✅ Move Misplaced Documents (17 files)
 
-**Problem:** 17+ markdown files were in `bootstrap/bootstrap/` instead of `docs/archive/`
+**Problem:** 17+ markdown files were in `bootstrap/` instead of `docs/archive/`
 
 **Files Moved:**
 
@@ -33,8 +33,8 @@ Purpose: Document comprehensive project cleanup and organization session
 - DAY_33_SUMMARY.md
 - DAY_34_SUMMARY.md
 - DAY_35_SUMMARY.md
-- DAY_36_SUMMARY.md (was in bootstrap/bootstrap/docs/archive/)
-- DAY_37_SUMMARY.md (was in bootstrap/bootstrap/docs/archive/)
+- DAY_36_SUMMARY.md (was in bootstrap/docs/archive/)
+- DAY_37_SUMMARY.md (was in bootstrap/docs/archive/)
 - DAY_38_SUMMARY.md
 - DAY_39_SUMMARY.md
 - DAY_39_FINAL.md
@@ -164,7 +164,7 @@ Purpose: Document comprehensive project cleanup and organization session
 │       │
 │       └── phases/ (14 files ✨ ORGANIZED)
 │
-└── bootstrap/bootstrap/
+└── bootstrap/
     ├── *.c, *.h (C implementation)
     ├── stdlib/ (Guage standard library)
     ├── tests/ (Test files)

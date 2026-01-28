@@ -57,9 +57,9 @@ Symbols (starting with `:`) may be confused with variable names or De Bruijn ind
 - `tests/debug_symbol_list.scm` - Direct access works
 
 **Related Code:**
-- `bootstrap/bootstrap/debruijn.c` - De Bruijn conversion
-- `bootstrap/bootstrap/eval.c` - Lambda evaluation
-- `bootstrap/bootstrap/cell.c` - Symbol handling
+- `bootstrap/debruijn.c` - De Bruijn conversion
+- `bootstrap/eval.c` - Lambda evaluation
+- `bootstrap/cell.c` - Symbol handling
 
 ---
 

@@ -137,7 +137,7 @@ guage> :modules
 
 ## Files Modified
 
-### 1. `bootstrap/bootstrap/main.c`
+### 1. `bootstrap/main.c`
 
 **Added:**
 - `handle_help_command()` - Parse and display help
@@ -151,7 +151,7 @@ guage> :modules
 - Commands execute without affecting expression evaluation
 - Maintains multi-line input balance tracking
 
-### 2. `bootstrap/bootstrap/primitives.h`
+### 2. `bootstrap/primitives.h`
 
 **Added:**
 - `Cell* prim_module_info(Cell* args)` declaration

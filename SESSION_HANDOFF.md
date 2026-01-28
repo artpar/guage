@@ -468,7 +468,7 @@ Three query modes:
 **Resolved Issues:**
 - Symbol normalization (`:symbol` vs `symbol`) - Both formats now work
 - Duplicate tracking (eval_define called twice for lambdas) - Expected behavior
-- Path resolution - Tests use correct relative paths from bootstrap/bootstrap/
+- Path resolution - Tests use correct relative paths from bootstrap/
 
 **Architecture Notes:**
 - **First Philosophy:** Traditional modules hide information (private/public, selective imports). Guage exposes everything for AI reasoning.
@@ -1037,12 +1037,12 @@ if (check.status == COVERAGE_PARTIAL) {
 - **Total: 165 pattern matching tests passing!** 🎉
 
 **Files Created:**
-- `bootstrap/bootstrap/pattern_check.h` - Interface (44 lines)
-- `bootstrap/bootstrap/pattern_check.c` - Implementation (153 lines)
+- `bootstrap/pattern_check.h` - Interface (44 lines)
+- `bootstrap/pattern_check.c` - Implementation (153 lines)
 
 **Files Modified:**
-- `bootstrap/bootstrap/pattern.c` - Added exhaustiveness checking integration
-- `bootstrap/bootstrap/Makefile` - Added pattern_check.c to build
+- `bootstrap/pattern.c` - Added exhaustiveness checking integration
+- `bootstrap/Makefile` - Added pattern_check.c to build
 - `tests/test_pattern_exhaustiveness.scm` - 26 comprehensive tests
 - `SPEC.md` - Documented exhaustiveness checking
 - `SESSION_HANDOFF.md` - This update!
@@ -1167,8 +1167,8 @@ if (strcmp(first->data.atom.symbol, "⊚") == 0) {
 - **Total: 35 comprehensive ADT tests, all passing!**
 
 **Files Modified:**
-- `bootstrap/bootstrap/pattern.c` - Added leaf and node pattern matching
-- `bootstrap/bootstrap/pattern.c` - Fixed merge_bindings for 3+ fields
+- `bootstrap/pattern.c` - Added leaf and node pattern matching
+- `bootstrap/pattern.c` - Fixed merge_bindings for 3+ fields
 - `tests/test_pattern_adt.scm` - Created comprehensive test suite
 - `SPEC.md` - Documented ADT pattern syntax
 - `SESSION_HANDOFF.md` - This update!
@@ -1284,8 +1284,8 @@ static Cell* extend_env_with_bindings(Cell* bindings, Cell* env) {
 
 **Files Modified:**
 ```
-bootstrap/bootstrap/pattern.c    - Added pair pattern detection, recursive matching, binding merge
-bootstrap/bootstrap/pattern.h    - Updated documentation
+bootstrap/pattern.c    - Added pair pattern detection, recursive matching, binding merge
+bootstrap/pattern.h    - Updated documentation
 tests/test_pattern_pairs.scm     - 29 comprehensive tests
 SPEC.md                          - Documented pair pattern syntax
 ```
@@ -1459,10 +1459,10 @@ while (current && cell_is_pair(current)) {
 
 **Files Modified:**
 ```
-bootstrap/bootstrap/pattern.c    - Simplified clause parsing, added variable matching
-bootstrap/bootstrap/pattern.h    - Updated documentation
-bootstrap/bootstrap/eval.c       - Added ∇ special form
-bootstrap/bootstrap/primitives.c - Removed ∇ primitive
+bootstrap/pattern.c    - Simplified clause parsing, added variable matching
+bootstrap/pattern.h    - Updated documentation
+bootstrap/eval.c       - Added ∇ special form
+bootstrap/primitives.c - Removed ∇ primitive
 tests/test_pattern_variables.scm - 25 comprehensive tests
 tests/test_pattern_matching_day15.scm - Updated to new syntax
 SPEC.md                          - Documented new syntax
@@ -1656,8 +1656,8 @@ Every primitive. Every function. Always in sync. No manual work.
 **Implementation:**
 ```c
 // New files
-bootstrap/bootstrap/pattern.h  // Pattern matching interface (44 lines)
-bootstrap/bootstrap/pattern.c  // Implementation (159 lines)
+bootstrap/pattern.h  // Pattern matching interface (44 lines)
+bootstrap/pattern.c  // Implementation (159 lines)
 
 // Core functions
 MatchResult pattern_try_match(Cell* value, Cell* pattern);
@@ -1881,8 +1881,8 @@ Traditional import/export/namespace systems are **WRONG for AI**! They hide info
 **Design Documents Created:**
 - `docs/planning/AI_FIRST_MODULES.md` - Full philosophy and vision
 - `docs/planning/MODULE_SYSTEM_INCREMENTAL.md` - Implementation plan
-- `bootstrap/bootstrap/module.h` - Module registry interface
-- `bootstrap/bootstrap/module.c` - Module registry implementation (started)
+- `bootstrap/module.h` - Module registry interface
+- `bootstrap/module.c` - Module registry implementation (started)
 
 **Implementation Plan (Week 4):**
 - **Day 26:** Module registry + ⌂⊚ primitive (3h)

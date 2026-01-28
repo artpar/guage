@@ -163,13 +163,13 @@ Same pattern as Bug #2, but in quote handling:
 
 ## Files Modified
 
-### 1. bootstrap/bootstrap/eval.c
+### 1. bootstrap/eval.c
 **Line 45:** Fixed `env_is_indexed` heuristic
 - Added keyword detection (`:` prefix check)
 - Regular symbols → named environment
 - Keywords → indexed environment (data)
 
-### 2. bootstrap/bootstrap/stdlib/parser.scm
+### 2. bootstrap/stdlib/parser.scm
 **Line 225:** Fixed quote handling token passing
 **Line 262:** Fixed parse-list first element token passing
 **Line 263:** Fixed parse-list recursion token passing

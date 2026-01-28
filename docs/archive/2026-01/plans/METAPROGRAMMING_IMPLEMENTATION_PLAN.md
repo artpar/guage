@@ -122,7 +122,7 @@ Implement **three interconnected metaprogramming systems** in order:
 
 #### Step 1: Extend Cell Type (Week 1)
 
-**File:** `bootstrap/bootstrap/cell.h`
+**File:** `bootstrap/cell.h`
 
 Add pattern representation:
 ```c
@@ -148,7 +148,7 @@ typedef struct Pattern {
 
 #### Step 2: Pattern Parser (Week 1)
 
-**File:** `bootstrap/bootstrap/pattern.c` (new)
+**File:** `bootstrap/pattern.c` (new)
 
 ```c
 // Parse cell into pattern
@@ -163,7 +163,7 @@ Pattern* parse_pattern(Cell* cell);
 
 #### Step 3: Pattern Matcher (Week 2)
 
-**File:** `bootstrap/bootstrap/pattern.c`
+**File:** `bootstrap/pattern.c`
 
 ```c
 // Match value against pattern, return bindings or NULL
@@ -204,7 +204,7 @@ match(pattern, value):
 
 #### Step 4: ∇ Primitive (Week 2-3)
 
-**File:** `bootstrap/bootstrap/primitives.c`
+**File:** `bootstrap/primitives.c`
 
 ```c
 Cell* prim_pattern_match(Cell* args) {
@@ -233,7 +233,7 @@ Cell* prim_pattern_match(Cell* args) {
 
 #### Step 5: ≗ Primitive (Week 3)
 
-**File:** `bootstrap/bootstrap/primitives.c`
+**File:** `bootstrap/primitives.c`
 
 ```c
 Cell* prim_structural_equal(Cell* args) {
@@ -270,7 +270,7 @@ bool structural_equal(Cell* a, Cell* b) {
 
 #### Step 6: Testing (Week 4)
 
-**File:** `bootstrap/bootstrap/tests/pattern_matching.test`
+**File:** `bootstrap/tests/pattern_matching.test`
 
 ```scheme
 ; Basic patterns
@@ -382,7 +382,7 @@ bool structural_equal(Cell* a, Cell* b) {
 
 #### Step 1: Macro Table (Week 1)
 
-**File:** `bootstrap/bootstrap/macro.h` (new)
+**File:** `bootstrap/macro.h` (new)
 
 ```c
 typedef struct {
@@ -405,7 +405,7 @@ MacroDef* macro_lookup(MacroTable* table, const char* name);
 
 #### Step 2: Backquote Expander (Week 2)
 
-**File:** `bootstrap/bootstrap/macro.c`
+**File:** `bootstrap/macro.c`
 
 ```c
 // Expand backquote template with substitutions
@@ -433,7 +433,7 @@ expand(template, bindings):
 
 #### Step 3: Macro Expander (Week 3)
 
-**File:** `bootstrap/bootstrap/macro.c`
+**File:** `bootstrap/macro.c`
 
 ```c
 // Expand macro call
@@ -457,7 +457,7 @@ expand_macro(macro, args):
 
 #### Step 4: Compilation Pipeline (Week 4)
 
-**File:** `bootstrap/bootstrap/eval.c`
+**File:** `bootstrap/eval.c`
 
 Add macro expansion phase:
 
@@ -508,7 +508,7 @@ Cell* eval_with_macros(Cell* expr, MacroTable* macros) {
 
 #### Step 6: Testing (Week 6)
 
-**File:** `bootstrap/bootstrap/tests/macros.test`
+**File:** `bootstrap/tests/macros.test`
 
 ```scheme
 ; Basic macro
@@ -586,7 +586,7 @@ Cell* eval_with_macros(Cell* expr, MacroTable* macros) {
 
 #### Step 1: Type System Foundation (Week 1-2)
 
-**File:** `bootstrap/bootstrap/types.h` (new)
+**File:** `bootstrap/types.h` (new)
 
 ```c
 typedef enum {
@@ -614,7 +614,7 @@ typedef struct Type {
 
 #### Step 2: Generic Functions (Week 3-4)
 
-**File:** `bootstrap/bootstrap/generics.c` (new)
+**File:** `bootstrap/generics.c` (new)
 
 ```c
 // Instantiate generic function with type
@@ -642,7 +642,7 @@ instantiate(generic, type_arg):
 
 #### Step 3: Monomorphization (Week 5-6)
 
-**File:** `bootstrap/bootstrap/monomorphize.c` (new)
+**File:** `bootstrap/monomorphize.c` (new)
 
 Generate separate code for each instantiation:
 
@@ -677,7 +677,7 @@ Cell* monomorphize(Cell* program, MonoTable* table);
 
 #### Step 4: Trait System (Week 7-8)
 
-**File:** `bootstrap/bootstrap/traits.c` (new)
+**File:** `bootstrap/traits.c` (new)
 
 ```c
 // Trait definition

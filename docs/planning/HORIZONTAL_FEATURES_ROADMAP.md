@@ -57,7 +57,7 @@ Purpose: Roadmap for horizontal language features (core capabilities)
 **Impact:** Immediate usability improvement, makes Guage pleasant to use
 
 **Files to modify:**
-- `bootstrap/bootstrap/main.c` - REPL loop
+- `bootstrap/main.c` - REPL loop
 - Add new command parser for `:help`, `:doc`, etc.
 - Enhance error printing
 
@@ -93,9 +93,9 @@ Purpose: Roadmap for horizontal language features (core capabilities)
 **Impact:** Better error messages = faster debugging, happier developers
 
 **Files to modify:**
-- `bootstrap/bootstrap/main.c` - Parser with position tracking
-- `bootstrap/bootstrap/eval.c` - Store line numbers in cells
-- `bootstrap/bootstrap/debug.c` - Enhanced stack traces with line numbers
+- `bootstrap/main.c` - Parser with position tracking
+- `bootstrap/eval.c` - Store line numbers in cells
+- `bootstrap/debug.c` - Enhanced stack traces with line numbers
 
 ---
 

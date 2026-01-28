@@ -27,7 +27,7 @@ But **no case for strings!** When it encountered a STRING cell, it fell through 
 
 ## The Fix
 
-**File:** `bootstrap/bootstrap/debruijn.c`
+**File:** `bootstrap/debruijn.c`
 **Location:** Line 102
 **Change:** Added `|| cell_is_string(expr)` to the self-evaluating literals check
 

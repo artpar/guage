@@ -60,13 +60,13 @@ If we DON'T evaluate the clause list:
 ## Files Modified
 
 ### New Files:
-- `bootstrap/bootstrap/pattern.h` - Pattern matching interface
-- `bootstrap/bootstrap/pattern.c` - Pattern matching implementation
+- `bootstrap/pattern.h` - Pattern matching interface
+- `bootstrap/pattern.c` - Pattern matching implementation
 - `tests/test_pattern_variables.scm` - 28 comprehensive tests
 
 ### Modified Files:
-- `bootstrap/bootstrap/eval.c` - Added ∇ special form
-- `bootstrap/bootstrap/primitives.c` - Removed ∇ primitive
+- `bootstrap/eval.c` - Added ∇ special form
+- `bootstrap/primitives.c` - Removed ∇ primitive
 
 ## Key Code Changes
 

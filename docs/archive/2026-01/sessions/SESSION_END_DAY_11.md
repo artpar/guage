@@ -47,7 +47,7 @@
 ## Code Changes
 
 **Files Modified:**
-1. bootstrap/bootstrap/primitives.c (+220 lines)
+1. bootstrap/primitives.c (+220 lines)
 2. examples/self_testing_enhanced_demo.scm (new, 92 lines)
 3. tests/test_runner.scm (new, 85 lines)
 
