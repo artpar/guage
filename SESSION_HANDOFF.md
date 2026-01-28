@@ -5,44 +5,47 @@ Updated: 2026-01-28
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 59 Complete (2026-01-28 Evening)
+# Session Handoff: Day 60 Complete (2026-01-28 Evening)
 
 ## 🎯 For Next Session: Start Here
 
-**Session 59 just completed:** As-Patterns for Pattern Matching (~2.5 hours, 28 new tests, 59/60 passing)
+**Session 60 just completed:** Or-Patterns for Pattern Matching (~3 hours, 24 new tests, 60/61 passing)
 
-**🚀 Quick Start for Day 60:**
-1. **Read:** `docs/planning/PATTERN_MATCHING_ENHANCEMENTS.md` - Complete roadmap
-2. **Verify:** Run `make test` to confirm 59/60 tests passing
-3. **Start:** Implement Or-Patterns (3-4 hours, MEDIUM priority)
-   - Syntax: `(pattern₁ | pattern₂ | pattern₃)`
-   - Match any of several alternatives
-   - Next enhancement in pattern matching roadmap
+**🚀 Quick Start for Day 61+:**
+1. **Read:** `docs/planning/PATTERN_MATCHING_ENHANCEMENTS.md` - Roadmap status
+2. **Verify:** Run `make test` to confirm 60/61 tests passing
+3. **Optional:** Implement View Patterns (2-3 hours, LOW priority)
+   - Syntax: `(→ transform-fn pattern)`
+   - Transform value before matching
+   - Final enhancement in pattern matching roadmap
+4. **Alternative:** Move to next major feature (self-hosting, module system, etc.)
 
 **Current System State:**
 - ✅ 102 primitives (stable)
-- ✅ 59/60 tests passing (98%) - **+28 new as-pattern tests!**
+- ✅ 60/61 tests passing (98%) - **+24 new or-pattern tests!**
+- ✅ **Or-patterns COMPLETE** - `(∨ pat1 pat2 ...)` syntax matches alternatives!
 - ✅ **As-patterns COMPLETE** - `name@pattern` syntax binds whole value AND parts!
 - ✅ **Guard conditions COMPLETE** - `(pattern | guard-expr)` syntax working!
-- ✅ Pattern matching fully functional with guards and as-patterns
+- ✅ Pattern matching now world-class (guards, as-patterns, or-patterns)
 - ✅ Result/Either type production-ready
 - ✅ Math library complete (22 primitives, 88 tests)
 - ✅ Self-hosting 59% complete (pure lambda calculus works)
 
 **Documentation for Continuity:**
-- 📋 Planning: `docs/planning/PATTERN_MATCHING_ENHANCEMENTS.md` - 2 enhancements remaining
+- 📋 Planning: `docs/planning/PATTERN_MATCHING_ENHANCEMENTS.md` - 75% complete (3/4 phases)
 - ✅ Phase 1 Complete: Guard Conditions (Day 58)
 - ✅ Phase 2 Complete: As-Patterns (Day 59)
-- 📋 Next Phase: Or-Patterns (Day 60)
+- ✅ Phase 3 Complete: Or-Patterns (Day 60)
+- 📋 Phase 4 Optional: View Patterns (Day 61+)
 
 ## Current Status 🎯
 
-**Latest Achievement:** ✅ **AS-PATTERNS COMPLETE** → Bind both whole value AND parts with `name@pattern`! (Day 59)
+**Latest Achievement:** ✅ **OR-PATTERNS COMPLETE** → Match multiple alternatives with `(∨ pat1 pat2 ...)`! (Day 60)
 
 **System State:**
 - **Primitives:** 102 primitives (stable) ✅
-- **Tests:** 59/60 main tests passing (98%) ✅ **+28 new as-pattern tests!**
-- **Pattern Tests:** 14/14 De Bruijn tests + 30/30 guard tests + 28/28 as-pattern tests passing (100%) ✅
+- **Tests:** 60/61 main tests passing (98%) ✅ **+24 new or-pattern tests!**
+- **Pattern Tests:** 14/14 De Bruijn tests + 30/30 guard tests + 28/28 as-pattern tests + 24/24 or-pattern tests passing (100%) ✅
 - **Math Tests:** 88/88 passing (100%) ✅
 - **Result Tests:** 44/44 passing (100%) ✅
 - **C Unit Tests:** 21/21 passing (100%) ✅
@@ -136,8 +139,97 @@ name@pattern
 - Foundation for advanced functional programming patterns
 
 **Next Steps:**
-- Phase 3: Or-Patterns (Day 60) - Match multiple alternatives
 - Phase 4: View Patterns (Optional) - Transform before matching
+
+### ✅ COMPLETE: Or-Patterns for Pattern Matching (Day 60)
+**Task:** Implement or-patterns to match multiple alternative patterns
+**Status:** DONE - 60/61 tests passing (up from 59/60), 24 new comprehensive tests
+**Time:** ~3 hours
+**Impact:** MEDIUM - Pattern matching now supports alternative patterns (like OCaml/Rust)
+
+**Feature Description:**
+Or-patterns allow matching multiple alternative patterns in a single clause. The first successful match wins. All alternatives must bind the same set of variables (or none) - this is standard behavior in OCaml and Rust.
+
+**Syntax:**
+```scheme
+(∨ pattern₁ pattern₂ pattern₃ ...)
+```
+
+**Key Design Decision:**
+Used `∨` (logical-or symbol) instead of `|` to avoid conflict with guard syntax `(pattern | guard)`. This completely avoids ambiguity.
+
+**Examples:**
+```scheme
+; Match multiple literal values
+(∇ #1 (⌜ (((∨ #0 #1 #2) :small) (_ :other))))  ; → :small
+
+; Match multiple symbols
+(∇ :blue (⌜ (((∨ :red :green :blue) :primary) (_ :other))))  ; → :primary
+
+; Match multiple ADT variants (both bind same variable v)
+(⊚≔ :Result (⌜ (:Ok :value)) (⌜ (:Err :error)))
+(∇ (⊚ :Result :Ok #42) (⌜ (((∨ (⊚ :Result :Ok v) (⊚ :Result :Err v)) v)
+                            (_ :other))))  ; → #42
+
+; Nested or-patterns
+(∇ #1 (⌜ (((∨ (∨ #0 #1) #2) :matched) (_ :other))))  ; → :matched
+
+; Or-patterns with guards
+(∇ #42 (⌜ ((((∨ x x) | (> x #0)) x) (_ :failed))))  ; → #42
+
+; Or-patterns combined with as-patterns
+(∇ #1 (⌜ (((whole @ (∨ #0 #1 #2)) (⟨⟩ whole whole))
+           (_ :other))))  ; → ⟨#1 #1⟩
+```
+
+**Implementation Details:**
+1. Added `is_or_pattern()` helper to detect `(∨ pat1 pat2 ...)` syntax
+2. Added `extract_or_alternatives()` to get list of alternative patterns
+3. Added `extract_pattern_variables()` to extract all variables from a pattern
+4. Added `check_or_pattern_consistency()` to enforce variable consistency rule
+5. Modified `pattern_try_match()` to:
+   - Detect or-pattern syntax early (after as-patterns)
+   - Check variable consistency across alternatives
+   - Try each alternative in order
+   - Return bindings from first successful match
+6. Fully compatible with all pattern types and combinations
+
+**Variable Consistency Rule:**
+All alternatives MUST bind the same variables:
+- ✅ Valid: `(∨ #0 #1 #2)` - all bind nothing
+- ✅ Valid: `(∨ (⟨⟩ #1 x) (⟨⟩ #2 x))` - both bind `x`
+- ✅ Valid: `(∨ (⊚ :Result :Ok v) (⊚ :Result :Err v))` - both bind `v`
+- ❌ Invalid: `(∨ #0 x)` - first binds nothing, second binds `x`
+- ❌ Invalid: `(∨ x y)` - first binds `x`, second binds `y`
+
+**Files Modified:**
+- `bootstrap/pattern.c` - Added or-pattern helpers and matching logic
+- `bootstrap/tests/test_pattern_or_patterns.test` - 24 comprehensive tests (NEW!)
+- `SPEC.md` - Updated pattern matching section with or-pattern syntax and examples
+- `SESSION_HANDOFF.md` - Documented Day 60 progress
+
+**Test Coverage:**
+- ✅ 24/24 or-pattern tests passing
+- Tests cover: literals, symbols, booleans, pairs, ADTs, nested or-patterns
+- Tests include: guards, as-patterns, variable consistency, real-world examples
+- Edge cases: wildcards, redundant patterns, nil
+
+**Test Results:**
+- ✅ 60/61 tests passing (up from 59/60) - **+1 test file added (24 tests)!**
+- ✅ All 24 new or-pattern tests passing
+- ✅ No regressions in existing tests
+- ✅ Works with all pattern types and combinations
+
+**Why This Matters:**
+- More concise pattern matching (avoid multiple clauses for same result)
+- Industry-standard feature (OCaml, Rust, Haskell-like)
+- Cleaner code when multiple patterns have same result
+- Variable consistency ensures type safety and prevents bugs
+- Completes 75% of pattern matching enhancement roadmap
+
+**Next Steps:**
+- Phase 4 (Optional): View Patterns - Transform before matching (2-3 hours)
+- Pattern matching roadmap 75% complete (3/4 phases done)
 
 ### ✅ COMPLETE: Guard Conditions for Pattern Matching (Day 58)
 **Task:** Implement guard conditions for conditional pattern matching
