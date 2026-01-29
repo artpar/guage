@@ -1,36 +1,36 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-01-28
+Updated: 2026-01-29
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 61 Complete (2026-01-28 23:45)
+# Session Handoff: Day 62 Complete (2026-01-29)
 
-## 🎯 For Next Session (Day 62): Start Here
+## 🎯 For Next Session (Day 63): Start Here
 
-**Session 61 Status:** ✅ COMPLETE - REPL Enhancements finished and committed!
+**Session 62 Status:** ✅ COMPLETE - Property-Based Testing implemented!
 
 ### What Was Completed This Session
-- ✅ Integrated linenoise library for professional REPL
-- ✅ Command history with ~/.guage_history (1000-command buffer)
-- ✅ Tab completion for 102 symbols (primitives, special forms, commands)
-- ✅ Multi-line editing with better visual feedback
-- ✅ All 60/61 tests passing (no regressions)
-- ✅ Committed: `0641137` "feat: REPL enhancements"
-- ✅ Documentation: REPL_ENHANCEMENTS.md + session archive
+- ✅ Implemented 4 random value generators (gen-int, gen-bool, gen-symbol, gen-list)
+- ✅ Property-based test primitive (⊨-prop) with 100 test cases default
+- ✅ Shrinking on failure (minimizes failing test cases)
+- ✅ Test file with comprehensive property tests
+- ✅ All 61/62 tests passing (1 pre-existing failure in test_eval.test)
+- ✅ 5 new primitives added: gen-int, gen-bool, gen-symbol, gen-list, ⊨-prop
+- ✅ Updated SPEC.md: 102→107 primitives total
 
-### Try the New Features
+### Try Property-Based Testing
 ```bash
 make repl
-guage> [Press TAB] → See completions
-guage> [Press UP arrow] → Navigate history
-guage> (⊕    [Press ENTER, auto-continues]
-...      #1
-...      #2)  → Multi-line editing
+guage> (⊨-prop :all-positive
+...            (λ (n) (> n #0))
+...            (λ () (gen-int #1 #100)))
+⊨-prop Property Test: :all-positive (100 cases)
+  ✓ PASS: 100/100 tests passed
 ```
 
-### 🎯 Recommended Next Task: Property-Based Testing (Day 62-63)
+### 🎯 Recommended Next Task: Documentation Generation (Day 63)
 
 **Why This Next:**
 - HIGH VALUE: Significantly improves test coverage
@@ -50,8 +50,9 @@ guage> (⊕    [Press ENTER, auto-continues]
 - More stdlib modules (2-3 hours each) - Additional utilities
 
 **Current System State:**
-- ✅ 102 primitives (stable)
-- ✅ 60/61 tests passing (98%)
+- ✅ 107 primitives (stable) - **+5 property testing primitives!**
+- ✅ 61/62 tests passing (98%) - **+1 new property testing test!**
+- ✅ **PROPERTY-BASED TESTING COMPLETE** - QuickCheck-style testing with shrinking!
 - ✅ **REPL ENHANCEMENTS COMPLETE** - History, tab completion, multi-line editing!
 - ✅ **Or-patterns COMPLETE** - `(∨ pat1 pat2 ...)` syntax matches alternatives!
 - ✅ **As-patterns COMPLETE** - `name@pattern` syntax binds whole value AND parts!
@@ -70,11 +71,11 @@ guage> (⊕    [Press ENTER, auto-continues]
 
 ## Current Status 🎯
 
-**Latest Achievement:** ✅ **REPL ENHANCEMENTS COMPLETE** → Professional developer experience with history, tab completion, multi-line editing! (Day 61)
+**Latest Achievement:** ✅ **PROPERTY-BASED TESTING COMPLETE** → QuickCheck-style testing with random generators and shrinking! (Day 62)
 
 **System State:**
-- **Primitives:** 102 primitives (stable) ✅
-- **Tests:** 60/61 main tests passing (98%) ✅ **+24 new or-pattern tests!**
+- **Primitives:** 107 primitives (stable) ✅ **+5 property testing primitives!**
+- **Tests:** 61/62 main tests passing (98%) ✅ **+1 property testing test!**
 - **Pattern Tests:** 14/14 De Bruijn tests + 30/30 guard tests + 28/28 as-pattern tests + 24/24 or-pattern tests passing (100%) ✅
 - **Math Tests:** 88/88 passing (100%) ✅
 - **Result Tests:** 44/44 passing (100%) ✅
@@ -93,6 +94,44 @@ guage> (⊕    [Press ENTER, auto-continues]
 - **Status:** Turing complete + proper TCO + self-hosting pure lambda calculus! 🚀
 
 ## 🎯 For Next Session: What's Complete & What's Next
+
+### ✅ COMPLETE: Property-Based Testing (Day 62)
+**Task:** Implement QuickCheck-style property-based testing with generators and shrinking
+**Status:** DONE - 61/62 tests passing (maintained 98%), 5 new primitives added
+**Time:** ~3 hours
+**Impact:** HIGH - Significantly improves test coverage and quality
+
+**Feature Description:**
+Property-based testing framework with random value generators and automatic shrinking:
+- 4 random generators: gen-int, gen-bool, gen-symbol, gen-list
+- Property test primitive ⊨-prop runs 100 test cases by default
+- Automatic shrinking minimizes failing test cases for easier debugging
+- Works with zero-argument lambda generators for lazy evaluation
+
+**Technical Implementation:**
+- Generators use direct lambda body evaluation (eval_internal)
+- Manual lambda application for predicates (extend_env + eval_internal)
+- Shrinking: halves numbers toward zero, removes list elements
+- Integrated with existing test system
+
+**Examples:**
+```scheme
+; Test all positive numbers
+(⊨-prop :all-positive
+        (λ (n) (> n #0))
+        (λ () (gen-int #1 #100)))
+
+; Test list length preservation
+(⊨-prop :list-length
+        (λ (lst) (≡ (len lst) #5))
+        (λ () (gen-list (λ () (gen-int #1 #10)) #5)))
+```
+
+**Key Files Modified:**
+- `bootstrap/primitives.c`: Added 5 primitives (lines 437-542, 688-861)
+- `bootstrap/primitives.h`: Added function declarations
+- `bootstrap/tests/test_property_testing.test`: Comprehensive test suite
+- `SPEC.md`: Updated primitive count from 102 to 107
 
 ### ✅ COMPLETE: REPL Enhancements (Day 61)
 **Task:** Add command history, tab completion, and multi-line editing

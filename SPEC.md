@@ -31,9 +31,9 @@ Everything is a **Cell**:
 
 **See:** `KEYWORDS.md` for complete specification.
 
-## Runtime Primitives (102 Total)
+## Runtime Primitives (107 Total)
 
-**Status:** 102 primitives implemented (6 placeholders, 96 fully functional + 6 placeholders = 102 total)
+**Status:** 107 primitives implemented (6 placeholders, 101 fully functional + 6 placeholders = 107 total)
 
 ### Core Lambda Calculus (3) ✅
 | Symbol | Type | Meaning | Status |
@@ -442,11 +442,16 @@ Warnings are non-fatal and do not stop execution.
 | `⧉` | `λ → ℕ` | Get arity of lambda | ✅ DONE |
 | `⊛` | `λ → expression` | Get source code | ✅ DONE |
 
-### Testing (2) ✅
+### Testing (7) ✅
 | Symbol | Type | Meaning | Status |
 |--------|------|---------|--------|
 | `≟` | `α → α → 𝔹` | Deep equality test | ✅ DONE |
 | `⊨` | `:symbol → α → α → 𝔹 \| ⚠` | Test case | ✅ DONE |
+| `gen-int` | `ℕ → ℕ → ℕ` | Random integer in range | ✅ DONE |
+| `gen-bool` | `() → 𝔹` | Random boolean | ✅ DONE |
+| `gen-symbol` | `[α] → α` | Random symbol from list | ✅ DONE |
+| `gen-list` | `(() → α) → ℕ → [α]` | Generate random list | ✅ DONE |
+| `⊨-prop` | `:symbol → (α → 𝔹) → (() → α) → 𝔹 \| ⚠` | Property-based test with shrinking | ✅ DONE |
 
 ### Effects (4) - PLACEHOLDERS ONLY
 | Symbol | Type | Meaning | Status |

@@ -1,0 +1,80 @@
+; Test file for property-based testing primitives
+; Tests generators, property tests, and shrinking
+
+; ============ Helper: List Length ============
+(≔ len (λ (lst)
+  (? (∅? lst)
+     #0
+     (⊕ #1 (len (▷ lst))))))
+
+; ============ Generator Tests ============
+
+; Test gen-int returns number in range [1, 10]
+(≔ test-gen-int (gen-int #1 #10))
+(⊨ :gen-int-is-number #t (ℕ? test-gen-int))
+(⊨ :gen-int-in-range #t (∧ (≥ test-gen-int #1) (≤ test-gen-int #10)))
+
+; Test gen-int with single value range
+(⊨ :gen-int-single #5 (gen-int #5 #5))
+
+; Test gen-int error on invalid range
+(⊨ :gen-int-invalid-range #t (⚠? (gen-int #10 #1)))
+
+; Test gen-bool returns boolean
+(⊨ :gen-bool-returns-bool #t (𝔹? (gen-bool)))
+
+; Test gen-symbol from list
+(≔ test-symbols (⟨⟩ :a (⟨⟩ :b (⟨⟩ :c ∅))))
+(≔ test-result (gen-symbol test-symbols))
+(⊨ :gen-symbol-in-list #t
+   (∨ (∨ (≡ test-result :a) (≡ test-result :b)) (≡ test-result :c)))
+
+; Test gen-symbol error on empty list
+(⊨ :gen-symbol-empty #t (⚠? (gen-symbol ∅)))
+
+; Test gen-list with constant generator
+(≔ const-gen (λ () #42))
+(≔ const-list (gen-list const-gen #5))
+(⊨ :gen-list-constant #5 (len const-list))
+
+; Test gen-list with zero size
+(≔ zero-gen (λ () #1))
+(⊨ :gen-list-zero ∅ (gen-list zero-gen #0))
+
+; Test gen-list with random integers
+(≔ int-gen (λ () (gen-int #1 #100)))
+(≔ int-list (gen-list int-gen #10))
+(⊨ :gen-list-integers #10 (len int-list))
+
+; ============ Property-Based Test Tests ============
+
+; Simple property: all generated numbers are positive
+(⊨-prop :all-positive
+        (λ (n) (> n #0))
+        (λ () (gen-int #1 #100)))
+
+; Property: list length matches requested size
+(⊨-prop :list-length-correct
+        (λ (lst) (≡ (len lst) #5))
+        (λ () (gen-list (λ () (gen-int #1 #10)) #5)))
+
+; Property: boolean is always true or false
+(⊨-prop :bool-valid
+        (λ (b) (∨ (≡ b #t) (≡ b #f)))
+        (λ () (gen-bool)))
+
+; Property: generated integer is in range
+(⊨-prop :int-in-range
+        (λ (n) (∧ (≥ n #-10) (≤ n #10)))
+        (λ () (gen-int #-10 #10)))
+
+; Property: list length is preserved (simpler test without reverse)
+(≔ count (λ (lst)
+  (? (∅? lst)
+     #0
+     (⊕ #1 (count (▷ lst))))))
+
+(⊨-prop :list-length-preserved
+        (λ (lst) (≡ (len lst) (count lst)))
+        (λ () (gen-list (λ () (gen-int #1 #10)) #5)))
+

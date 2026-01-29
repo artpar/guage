@@ -435,6 +435,113 @@ Cell* prim_rand_int(Cell* args) {
     return cell_number(rand() % max);
 }
 
+/* Property-Based Testing Generators */
+
+/* gen-int - generate random integer in range [low, high] inclusive */
+Cell* prim_gen_int(Cell* args) {
+    Cell* low = arg1(args);
+    Cell* high = arg2(args);
+
+    if (!cell_is_number(low) || !cell_is_number(high)) {
+        return cell_error("gen-int-invalid-args", cell_nil());
+    }
+
+    int low_val = (int)cell_get_number(low);
+    int high_val = (int)cell_get_number(high);
+
+    if (low_val > high_val) {
+        return cell_error("gen-int-invalid-range", cell_nil());
+    }
+
+    int range = high_val - low_val + 1;
+    int result = low_val + (rand() % range);
+    return cell_number(result);
+}
+
+/* gen-bool - generate random boolean */
+Cell* prim_gen_bool(Cell* args) {
+    (void)args;  /* unused */
+    return cell_bool(rand() % 2 == 0);
+}
+
+/* gen-symbol - generate random symbol from list */
+Cell* prim_gen_symbol(Cell* args) {
+    Cell* symbols = arg1(args);
+
+    if (cell_is_nil(symbols)) {
+        return cell_error("gen-symbol-empty-list", cell_nil());
+    }
+
+    if (!cell_is_pair(symbols)) {
+        return cell_error("gen-symbol-not-list", symbols);
+    }
+
+    /* Count list length */
+    int len = 0;
+    Cell* curr = symbols;
+    while (cell_is_pair(curr)) {
+        len++;
+        curr = cell_cdr(curr);
+    }
+
+    /* Pick random index */
+    int idx = rand() % len;
+
+    /* Get element at index */
+    curr = symbols;
+    for (int i = 0; i < idx; i++) {
+        curr = cell_cdr(curr);
+    }
+
+    Cell* result = cell_car(curr);
+    cell_retain(result);
+    return result;
+}
+
+/* gen-list - generate random list using generator function */
+Cell* prim_gen_list(Cell* args) {
+    Cell* gen_fn = arg1(args);
+    Cell* size_cell = arg2(args);
+
+    if (!cell_is_lambda(gen_fn)) {
+        return cell_error("gen-list-not-function", gen_fn);
+    }
+
+    if (!cell_is_number(size_cell)) {
+        return cell_error("gen-list-invalid-size", size_cell);
+    }
+
+    int size = (int)cell_get_number(size_cell);
+    if (size < 0) {
+        return cell_error("gen-list-negative-size", size_cell);
+    }
+
+    /* Get eval context */
+    EvalContext* ctx = eval_get_current_context();
+    if (!ctx) {
+        return cell_error("no-context", cell_nil());
+    }
+
+    /* Build list from tail to head */
+    Cell* result = cell_nil();
+
+    for (int i = 0; i < size; i++) {
+        /* Evaluate lambda body in its closure environment */
+        /* For zero-argument lambdas, just evaluate the body directly */
+        Cell* generated = eval_internal(ctx, gen_fn->data.lambda.env, gen_fn->data.lambda.body);
+
+        if (cell_is_error(generated)) {
+            cell_release(result);
+            return generated;
+        }
+
+        result = cell_cons(generated, result);
+        cell_release(generated);
+    }
+
+    return result;
+}
+
 /* Type predicates */
 
 Cell* prim_is_number(Cell* args) {
@@ -576,6 +683,190 @@ Cell* prim_test_case(Cell* args) {
         cell_print(actual);
         printf("\n");
         return cell_error("test-failed", name);
+    }
+}
+
+/* Property-Based Testing */
+
+/* Helper: shrink integer value toward zero */
+static Cell* shrink_int(Cell* value) {
+    if (!cell_is_number(value)) return value;
+
+    double num = cell_get_number(value);
+    if (num == 0) return value;
+
+    /* Shrink toward zero by halving */
+    double shrunk = num / 2.0;
+    if (fabs(shrunk) < 1.0 && num != 0) {
+        shrunk = (num > 0) ? 0 : 0;
+    }
+
+    return cell_number(shrunk);
+}
+
+/* Helper: shrink list by removing elements */
+static Cell* shrink_list(Cell* list) {
+    if (!cell_is_pair(list)) return list;
+
+    /* Try removing first element */
+    Cell* tail = cell_cdr(list);
+    cell_retain(tail);
+    return tail;
+}
+
+/* ⊨-prop - property-based test with shrinking */
+Cell* prim_test_property(Cell* args) {
+    Cell* name = arg1(args);
+    Cell* predicate = arg2(args);
+    Cell* generator = arg3(args);
+
+    /* Optional: number of test cases (default 100) */
+    Cell* num_tests_cell = (cell_is_pair(cell_cdr(cell_cdr(cell_cdr(args)))) &&
+                            cell_is_pair(cell_cdr(cell_cdr(cell_cdr(args))))) ?
+                           cell_car(cell_cdr(cell_cdr(cell_cdr(args)))) : NULL;
+
+    int num_tests = num_tests_cell && cell_is_number(num_tests_cell) ?
+                    (int)cell_get_number(num_tests_cell) : 100;
+
+    if (!cell_is_lambda(predicate)) {
+        return cell_error("property-not-function", predicate);
+    }
+
+    if (!cell_is_lambda(generator)) {
+        return cell_error("generator-not-function", generator);
+    }
+
+    /* Get eval context */
+    EvalContext* ctx = eval_get_current_context();
+    if (!ctx) {
+        return cell_error("no-context", cell_nil());
+    }
+
+    printf("⊨-prop Property Test: ");
+    cell_print(name);
+    printf(" (%d cases)\n", num_tests);
+
+    int passed = 0;
+    int failed = 0;
+    Cell* failing_input = NULL;
+
+    /* Run test cases */
+    for (int i = 0; i < num_tests; i++) {
+        /* Generate test input: evaluate generator lambda body directly */
+        Cell* input = eval_internal(ctx, generator->data.lambda.env, generator->data.lambda.body);
+
+        if (cell_is_error(input)) {
+            printf("  Generator error: ");
+            cell_print(input);
+            printf("\n");
+            cell_release(input);
+            return cell_error("generator-failed", name);
+        }
+
+        /* Apply predicate: manually apply lambda to input */
+        /* Create argument list */
+        Cell* pred_args = cell_cons(input, cell_nil());
+
+        /* Extend predicate's closure environment with argument */
+        Cell* pred_env = extend_env(predicate->data.lambda.env, pred_args);
+
+        /* Evaluate predicate body in extended environment */
+        Cell* result = eval_internal(ctx, pred_env, predicate->data.lambda.body);
+
+        cell_release(pred_args);
+        cell_release(pred_env);
+
+        if (cell_is_error(result)) {
+            printf("  Predicate error on input: ");
+            cell_print(input);
+            printf("\n  Error: ");
+            cell_print(result);
+            printf("\n");
+            cell_release(input);
+            cell_release(result);
+            return cell_error("predicate-failed", name);
+        }
+
+        /* Check result */
+        if (cell_is_bool(result) && cell_get_bool(result)) {
+            passed++;
+        } else {
+            failed++;
+            if (failing_input == NULL) {
+                failing_input = input;
+                cell_retain(failing_input);
+            }
+        }
+
+        cell_release(input);
+        cell_release(result);
+
+        /* Stop after first failure for shrinking */
+        if (failed > 0) break;
+    }
+
+    /* Report results */
+    if (failed == 0) {
+        printf("  ✓ PASS: %d/%d tests passed\n", passed, num_tests);
+        return cell_bool(true);
+    } else {
+        printf("  ✗ FAIL: Found failing case after %d tests\n", passed);
+
+        /* Try to shrink failing input */
+        printf("  Shrinking...\n");
+        Cell* shrunk = failing_input;
+        cell_retain(shrunk);
+
+        int shrink_steps = 0;
+        const int max_shrink = 100;
+
+        while (shrink_steps < max_shrink) {
+            Cell* candidate = NULL;
+
+            /* Try different shrinking strategies based on type */
+            if (cell_is_number(shrunk)) {
+                candidate = shrink_int(shrunk);
+            } else if (cell_is_pair(shrunk)) {
+                candidate = shrink_list(shrunk);
+            } else {
+                break;  /* Can't shrink this type */
+            }
+
+            if (candidate == shrunk || cell_equal(candidate, shrunk)) {
+                cell_release(candidate);
+                break;  /* No more shrinking possible */
+            }
+
+            /* Test shrunk value: manually apply predicate */
+            Cell* shrink_args = cell_cons(candidate, cell_nil());
+            Cell* shrink_env = extend_env(predicate->data.lambda.env, shrink_args);
+            Cell* result = eval_internal(ctx, shrink_env, predicate->data.lambda.body);
+            cell_release(shrink_args);
+            cell_release(shrink_env);
+
+            if (cell_is_bool(result) && cell_get_bool(result)) {
+                /* Shrunk value passes, keep original */
+                cell_release(candidate);
+                cell_release(result);
+                break;
+            } else {
+                /* Shrunk value still fails, use it */
+                cell_release(shrunk);
+                shrunk = candidate;
+                shrink_steps++;
+            }
+
+            cell_release(result);
+        }
+
+        printf("  Minimal failing input: ");
+        cell_print(shrunk);
+        printf("\n");
+
+        Cell* error = cell_error("property-failed", name);
+        cell_release(shrunk);
+        cell_release(failing_input);
+        return error;
     }
 }
 
@@ -2661,6 +2952,13 @@ static Primitive primitives[] = {
     /* Testing */
     {"≟", prim_deep_equal, 2, {"Deep equality test (recursive)", "α → α → 𝔹"}},
     {"⊨", prim_test_case, 3, {"Run test case: name, expected, actual", ":symbol → α → α → 𝔹 | ⚠"}},
+
+    /* Property-Based Testing */
+    {"gen-int", prim_gen_int, 2, {"Generate random integer in range [low, high]", "ℕ → ℕ → ℕ"}},
+    {"gen-bool", prim_gen_bool, 0, {"Generate random boolean", "() → 𝔹"}},
+    {"gen-symbol", prim_gen_symbol, 1, {"Generate random symbol from list", "[α] → α"}},
+    {"gen-list", prim_gen_list, 2, {"Generate random list using generator function", "(()→α) → ℕ → [α]"}},
+    {"⊨-prop", prim_test_property, 3, {"Property-based test with shrinking", ":symbol → (α→𝔹) → (()→α) → 𝔹 | ⚠"}},
 
     /* Effects (placeholder) */
     {"⟪⟫", prim_effect_block, 1, {"Effect computation block", "effect → α"}},

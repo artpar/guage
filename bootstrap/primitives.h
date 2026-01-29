@@ -47,6 +47,13 @@ Cell* prim_gt(Cell* args);        /* > - greater than */
 Cell* prim_le(Cell* args);        /* ≤ - less than or equal */
 Cell* prim_ge(Cell* args);        /* ≥ - greater than or equal */
 
+/* Property-Based Testing Generators */
+Cell* prim_gen_int(Cell* args);        /* gen-int - random integer in range */
+Cell* prim_gen_bool(Cell* args);       /* gen-bool - random boolean */
+Cell* prim_gen_symbol(Cell* args);     /* gen-symbol - random from list */
+Cell* prim_gen_list(Cell* args);       /* gen-list - random list */
+Cell* prim_test_property(Cell* args);  /* ⊨-prop - property-based test */
+
 /* Type predicates */
 Cell* prim_is_number(Cell* args);
 Cell* prim_is_bool(Cell* args);
