@@ -1,19 +1,171 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-01-29
+Updated: 2026-01-29 (Session End)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 68 COMPLETE - Pattern Recursion Bug Fixed! 🎉 (2026-01-29)
+# Session Handoff: Day 69 IN PROGRESS - CFG/DFG Graph Algorithms (2026-01-29)
 
-## 🎯 For Next Session (Day 69): Start Here
+## 🚀 Quick Start for Next Session
 
-**Session 68 Status:** ✅ **COMPLETE** - Fixed pattern recursion bug, achieved 100% test coverage!
+**GOAL:** Complete Day 69 by applying the identified fix and finishing implementation.
 
-**Current Test Status:** **68/68 passing (100%)** 🎉 ← PERFECT SCORE!
+**FILES TO READ FIRST:**
+1. `docs/planning/DAY_69_NEXT_SESSION.md` - Step-by-step instructions (START HERE)
+2. `docs/planning/DAY_69_PROGRESS.md` - Complete investigation details
+3. `docs/planning/SESSION_END_SUMMARY.md` - What we learned this session
 
-### What Was Completed This Session (Day 68)
+**THE FIX (3 lines of code):**
+```c
+// File: bootstrap/eval.c line 738
+// Add after line: ctx->env = cell_cons(binding, ctx->env);
+
+Cell* old_env = ctx->env;
+ctx->env = cell_cons(binding, ctx->env);
+cell_release(old_env);  // ← This releases shadowed bindings
+```
+
+**EXPECTED RESULT:** 35/35 graph tests passing (up from 20/35)
+
+**TIME ESTIMATE:** 2-3 hours total
+
+---
+
+## 🎯 For Next Session: Continue Day 69 (Session 2)
+
+**Session 69 Status:** ⚠️ **IN PROGRESS** - Root cause identified, ready to fix
+
+**Current Test Status:** **88/103 passing (85%)** - Main tests: 68/68 ✅, Graph tests: 20/35 ⚠️
+
+**Time Invested:** 8+ hours (implementation + deep debugging)
+**Estimated Remaining:** 2-3 hours (apply fix + test + document)
+
+### What Was Started This Session (Day 69 Session 2) - INVESTIGATION COMPLETE
+
+**✅ Completed (Session 1 - Day 69 Start):**
+- Implemented all 6 graph algorithm primitives in `bootstrap/primitives.c`:
+  - ⊝↦ (graph_traverse) - BFS/DFS traversal with visitor function
+  - ⊝⊃ (graph_reachable) - Check node reachability
+  - ⊝⊚ (graph_successors) - Get direct successors
+  - ⊝⊙ (graph_predecessors) - Get direct predecessors
+  - ⊝⇝ (graph_path) - Find shortest path between nodes
+  - ⊝∘ (graph_cycles) - Detect cycles in graph
+- Created comprehensive test suite: `bootstrap/tests/test_cfg_algorithms.test` (35 tests)
+- Fixed multiple memory management bugs:
+  - BFS/DFS queue management (proper retain/release pattern)
+  - Visited list updates (release old list before reassigning)
+  - Double-retain issues (cons already retains, removed explicit retains)
+  - Borrowed reference bug (don't release edges/nodes from graph)
+  - Stack/gray/black list management in cycle detection
+- Added primitives to registration table (lines 4548-4560 in primitives.c)
+- Updated primitive count: 113 → 119
+
+**✅ Completed (Session 2 - Investigation):**
+- **Root Cause Identified:** Graph memory corruption due to environment leak
+- Created 4 diagnostic test files proving the issue
+- Traced through 3 core files (cell.c, eval.c, primitives.c)
+- Documented exact corruption pattern with evidence
+- **CRITICAL FINDING:** `eval_define()` never releases old environment (line 738)
+- Identified interaction between environment accumulation + immutable graph sharing
+- Proposed fix with testing strategy and fallback options
+- Updated `DAY_69_PROGRESS.md` with complete investigation results
+
+**❌ Blocking Issues:**
+1. **Primary Issue: Graph Memory Corruption** (HIGH PRIORITY)
+   - Tests pass in isolation but fail in full test suite
+   - Example: `(⊝⊃ linear-g :A :C)` returns #t in isolation, #f in full suite
+   - Hypothesis: Graph creation/mutation functions losing data when multiple graphs built
+   - Suspected functions: `cell_graph_add_node`, `cell_graph_add_edge` in bootstrap/cell.c
+   - Evidence: Successors return correct results in debug tests but fail in suite
+
+2. **Minor Issues** (Can fix quickly after #1):
+   - Node existence validation needed (traverse should return ∅ if node not in graph)
+   - Empty graph edge case (traverse returns node instead of ∅)
+
+**Test Results:**
+- **20/35 graph algorithm tests passing (57%)**
+- Passing: Basic traversal, negative cases, self-reachability, empty lists, no cycles
+- Failing: Positive reachability (returns #f instead of #t), non-empty successor/predecessor lists, path finding, cycle detection
+
+**Files Modified:**
+- `bootstrap/primitives.c` - Added 6 primitives (~500 lines)
+- `bootstrap/tests/test_cfg_algorithms.test` - Created (35 tests, 175 lines)
+- `docs/planning/DAY_69_CFG_DFG_ALGORITHMS.md` - Planning doc
+- `docs/planning/DAY_69_PROGRESS.md` - Detailed progress tracking
+
+**Root Cause Analysis:**
+Memory corruption when building multiple graphs in sequence. The pattern:
+1. Build graph A: `(≔ g1 (⊝ ...)` → Works
+2. Build graph B: `(≔ g2 (⊝ ...)` → Works
+3. Query graph A: Operations fail, edges seem lost
+4. Query graph B: Works correctly
+
+This points to improper reference counting in graph creation/mutation functions.
+
+**Next Steps to Complete Day 69 (Start Here Next Session):**
+
+1. **PRIORITY 1: Fix Environment Memory Leak** (1-2 hours) ⚠️ **ROOT CAUSE FIX**
+   - **File:** `bootstrap/eval.c` line 735-738 in `eval_define()`
+   - **Change:**
+     ```c
+     // OLD (line 738):
+     ctx->env = cell_cons(binding, ctx->env);
+
+     // NEW:
+     Cell* old_env = ctx->env;
+     ctx->env = cell_cons(binding, ctx->env);
+     cell_release(old_env);  // Release shadowed bindings
+     ```
+   - **Test:** Run `make test` - expect 68/68 main tests STILL passing
+   - **Test:** Run graph tests - expect most failures to resolve
+   - **Fallback:** If main tests break, try REPL-only release (see DAY_69_PROGRESS.md)
+
+2. **PRIORITY 2: Add Node Validation** (15 minutes) - QUICK WIN
+   - **Files:** `bootstrap/primitives.c` in `prim_graph_traverse()` and `prim_graph_reachable()`
+   - **Add:** Check if start node exists in graph's node list before traversal
+   - **Return:** `∅` if node not found
+   - **Expected:** Fix 2-3 edge case tests (empty-graph, traverse-missing-node)
+
+3. **PRIORITY 3: Systematic Testing** (30 minutes)
+   - Run full test suite: `make test`
+   - Verify: 68/68 main tests still passing (no regressions)
+   - Check: Graph tests should be 32-35/35 (from 20/35)
+   - If failures remain: Check path finding and cycle detection logic
+
+4. **PRIORITY 4: Documentation & Commit** (15 minutes)
+   - Update SPEC.md (113 → 119 primitives)
+   - Update SESSION_HANDOFF.md: Mark Day 69 complete
+   - Archive DAY_69_PROGRESS.md to `docs/archive/2026-01/sessions/`
+   - Git commit with detailed message (template in DAY_69_PROGRESS.md)
+
+**Debugging Command:**
+```bash
+# Run isolated test (works)
+./bootstrap/guage < /private/tmp/.../test_minimal.scm
+
+# Run full test suite (fails)
+make test-one TEST=bootstrap/tests/test_cfg_algorithms.test
+
+# Check graph structure after creation
+echo '(⊝→ graph :edges)' | ./bootstrap/guage
+```
+
+**Critical Files to Examine:**
+- `bootstrap/cell.c` - Graph creation/mutation (lines ~400-600)
+- `bootstrap/primitives.c` - Graph algorithm implementations (lines 1778-2463)
+
+**Why This Matters:**
+Graph algorithms are CRITICAL for metaprogramming vision:
+- Dead code detection (unreachable nodes)
+- Recursion detection (cycle finding)
+- Path coverage analysis (count execution paths)
+- Foundation for optimization and code analysis
+- Core to making CFG/DFG actually useful
+
+**Session Priority:** Complete Day 69 before starting new work - we're 90% there!
+
+### What Was Completed Last Session (Day 68)
 
 **Pattern Recursion Bug Fix (3 hours)**
 - ✅ **Fixed critical recursion bug** - recursive calls in pattern results now work correctly
@@ -138,23 +290,49 @@ if (pattern && pattern->type == CELL_ATOM_SYMBOL &&
 - All advanced pattern features implemented
 - Foundation for metaprogramming complete
 
-### 🎯 What to Do Next (Day 68)
+### 🎯 What to Do Next (Day 69 Continuation)
 
-**Day 67 Progress:** Made significant progress! Fixed ∅ pattern bug, achieved 67/68 tests (99%).
+**CRITICAL: Complete Day 69 Graph Algorithms** (2-3 hours remaining)
 
-**HIGH PRIORITY - Fix Recursion Bug:**
-1. **Pattern matching recursion bug** - Investigate De Bruijn conversion in pattern results
-   - File: `bootstrap/debruijn.c` or `bootstrap/pattern.c`
-   - Issue: Recursive function calls in pattern result expressions cause infinite loops
-   - Example: `(λ (x) (∇ x (⌜ ((∅ #0) (_ (⊕ #1 (fn (▷ x))))))))` hangs
-   - Debug strategy: Add tracing to see how De Bruijn indices are converted in pattern bodies
-   - When fixed: Will achieve **68/68 tests (100%)**! 🎯
+**Status:** 90% complete - Implementation done, memory bug blocking final 15 tests
 
-**Alternative Next Steps (if recursion bug too complex):**
-2. **CFG/DFG enhancements** - Add graph algorithms, queries
-3. **Module system work** - Continue implementation
-4. **Metaprogramming features** - Start macro system
-5. **Testing improvements** - Property-based or fuzzing
+**HIGH PRIORITY TASKS:**
+
+1. **Investigate Graph Memory Management** (1-2 hours) ⚠️ BLOCKING
+   - File: `bootstrap/cell.c` (cell_graph_add_node, cell_graph_add_edge)
+   - Issue: Tests pass in isolation but fail when multiple graphs created
+   - Debug approach:
+     ```c
+     // In cell_graph_add_node - Check if we retain the new nodes list
+     Cell* old_nodes = graph->data.graph.nodes;
+     graph->data.graph.nodes = cell_cons(node, old_nodes);
+     cell_release(old_nodes);  // Are we doing this?
+     ```
+   - Hypothesis: Not properly managing refcounts when mutating graph internals
+   - Test: Create 2 graphs, check if first graph's edges still accessible
+
+2. **Fix Node Validation** (15 minutes) - QUICK WIN
+   - Add check in `prim_graph_traverse` and `prim_graph_reachable`
+   - Return `∅` if start node not in graph
+   - Should fix 2-3 tests immediately
+
+3. **Test & Document** (30-45 minutes)
+   - Verify all 35 tests pass
+   - Update SPEC.md (113 → 119 primitives)
+   - Update SESSION_HANDOFF.md
+   - Archive progress doc
+
+**Why This Is Critical:**
+- Graph algorithms are foundation for metaprogramming (dead code, recursion detection, path analysis)
+- We're 90% complete - just memory bug blocking
+- Implementation is solid, just needs debugging
+- Don't start new work until this is done
+
+**After Day 69 Complete:**
+- Pattern matching enhancements (view patterns)
+- Macro system
+- Module enhancements
+- Self-hosting improvements
 
 ---
 
@@ -375,11 +553,11 @@ guage> (≡ (⊕ (◁ r) (◁ (▷ r))) (◁ (▷ (▷ r))))
 
 ## Current Status 🎯
 
-**Latest Achievement:** ✅ **DAY 64 COMPLETE** → Mutation Testing + File Loading Investigation!
+**Latest Session:** ⚠️ **DAY 69 IN PROGRESS** → Graph Algorithms 90% Complete (Memory Bug Blocking)
 
 **System State:**
-- **Primitives:** 112 primitives (stable) ✅ **+1 from Day 64 (⌂⊨⊗ mutation testing)**
-- **Tests:** 66/67 main tests passing (98.5%) ✅ **1 expected failure (self-hosting limitation)**
+- **Primitives:** 119 primitives ⚠️ **+6 from Day 69 (graph algorithms) - NOT YET STABLE**
+- **Tests:** 88/103 total passing (85%) ⚠️ **Main: 68/68, Graph: 20/35**
 - **Auto-Test:** Structure-based test generation complete (⌂⊨ analyzes code structure) + auto-execute (⌂⊨!)!
 - **Pattern Tests:** 14/14 De Bruijn tests + 30/30 guard tests + 28/28 as-pattern tests + 24/24 or-pattern tests passing (100%) ✅
 - **Math Tests:** 88/88 passing (100%) ✅
