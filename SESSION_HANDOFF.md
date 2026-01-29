@@ -1,37 +1,46 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-01-29 (Day 70 COMPLETE)
+Updated: 2026-01-29 (Day 71 IN PROGRESS)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 70 COMPLETE - Macro & Module Enhancements (2026-01-29)
+# Session Handoff: Day 71 - Self-Hosting Evaluator Enhanced (2026-01-29)
 
-## 🎉 Day 70 COMPLETE - Macro & Module System Enhanced!
+## 🎉 Day 71 Progress - Self-Hosting Evaluator Upgraded!
 
 **RESULT:** 71/71 test files passing (100%)
 
-**NEW PRIMITIVES (6 total):**
+**Self-Hosting Improvements:**
+- Added ⌜ (quote) special form to meta-circular evaluator
+- 32 eval tests passing (up from 22)
+- Y-combinator factorial working
+- K combinator and pure lambda calculus verified
+- Nested conditionals with quoted results
+- List construction with primitives
 
-**Macro System (3):**
-- ⊛⊙ (gensym) - Generate unique symbols for macro hygiene
-- ⧉→ (macro-expand) - Show macro expansion for debugging
-- ⧉? (macro-list) - List all defined macros
-
-**Module System (3):**
-- ⌂⊚# (module-version) - Get/set module version
-- ⌂⊚↑ (module-exports) - Get/set explicit exports for selective visibility
-- ⌂⊚⊛ (module-cycles) - Detect circular dependencies via DFS
+**Evaluator now supports:**
+- Atoms (numbers, booleans, nil)
+- Symbol lookup in environments
+- Lambda creation with closures
+- Multi-parameter lambdas
+- Closures with captured variables
+- Conditionals (?)
+- Quote (⌜) - NEW
+- Primitives through ⊡
+- Recursion via Y-combinator
+- Higher-order functions
+- Pure lambda calculus
 
 ---
 
 ## Current Status 🎯
 
 **System State:**
-- **Primitives:** 125 total (+6 new)
-- **Tests:** 105/105 passing (100%) - Main: 70/70, Graph: 35/35
+- **Primitives:** 125 total
+- **Tests:** 71/71 test files passing (100%)
+- **Self-Hosting Eval Tests:** 32/32 passing (100%)
 - **Pattern Matching:** World-class (guards, as-patterns, or-patterns, view patterns)
-- **Self-Hosting:** 95.5% (21/22 tests) - pure lambda calculus complete
 - **Build:** Clean, O2 optimized, 32MB stack
 
 **Core Capabilities:**
@@ -48,13 +57,14 @@ Purpose: Current project status and progress
 
 ---
 
-## 🎯 What to Do Next (Day 71+)
+## 🎯 What to Do Next (Day 72+)
 
 **RECOMMENDED OPTIONS:**
 
-1. **Self-Hosting Phase 5** (4-5 hours) - HIGH IMPACT
-   - Continue meta-circular evaluator (59% → 80% target)
-   - Add primitive support via FFI
+1. **Self-Hosting Phase 6** (3-4 hours) - HIGH IMPACT
+   - Add define (≔) support to evaluator for local definitions
+   - Implement letrec for mutual recursion
+   - Add eval (⌞) special form for meta-evaluation
 
 2. **Data Flow Analysis** (3-4 hours) - MEDIUM VALUE
    - Build on graph algorithms for liveness analysis, reaching definitions
@@ -71,6 +81,7 @@ Purpose: Current project status and progress
 
 | Day | Feature | Tests |
 |-----|---------|-------|
+| 71 | Self-Hosting Evaluator Enhanced | 71/71 (100%), 32 eval tests |
 | 70 | Macro & Module Enhancements | 71/71 (100%) |
 | 69 | Graph Algorithms Complete | 69/69 (100%) |
 | 68 | Pattern Recursion Bug Fixed | 68/68 |
@@ -80,8 +91,6 @@ Purpose: Current project status and progress
 | 63 | Doc Generation + Auto-Execute Tests | 65/66 |
 | 62 | Property-Based Testing | 61/62 |
 | 61 | REPL Enhancements | 60/61 |
-| 60 | Or-Patterns | 60/61 |
-| 59 | As-Patterns | 59/60 |
 
 **Full historical details:** See `docs/archive/2026-01/sessions/DAYS_43_68_HISTORY.md`
 
@@ -92,7 +101,7 @@ Purpose: Current project status and progress
 ### Build & Test
 ```bash
 make              # Build (O2 optimized, 32MB stack)
-make test         # Run full test suite (69 test files)
+make test         # Run full test suite (71 test files)
 make repl         # Start interactive REPL
 make clean        # Clean build artifacts
 make rebuild      # Clean + rebuild
@@ -124,14 +133,16 @@ make rebuild      # Clean + rebuild
 
 ## Session End Checklist ✅
 
-**Day 70 Complete (2026-01-29):**
-- ✅ Macro system enhanced with gensym, macro-expand, macro-list
-- ✅ Module system enhanced with versioning, exports, cycle detection
+**Day 71 Progress (2026-01-29):**
+- ✅ Self-hosting evaluator enhanced with quote (⌜) special form
+- ✅ Eval tests increased from 22 to 32 (45% more coverage)
+- ✅ Y-combinator factorial working (recursion verified)
+- ✅ K combinator and pure lambda calculus tests added
 - ✅ All 71/71 test files passing (100%)
-- ✅ Documentation updated
 
-**For Day 71:**
-- 🎯 Choose direction from recommended options above
+**For Day 72:**
+- 🎯 Continue self-hosting (≔ support, letrec, eval special form)
+- 🎯 Or choose from other options above
 - 🧪 Verify: `make test` shows 71 test files passing
 
 ---

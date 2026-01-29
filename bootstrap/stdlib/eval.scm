@@ -36,7 +36,7 @@
         #t
         (? (≡ (◁ expr) (⌜ ?))
            #t
-           (? (≡ (◁ expr) (⌜ ≔))
+           (? (≡ (◁ expr) (⌜ ⌜))
               #t
               #f))))))
 
@@ -117,7 +117,12 @@
                     (⚠ :if-missing-else expr))
                  (⚠ :if-missing-then expr))
               (⚠ :if-missing-condition expr))
-           (⚠ :unknown-special-form expr)))
+           ; Quote: (⌜ expr) - return expr unevaluated
+           (? (≡ (◁ expr) (⌜ ⌜))
+              (? (⟨⟩? (▷ expr))
+                 (◁ (▷ expr))            ; Return quoted expression
+                 (⚠ :quote-missing-expr expr))
+              (⚠ :unknown-special-form expr))))
      ; Regular function application
      (? (∅? expr)
         (⚠ :empty-application)
