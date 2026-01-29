@@ -591,6 +591,475 @@ Cell* prim_is_atom(Cell* args) {
     return cell_bool(cell_is_atom(arg1(args)));
 }
 
+/* ============== Type Annotation Primitives ============== */
+
+/* Global type annotation registry (maps symbol names to types)
+ * Stored as alist: ((name . type) (name . type) ...)
+ */
+static Cell* type_annotation_registry = NULL;
+
+/* Helper: Create a type structure with given tag and fields */
+static Cell* make_type_struct(const char* kind, Cell* fields) {
+    Cell* type_tag = cell_symbol(":type");
+    Cell* kind_field = cell_cons(cell_symbol(":kind"), cell_symbol(kind));
+    Cell* fields_with_kind = cell_cons(kind_field, fields);
+    return cell_struct(STRUCT_LEAF, type_tag, NULL, fields_with_kind);
+}
+
+/* Helper: Check if cell is a type structure */
+static bool is_type_struct(Cell* c) {
+    if (!cell_is_struct(c)) return false;
+    Cell* tag = cell_struct_type_tag(c);
+    return cell_is_symbol(tag) && strcmp(cell_get_symbol(tag), ":type") == 0;
+}
+
+/* Helper: Get type kind from type structure */
+static const char* get_type_kind(Cell* type) {
+    if (!is_type_struct(type)) return NULL;
+    Cell* kind = cell_struct_get_field(type, cell_symbol(":kind"));
+    if (!kind || !cell_is_symbol(kind)) return NULL;
+    return cell_get_symbol(kind);
+}
+
+/* Helper: Check type equality recursively */
+static bool types_equal(Cell* t1, Cell* t2) {
+    if (!is_type_struct(t1) || !is_type_struct(t2)) {
+        return cell_equal(t1, t2);
+    }
+
+    const char* k1 = get_type_kind(t1);
+    const char* k2 = get_type_kind(t2);
+
+    if (!k1 || !k2 || strcmp(k1, k2) != 0) return false;
+
+    /* For basic types, kind equality is sufficient */
+    if (strcmp(k1, ":int") == 0 || strcmp(k1, ":bool") == 0 ||
+        strcmp(k1, ":string") == 0 || strcmp(k1, ":any") == 0 ||
+        strcmp(k1, ":nil") == 0 || strcmp(k1, ":symbol") == 0 ||
+        strcmp(k1, ":pair") == 0 || strcmp(k1, ":function") == 0 ||
+        strcmp(k1, ":error") == 0) {
+        return true;
+    }
+
+    /* For function types, compare domain and codomain */
+    if (strcmp(k1, ":func") == 0) {
+        Cell* d1 = cell_struct_get_field(t1, cell_symbol(":domain"));
+        Cell* d2 = cell_struct_get_field(t2, cell_symbol(":domain"));
+        Cell* c1 = cell_struct_get_field(t1, cell_symbol(":codomain"));
+        Cell* c2 = cell_struct_get_field(t2, cell_symbol(":codomain"));
+        return types_equal(d1, d2) && types_equal(c1, c2);
+    }
+
+    /* For list types, compare element types */
+    if (strcmp(k1, ":list") == 0) {
+        Cell* e1 = cell_struct_get_field(t1, cell_symbol(":element"));
+        Cell* e2 = cell_struct_get_field(t2, cell_symbol(":element"));
+        return types_equal(e1, e2);
+    }
+
+    /* For pair types, compare car and cdr types */
+    if (strcmp(k1, ":pair-type") == 0) {
+        Cell* a1 = cell_struct_get_field(t1, cell_symbol(":car"));
+        Cell* a2 = cell_struct_get_field(t2, cell_symbol(":car"));
+        Cell* b1 = cell_struct_get_field(t1, cell_symbol(":cdr"));
+        Cell* b2 = cell_struct_get_field(t2, cell_symbol(":cdr"));
+        return types_equal(a1, a2) && types_equal(b1, b2);
+    }
+
+    /* For union types, compare left and right */
+    if (strcmp(k1, ":union") == 0) {
+        Cell* l1 = cell_struct_get_field(t1, cell_symbol(":left"));
+        Cell* l2 = cell_struct_get_field(t2, cell_symbol(":left"));
+        Cell* r1 = cell_struct_get_field(t1, cell_symbol(":right"));
+        Cell* r2 = cell_struct_get_field(t2, cell_symbol(":right"));
+        return types_equal(l1, l2) && types_equal(r1, r2);
+    }
+
+    return false;
+}
+
+/* Helper: Check if t1 is subtype of t2 */
+static bool is_subtype(Cell* t1, Cell* t2) {
+    /* If t2 is a type structure, check its kind */
+    if (is_type_struct(t2)) {
+        const char* k2 = get_type_kind(t2);
+
+        /* Everything is subtype of ⊤ (any) */
+        if (k2 && strcmp(k2, ":any") == 0) return true;
+
+        /* Check union subtypes */
+        if (k2 && strcmp(k2, ":union") == 0) {
+            Cell* left = cell_struct_get_field(t2, cell_symbol(":left"));
+            Cell* right = cell_struct_get_field(t2, cell_symbol(":right"));
+            return is_subtype(t1, left) || is_subtype(t1, right);
+        }
+    }
+
+    /* If both are type structures, compare them */
+    if (is_type_struct(t1) && is_type_struct(t2)) {
+        return types_equal(t1, t2);
+    }
+
+    /* For non-struct types (symbols like :symbol, :pair, :function), just compare equality */
+    return cell_equal(t1, t2);
+}
+
+/* ℤ - Integer type constant */
+Cell* prim_type_int(Cell* args) {
+    (void)args;
+    return make_type_struct(":int", cell_nil());
+}
+
+/* 𝔹 - Boolean type constant */
+Cell* prim_type_bool(Cell* args) {
+    (void)args;
+    return make_type_struct(":bool", cell_nil());
+}
+
+/* 𝕊 - String type constant */
+Cell* prim_type_string(Cell* args) {
+    (void)args;
+    return make_type_struct(":string", cell_nil());
+}
+
+/* ⊤ - Any type constant (top) */
+Cell* prim_type_any(Cell* args) {
+    (void)args;
+    return make_type_struct(":any", cell_nil());
+}
+
+/* ∅ₜ - Nil type constant */
+Cell* prim_type_nil(Cell* args) {
+    (void)args;
+    return make_type_struct(":nil", cell_nil());
+}
+
+/* → - Function type constructor
+ * Args: domain, codomain, [additional codomains...]
+ * (→ ℤ ℤ) = function from int to int
+ * (→ ℤ ℤ ℤ) = function from int to int to int (curried)
+ */
+Cell* prim_type_func(Cell* args) {
+    if (!cell_is_pair(args)) {
+        return cell_error("→ requires at least two type arguments", cell_nil());
+    }
+
+    Cell* domain = arg1(args);
+    Cell* rest = cell_cdr(args);
+
+    if (!cell_is_pair(rest)) {
+        return cell_error("→ requires at least two type arguments", cell_nil());
+    }
+
+    Cell* codomain = cell_car(rest);
+    Cell* more = cell_cdr(rest);
+
+    /* If there are more args, recursively build curried function type */
+    if (cell_is_pair(more)) {
+        /* Build codomain recursively: (→ ℤ ℤ ℤ) = (→ ℤ (→ ℤ ℤ)) */
+        Cell* inner_codomain = prim_type_func(rest);
+        if (cell_is_error(inner_codomain)) return inner_codomain;
+        codomain = inner_codomain;
+    }
+
+    /* Build fields: (:domain . domain_type) (:codomain . codomain_type) */
+    cell_retain(domain);
+    cell_retain(codomain);
+    Cell* domain_field = cell_cons(cell_symbol(":domain"), domain);
+    Cell* codomain_field = cell_cons(cell_symbol(":codomain"), codomain);
+    Cell* fields = cell_cons(codomain_field, cell_nil());
+    fields = cell_cons(domain_field, fields);
+
+    return make_type_struct(":func", fields);
+}
+
+/* [] - List type constructor (special form - handled by parser)
+ * But we need a primitive for programmatic use
+ * [ℤ] = list of integers
+ */
+Cell* prim_type_list(Cell* args) {
+    if (!cell_is_pair(args)) {
+        return cell_error("[] requires element type", cell_nil());
+    }
+
+    Cell* elem_type = arg1(args);
+    cell_retain(elem_type);
+    Cell* elem_field = cell_cons(cell_symbol(":element"), elem_type);
+    Cell* fields = cell_cons(elem_field, cell_nil());
+
+    return make_type_struct(":list", fields);
+}
+
+/* ⟨⟩ₜ - Pair type constructor
+ * (⟨⟩ₜ ℤ 𝕊) = pair of int and string
+ */
+Cell* prim_type_pair(Cell* args) {
+    if (!cell_is_pair(args)) {
+        return cell_error("⟨⟩ₜ requires two type arguments", cell_nil());
+    }
+
+    Cell* car_type = arg1(args);
+    Cell* rest = cell_cdr(args);
+
+    if (!cell_is_pair(rest)) {
+        return cell_error("⟨⟩ₜ requires two type arguments", cell_nil());
+    }
+
+    Cell* cdr_type = cell_car(rest);
+
+    cell_retain(car_type);
+    cell_retain(cdr_type);
+    Cell* car_field = cell_cons(cell_symbol(":car"), car_type);
+    Cell* cdr_field = cell_cons(cell_symbol(":cdr"), cdr_type);
+    Cell* fields = cell_cons(cdr_field, cell_nil());
+    fields = cell_cons(car_field, fields);
+
+    return make_type_struct(":pair-type", fields);
+}
+
+/* ∪ₜ - Union type constructor
+ * (∪ₜ ℤ ∅ₜ) = int or nil
+ */
+Cell* prim_type_union(Cell* args) {
+    if (!cell_is_pair(args)) {
+        return cell_error("∪ₜ requires two type arguments", cell_nil());
+    }
+
+    Cell* left = arg1(args);
+    Cell* rest = cell_cdr(args);
+
+    if (!cell_is_pair(rest)) {
+        return cell_error("∪ₜ requires two type arguments", cell_nil());
+    }
+
+    Cell* right = cell_car(rest);
+
+    cell_retain(left);
+    cell_retain(right);
+    Cell* left_field = cell_cons(cell_symbol(":left"), left);
+    Cell* right_field = cell_cons(cell_symbol(":right"), right);
+    Cell* fields = cell_cons(right_field, cell_nil());
+    fields = cell_cons(left_field, fields);
+
+    return make_type_struct(":union", fields);
+}
+
+/* ∈⊙ - Runtime type detection (typeof)
+ * Returns the type of a runtime value
+ */
+Cell* prim_typeof(Cell* args) {
+    Cell* val = arg1(args);
+
+    if (cell_is_number(val)) {
+        return make_type_struct(":int", cell_nil());
+    }
+    if (cell_is_bool(val)) {
+        return make_type_struct(":bool", cell_nil());
+    }
+    if (cell_is_string(val)) {
+        return make_type_struct(":string", cell_nil());
+    }
+    if (cell_is_nil(val)) {
+        return make_type_struct(":nil", cell_nil());
+    }
+    if (cell_is_symbol(val)) {
+        return cell_symbol(":symbol");
+    }
+    if (cell_is_pair(val)) {
+        return cell_symbol(":pair");
+    }
+    if (cell_is_lambda(val)) {
+        return cell_symbol(":function");
+    }
+    if (cell_is_error(val)) {
+        return cell_symbol(":error");
+    }
+    if (cell_is_struct(val)) {
+        return cell_symbol(":struct");
+    }
+    if (cell_is_graph(val)) {
+        return cell_symbol(":graph");
+    }
+
+    return cell_symbol(":unknown");
+}
+
+/* ∈≡ - Type equality check */
+Cell* prim_type_equal(Cell* args) {
+    Cell* t1 = arg1(args);
+    Cell* t2 = arg2(args);
+    return cell_bool(types_equal(t1, t2));
+}
+
+/* ∈⊆ - Subtype check */
+Cell* prim_type_subtype(Cell* args) {
+    Cell* t1 = arg1(args);
+    Cell* t2 = arg2(args);
+    return cell_bool(is_subtype(t1, t2));
+}
+
+/* ∈! - Type assertion
+ * Assert that value has given type, return value or error
+ */
+Cell* prim_type_assert(Cell* args) {
+    Cell* val = arg1(args);
+    Cell* expected_type = arg2(args);
+
+    /* Get runtime type of value */
+    Cell* actual_type = prim_typeof(args);
+
+    /* Check if actual type is subtype of expected */
+    Cell* subtype_args = cell_cons(actual_type, cell_cons(expected_type, cell_nil()));
+    Cell* is_sub = prim_type_subtype(subtype_args);
+    cell_release(subtype_args);
+
+    if (cell_get_bool(is_sub)) {
+        cell_release(is_sub);
+        cell_release(actual_type);
+        cell_retain(val);
+        return val;
+    }
+
+    cell_release(is_sub);
+    cell_release(actual_type);
+    return cell_error(":type-error", val);
+}
+
+/* ∈ - Declare type annotation for a symbol
+ * (∈ name type) - stores the type annotation
+ */
+Cell* prim_type_declare(Cell* args) {
+    Cell* name = arg1(args);
+    Cell* type = arg2(args);
+
+    if (!cell_is_symbol(name)) {
+        return cell_error("∈ requires symbol as first argument", name);
+    }
+
+    /* Initialize registry if needed */
+    if (type_annotation_registry == NULL) {
+        type_annotation_registry = cell_nil();
+    }
+
+    /* Check if already declared */
+    Cell* current = type_annotation_registry;
+    while (cell_is_pair(current)) {
+        Cell* binding = cell_car(current);
+        Cell* bound_name = cell_car(binding);
+        if (cell_equal(bound_name, name)) {
+            /* Update existing binding */
+            Cell* new_binding = cell_cons(name, type);
+            cell_retain(name);
+            cell_retain(type);
+            /* Replace in list (simplified - just prepend) */
+            type_annotation_registry = cell_cons(new_binding, type_annotation_registry);
+            return type;
+        }
+        current = cell_cdr(current);
+    }
+
+    /* Add new binding */
+    Cell* binding = cell_cons(name, type);
+    cell_retain(name);
+    cell_retain(type);
+    type_annotation_registry = cell_cons(binding, type_annotation_registry);
+
+    cell_retain(type);
+    return type;
+}
+
+/* ∈? - Query type annotation for a symbol
+ * (∈? name) - returns declared type or nil
+ */
+Cell* prim_type_query(Cell* args) {
+    Cell* name = arg1(args);
+
+    if (!cell_is_symbol(name)) {
+        return cell_error("∈? requires symbol", name);
+    }
+
+    if (type_annotation_registry == NULL) {
+        return cell_nil();
+    }
+
+    Cell* current = type_annotation_registry;
+    while (cell_is_pair(current)) {
+        Cell* binding = cell_car(current);
+        Cell* bound_name = cell_car(binding);
+        if (cell_equal(bound_name, name)) {
+            Cell* type = cell_cdr(binding);
+            cell_retain(type);
+            return type;
+        }
+        current = cell_cdr(current);
+    }
+
+    return cell_nil();
+}
+
+/* ∈◁ - Get domain (input type) of function type */
+Cell* prim_type_domain(Cell* args) {
+    Cell* func_type = arg1(args);
+
+    if (!is_type_struct(func_type)) {
+        return cell_error("∈◁ requires function type", func_type);
+    }
+
+    const char* kind = get_type_kind(func_type);
+    if (!kind || strcmp(kind, ":func") != 0) {
+        return cell_error("∈◁ requires function type", func_type);
+    }
+
+    Cell* domain = cell_struct_get_field(func_type, cell_symbol(":domain"));
+    if (domain) {
+        cell_retain(domain);
+        return domain;
+    }
+    return cell_nil();
+}
+
+/* ∈▷ - Get codomain (output type) of function type */
+Cell* prim_type_codomain(Cell* args) {
+    Cell* func_type = arg1(args);
+
+    if (!is_type_struct(func_type)) {
+        return cell_error("∈▷ requires function type", func_type);
+    }
+
+    const char* kind = get_type_kind(func_type);
+    if (!kind || strcmp(kind, ":func") != 0) {
+        return cell_error("∈▷ requires function type", func_type);
+    }
+
+    Cell* codomain = cell_struct_get_field(func_type, cell_symbol(":codomain"));
+    if (codomain) {
+        cell_retain(codomain);
+        return codomain;
+    }
+    return cell_nil();
+}
+
+/* ∈⊙ₜ - Get element type of list type */
+Cell* prim_type_element(Cell* args) {
+    Cell* list_type = arg1(args);
+
+    if (!is_type_struct(list_type)) {
+        return cell_error("∈⊙ₜ requires list type", list_type);
+    }
+
+    const char* kind = get_type_kind(list_type);
+    if (!kind || strcmp(kind, ":list") != 0) {
+        return cell_error("∈⊙ₜ requires list type", list_type);
+    }
+
+    Cell* element = cell_struct_get_field(list_type, cell_symbol(":element"));
+    if (element) {
+        cell_retain(element);
+        return element;
+    }
+    return cell_nil();
+}
+
 /* Debug & Error Handling Primitives */
 
 /* ⚠ - create error */
@@ -4733,6 +5202,26 @@ static Primitive primitives[] = {
     {"∅?", prim_is_nil, 1, {"Test if value is nil", "α → 𝔹"}},
     {"⟨⟩?", prim_is_pair, 1, {"Test if value is a pair", "α → 𝔹"}},
     {"#?", prim_is_atom, 1, {"Test if value is an atom", "α → 𝔹"}},
+
+    /* Type Annotation System */
+    {"ℤ", prim_type_int, 0, {"Integer type constant", "() → Type"}},
+    {"𝔹", prim_type_bool, 0, {"Boolean type constant", "() → Type"}},
+    {"𝕊", prim_type_string, 0, {"String type constant", "() → Type"}},
+    {"⊤", prim_type_any, 0, {"Any type constant (top)", "() → Type"}},
+    {"∅ₜ", prim_type_nil, 0, {"Nil type constant", "() → Type"}},
+    {"→", prim_type_func, -1, {"Function type constructor", "Type → Type → Type"}},
+    {"[]ₜ", prim_type_list, 1, {"List type constructor", "Type → Type"}},
+    {"⟨⟩ₜ", prim_type_pair, 2, {"Pair type constructor", "Type → Type → Type"}},
+    {"∪ₜ", prim_type_union, 2, {"Union type constructor", "Type → Type → Type"}},
+    {"∈⊙", prim_typeof, 1, {"Get runtime type of value", "α → Type"}},
+    {"∈≡", prim_type_equal, 2, {"Test type equality", "Type → Type → 𝔹"}},
+    {"∈⊆", prim_type_subtype, 2, {"Test if first type is subtype of second", "Type → Type → 𝔹"}},
+    {"∈!", prim_type_assert, 2, {"Assert value has type, return value or error", "α → Type → α | ⚠"}},
+    {"∈", prim_type_declare, 2, {"Declare type annotation for symbol", ":symbol → Type → Type"}},
+    {"∈?", prim_type_query, 1, {"Query type annotation for symbol", ":symbol → Type | ∅"}},
+    {"∈◁", prim_type_domain, 1, {"Get domain (input type) of function type", "Type → Type"}},
+    {"∈▷", prim_type_codomain, 1, {"Get codomain (output type) of function type", "Type → Type"}},
+    {"∈⊙ₜ", prim_type_element, 1, {"Get element type of list type", "Type → Type"}},
 
     /* Debug & Error Handling */
     {"⚠", prim_error_create, 2, {"Create error value", ":symbol → α → ⚠"}},

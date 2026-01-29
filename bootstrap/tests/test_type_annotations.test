@@ -1,0 +1,368 @@
+#!/usr/bin/env guage
+; Test suite for type annotations
+; Tests optional type hints for functions and values
+
+(≋ "Testing Type Annotations...")
+
+; ============================================================================
+; Test: Basic Type Constants
+; ============================================================================
+
+(≋ "\nTesting basic type constants...")
+
+; Type constants are primitives that return type structures
+(⊨ :int-type-exists
+   #t
+   (⊙? (ℤ) :type))
+
+(⊨ :bool-type-exists
+   #t
+   (⊙? (𝔹) :type))
+
+(⊨ :string-type-exists
+   #t
+   (⊙? (𝕊) :type))
+
+(⊨ :any-type-exists
+   #t
+   (⊙? (⊤) :type))
+
+(⊨ :nil-type-exists
+   #t
+   (⊙? (∅ₜ) :type))
+
+; ============================================================================
+; Test: → (Function Type Constructor)
+; ============================================================================
+
+(≋ "Testing → (function type)...")
+
+; Create function types
+(⊨ :arrow-creates-type
+   #t
+   (⊙? (→ (ℤ) (ℤ)) :type))
+
+; Multi-arg function type
+(⊨ :arrow-multi-arg
+   #t
+   (⊙? (→ (ℤ) (ℤ) (ℤ)) :type))
+
+; Nested function type (curried)
+(⊨ :arrow-curried
+   #t
+   (⊙? (→ (ℤ) (→ (ℤ) (ℤ))) :type))
+
+; ============================================================================
+; Test: []ₜ (List Type Constructor)
+; ============================================================================
+
+(≋ "Testing []ₜ (list type)...")
+
+; Create list types
+(⊨ :list-type-creates
+   #t
+   (⊙? ([]ₜ (ℤ)) :type))
+
+(⊨ :list-bool-type
+   #t
+   (⊙? ([]ₜ (𝔹)) :type))
+
+; Nested list
+(⊨ :list-nested-type
+   #t
+   (⊙? ([]ₜ ([]ₜ (ℤ))) :type))
+
+; ============================================================================
+; Test: ⟨⟩ₜ (Pair Type Constructor)
+; ============================================================================
+
+(≋ "Testing ⟨⟩ₜ (pair type)...")
+
+; Create pair types
+(⊨ :pair-type-creates
+   #t
+   (⊙? (⟨⟩ₜ (ℤ) (ℤ)) :type))
+
+(⊨ :pair-mixed-type
+   #t
+   (⊙? (⟨⟩ₜ (ℤ) (𝕊)) :type))
+
+; ============================================================================
+; Test: ∪ₜ (Union Type Constructor)
+; ============================================================================
+
+(≋ "Testing ∪ₜ (union type)...")
+
+; Create union types
+(⊨ :union-type-creates
+   #t
+   (⊙? (∪ₜ (ℤ) (∅ₜ)) :type))
+
+(⊨ :union-int-string
+   #t
+   (⊙? (∪ₜ (ℤ) (𝕊)) :type))
+
+; ============================================================================
+; Test: ∈⊙ (typeof - runtime type detection)
+; ============================================================================
+
+(≋ "Testing ∈⊙ (typeof)...")
+
+; Type of integer
+(⊨ :typeof-int
+   #t
+   (⊙? (∈⊙ #42) :type))
+
+; Type of boolean
+(⊨ :typeof-bool-t
+   #t
+   (⊙? (∈⊙ #t) :type))
+
+(⊨ :typeof-bool-f
+   #t
+   (⊙? (∈⊙ #f) :type))
+
+; Type of string
+(⊨ :typeof-string
+   #t
+   (⊙? (∈⊙ "hello") :type))
+
+; Type of nil
+(⊨ :typeof-nil
+   #t
+   (⊙? (∈⊙ ∅) :type))
+
+; Type of symbol
+(⊨ :typeof-symbol
+   :symbol
+   (∈⊙ :foo))
+
+; Type of pair
+(⊨ :typeof-pair
+   :pair
+   (∈⊙ (⟨⟩ #1 #2)))
+
+; Type of lambda
+(⊨ :typeof-lambda
+   :function
+   (∈⊙ (λ (x) x)))
+
+; Type of error
+(⊨ :typeof-error
+   :error
+   (∈⊙ (⚠ :test-error #0)))
+
+; ============================================================================
+; Test: ∈≡ (Type equality)
+; ============================================================================
+
+(≋ "Testing ∈≡ (type equality)...")
+
+; Same basic types
+(⊨ :type-eq-int
+   #t
+   (∈≡ (ℤ) (ℤ)))
+
+(⊨ :type-eq-bool
+   #t
+   (∈≡ (𝔹) (𝔹)))
+
+; Different basic types
+(⊨ :type-neq-int-bool
+   #f
+   (∈≡ (ℤ) (𝔹)))
+
+; Function types equal
+(⊨ :type-eq-func
+   #t
+   (∈≡ (→ (ℤ) (ℤ)) (→ (ℤ) (ℤ))))
+
+; Function types not equal
+(⊨ :type-neq-func
+   #f
+   (∈≡ (→ (ℤ) (ℤ)) (→ (ℤ) (𝔹))))
+
+; List types equal
+(⊨ :type-eq-list
+   #t
+   (∈≡ ([]ₜ (ℤ)) ([]ₜ (ℤ))))
+
+; List types not equal
+(⊨ :type-neq-list
+   #f
+   (∈≡ ([]ₜ (ℤ)) ([]ₜ (𝔹))))
+
+; ============================================================================
+; Test: ∈⊆ (Subtype checking)
+; ============================================================================
+
+(≋ "Testing ∈⊆ (subtype)...")
+
+; Same type is subtype of itself
+(⊨ :subtype-same
+   #t
+   (∈⊆ (ℤ) (ℤ)))
+
+; Everything is subtype of ⊤ (any)
+(⊨ :subtype-any-int
+   #t
+   (∈⊆ (ℤ) (⊤)))
+
+(⊨ :subtype-any-bool
+   #t
+   (∈⊆ (𝔹) (⊤)))
+
+(⊨ :subtype-any-string
+   #t
+   (∈⊆ (𝕊) (⊤)))
+
+; Different types are not subtypes of each other
+(⊨ :not-subtype-int-bool
+   #f
+   (∈⊆ (ℤ) (𝔹)))
+
+; Union subtype checking
+(⊨ :subtype-union-left
+   #t
+   (∈⊆ (ℤ) (∪ₜ (ℤ) (𝕊))))
+
+(⊨ :subtype-union-right
+   #t
+   (∈⊆ (𝕊) (∪ₜ (ℤ) (𝕊))))
+
+; ============================================================================
+; Test: ∈! (Type assertion)
+; ============================================================================
+
+(≋ "Testing ∈! (type assertion)...")
+
+; Assert value has correct type - returns value
+(⊨ :assert-int-ok
+   #42
+   (∈! #42 (ℤ)))
+
+(⊨ :assert-string-ok
+   "hello"
+   (∈! "hello" (𝕊)))
+
+(⊨ :assert-bool-ok
+   #t
+   (∈! #t (𝔹)))
+
+(⊨ :assert-nil-ok
+   ∅
+   (∈! ∅ (∅ₜ)))
+
+; Assert any type (always succeeds)
+(⊨ :assert-any-ok
+   :anything
+   (∈! :anything (⊤)))
+
+; Assert with wrong type returns error
+(⊨ :assert-type-error
+   #t
+   (⚠? (∈! "not-an-int" (ℤ))))
+
+(⊨ :assert-type-error2
+   #t
+   (⚠? (∈! #42 (𝕊))))
+
+; ============================================================================
+; Test: ∈ and ∈? (Type declaration and query)
+; ============================================================================
+
+(≋ "Testing ∈ and ∈? (declaration and query)...")
+
+; Declare type for a value
+(≔ my-x #42)
+(∈ my-x (ℤ))
+
+; Query declared type
+(⊨ :query-declared
+   #t
+   (∈≡ (∈? my-x) (ℤ)))
+
+; Declare type for a function
+(≔ my-inc (λ (n) (⊕ n #1)))
+(∈ my-inc (→ (ℤ) (ℤ)))
+
+(⊨ :query-func-type
+   #t
+   (∈≡ (∈? my-inc) (→ (ℤ) (ℤ))))
+
+; Query undeclared - returns nil
+(≔ my-y #99)
+(⊨ :query-undeclared
+   ∅
+   (∈? my-y))
+
+; ============================================================================
+; Test: Type introspection for function types
+; ============================================================================
+
+(≋ "Testing type introspection...")
+
+; Get domain (input type) of function type
+(⊨ :type-domain
+   #t
+   (∈≡ (∈◁ (→ (ℤ) (𝔹))) (ℤ)))
+
+; Get codomain (output type) of function type
+(⊨ :type-codomain
+   #t
+   (∈≡ (∈▷ (→ (ℤ) (𝔹))) (𝔹)))
+
+; Get element type of list type
+(⊨ :type-element
+   #t
+   (∈≡ (∈⊙ₜ ([]ₜ (ℤ))) (ℤ)))
+
+; Multi-arg function domain
+(⊨ :type-domain-multi
+   #t
+   (∈≡ (∈◁ (→ (ℤ) (𝔹) (𝕊))) (ℤ)))
+
+; ============================================================================
+; Integration Tests
+; ============================================================================
+
+(≋ "Testing integration scenarios...")
+
+; Declare and use typed values
+(≔ typed-add (λ (x y) (⊕ x y)))
+(∈ typed-add (→ (ℤ) (ℤ) (ℤ)))
+
+(⊨ :typed-func-use
+   #5
+   (typed-add #2 #3))
+
+(⊨ :typed-func-query
+   #t
+   (∈≡ (∈? typed-add) (→ (ℤ) (ℤ) (ℤ))))
+
+; Multiple declarations
+(≔ a #1)
+(≔ b #2)
+(≔ c "three")
+(∈ a (ℤ))
+(∈ b (ℤ))
+(∈ c (𝕊))
+
+(⊨ :multi-decl-a
+   #t
+   (∈≡ (∈? a) (ℤ)))
+
+(⊨ :multi-decl-b
+   #t
+   (∈≡ (∈? b) (ℤ)))
+
+(⊨ :multi-decl-c
+   #t
+   (∈≡ (∈? c) (𝕊)))
+
+; Type checks with computed values
+(⊨ :typeof-computed
+   #t
+   (⊙? (∈⊙ (⊕ #1 #2)) :type))
+
+(≋ "\n✅ All type annotation tests passed!")

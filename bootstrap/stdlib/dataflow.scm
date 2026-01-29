@@ -34,17 +34,17 @@
 ; ∩ :: [α] → [α] → [α]
 ; Set intersection - elements in both sets
 (≔ ∩ (λ (set2) (λ (set1)
-  ((⊲ (λ (x) ((∈ x) set2))) set1))))
+  ((⊲ (λ (x) ((∋ x) set2))) set1))))
 
 ; ∖ :: [α] → [α] → [α]
 ; Set difference - elements in first but not second
 (≔ ∖ (λ (set2) (λ (set1)
-  ((⊲ (λ (x) (¬ ((∈ x) set2)))) set1))))
+  ((⊲ (λ (x) (¬ ((∋ x) set2)))) set1))))
 
 ; ⊆ :: [α] → [α] → 𝔹
 ; Subset - is first a subset of second
 (≔ ⊆ (λ (set2) (λ (set1)
-  ((∀ (λ (x) ((∈ x) set2))) set1))))
+  ((∀ (λ (x) ((∋ x) set2))) set1))))
 
 ; ≡∪ :: [α] → [α] → 𝔹
 ; Set equality - same elements (order independent)

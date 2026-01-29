@@ -66,7 +66,7 @@
      ∅
      ((λ (head)
        ((λ (tail-distinct)
-         (? (∈ head tail-distinct)
+         (? ((∋ head) tail-distinct)
             tail-distinct
             (⟨⟩ head tail-distinct)))
         (distinct (▷ lst))))

@@ -111,9 +111,10 @@
 ; List Search
 ; ============================================================================
 
-; ∈ :: α → [α] → 𝔹
-; Element of (contains) - test membership
-(≔ ∈ (λ (elem) (λ (lst)
+; ∋ :: α → [α] → 𝔹
+; Contains (element of) - test membership
+; Note: ∈ is reserved for type annotation (∈ name type)
+(≔ ∋ (λ (elem) (λ (lst)
   ((∃ (λ (x) (≡ elem x))) lst))))
 
 ; ============================================================================
@@ -237,7 +238,7 @@
 ; Deduplicate - remove duplicates (keeps first occurrence)
 (≔ ∪ (λ (lst)
   (((⊕← (λ (acc) (λ (x)
-    (? ((∈ x) acc)
+    (? ((∋ x) acc)
        acc
        ((⧺ (⟨⟩ x ∅)) acc)))))
    ∅)

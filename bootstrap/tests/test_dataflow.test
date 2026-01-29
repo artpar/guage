@@ -31,8 +31,8 @@
 (⊨ :union-disjoint #5 (# ((∪∪ set-c) set-a)))
 
 ; Union contains all elements from both
-(⊨ :union-has-1 #t ((∈ #1) ((∪∪ set-b) set-a)))
-(⊨ :union-has-4 #t ((∈ #4) ((∪∪ set-b) set-a)))
+(⊨ :union-has-1 #t ((∋ #1) ((∪∪ set-b) set-a)))
+(⊨ :union-has-4 #t ((∋ #4) ((∪∪ set-b) set-a)))
 
 ; --- Set Intersection ---
 
@@ -41,10 +41,10 @@
 
 ; {1,2,3} ∩ {2,3,4} = {2,3}
 (⊨ :intersect-overlap #2 (# ((∩ set-b) set-a)))
-(⊨ :intersect-has-2 #t ((∈ #2) ((∩ set-b) set-a)))
-(⊨ :intersect-has-3 #t ((∈ #3) ((∩ set-b) set-a)))
-(⊨ :intersect-no-1 #f ((∈ #1) ((∩ set-b) set-a)))
-(⊨ :intersect-no-4 #f ((∈ #4) ((∩ set-b) set-a)))
+(⊨ :intersect-has-2 #t ((∋ #2) ((∩ set-b) set-a)))
+(⊨ :intersect-has-3 #t ((∋ #3) ((∩ set-b) set-a)))
+(⊨ :intersect-no-1 #f ((∋ #1) ((∩ set-b) set-a)))
+(⊨ :intersect-no-4 #f ((∋ #4) ((∩ set-b) set-a)))
 
 ; Disjoint sets have empty intersection
 (⊨ :intersect-disjoint #t (∅? ((∩ set-c) set-a)))
@@ -59,8 +59,8 @@
 
 ; {1,2,3} - {2,3,4} = {1}
 (⊨ :diff-overlap #1 (# ((∖ set-b) set-a)))
-(⊨ :diff-has-1 #t ((∈ #1) ((∖ set-b) set-a)))
-(⊨ :diff-no-2 #f ((∈ #2) ((∖ set-b) set-a)))
+(⊨ :diff-has-1 #t ((∋ #1) ((∖ set-b) set-a)))
+(⊨ :diff-no-2 #f ((∋ #2) ((∖ set-b) set-a)))
 
 ; Disjoint sets: A - C = A
 (⊨ :diff-disjoint #3 (# ((∖ set-c) set-a)))
@@ -107,9 +107,9 @@
 ; gen={d1}, kill={d2}, in={d2,d3}
 ; out = {d1} ∪ ({d2,d3} - {d2}) = {d1} ∪ {d3} = {d1,d3}
 (⊨ :transfer-reach-size #2 (# (((⇝⊃-transfer gen1) kill1) in1)))
-(⊨ :transfer-reach-d1 #t ((∈ :d1) (((⇝⊃-transfer gen1) kill1) in1)))
-(⊨ :transfer-reach-d3 #t ((∈ :d3) (((⇝⊃-transfer gen1) kill1) in1)))
-(⊨ :transfer-reach-no-d2 #f ((∈ :d2) (((⇝⊃-transfer gen1) kill1) in1)))
+(⊨ :transfer-reach-d1 #t ((∋ :d1) (((⇝⊃-transfer gen1) kill1) in1)))
+(⊨ :transfer-reach-d3 #t ((∋ :d3) (((⇝⊃-transfer gen1) kill1) in1)))
+(⊨ :transfer-reach-no-d2 #f ((∋ :d2) (((⇝⊃-transfer gen1) kill1) in1)))
 
 ; Live variables transfer: in = use ∪ (out - def)
 (≔ use1 (⟨⟩ :x ∅))
@@ -119,9 +119,9 @@
 ; use={x}, def={y}, out={y,z}
 ; in = {x} ∪ ({y,z} - {y}) = {x} ∪ {z} = {x,z}
 (⊨ :transfer-live-size #2 (# (((⇝←-transfer use1) def1) out1)))
-(⊨ :transfer-live-x #t ((∈ :x) (((⇝←-transfer use1) def1) out1)))
-(⊨ :transfer-live-z #t ((∈ :z) (((⇝←-transfer use1) def1) out1)))
-(⊨ :transfer-live-no-y #f ((∈ :y) (((⇝←-transfer use1) def1) out1)))
+(⊨ :transfer-live-x #t ((∋ :x) (((⇝←-transfer use1) def1) out1)))
+(⊨ :transfer-live-z #t ((∋ :z) (((⇝←-transfer use1) def1) out1)))
+(⊨ :transfer-live-no-y #f ((∋ :y) (((⇝←-transfer use1) def1) out1)))
 
 ; ═══════════════════════════════════════════════════════════════
 ; Section 3: Fixed Point Iteration
@@ -149,13 +149,13 @@
           ∅)))
 
 ; Get out set for node A
-(⊨ :get-out-A #t ((∈ :y) ((⇝⊃-get-out :A) test-solution)))
+(⊨ :get-out-A #t ((∋ :y) ((⇝⊃-get-out :A) test-solution)))
 
 ; Get out set for node B
-(⊨ :get-out-B #t ((∈ :w) ((⇝⊃-get-out :B) test-solution)))
+(⊨ :get-out-B #t ((∋ :w) ((⇝⊃-get-out :B) test-solution)))
 
 ; Get in set for node A
-(⊨ :get-in-A #t ((∈ :x) ((⇝←-get-in :A) test-solution)))
+(⊨ :get-in-A #t ((∋ :x) ((⇝←-get-in :A) test-solution)))
 
 ; Missing node returns empty
 (⊨ :get-missing #t (∅? ((⇝⊃-get-out :C) test-solution)))
@@ -165,12 +165,12 @@
 ; ═══════════════════════════════════════════════════════════════
 
 ; Reaching defs meet: union of predecessor outputs
-(⊨ :meet-reach-single #t ((∈ :y) ((⇝⊃-meet (⟨⟩ :A ∅)) test-solution)))
+(⊨ :meet-reach-single #t ((∋ :y) ((⇝⊃-meet (⟨⟩ :A ∅)) test-solution)))
 
 (⊨ :meet-reach-multi #2 (# ((⇝⊃-meet (⟨⟩ :A (⟨⟩ :B ∅))) test-solution)))
 
 ; Live vars meet: union of successor inputs
-(⊨ :meet-live-single #t ((∈ :x) ((⇝←-meet (⟨⟩ :A ∅)) test-solution)))
+(⊨ :meet-live-single #t ((∋ :x) ((⇝←-meet (⟨⟩ :A ∅)) test-solution)))
 
 ; Available exprs meet: intersection
 (⊨ :meet-avail-empty #t (∅? ((⇝∪-meet ∅) test-solution)))

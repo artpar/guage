@@ -31,9 +31,9 @@ Everything is a **Cell**:
 
 **See:** `KEYWORDS.md` for complete specification.
 
-## Runtime Primitives (119 Total)
+## Runtime Primitives (137 Total)
 
-**Status:** 119 primitives implemented and stable
+**Status:** 137 primitives implemented and stable
 **Note:** Graph algorithm primitives (⊝↦, ⊝⊃, ⊝⊚, ⊝⊙, ⊝⇝, ⊝∘) fully working - 35/35 tests passing
 
 ### Core Lambda Calculus (3) ✅
@@ -468,6 +468,49 @@ Warnings are non-fatal and do not stop execution.
 | `∅?` | `α → 𝔹` | Is nil | ✅ DONE |
 | `⟨⟩?` | `α → 𝔹` | Is pair | ✅ DONE |
 | `#?` | `α → 𝔹` | Is atom | ✅ DONE |
+
+### Type Annotations (18) ✅
+**Type Constants (5):**
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `ℤ` | `() → Type` | Integer type constant | ✅ DONE (Day 83) |
+| `𝔹` | `() → Type` | Boolean type constant | ✅ DONE (Day 83) |
+| `𝕊` | `() → Type` | String type constant | ✅ DONE (Day 83) |
+| `⊤` | `() → Type` | Any type constant (top type) | ✅ DONE (Day 83) |
+| `∅ₜ` | `() → Type` | Nil type constant | ✅ DONE (Day 83) |
+
+**Type Constructors (4):**
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `→` | `Type... → Type` | Function type (curried) | ✅ DONE (Day 83) |
+| `[]ₜ` | `Type → Type` | List type | ✅ DONE (Day 83) |
+| `⟨⟩ₜ` | `Type → Type → Type` | Pair type | ✅ DONE (Day 83) |
+| `∪ₜ` | `Type → Type → Type` | Union type | ✅ DONE (Day 83) |
+
+**Type Operations (4):**
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `∈⊙` | `α → Type` | Get runtime type of value | ✅ DONE (Day 83) |
+| `∈≡` | `Type → Type → 𝔹` | Type equality test | ✅ DONE (Day 83) |
+| `∈⊆` | `Type → Type → 𝔹` | Subtype check (t1 ≤ t2) | ✅ DONE (Day 83) |
+| `∈!` | `α → Type → α \| ⚠` | Assert value has type | ✅ DONE (Day 83) |
+
+**Type Declaration (2 special forms):**
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `∈` | `symbol → Type → Type` | Declare type for binding | ✅ DONE (Day 83) |
+| `∈?` | `symbol → Type \| ∅` | Query declared type | ✅ DONE (Day 83) |
+
+**Type Introspection (3):**
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `∈◁` | `Type → Type` | Get domain (input) of function type | ✅ DONE (Day 83) |
+| `∈▷` | `Type → Type` | Get codomain (output) of function type | ✅ DONE (Day 83) |
+| `∈⊙ₜ` | `Type → Type` | Get element type of list type | ✅ DONE (Day 83) |
+
+**Note:** Type annotations are optional and don't affect runtime behavior.
+Types are stored in a global registry and can be queried for documentation,
+tooling, and future static analysis. See `test_type_annotations.test` for examples.
 
 ### Debug & Error Handling (6) ✅
 | Symbol | Type | Meaning | Status |

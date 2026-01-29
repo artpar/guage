@@ -1153,6 +1153,50 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                 return value;
             }
 
+            /* ∈ - type declaration (special form: first arg is NOT evaluated) */
+            if (strcmp(sym, "∈") == 0) {
+                /* Parse: (∈ name type-expr) */
+                Cell* name = cell_car(rest);
+                Cell* type_expr = cell_car(cell_cdr(rest));
+
+                if (!cell_is_symbol(name)) {
+                    return cell_error("∈ requires symbol as first argument", name);
+                }
+
+                /* Evaluate the type expression */
+                Cell* type = eval_internal(ctx, env, type_expr);
+                if (cell_is_error(type)) {
+                    return type;
+                }
+
+                /* Store in type annotation registry (primitives.c has the registry) */
+                /* Call the primitive with the name (as symbol) and type */
+                extern Cell* prim_type_declare(Cell*);
+                Cell* args = cell_cons(name, cell_cons(type, cell_nil()));
+                cell_retain(name);
+                Cell* result = prim_type_declare(args);
+                cell_release(args);
+                return result;
+            }
+
+            /* ∈? - type query (special form: arg is NOT evaluated) */
+            if (strcmp(sym, "∈?") == 0) {
+                /* Parse: (∈? name) */
+                Cell* name = cell_car(rest);
+
+                if (!cell_is_symbol(name)) {
+                    return cell_error("∈? requires symbol", name);
+                }
+
+                /* Query from type annotation registry */
+                extern Cell* prim_type_query(Cell*);
+                Cell* args = cell_cons(name, cell_nil());
+                cell_retain(name);
+                Cell* result = prim_type_query(args);
+                cell_release(args);
+                return result;
+            }
+
             /* :λ-converted - already converted nested lambda */
             if (strcmp(sym, ":λ-converted") == 0) {
                 /* Parse: (:λ-converted (param1 param2 ...) converted_body) */
