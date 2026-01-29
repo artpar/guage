@@ -109,6 +109,66 @@
       (((subst (◁ names)) (◁ replacements)) expr)))))))
 
 ;; ===================================================================
+;; Recursive Letrec Support
+;; ===================================================================
+
+;; Check if symbol appears anywhere in expression (respects lambda shadowing)
+(≔ contains-symbol? (λ (sym) (λ (expr)
+  (? (:? expr)
+     (≡ expr sym)
+     (? (⟨⟩? expr)
+        (? (∅? expr)
+           #f
+           (? (≡ (◁ expr) (⌜ λ))
+              (? (⟨⟩? (▷ expr))
+                 (? ((member? sym) (◁ (▷ expr)))
+                    #f
+                    ((contains-symbol-list? sym) (▷ (▷ expr))))
+                 #f)
+              ((contains-symbol-list? sym) expr)))
+        #f)))))
+
+;; Check if symbol appears in any expression in list
+(≔ contains-symbol-list? (λ (sym) (λ (exprs)
+  (? (∅? exprs)
+     #f
+     (? ((contains-symbol? sym) (◁ exprs))
+        #t
+        ((contains-symbol-list? sym) (▷ exprs)))))))
+
+;; Check if a binding is recursive (name appears in body)
+(≔ is-recursive-binding? (λ (binding)
+  (? (⟨⟩? binding)
+     (? (⟨⟩? (▷ binding))
+        ((contains-symbol? (◁ binding)) (◁ (▷ binding)))
+        #f)
+     #f)))
+
+;; Transform recursive binding using Y-combinator pattern
+;; (λ (params) body) → ((λ (:self) (λ (params) body')) (λ (:self) (λ (params) body')))
+;; where body' has `name` replaced with `(:self :self)`
+(≔ transform-recursive-ast (λ (name) (λ (lambda-expr)
+  (? (≡ (◁ lambda-expr) (⌜ λ))
+     (? (⟨⟩? (▷ lambda-expr))
+        (⟨⟩ (⟨⟩ (⌜ λ)
+                (⟨⟩ (⟨⟩ :self ∅)
+                    (⟨⟩ (⟨⟩ (⌜ λ)
+                            (⟨⟩ (◁ (▷ lambda-expr))
+                                (((subst-list name) (⟨⟩ :self (⟨⟩ :self ∅)))
+                                 (▷ (▷ lambda-expr)))))
+                        ∅)))
+            (⟨⟩ (⟨⟩ (⌜ λ)
+                    (⟨⟩ (⟨⟩ :self ∅)
+                        (⟨⟩ (⟨⟩ (⌜ λ)
+                                (⟨⟩ (◁ (▷ lambda-expr))
+                                    (((subst-list name) (⟨⟩ :self (⟨⟩ :self ∅)))
+                                     (▷ (▷ lambda-expr)))))
+                            ∅)))
+                ∅))
+        lambda-expr)
+     lambda-expr))))
+
+;; ===================================================================
 ;; Evaluation helpers
 ;; ===================================================================
 
@@ -147,11 +207,19 @@
 (≔ eval-letrec (λ (bindings) (λ (body) (λ (env)
   (? (∅? bindings)
      ((eval body) env)
-     ; Extend env with first binding and recurse
-     (((eval-letrec (▷ bindings)) body)
-      (((env-extend env)
-        (◁ (◁ bindings)))
-       ((eval (◁ (▷ (◁ bindings)))) env))))))))
+     (? (is-recursive-binding? (◁ bindings))
+        ; Recursive - transform using Y-combinator pattern
+        (((eval-letrec (▷ bindings)) body)
+         (((env-extend env)
+           (◁ (◁ bindings)))
+          ((eval ((transform-recursive-ast (◁ (◁ bindings)))
+                  (◁ (▷ (◁ bindings)))))
+           env)))
+        ; Non-recursive - simple binding
+        (((eval-letrec (▷ bindings)) body)
+         (((env-extend env)
+           (◁ (◁ bindings)))
+          ((eval (◁ (▷ (◁ bindings)))) env)))))))))
 
 ;; ===================================================================
 ;; Function Application

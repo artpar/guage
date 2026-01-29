@@ -295,10 +295,6 @@
    #15
    ((eval (⌜ (⊛ ((:a #5) (:b #10)) (:⊕ :a :b)))) env-arith))
 
-;; Note: Recursive letrec (factorial, even/odd) requires Y-combinator
-;; transformation which is not yet implemented. For recursion, use
-;; the Y-combinator pattern directly as shown in test_eval.test Test 13.
-
 ;;; ===================================================================
 ;;; Test 19: Meta-eval (⌞) - evaluate code as data
 ;;; ===================================================================
@@ -322,3 +318,29 @@
 (⊨ :eval-meta-eval-cond
    :yes
    ((eval (⌜ (⌞ (⌜ (? #t (⌜ :yes) (⌜ :no)))))) empty-env))
+
+;;; ===================================================================
+;;; Test 20: Recursive Letrec via Y-combinator transformation
+;;; ===================================================================
+
+;; Recursive factorial
+(⊨ :eval-letrec-factorial
+   #120
+   ((eval (⌜ (⊛ ((:fact (λ (:n)
+                   (? (:≤ :n #1) #1 (:⊗ :n (:fact (:⊖ :n #1)))))))
+              (:fact #5)))) env-full))
+
+;; Recursive factorial - base case
+(⊨ :eval-letrec-factorial-base
+   #1
+   ((eval (⌜ (⊛ ((:fact (λ (:n)
+                   (? (:≤ :n #1) #1 (:⊗ :n (:fact (:⊖ :n #1)))))))
+              (:fact #1)))) env-full))
+
+;; Recursive fibonacci
+(⊨ :eval-letrec-fib
+   #8
+   ((eval (⌜ (⊛ ((:fib (λ (:n)
+                   (? (:≤ :n #1) :n
+                      (:⊕ (:fib (:⊖ :n #1)) (:fib (:⊖ :n #2)))))))
+              (:fib #6)))) env-full))
