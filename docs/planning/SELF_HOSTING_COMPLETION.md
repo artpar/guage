@@ -38,7 +38,7 @@ Purpose: Roadmap for completing self-hosting evaluator
 ```
 bootstrap/stdlib/eval.scm      # Main evaluator (~320 lines)
 bootstrap/stdlib/eval-env.scm  # Environment module (37 lines)
-bootstrap/tests/test_eval.test # Test suite (42 tests)
+bootstrap/tests/test_eval.test # Test suite (47 tests)
 ```
 
 ---
@@ -80,15 +80,67 @@ Current implementation handles single recursive bindings but not mutual recursio
    (:even? #4))  ; ❌ Needs simultaneous binding
 ```
 
-### The Solution
+### The Solution: Tuple-Based Mutual Recursion
 
-Transform all mutually recursive bindings simultaneously using a tuple/record pattern.
+Transform mutually recursive bindings using a shared self-application tuple.
+
+**Conceptual approach:**
+```scheme
+; Original: even? references odd?, odd? references even?
+
+; Transform to single recursive function returning tuple:
+(≔ fns
+  ((λ (:self)
+     (⟨⟩ (λ (:n) (? (:≡ :n #0) #t ((▷ (:self :self)) (:⊖ :n #1))))   ; even?
+         (λ (:n) (? (:≡ :n #0) #f ((◁ (:self :self)) (:⊖ :n #1)))))) ; odd?
+   (λ (:self)
+     (⟨⟩ (λ (:n) (? (:≡ :n #0) #t ((▷ (:self :self)) (:⊖ :n #1))))
+         (λ (:n) (? (:≡ :n #0) #f ((◁ (:self :self)) (:⊖ :n #1))))))))
+
+; Then extract:
+(≔ even? (◁ fns))
+(≔ odd? (▷ fns))
+```
+
+### Implementation Steps
+
+1. **Detect mutual recursion** - Check if bindings reference each other
+   - Existing: `contains-symbol?` can check each binding against all names
+   - New: `find-mutual-bindings` - group bindings that reference each other
+
+2. **Transform binding group** - All mutually recursive bindings together
+   - Replace all names with tuple accessors
+   - Create single recursive function returning tuple
+   - Apply to itself
+
+3. **Update eval-letrec** - Handle mutual recursion case
+   - If mutual recursion detected, use tuple transformation
+   - Otherwise use existing single-recursion transformation
+
+### Key Helpers (Already Have)
+- `subst-all` - Substitute multiple names at once (lines 105-109)
+- `contains-symbol?` - Check if symbol in expression (lines 117-129)
+- `subst-list` - Substitute in list of expressions (lines 98-102)
+
+### Test Cases
+```scheme
+;;; Test: Mutual recursion (even/odd)
+(⊨ :eval-letrec-even-odd
+   #t
+   ((eval (⌜ (⊛ ((:even? (λ (:n) (? (:≡ :n #0) #t (:odd? (:⊖ :n #1)))))
+                 (:odd? (λ (:n) (? (:≡ :n #0) #f (:even? (:⊖ :n #1))))))
+              (:even? #4)))) env-full))
+
+(⊨ :eval-letrec-odd
+   #t
+   ((eval (⌜ (⊛ ((:even? ...) (:odd? ...)) (:odd? #3)))) env-full))
+```
 
 ### Complexity Notes
 
-- Requires detecting which bindings reference each other
-- Need simultaneous substitution of all names
-- More complex than single recursion
+- Medium-high complexity due to tuple construction
+- Existing `subst-all` handles multi-name substitution
+- Main challenge: determining correct tuple accessor for each name
 
 ---
 

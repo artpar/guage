@@ -2,7 +2,7 @@
 
 ---
 **Status:** CURRENT - Single source of truth for documentation navigation
-**Last Updated:** 2026-01-28 (Day 55)
+**Last Updated:** 2026-01-29 (Day 73)
 **Purpose:** Navigation hub + documentation governance
 ---
 
@@ -37,7 +37,8 @@ Deep-dive technical documentation that changes infrequently:
 
 Current roadmaps and active tasks:
 
-- [Pattern Matching Enhancements](planning/PATTERN_MATCHING_ENHANCEMENTS.md) - Guards, as-patterns, or-patterns (Days 58+)
+- **[Self-Hosting Completion](planning/SELF_HOSTING_COMPLETION.md)** - Meta-evaluator roadmap (ACTIVE - Day 73)
+- [Pattern Matching Enhancements](planning/PATTERN_MATCHING_ENHANCEMENTS.md) - Guards, as-patterns, or-patterns (COMPLETED ✅)
 - [Week 3 Roadmap](planning/WEEK_3_ROADMAP.md) - Pattern matching implementation plan (COMPLETED ✅)
 - [TODO](planning/TODO.md) - Task tracking and priorities
 

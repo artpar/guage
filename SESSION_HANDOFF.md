@@ -184,12 +184,28 @@ git log --oneline -3         # See recent commits
 
 **Goal:** Make `(⊛ ((:even? ...) (:odd? ...)) (:even? #4))` work
 
-**Why it matters:** Enables mutually recursive functions
+**Why it matters:** Enables mutually recursive functions like even?/odd?
+
+**Current state:** Single recursive bindings work via Y-combinator transform
 
 **Implementation approach:**
-1. Detect if multiple bindings reference each other
-2. Transform all names simultaneously
-3. Create tuple of self-applications
+1. Detect if multiple bindings reference each other (cross-references)
+2. Transform all names simultaneously using tuple pattern
+3. Each function receives tuple of all functions, extracts its own
+
+**Example transformation:**
+```scheme
+; Input:
+(⊛ ((:even? (λ (:n) (? (:≡ :n #0) #t (:odd? (:⊖ :n #1)))))
+     (:odd? (λ (:n) (? (:≡ :n #0) #f (:even? (:⊖ :n #1))))))
+   (:even? #4))
+
+; Transform to (conceptually):
+; Create single recursive function that returns tuple
+; Extract even?/odd? from tuple
+```
+
+**Key insight:** Existing `subst-all` can substitute multiple names at once
 
 ### Option B: Self-Hosting Parser (6-9 hours, MILESTONE)
 
@@ -198,18 +214,48 @@ git log --oneline -3         # See recent commits
 **Why it matters:** Major milestone toward full self-hosting
 
 **Components:**
-1. Tokenizer (2-3 hours)
-2. Parser (3-4 hours)
-3. Integration (1-2 hours)
+1. **Tokenizer** (2-3 hours)
+   - Split string into tokens
+   - Handle: numbers (#42), symbols (:name), strings ("text"), parens, operators
+   - Use existing string ops: ⌷ (char-at), ⌷⌷ (substring), ⊕⊕ (concat)
+
+2. **Parser** (3-4 hours)
+   - Build AST from token stream
+   - Handle nested lists recursively
+   - Handle quote shorthand (⌜)
+
+3. **Integration** (1-2 hours)
+   - `(parse string)` → AST
+   - `(eval (parse string) env)` → result
 
 **Start here:** Read `docs/planning/SELF_HOSTING_COMPLETION.md` section "ALTERNATIVE: Self-Hosting Parser"
 
 ### Key Files
 ```
 bootstrap/stdlib/eval.scm      # Main evaluator (~320 lines)
+  - Lines 111-145: Recursive letrec support functions
+  - Lines 147-169: transform-recursive-ast (Y-combinator pattern)
+  - Lines 207-222: eval-letrec (detects and transforms recursive bindings)
+
 bootstrap/stdlib/eval-env.scm  # Environment module (37 lines)
 bootstrap/tests/test_eval.test # Test suite (47 tests)
 docs/planning/SELF_HOSTING_COMPLETION.md  # Detailed roadmap
+```
+
+### What We Built Today (Day 73)
+
+**New functions in eval.scm:**
+- `contains-symbol?` - Check if symbol appears in expression (respects shadowing)
+- `contains-symbol-list?` - Check symbol in list of expressions
+- `is-recursive-binding?` - Detect if binding name appears in its body
+- `transform-recursive-ast` - Transform `(λ (p) body)` → Y-combinator form
+
+**The Y-combinator transformation:**
+```scheme
+; (λ (params) body-with-name)
+; becomes:
+; ((λ (:self) (λ (params) body-with-(:self :self)))
+;  (λ (:self) (λ (params) body-with-(:self :self))))
 ```
 
 ---
