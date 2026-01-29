@@ -1165,6 +1165,58 @@ All I/O operations return errors on failure:
 ; Expands at compile-time
 ```
 
+**Rest/Ellipsis Pattern Syntax (`$var ...`):**
+```scheme
+; Capture remaining arguments into a list
+(⧉⊜ variadic-fn
+  (()                    ...)   ; Base case
+  (($first $rest ...)    ...))  ; $rest captures remaining args as list
+
+; Splice list back as arguments in template
+(⧉⊜ sum
+  (()          #0)                      ; Empty: return 0
+  (($x)        $x)                      ; Single: return it
+  (($x $rest ...) (⊕ $x (sum $rest ...)))) ; Recurse with spliced rest
+
+(sum #1 #2 #3 #4 #5)  ; → #15
+
+; Pattern: ($var ...) at end of pattern list
+; - $var must be a pattern variable (starts with $)
+; - Followed by literal ... symbol
+; - Captures all remaining arguments as a list
+
+; Template: ($var ...) splices list elements as arguments
+; - Bound list from pattern match
+; - Each element becomes a separate argument
+```
+
+**Ellipsis Pattern Examples:**
+```scheme
+;; Variadic product
+(⧉⊜ product
+  (()           #1)
+  (($x)         $x)
+  (($x $rest ...) (⊗ $x (product $rest ...))))
+
+(product #2 #3 #4)  ; → #24
+
+;; Variadic cond with pairs
+(⧉⊜ cond*
+  (()               ∅)
+  ((($c $r))        (? $c $r ∅))
+  ((($c $r) $rest ...) (? $c $r (cond* $rest ...))))
+
+(cond* (#f :a) (#f :b) (#t :c))  ; → :c
+
+;; Keyword dispatch with variadic args
+(⧉⊜ calc
+  ((:sum $args ...)     (sum $args ...))
+  ((:product $args ...) (product $args ...)))
+
+(calc :sum #1 #2 #3)      ; → #6
+(calc :product #2 #3 #4)  ; → #24
+```
+
 **Example (Pattern Macro):**
 ```scheme
 ;; Multi-arity add

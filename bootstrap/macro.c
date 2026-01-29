@@ -327,13 +327,37 @@ bool macro_is_pattern_var(Cell* sym) {
     return name && name[0] == '$';
 }
 
-/* Check if symbol is the rest pattern marker (. or ...) */
-static bool is_rest_marker(Cell* expr) {
+/* Check if symbol is the ellipsis marker (...) */
+static bool is_ellipsis(Cell* expr) {
     if (!expr || !cell_is_symbol(expr)) {
         return false;
     }
     const char* name = cell_get_symbol(expr);
-    return strcmp(name, ".") == 0 || strcmp(name, "...") == 0;
+    return strcmp(name, "...") == 0;
+}
+
+/* Note: Legacy rest marker (. or ...) support removed in favor of ellipsis syntax */
+
+/* Check if pattern has ellipsis rest: ($var ...) at end */
+static bool has_ellipsis_rest(Cell* pattern, Cell** rest_var) {
+    /* Look for ($var ...) pattern - pattern var followed by ... */
+    if (!pattern || !cell_is_pair(pattern)) {
+        return false;
+    }
+
+    Cell* first = cell_car(pattern);
+    Cell* second_cons = cell_cdr(pattern);
+
+    /* Check if first is pattern var and second (last) is ... */
+    if (macro_is_pattern_var(first) &&
+        cell_is_pair(second_cons) &&
+        is_ellipsis(cell_car(second_cons)) &&
+        cell_is_nil(cell_cdr(second_cons))) {
+        if (rest_var) *rest_var = first;
+        return true;
+    }
+
+    return false;
 }
 
 /* Lookup binding in association list */
@@ -430,6 +454,15 @@ Cell* macro_pattern_match(Cell* pattern, Cell* args) {
         }
     }
 
+    /* Check for ellipsis rest pattern: ($var ...) captures all remaining args */
+    Cell* rest_var = NULL;
+    if (has_ellipsis_rest(pattern, &rest_var)) {
+        /* Bind rest variable to all remaining args (including empty) */
+        Cell* bindings = cell_nil();
+        bindings = add_binding(bindings, rest_var, args);
+        return bindings;
+    }
+
     /* Regular list pattern */
     if (cell_is_nil(args)) {
         return NULL;  /* Args exhausted but pattern remains */
@@ -511,15 +544,29 @@ Cell* macro_expand_template(Cell* templ, Cell* bindings) {
         return templ;
     }
 
-    /* Check for (. $rest) splice pattern */
+    /* Check for ($var ...) ellipsis splice pattern */
+    /* This splices the list bound to $var directly */
+    Cell* rest_var = NULL;
+    if (has_ellipsis_rest(templ, &rest_var)) {
+        const char* name = cell_get_symbol(rest_var);
+        Cell* val = lookup_binding(bindings, name);
+        if (val) {
+            cell_retain(val);
+            return val;
+        }
+        /* Unbound - return nil */
+        return cell_nil();
+    }
+
+    /* Check for (. $rest) splice pattern (legacy) */
     Cell* templ_car = cell_car(templ);
     if (cell_is_symbol(templ_car)) {
         const char* sym = cell_get_symbol(templ_car);
         if (strcmp(sym, ".") == 0) {
             /* Splice: return the bound list directly */
-            Cell* rest_var = cell_car(cell_cdr(templ));
-            if (macro_is_pattern_var(rest_var)) {
-                const char* name = cell_get_symbol(rest_var);
+            Cell* splice_var = cell_car(cell_cdr(templ));
+            if (macro_is_pattern_var(splice_var)) {
+                const char* name = cell_get_symbol(splice_var);
                 Cell* val = lookup_binding(bindings, name);
                 if (val) {
                     cell_retain(val);
@@ -529,9 +576,25 @@ Cell* macro_expand_template(Cell* templ, Cell* bindings) {
         }
     }
 
-    /* List: recursively expand */
+    /* List: recursively expand, handling splice at tail position */
     Cell* expanded_car = macro_expand_template(templ_car, bindings);
-    Cell* expanded_cdr = macro_expand_template(cell_cdr(templ), bindings);
+
+    /* Check if cdr is ($var ...) - need to splice */
+    Cell* templ_cdr = cell_cdr(templ);
+    Cell* splice_rest = NULL;
+    if (has_ellipsis_rest(templ_cdr, &splice_rest)) {
+        /* Splice: (head $rest ...) -> (head . expanded_rest) */
+        const char* name = cell_get_symbol(splice_rest);
+        Cell* val = lookup_binding(bindings, name);
+        if (val) {
+            Cell* result = cell_cons(expanded_car, val);
+            cell_release(expanded_car);
+            return result;
+        }
+    }
+
+    /* Normal recursive expansion */
+    Cell* expanded_cdr = macro_expand_template(templ_cdr, bindings);
 
     Cell* result = cell_cons(expanded_car, expanded_cdr);
     cell_release(expanded_car);

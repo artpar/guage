@@ -1,0 +1,194 @@
+; ═══════════════════════════════════════════════════════════════
+; Test suite for rest/ellipsis pattern syntax (Day 78)
+; ═══════════════════════════════════════════════════════════════
+; Symbol: ... (ellipsis)
+; Pattern: ($var ...) captures remaining elements as list
+; Template: (f $var ...) splices list elements as arguments
+; ═══════════════════════════════════════════════════════════════
+
+; ═══════════════════════════════════════════════════════════════
+; Section 1: Variadic Sum (Basic Rest Pattern)
+; ═══════════════════════════════════════════════════════════════
+
+; Test 1: Variadic add using rest splice
+(⧉⊜ sum
+  (() #0)
+  (($x) $x)
+  (($x $rest ...) (⊕ $x (sum $rest ...))))
+
+(⊨ :sum-empty #0 (sum))
+(⊨ :sum-one #5 (sum #5))
+(⊨ :sum-two #7 (sum #3 #4))
+(⊨ :sum-three #10 (sum #2 #3 #5))
+(⊨ :sum-five #15 (sum #1 #2 #3 #4 #5))
+(⊨ :sum-ten #55 (sum #1 #2 #3 #4 #5 #6 #7 #8 #9 #10))
+
+; ═══════════════════════════════════════════════════════════════
+; Section 2: Variadic List Builder
+; ═══════════════════════════════════════════════════════════════
+
+; Test 2: Build list recursively
+(⧉⊜ my-list
+  (() ∅)
+  (($first $rest ...) (⟨⟩ $first (my-list $rest ...))))
+
+(⊨ :mylist-empty ∅ (my-list))
+(⊨ :mylist-one (⟨⟩ #1 ∅) (my-list #1))
+(⊨ :mylist-three-head #1 (◁ (my-list #1 #2 #3)))
+(⊨ :mylist-three-second #2 (◁ (▷ (my-list #1 #2 #3))))
+(⊨ :mylist-three-third #3 (◁ (▷ (▷ (my-list #1 #2 #3)))))
+
+; ═══════════════════════════════════════════════════════════════
+; Section 3: Variadic and*/or* with Short-Circuit
+; ═══════════════════════════════════════════════════════════════
+
+; NOTE: In Guage, only #t is truthy. Numbers are NOT truthy.
+; So (? #1 :yes :no) returns :no
+
+; Test 3: Variadic and - short circuit (uses #t/#f explicitly)
+(⧉⊜ all
+  (() #t)
+  (($x) $x)
+  (($x $rest ...) (? $x (all $rest ...) #f)))
+
+(⊨ :all-empty #t (all))
+(⊨ :all-one-true #t (all #t))
+(⊨ :all-one-false #f (all #f))
+(⊨ :all-two-true #t (all #t #t))
+(⊨ :all-short-circuit #f (all #t #f #t))
+(⊨ :all-five #t (all #t #t #t #t #t))
+(⊨ :all-many #t (all #t #t #t #t #t #t #t #t #t #t))
+
+; Test 4: Variadic or - short circuit
+(⧉⊜ any
+  (() #f)
+  (($x) $x)
+  (($x $rest ...) (? $x #t (any $rest ...))))
+
+(⊨ :any-empty #f (any))
+(⊨ :any-one-true #t (any #t))
+(⊨ :any-one-false #f (any #f))
+(⊨ :any-find-first #t (any #t #f #f))
+(⊨ :any-skip-false #t (any #f #t #f))
+(⊨ :any-all-false #f (any #f #f #f))
+(⊨ :any-many-false #t (any #f #f #f #f #f #f #f #f #f #t))
+
+; ═══════════════════════════════════════════════════════════════
+; Section 4: Variadic Product
+; ═══════════════════════════════════════════════════════════════
+
+; Test 5: Variadic multiply
+(⧉⊜ product
+  (() #1)
+  (($x) $x)
+  (($x $rest ...) (⊗ $x (product $rest ...))))
+
+(⊨ :product-empty #1 (product))
+(⊨ :product-one #5 (product #5))
+(⊨ :product-two #12 (product #3 #4))
+(⊨ :product-five #120 (product #1 #2 #3 #4 #5))
+
+; ═══════════════════════════════════════════════════════════════
+; Section 5: First + Rest Pattern with Fixed Args
+; ═══════════════════════════════════════════════════════════════
+
+; Test 6: Two fixed args plus rest
+(⧉⊜ sum-from
+  (($start $step $rest ...) (⊕ $start (⊕ $step (sum $rest ...)))))
+
+(⊨ :sum-from-three #10 (sum-from #1 #2 #3 #4))
+(⊨ :sum-from-base #3 (sum-from #1 #2))
+
+; ═══════════════════════════════════════════════════════════════
+; Section 6: Keyword Dispatch with Rest
+; ═══════════════════════════════════════════════════════════════
+
+; Test 7: Different operations based on keyword
+(⧉⊜ calc
+  ((:sum $rest ...) (sum $rest ...))
+  ((:product $rest ...) (product $rest ...))
+  ((:count $rest ...) (count-args $rest ...)))
+
+; Helper for count
+(⧉⊜ count-args
+  (() #0)
+  (($x $rest ...) (⊕ #1 (count-args $rest ...))))
+
+(⊨ :calc-sum #10 (calc :sum #1 #2 #3 #4))
+(⊨ :calc-product #24 (calc :product #1 #2 #3 #4))
+(⊨ :calc-count #5 (calc :count :a :b :c :d :e))
+
+; ═══════════════════════════════════════════════════════════════
+; Section 7: Unlimited Arity cond
+; ═══════════════════════════════════════════════════════════════
+
+; Test 8: Variadic cond using rest
+(⧉⊜ cond*
+  (() ∅)
+  ((($c $r)) (? $c $r ∅))
+  ((($c $r) $rest ...) (? $c $r (cond* $rest ...))))
+
+(⊨ :cond-one-true :yes (cond* (#t :yes)))
+(⊨ :cond-one-false ∅ (cond* (#f :no)))
+(⊨ :cond-two-first :first (cond* (#t :first) (#t :second)))
+(⊨ :cond-two-second :second (cond* (#f :first) (#t :second)))
+(⊨ :cond-three :third (cond* (#f :a) (#f :b) (#t :third)))
+(⊨ :cond-ten :ten (cond*
+  (#f :1) (#f :2) (#f :3) (#f :4) (#f :5)
+  (#f :6) (#f :7) (#f :8) (#f :9) (#t :ten)))
+
+; ═══════════════════════════════════════════════════════════════
+; Section 8: Max/Min with Unlimited Args
+; ═══════════════════════════════════════════════════════════════
+
+; Test 9: Variadic max
+(⧉⊜ max*
+  (($x) $x)
+  (($x $y $rest ...) (max* (? (> $x $y) $x $y) $rest ...)))
+
+(⊨ :max-one #42 (max* #42))
+(⊨ :max-two #10 (max* #5 #10))
+(⊨ :max-three #30 (max* #10 #30 #20))
+(⊨ :max-five #100 (max* #1 #100 #50 #75 #25))
+
+; Test 10: Variadic min
+(⧉⊜ min*
+  (($x) $x)
+  (($x $y $rest ...) (min* (? (< $x $y) $x $y) $rest ...)))
+
+(⊨ :min-one #42 (min* #42))
+(⊨ :min-two #5 (min* #5 #10))
+(⊨ :min-three #10 (min* #10 #30 #20))
+(⊨ :min-five #1 (min* #1 #100 #50 #75 #25))
+
+; ═══════════════════════════════════════════════════════════════
+; Section 9: Rest Pattern with Empty Capture
+; ═══════════════════════════════════════════════════════════════
+
+; Test 11: Handle empty rest gracefully
+(⧉⊜ maybe-sum
+  (() :no-args)
+  (($x) (⟨⟩ :one $x))
+  (($x $y $rest ...) (⟨⟩ :many (sum $x $y $rest ...))))
+
+(⊨ :maybe-empty :no-args (maybe-sum))
+(⊨ :maybe-one-tag :one (◁ (maybe-sum #5)))
+(⊨ :maybe-one-val #5 (▷ (maybe-sum #5)))          ; cdr is the value directly (dotted pair)
+(⊨ :maybe-many-tag :many (◁ (maybe-sum #1 #2 #3)))
+(⊨ :maybe-many-sum #6 (▷ (maybe-sum #1 #2 #3)))   ; cdr is the sum result
+
+; ═══════════════════════════════════════════════════════════════
+; Section 10: Deeply Nested Rest Patterns
+; ═══════════════════════════════════════════════════════════════
+
+; Test 12: Nested call with rest splice
+(⧉⊜ wrap-sum
+  (($rest ...) (⟨⟩ :result (sum $rest ...))))
+
+(⊨ :wrap-empty (⟨⟩ :result #0) (wrap-sum))
+(⊨ :wrap-three (⟨⟩ :result #6) (wrap-sum #1 #2 #3))
+
+; ═══════════════════════════════════════════════════════════════
+; Summary
+; ═══════════════════════════════════════════════════════════════
+(≋ "✓ 51 Rest pattern syntax tests complete")

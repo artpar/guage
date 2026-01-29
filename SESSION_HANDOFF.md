@@ -1,13 +1,56 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-01-29 (Day 77 COMPLETE)
+Updated: 2026-01-29 (Day 78 COMPLETE)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 77 - Control Flow Macros Complete (2026-01-29)
+# Session Handoff: Day 78 - Rest Pattern Syntax Complete (2026-01-29)
 
-## 🎉 Day 77 Progress - Short-Circuit Logical & Control Flow Macros!
+## 🎉 Day 78 Progress - Ellipsis Rest Pattern Syntax!
+
+**RESULT:** 75/75 test files passing (100%), 51 new rest pattern tests
+
+**New Feature: `$var ...` Ellipsis Pattern Syntax**
+
+Pattern-based macros now support variadic patterns using `...` ellipsis:
+
+1. **Pattern Capture:** `($var ...)` captures remaining args as list
+   ```scheme
+   (⧉⊜ sum
+     (() #0)
+     (($x $rest ...) (⊕ $x (sum $rest ...))))
+
+   (sum #1 #2 #3 #4 #5)  ; → #15
+   ```
+
+2. **Template Splice:** `(f $var ...)` splices list elements as args
+   ```scheme
+   (⧉⊜ calc
+     ((:sum $rest ...) (sum $rest ...))      ; splices into sum
+     ((:product $rest ...) (product $rest ...)))
+
+   (calc :sum #1 #2 #3)  ; → #6
+   ```
+
+3. **Unlimited Arity:** Enables true variadic macros
+   ```scheme
+   ; Unlimited arity cond
+   (⧉⊜ cond*
+     (() ∅)
+     ((($c $r) $rest ...) (? $c $r (cond* $rest ...))))
+
+   (cond* (#f :a) (#f :b) (#f :c) (#t :d))  ; → :d
+   ```
+
+**Implementation:**
+- `macro.c`: Added `has_ellipsis_rest()` helper
+- `macro_pattern_match()`: Detect `$var ...` and capture remaining args
+- `macro_expand_template()`: Splice bound lists at `$var ...` positions
+
+---
+
+## Previous Day: Day 77 - Control Flow Macros
 
 **RESULT:** 74/74 test files passing (100%), 46 new control macro tests
 
@@ -133,9 +176,10 @@ Pattern-based macros with multiple clauses and pattern matching on syntax.
 
 **System State:**
 - **Primitives:** 125 total
-- **Tests:** 74/74 test files passing (100%)
+- **Tests:** 75/75 test files passing (100%)
 - **Self-Hosting Eval Tests:** 52/52 passing (100%)
 - **Pattern Macros:** 29/29 tests passing
+- **Rest Pattern Syntax:** 51/51 tests passing (new!)
 - **Stdlib Pattern Macros:** 22/22 tests passing (⇒*, ≔⇊, ⇤)
 - **Stdlib Control Macros:** 46/46 tests passing (∧*, ∨*, ⇒, ⇏)
 - **Pattern Matching:** World-class (guards, as-patterns, or-patterns, view patterns)
@@ -155,14 +199,14 @@ Pattern-based macros with multiple clauses and pattern matching on syntax.
 
 ---
 
-## 🎯 What to Do Next (Day 77+)
+## 🎯 What to Do Next (Day 78+)
 
 **RECOMMENDED OPTIONS:**
 
-1. **Rest Pattern Syntax** (2-3 hours) - HIGH VALUE
-   - Add `$rest ...` syntax for variadic patterns
-   - Enables unlimited-arity cond/let*/case
-   - Requires parser extension for ellipsis
+1. **Upgrade Stdlib Macros to Variadic** (1-2 hours) - HIGH VALUE
+   - Update ∧*, ∨*, ⇒*, ≔⇊, ⇤ to use ellipsis patterns
+   - Replace fixed-arity enumeration with unlimited arity
+   - Simple refactor using new `$rest ...` syntax
 
 2. **Self-Hosting Parser** (6-8 hours) - MILESTONE
    - Parser written in Guage that can parse Guage
@@ -178,8 +222,8 @@ Pattern-based macros with multiple clauses and pattern matching on syntax.
    - Currently limited to exactly 2 mutually recursive functions
 
 5. **More Stdlib Macros** (2-3 hours) - MEDIUM VALUE
-   - Add and/or with short-circuit (variadic), when/unless, do-loop
-   - Use ⧉⊜ pattern macros
+   - Add do-loop, for-each, map*, filter*
+   - Use ⧉⊜ pattern macros with ellipsis
 
 ---
 
@@ -187,6 +231,7 @@ Pattern-based macros with multiple clauses and pattern matching on syntax.
 
 | Day | Feature | Tests |
 |-----|---------|-------|
+| 78 | Rest Pattern Syntax ($var ... ellipsis) | 75/75 (100%), 51 rest pattern tests |
 | 77 | Control Flow Macros (∧*, ∨*, ⇒, ⇏) | 74/74 (100%), 46 control tests |
 | 76 | Stdlib Pattern Macros (⇒*, ≔⇊, ⇤) | 73/73 (100%), 22 stdlib macro tests |
 | 75 | Pattern-Based Macros (⧉⊜) | 72/72 (100%), 29 macro tests |
@@ -198,7 +243,6 @@ Pattern-based macros with multiple clauses and pattern matching on syntax.
 | 69 | Graph Algorithms Complete | 69/69 (100%) |
 | 68 | Pattern Recursion Bug Fixed | 68/68 |
 | 66 | View Patterns | 66/68 |
-| 65 | Self-Hosting Primitives | 66/67 |
 
 **Full historical details:** See `docs/archive/2026-01/sessions/DAYS_43_68_HISTORY.md`
 
@@ -240,6 +284,17 @@ make rebuild      # Clean + rebuild
 ---
 
 ## Session End Checklist ✅
+
+**Day 78 Complete (2026-01-29):**
+- ✅ Implemented `$var ...` ellipsis pattern syntax
+- ✅ Pattern capture: `($x $rest ...)` captures remaining args
+- ✅ Template splice: `(f $rest ...)` splices list as args
+- ✅ Added `has_ellipsis_rest()` helper to macro.c
+- ✅ Modified `macro_pattern_match()` for rest capture
+- ✅ Modified `macro_expand_template()` for splice
+- ✅ Created `bootstrap/tests/test_rest_patterns.test` (51 tests)
+- ✅ Tested variadic sum, product, all, any, cond*, max*, min*
+- ✅ All 75/75 test files passing (100%)
 
 **Day 77 Complete (2026-01-29):**
 - ✅ Implemented ∧* (and*) - short-circuit AND with 1-4 args
