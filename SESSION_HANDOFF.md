@@ -247,25 +247,24 @@ Pattern-based macros with multiple clauses and pattern matching on syntax.
 
 ## 🎯 What to Do Next (Day 79+)
 
-**RECOMMENDED OPTIONS:**
+**Focus: Language Strength & Completeness**
 
-1. **Self-Hosting Parser** (6-8 hours) - MILESTONE
-   - Parser written in Guage that can parse Guage
-   - Requires string operations, character handling
-   - Major step toward full self-hosting
-
-2. **More Stdlib Macros** (2-3 hours) - MEDIUM VALUE
+1. **More Stdlib Macros** (2-3 hours) - HIGH VALUE
    - Add do-loop, for-each, map*, filter* using variadic ellipsis
    - Build iterator/loop constructs
-   - Use ⧉⊜ pattern macros with ellipsis
+   - Essential for practical programming
 
-3. **Data Flow Analysis** (3-4 hours) - MEDIUM VALUE
+2. **Data Flow Analysis** (3-4 hours) - MEDIUM VALUE
    - Build on graph algorithms for liveness analysis, reaching definitions
    - Foundation for optimization passes
 
-4. **3+ Function Mutual Recursion** (1-2 hours) - LOW VALUE
+3. **3+ Function Mutual Recursion** (1-2 hours) - LOW VALUE
    - Extend mutual recursion to handle more than 2 functions
    - Currently limited to exactly 2 mutually recursive functions
+
+4. **String Manipulation Stdlib** (2-3 hours) - MEDIUM VALUE
+   - Higher-level string functions built on primitives
+   - split, join, trim, replace, etc.
 
 ---
 
@@ -407,33 +406,9 @@ git log --oneline -3         # See recent commits
 - **Core evaluator:** COMPLETE with recursive AND mutual letrec (52 tests)
 - **Pattern macros:** COMPLETE with unlimited arity via ellipsis (Day 78-79)
 - **Stdlib macros:** All 5 macros now support unlimited args/clauses/bindings
-- **What's next:** Self-hosting parser OR more stdlib macros
-- **Detailed roadmap:** `docs/planning/SELF_HOSTING_COMPLETION.md`
+- **Focus:** Language strength and completeness
 
-### Option A: Self-Hosting Parser (6-9 hours, MILESTONE)
-
-**Goal:** Parser written in Guage that parses Guage source
-
-**Why it matters:** Major milestone toward full self-hosting
-
-**Components:**
-1. **Tokenizer** (2-3 hours)
-   - Split string into tokens
-   - Handle: numbers (#42), symbols (:name), strings ("text"), parens, operators
-   - Use existing string ops: ⌷ (char-at), ⌷⌷ (substring), ⊕⊕ (concat)
-
-2. **Parser** (3-4 hours)
-   - Build AST from token stream
-   - Handle nested lists recursively
-   - Handle quote shorthand (⌜)
-
-3. **Integration** (1-2 hours)
-   - `(parse string)` → AST
-   - `(eval (parse string) env)` → result
-
-**Start here:** Read `docs/planning/SELF_HOSTING_COMPLETION.md` section "ALTERNATIVE: Self-Hosting Parser"
-
-### Option B: More Stdlib Macros (2-3 hours)
+### Next: More Stdlib Macros (2-3 hours)
 
 **Add common iteration/loop constructs using variadic ellipsis:**
 - `do*` - Simple do-loop
@@ -472,4 +447,4 @@ bootstrap/tests/test_variadic_stdlib.test  # 58 variadic tests (NEW)
 ---
 
 **Last Updated:** 2026-01-29 (Day 79 complete)
-**Next Session:** Day 80 - Self-hosting parser OR more stdlib macros
+**Next Session:** Day 80 - More stdlib macros (language completeness)
