@@ -1194,6 +1194,26 @@ All I/O operations return errors on failure:
 (factorial-base #5) ; → :other
 ```
 
+**Stdlib Pattern Macros (stdlib/macros_pattern.scm):**
+
+```scheme
+;; ⇒* (cond) - Multi-branch conditional (1-5 clauses)
+(⇒* ((> x #10) :big)
+    ((> x #5) :medium)
+    (#t :small))           ; → :small if x ≤ 5
+
+;; ≔⇊ (let*) - Sequential bindings (1-4 bindings)
+(≔⇊ ((:x #5)
+      (:y (⊕ :x #1)))      ; :y = 6 (can reference :x)
+     (⊕ :x :y))            ; → 11
+
+;; ⇤ (case) - Value dispatch
+(⇤ color
+   (:red #ff0000)
+   (:green #00ff00)
+   (:else #000000))        ; → #000000 if no match
+```
+
 ### Generic Programming (3) - PARAMETRIC POLYMORPHISM
 | Symbol | Type | Meaning | Status |
 |--------|------|---------|--------|

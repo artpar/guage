@@ -1,13 +1,48 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-01-29 (Day 75 COMPLETE)
+Updated: 2026-01-29 (Day 76 COMPLETE)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 75 - Pattern-Based Macros Complete (2026-01-29)
+# Session Handoff: Day 76 - Stdlib Pattern Macros Complete (2026-01-29)
 
-## 🎉 Day 75 Progress - Pattern-Based Macros!
+## 🎉 Day 76 Progress - Stdlib Pattern Macros!
+
+**RESULT:** 73/73 test files passing (100%), 22 new stdlib macro tests
+
+**New Macros Using ⧉⊜ (pattern macros):**
+
+1. **⇒* (cond)** - Multi-branch conditional (1-5 clauses)
+   ```scheme
+   (⇒* ((> x #10) :big)
+       ((> x #5) :medium)
+       (#t :small))
+   ```
+
+2. **≔⇊ (let\*)** - Sequential bindings (1-4 bindings)
+   ```scheme
+   (≔⇊ ((:x #5)
+         (:y (⊕ :x #1)))  ; :y can reference :x
+        (⊕ :x :y))        ; → 11
+   ```
+
+3. **⇤ (case)** - Value dispatch with :else
+   ```scheme
+   (⇤ color
+      (:red #ff0000)
+      (:green #00ff00)
+      (:else #000000))
+   ```
+
+**Implementation:**
+- `bootstrap/stdlib/macros_pattern.scm` - New stdlib module
+- Pattern-based clauses for multiple arities
+- Expands to nested `?` (cond), nested `λ` (let*), or `≡` chains (case)
+
+---
+
+## Previous Day: Day 75 - Pattern-Based Macros
 
 **RESULT:** 72/72 test files passing (100%), 29 pattern macro tests
 
@@ -60,9 +95,10 @@ Pattern-based macros with multiple clauses and pattern matching on syntax.
 
 **System State:**
 - **Primitives:** 125 total
-- **Tests:** 72/72 test files passing (100%)
+- **Tests:** 73/73 test files passing (100%)
 - **Self-Hosting Eval Tests:** 52/52 passing (100%)
 - **Pattern Macros:** 29/29 tests passing
+- **Stdlib Pattern Macros:** 22/22 tests passing (⇒*, ≔⇊, ⇤)
 - **Pattern Matching:** World-class (guards, as-patterns, or-patterns, view patterns)
 - **Build:** Clean, O2 optimized, 32MB stack
 
@@ -80,28 +116,31 @@ Pattern-based macros with multiple clauses and pattern matching on syntax.
 
 ---
 
-## 🎯 What to Do Next (Day 76+)
+## 🎯 What to Do Next (Day 77+)
 
 **RECOMMENDED OPTIONS:**
 
-1. **Stdlib Macros using ⧉⊜** (2-3 hours) - HIGH VALUE
-   - Build cond (⇒*), let* (≔⇊), case using new pattern macros
-   - Demonstrates pattern macro power
-
-2. **Data Flow Analysis** (3-4 hours) - MEDIUM VALUE
-   - Build on graph algorithms for liveness analysis, reaching definitions
-
-3. **Rest Pattern Syntax** (2-3 hours) - MEDIUM VALUE
+1. **Rest Pattern Syntax** (2-3 hours) - HIGH VALUE
    - Add `$rest ...` syntax for variadic patterns
+   - Enables unlimited-arity cond/let*/case
    - Requires parser extension for ellipsis
 
-4. **Self-Hosting Parser** (6-8 hours) - MILESTONE
+2. **Self-Hosting Parser** (6-8 hours) - MILESTONE
    - Parser written in Guage that can parse Guage
    - Requires string operations, character handling
+   - Major step toward full self-hosting
 
-5. **3+ Function Mutual Recursion** (1-2 hours) - LOW VALUE
+3. **Data Flow Analysis** (3-4 hours) - MEDIUM VALUE
+   - Build on graph algorithms for liveness analysis, reaching definitions
+   - Foundation for optimization passes
+
+4. **3+ Function Mutual Recursion** (1-2 hours) - LOW VALUE
    - Extend mutual recursion to handle more than 2 functions
    - Currently limited to exactly 2 mutually recursive functions
+
+5. **More Stdlib Macros** (2-3 hours) - MEDIUM VALUE
+   - Add and/or with short-circuit (variadic), when/unless, do-loop
+   - Use ⧉⊜ pattern macros
 
 ---
 
@@ -109,6 +148,7 @@ Pattern-based macros with multiple clauses and pattern matching on syntax.
 
 | Day | Feature | Tests |
 |-----|---------|-------|
+| 76 | Stdlib Pattern Macros (⇒*, ≔⇊, ⇤) | 73/73 (100%), 22 stdlib macro tests |
 | 75 | Pattern-Based Macros (⧉⊜) | 72/72 (100%), 29 macro tests |
 | 74 | Mutual Recursion in Letrec | 71/71 (100%), 52 eval tests |
 | 73 | Recursive Letrec via Y-Combinator | 71/71 (100%), 47 eval tests |
@@ -119,8 +159,6 @@ Pattern-based macros with multiple clauses and pattern matching on syntax.
 | 68 | Pattern Recursion Bug Fixed | 68/68 |
 | 66 | View Patterns | 66/68 |
 | 65 | Self-Hosting Primitives | 66/67 |
-| 64 | Mutation Testing | 66/67 |
-| 63 | Doc Generation + Auto-Execute Tests | 65/66 |
 
 **Full historical details:** See `docs/archive/2026-01/sessions/DAYS_43_68_HISTORY.md`
 
@@ -162,6 +200,14 @@ make rebuild      # Clean + rebuild
 ---
 
 ## Session End Checklist ✅
+
+**Day 76 Complete (2026-01-29):**
+- ✅ Implemented ⇒* (cond) pattern macro with 1-5 clause support
+- ✅ Implemented ≔⇊ (let*) pattern macro with 1-4 binding support
+- ✅ Implemented ⇤ (case) pattern macro with value dispatch
+- ✅ Created `bootstrap/stdlib/macros_pattern.scm` stdlib module
+- ✅ Created `bootstrap/tests/test_stdlib_pattern_macros.test` (22 tests)
+- ✅ All 73/73 test files passing (100%)
 
 **Day 74 Complete (2026-01-29):**
 - ✅ Implemented mutual recursion via pair-based Y-combinator
@@ -262,5 +308,5 @@ docs/planning/SELF_HOSTING_COMPLETION.md  # Detailed roadmap
 
 ---
 
-**Last Updated:** 2026-01-29 (Day 74 complete)
-**Next Session:** Day 75 - Self-hosting parser OR stdlib macros
+**Last Updated:** 2026-01-29 (Day 76 complete)
+**Next Session:** Day 77 - Rest pattern syntax OR self-hosting parser
