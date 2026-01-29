@@ -1,0 +1,61 @@
+; Test macro system enhancements (Day 70)
+; Tests for: gensym (⊛⊙), macro-expand (⧉→), macro-list (⧉?)
+
+; ========== Gensym Tests ==========
+
+; Test 1: gensym generates symbols
+(⊨ :gensym-basic #t
+    (:? (⊛⊙)))
+
+; Test 2: gensym with no args uses default prefix
+(≔ g1 (⊛⊙))
+(⊨ :gensym-default-prefix #t
+    (:? g1))
+
+; Test 3: gensym with custom prefix
+(≔ g2 (⊛⊙ "test"))
+(⊨ :gensym-custom-prefix #t
+    (:? g2))
+
+; Test 4: gensym generates unique symbols
+(≔ g3 (⊛⊙))
+(≔ g4 (⊛⊙))
+(⊨ :gensym-unique #f
+    (≡ g3 g4))
+
+; Test 5: gensym with symbol prefix
+(≔ g5 (⊛⊙ :var))
+(⊨ :gensym-symbol-prefix #t
+    (:? g5))
+
+; ========== Macro List Tests ==========
+
+; Define test macros
+(⧉ test-when (c b)
+  (⌞̃ (? (~ c) (~ b) ∅)))
+
+(⧉ test-unless (c b)
+  (⌞̃ (? (~ c) ∅ (~ b))))
+
+; Test 6: macro-list returns a list
+(⊨ :macro-list-is-list #t
+    (⟨⟩? (⧉?)))
+
+; Test 7: defined macros appear in list
+(≔ macros (⧉?))
+(⊨ :macro-list-not-empty #t
+    (¬ (∅? macros)))
+
+; ========== Macro Expand Tests ==========
+
+; Test 8: expand once on non-macro returns same
+(⊨ :expand-non-macro #42
+    (⧉→ (⌜ #42)))
+
+; Test 9: expand on simple macro call
+(⊨ :expand-simple-macro-is-list #t
+    (⟨⟩? (⧉→ (⌜ (test-when #t #42)))))
+
+; Test 10: expand preserves literal structure
+(⊨ :expand-literal #5
+    (⧉→ (⌜ #5)))

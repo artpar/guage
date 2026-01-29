@@ -47,8 +47,10 @@ void module_registry_add(const char* module_name) {
 
     entry->symbols = cell_nil();
     cell_retain(entry->symbols);
+    entry->exports = NULL;  // Day 70: NULL means export all
     entry->dependencies = cell_nil();  // Day 29: Initialize dependencies
     cell_retain(entry->dependencies);
+    entry->version = NULL;  // Day 70: No version initially
     entry->loaded_at = time(NULL);
     entry->load_order = ++load_order_counter;  // Day 27: Track load sequence
     entry->next = registry.head;
@@ -248,7 +250,9 @@ void module_registry_free(void) {
         ModuleEntry* next = entry->next;
         free(entry->name);
         cell_release(entry->symbols);
+        if (entry->exports) cell_release(entry->exports);  // Day 70
         cell_release(entry->dependencies);  // Day 29: Release dependencies
+        if (entry->version) free(entry->version);  // Day 70
         free(entry);
         entry = next;
     }
@@ -262,4 +266,207 @@ void module_set_current_loading(const char* module_name) {
 
 const char* module_get_current_loading(void) {
     return current_loading_module;
+}
+
+/* Day 70: Module versioning support */
+void module_registry_set_version(const char* module_name, const char* version) {
+    if (!module_name || !version) return;
+
+    ModuleEntry* entry = registry.head;
+    while (entry) {
+        if (strcmp(entry->name, module_name) == 0) {
+            if (entry->version) free(entry->version);
+            entry->version = strdup(version);
+            return;
+        }
+        entry = entry->next;
+    }
+}
+
+const char* module_registry_get_version(const char* module_name) {
+    if (!module_name) return NULL;
+
+    ModuleEntry* entry = registry.head;
+    while (entry) {
+        if (strcmp(entry->name, module_name) == 0) {
+            return entry->version;
+        }
+        entry = entry->next;
+    }
+    return NULL;
+}
+
+/* Day 70: Selective exports */
+void module_registry_set_exports(const char* module_name, Cell* exports) {
+    if (!module_name) return;
+
+    ModuleEntry* entry = registry.head;
+    while (entry) {
+        if (strcmp(entry->name, module_name) == 0) {
+            if (entry->exports) cell_release(entry->exports);
+            if (exports) {
+                cell_retain(exports);
+                entry->exports = exports;
+            } else {
+                entry->exports = NULL;
+            }
+            return;
+        }
+        entry = entry->next;
+    }
+}
+
+Cell* module_registry_get_exports(const char* module_name) {
+    if (!module_name) return cell_nil();
+
+    ModuleEntry* entry = registry.head;
+    while (entry) {
+        if (strcmp(entry->name, module_name) == 0) {
+            if (entry->exports) {
+                cell_retain(entry->exports);
+                return entry->exports;
+            } else {
+                /* No explicit exports = export all symbols */
+                cell_retain(entry->symbols);
+                return entry->symbols;
+            }
+        }
+        entry = entry->next;
+    }
+    return cell_nil();
+}
+
+int module_registry_is_exported(const char* module_name, const char* symbol) {
+    if (!module_name || !symbol) return 0;
+
+    ModuleEntry* entry = registry.head;
+    while (entry) {
+        if (strcmp(entry->name, module_name) == 0) {
+            if (!entry->exports) {
+                /* No explicit exports = everything exported */
+                return 1;
+            }
+
+            /* Normalize symbol name */
+            const char* search_name = symbol;
+            if (symbol[0] == ':') search_name = symbol + 1;
+
+            /* Check if in export list */
+            Cell* curr = entry->exports;
+            while (curr && !cell_is_nil(curr)) {
+                Cell* exp = cell_car(curr);
+                if (cell_is_symbol(exp)) {
+                    const char* exp_name = cell_get_symbol(exp);
+                    if (exp_name[0] == ':') exp_name++;
+                    if (strcmp(exp_name, search_name) == 0) {
+                        return 1;
+                    }
+                }
+                curr = cell_cdr(curr);
+            }
+            return 0;  /* Not in export list */
+        }
+        entry = entry->next;
+    }
+    return 0;  /* Module not found */
+}
+
+/* Day 70: Cycle detection using DFS */
+static int detect_cycles_dfs(const char* module, Cell** visited, Cell** rec_stack, Cell** cycles) {
+    /* Add to visited */
+    Cell* mod_cell = cell_string(module);
+    Cell* new_visited = cell_cons(mod_cell, *visited);
+    cell_release(mod_cell);
+    cell_release(*visited);
+    *visited = new_visited;
+
+    /* Add to recursion stack */
+    mod_cell = cell_string(module);
+    Cell* new_stack = cell_cons(mod_cell, *rec_stack);
+    cell_release(mod_cell);
+    cell_release(*rec_stack);
+    *rec_stack = new_stack;
+
+    /* Get dependencies */
+    Cell* deps = module_registry_get_dependencies(module);
+    Cell* curr = deps;
+
+    while (curr && !cell_is_nil(curr)) {
+        Cell* dep = cell_car(curr);
+        if (cell_is_string(dep)) {
+            const char* dep_name = cell_get_string(dep);
+
+            /* Check if in recursion stack (cycle!) */
+            Cell* stack_check = *rec_stack;
+            while (stack_check && !cell_is_nil(stack_check)) {
+                Cell* stacked = cell_car(stack_check);
+                if (cell_is_string(stacked) && strcmp(cell_get_string(stacked), dep_name) == 0) {
+                    /* Found cycle - record it */
+                    Cell* cycle = cell_nil();
+                    Cell* s = *rec_stack;
+                    while (s && !cell_is_nil(s)) {
+                        Cell* m = cell_car(s);
+                        Cell* new_cycle = cell_cons(m, cycle);
+                        cell_release(cycle);
+                        cycle = new_cycle;
+                        s = cell_cdr(s);
+                    }
+                    Cell* new_cycles = cell_cons(cycle, *cycles);
+                    cell_release(cycle);
+                    cell_release(*cycles);
+                    *cycles = new_cycles;
+                    cell_release(deps);
+                    return 1;
+                }
+                stack_check = cell_cdr(stack_check);
+            }
+
+            /* Check if not visited */
+            int is_visited = 0;
+            Cell* vis_check = *visited;
+            while (vis_check && !cell_is_nil(vis_check)) {
+                Cell* v = cell_car(vis_check);
+                if (cell_is_string(v) && strcmp(cell_get_string(v), dep_name) == 0) {
+                    is_visited = 1;
+                    break;
+                }
+                vis_check = cell_cdr(vis_check);
+            }
+
+            if (!is_visited) {
+                if (detect_cycles_dfs(dep_name, visited, rec_stack, cycles)) {
+                    cell_release(deps);
+                    return 1;
+                }
+            }
+        }
+        curr = cell_cdr(curr);
+    }
+
+    cell_release(deps);
+
+    /* Remove from recursion stack */
+    if (*rec_stack && !cell_is_nil(*rec_stack)) {
+        Cell* old_stack = *rec_stack;
+        *rec_stack = cell_cdr(*rec_stack);
+        cell_retain(*rec_stack);
+        cell_release(old_stack);
+    }
+
+    return 0;
+}
+
+Cell* module_registry_detect_cycles(const char* module_name) {
+    if (!module_name) return cell_nil();
+
+    Cell* visited = cell_nil();
+    Cell* rec_stack = cell_nil();
+    Cell* cycles = cell_nil();
+
+    detect_cycles_dfs(module_name, &visited, &rec_stack, &cycles);
+
+    cell_release(visited);
+    cell_release(rec_stack);
+
+    return cycles;
 }

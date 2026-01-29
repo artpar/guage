@@ -20,7 +20,9 @@
 typedef struct ModuleEntry {
     char* name;              // Module file path
     Cell* symbols;           // List of defined symbol names (as keywords)
+    Cell* exports;           // List of exported symbol names (NULL = all exported) - Day 70
     Cell* dependencies;      // List of module names this module depends on - Day 29
+    char* version;           // Semantic version string (NULL if unset) - Day 70
     time_t loaded_at;        // When loaded (Unix timestamp)
     size_t load_order;       // Load sequence (1, 2, 3...) - Day 27
     struct ModuleEntry* next;// Linked list
@@ -93,6 +95,47 @@ void module_registry_add_dependency(const char* module_name, const char* dep_mod
  * Day 29: Module dependency tracking
  */
 Cell* module_registry_get_dependencies(const char* module_name);
+
+/**
+ * Set module version
+ * Day 70: Module versioning support
+ */
+void module_registry_set_version(const char* module_name, const char* version);
+
+/**
+ * Get module version
+ * Returns: Version string or NULL if not set
+ * Day 70: Module versioning support
+ */
+const char* module_registry_get_version(const char* module_name);
+
+/**
+ * Set exported symbols for a module
+ * Pass NULL to export all (default behavior)
+ * Day 70: Selective exports
+ */
+void module_registry_set_exports(const char* module_name, Cell* exports);
+
+/**
+ * Get exported symbols for a module
+ * Returns: List of exported symbols, or all symbols if no exports set
+ * Day 70: Selective exports
+ */
+Cell* module_registry_get_exports(const char* module_name);
+
+/**
+ * Check if symbol is exported from module
+ * Returns: true if exported (or if no export restrictions)
+ * Day 70: Selective exports
+ */
+int module_registry_is_exported(const char* module_name, const char* symbol);
+
+/**
+ * Detect circular dependencies starting from a module
+ * Returns: List of cycle paths (list of lists), or nil if no cycles
+ * Day 70: Cycle detection
+ */
+Cell* module_registry_detect_cycles(const char* module_name);
 
 /**
  * Free all module registry memory (call at shutdown)

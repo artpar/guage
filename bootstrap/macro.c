@@ -9,6 +9,9 @@
 /* Global macro registry */
 static MacroRegistry registry = { .head = NULL };
 
+/* Gensym counter for unique symbol generation */
+static size_t gensym_counter = 0;
+
 void macro_init(void) {
     registry.head = NULL;
 }
@@ -217,4 +220,59 @@ void macro_cleanup(void) {
         entry = next;
     }
     registry.head = NULL;
+    gensym_counter = 0;  /* Reset gensym counter */
+}
+
+Cell* macro_gensym(const char* prefix) {
+    char buf[128];
+    if (prefix && *prefix) {
+        snprintf(buf, sizeof(buf), "%s_%zu", prefix, gensym_counter++);
+    } else {
+        snprintf(buf, sizeof(buf), "g_%zu", gensym_counter++);
+    }
+    return cell_symbol(buf);
+}
+
+Cell* macro_list(void) {
+    Cell* result = cell_nil();
+
+    for (MacroEntry* entry = registry.head; entry != NULL; entry = entry->next) {
+        Cell* name = cell_symbol(entry->name);
+        Cell* new_result = cell_cons(name, result);
+        cell_release(name);
+        cell_release(result);
+        result = new_result;
+    }
+
+    return result;
+}
+
+Cell* macro_expand_once(Cell* expr, EvalContext* ctx) {
+    if (!expr || !ctx) {
+        return expr;
+    }
+
+    /* Atoms don't expand */
+    if (!cell_is_pair(expr)) {
+        cell_retain(expr);
+        return expr;
+    }
+
+    Cell* first = cell_car(expr);
+
+    /* Check if first element is a macro */
+    if (cell_is_symbol(first)) {
+        const char* name = cell_get_symbol(first);
+        MacroEntry* macro = macro_lookup(name);
+
+        if (macro) {
+            /* This is a macro call! Expand it ONCE (no recursion) */
+            Cell* args = cell_cdr(expr);
+            return macro_apply(macro, args, ctx);
+        }
+    }
+
+    /* Not a macro - return as-is */
+    cell_retain(expr);
+    return expr;
 }

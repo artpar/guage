@@ -100,4 +100,30 @@ Cell* macro_build_bindings(Cell* params, Cell* args);
  */
 void macro_cleanup(void);
 
+/**
+ * Generate unique symbol (gensym).
+ * Used for macro hygiene to avoid variable capture.
+ *
+ * @param prefix Optional prefix for symbol (can be NULL)
+ * @return Unique symbol (e.g., "g_42" or "prefix_42")
+ */
+Cell* macro_gensym(const char* prefix);
+
+/**
+ * List all defined macros.
+ *
+ * @return List of macro names as symbols
+ */
+Cell* macro_list(void);
+
+/**
+ * Expand macro once (for debugging).
+ * Unlike macro_expand, doesn't recursively expand.
+ *
+ * @param expr Expression to expand
+ * @param ctx Evaluation context
+ * @return Expanded expression (one level only)
+ */
+Cell* macro_expand_once(Cell* expr, EvalContext* ctx);
+
 #endif // MACRO_H

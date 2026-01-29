@@ -1,36 +1,35 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-01-29 (Day 69 COMPLETE)
+Updated: 2026-01-29 (Day 70 COMPLETE)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 69 COMPLETE - CFG/DFG Graph Algorithms (2026-01-29)
+# Session Handoff: Day 70 COMPLETE - Macro & Module Enhancements (2026-01-29)
 
-## 🎉 Day 69 COMPLETE - All Graph Tests Passing!
+## 🎉 Day 70 COMPLETE - Macro & Module System Enhanced!
 
-**RESULT:** 35/35 graph tests passing, 69/69 test files passing (100%)
+**RESULT:** 71/71 test files passing (100%)
 
-**BUG FIX:** Found and fixed memory corruption in `prim_graph_traverse()`:
-- **Root Cause:** `cell_release(edges)` was releasing a BORROWED reference from the graph
-- **Effect:** Corrupted graph's edge list, causing subsequent operations to fail
-- **Fix:** Removed erroneous release + added node validation
+**NEW PRIMITIVES (6 total):**
 
-**Graph Algorithm Primitives (6 total, all working):**
-- ⊝↦ (graph_traverse) - BFS/DFS with visitor function
-- ⊝⊃ (graph_reachable) - Check node reachability
-- ⊝⊚ (graph_successors) - Get direct successors
-- ⊝⊙ (graph_predecessors) - Get direct predecessors
-- ⊝⇝ (graph_path) - Find shortest path
-- ⊝∘ (graph_cycles) - Detect cycles
+**Macro System (3):**
+- ⊛⊙ (gensym) - Generate unique symbols for macro hygiene
+- ⧉→ (macro-expand) - Show macro expansion for debugging
+- ⧉? (macro-list) - List all defined macros
+
+**Module System (3):**
+- ⌂⊚# (module-version) - Get/set module version
+- ⌂⊚↑ (module-exports) - Get/set explicit exports for selective visibility
+- ⌂⊚⊛ (module-cycles) - Detect circular dependencies via DFS
 
 ---
 
 ## Current Status 🎯
 
 **System State:**
-- **Primitives:** 119 total (stable)
-- **Tests:** 103/103 passing (100%) - Main: 68/68, Graph: 35/35
+- **Primitives:** 125 total (+6 new)
+- **Tests:** 105/105 passing (100%) - Main: 70/70, Graph: 35/35
 - **Pattern Matching:** World-class (guards, as-patterns, or-patterns, view patterns)
 - **Self-Hosting:** 95.5% (21/22 tests) - pure lambda calculus complete
 - **Build:** Clean, O2 optimized, 32MB stack
@@ -49,22 +48,22 @@ Purpose: Current project status and progress
 
 ---
 
-## 🎯 What to Do Next (Day 70+)
+## 🎯 What to Do Next (Day 71+)
 
 **RECOMMENDED OPTIONS:**
 
-1. **Macro System Enhancements** (3-4 hours) - HIGH VALUE
-   - Hygiene improvements, debugging tools, pattern-based macros
-
-2. **Module System Improvements** (2-3 hours) - MEDIUM VALUE
-   - Versioning, dependency management, import/export control
-
-3. **Self-Hosting Phase 5** (4-5 hours) - HIGH IMPACT
+1. **Self-Hosting Phase 5** (4-5 hours) - HIGH IMPACT
    - Continue meta-circular evaluator (59% → 80% target)
    - Add primitive support via FFI
 
-4. **Data Flow Analysis** (3-4 hours) - MEDIUM VALUE
+2. **Data Flow Analysis** (3-4 hours) - MEDIUM VALUE
    - Build on graph algorithms for liveness analysis, reaching definitions
+
+3. **Pattern-Based Macros** (3-4 hours) - HIGH VALUE
+   - Add syntax-rules style pattern matching for macros
+
+4. **More Stdlib Macros** (2-3 hours) - MEDIUM VALUE
+   - Add cond (⇒*), let* (≔⇊), case, and other common constructs
 
 ---
 
@@ -72,7 +71,8 @@ Purpose: Current project status and progress
 
 | Day | Feature | Tests |
 |-----|---------|-------|
-| 69 | Graph Algorithms Complete | 103/103 (100%) |
+| 70 | Macro & Module Enhancements | 71/71 (100%) |
+| 69 | Graph Algorithms Complete | 69/69 (100%) |
 | 68 | Pattern Recursion Bug Fixed | 68/68 |
 | 66 | View Patterns | 66/68 |
 | 65 | Self-Hosting Primitives | 66/67 |
@@ -82,7 +82,6 @@ Purpose: Current project status and progress
 | 61 | REPL Enhancements | 60/61 |
 | 60 | Or-Patterns | 60/61 |
 | 59 | As-Patterns | 59/60 |
-| 58 | Guard Conditions | 58/59 |
 
 **Full historical details:** See `docs/archive/2026-01/sessions/DAYS_43_68_HISTORY.md`
 
@@ -125,17 +124,17 @@ make rebuild      # Clean + rebuild
 
 ## Session End Checklist ✅
 
-**Day 69 Complete (2026-01-29):**
-- ✅ Graph algorithms memory bug FIXED
-- ✅ All 35/35 graph tests passing
-- ✅ All 69/69 test files passing (100%)
+**Day 70 Complete (2026-01-29):**
+- ✅ Macro system enhanced with gensym, macro-expand, macro-list
+- ✅ Module system enhanced with versioning, exports, cycle detection
+- ✅ All 71/71 test files passing (100%)
 - ✅ Documentation updated
 
-**For Day 70:**
+**For Day 71:**
 - 🎯 Choose direction from recommended options above
-- 🧪 Verify: `make test` shows 69 test files passing
+- 🧪 Verify: `make test` shows 71 test files passing
 
 ---
 
-**Last Updated:** 2026-01-29 (Day 69 complete)
-**Next Session:** Day 70
+**Last Updated:** 2026-01-29 (Day 70 complete)
+**Next Session:** Day 71

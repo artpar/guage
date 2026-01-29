@@ -6,6 +6,7 @@
 #include "type.h"
 #include "testgen.h"
 #include "module.h"
+#include "macro.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
@@ -673,6 +674,63 @@ Cell* prim_source(Cell* args) {
         return body;
     }
     return cell_error("not-a-lambda", fn);
+}
+
+/* Macro System Primitives (Day 70) */
+
+/* ⊛⊙ - gensym (generate unique symbol for hygiene) */
+Cell* prim_gensym(Cell* args) {
+    /* (⊛⊙) - Generate unique symbol with default prefix "g" */
+    /* (⊛⊙ "prefix") - Generate unique symbol with custom prefix */
+
+    if (cell_is_nil(args)) {
+        return macro_gensym(NULL);
+    }
+
+    Cell* prefix = arg1(args);
+    if (cell_is_string(prefix)) {
+        return macro_gensym(cell_get_string(prefix));
+    }
+    if (cell_is_symbol(prefix)) {
+        return macro_gensym(cell_get_symbol(prefix));
+    }
+
+    return cell_error("gensym-prefix-must-be-string", prefix);
+}
+
+/* ⧉→ - macro-expand (show expansion for debugging) */
+Cell* prim_macro_expand(Cell* args) {
+    /* (⧉→ expr) - Expand macros in expression once */
+    /* (⧉→ expr #t) - Expand macros fully */
+
+    if (cell_is_nil(args)) {
+        return cell_error("macro-expand-missing-expr", cell_nil());
+    }
+
+    Cell* expr = arg1(args);
+    Cell* rest = cell_cdr(args);
+
+    /* Create temporary context for expansion */
+    EvalContext* ctx = eval_context_new();
+
+    Cell* result;
+    if (!cell_is_nil(rest) && cell_is_bool(arg1(rest)) && cell_get_bool(arg1(rest))) {
+        /* Full expansion */
+        result = macro_expand(expr, ctx);
+    } else {
+        /* Single-step expansion */
+        result = macro_expand_once(expr, ctx);
+    }
+
+    eval_context_free(ctx);
+    return result;
+}
+
+/* ⧉? - macro-list (list all defined macros) */
+Cell* prim_macro_list(Cell* args) {
+    /* (⧉?) - List all defined macro names */
+    (void)args;  /* Unused */
+    return macro_list();
 }
 
 /* Testing Primitives */
@@ -3319,6 +3377,128 @@ Cell* prim_module_dependencies(Cell* args) {
     return module_registry_get_dependencies(module_path);
 }
 
+/* ⌂⊚# - Get/set module version (Day 70) */
+Cell* prim_module_version(Cell* args) {
+    /* (⌂⊚# "module-path") - Get version */
+    /* (⌂⊚# "module-path" "version") - Set version */
+
+    if (cell_is_nil(args)) {
+        return cell_error("module-version-missing-args", cell_nil());
+    }
+
+    Cell* module_path_cell = arg1(args);
+
+    if (!cell_is_string(module_path_cell)) {
+        return cell_error("module-path-must-be-string", module_path_cell);
+    }
+
+    const char* module_path = cell_get_string(module_path_cell);
+
+    if (!module_registry_has_module(module_path)) {
+        return cell_error("module-not-loaded", module_path_cell);
+    }
+
+    Cell* rest = cell_cdr(args);
+    if (cell_is_nil(rest)) {
+        /* Get version */
+        const char* version = module_registry_get_version(module_path);
+        if (version) {
+            return cell_string(version);
+        }
+        return cell_nil();
+    }
+
+    /* Set version */
+    Cell* version_cell = arg1(rest);
+    if (!cell_is_string(version_cell)) {
+        return cell_error("version-must-be-string", version_cell);
+    }
+
+    module_registry_set_version(module_path, cell_get_string(version_cell));
+    return cell_symbol(":ok");
+}
+
+/* ⌂⊚↑ - Get/set module exports (Day 70) */
+Cell* prim_module_exports(Cell* args) {
+    /* (⌂⊚↑ "module-path") - Get exports */
+    /* (⌂⊚↑ "module-path" (:sym1 :sym2 ...)) - Set exports */
+
+    if (cell_is_nil(args)) {
+        return cell_error("module-exports-missing-args", cell_nil());
+    }
+
+    Cell* module_path_cell = arg1(args);
+
+    if (!cell_is_string(module_path_cell)) {
+        return cell_error("module-path-must-be-string", module_path_cell);
+    }
+
+    const char* module_path = cell_get_string(module_path_cell);
+
+    if (!module_registry_has_module(module_path)) {
+        return cell_error("module-not-loaded", module_path_cell);
+    }
+
+    Cell* rest = cell_cdr(args);
+    if (cell_is_nil(rest)) {
+        /* Get exports */
+        return module_registry_get_exports(module_path);
+    }
+
+    /* Set exports */
+    Cell* exports = arg1(rest);
+    if (!cell_is_pair(exports) && !cell_is_nil(exports)) {
+        return cell_error("exports-must-be-list", exports);
+    }
+
+    module_registry_set_exports(module_path, exports);
+    return cell_symbol(":ok");
+}
+
+/* ⌂⊚⊛ - Detect module cycles (Day 70) */
+Cell* prim_module_cycles(Cell* args) {
+    /* (⌂⊚⊛ "module-path") - Detect cycles starting from module */
+    /* (⌂⊚⊛) - Detect all cycles in system */
+
+    if (cell_is_nil(args)) {
+        /* Check all modules */
+        Cell* all_cycles = cell_nil();
+        Cell* modules = module_registry_list_modules();
+        Cell* curr = modules;
+
+        while (curr && !cell_is_nil(curr)) {
+            Cell* mod = cell_car(curr);
+            if (cell_is_string(mod)) {
+                Cell* cycles = module_registry_detect_cycles(cell_get_string(mod));
+                if (!cell_is_nil(cycles)) {
+                    Cell* new_all = cell_cons(cycles, all_cycles);
+                    cell_release(all_cycles);
+                    all_cycles = new_all;
+                }
+                cell_release(cycles);
+            }
+            curr = cell_cdr(curr);
+        }
+
+        cell_release(modules);
+        return all_cycles;
+    }
+
+    Cell* module_path_cell = arg1(args);
+
+    if (!cell_is_string(module_path_cell)) {
+        return cell_error("module-path-must-be-string", module_path_cell);
+    }
+
+    const char* module_path = cell_get_string(module_path_cell);
+
+    if (!module_registry_has_module(module_path)) {
+        return cell_error("module-not-loaded", module_path_cell);
+    }
+
+    return module_registry_detect_cycles(module_path);
+}
+
 /* Forward declaration */
 Cell* prim_doc_generate(Cell* args);
 
@@ -4539,6 +4719,11 @@ static Primitive primitives[] = {
     {"⧉", prim_arity, 1, {"Get arity of lambda", "λ → ℕ"}},
     {"⊛", prim_source, 1, {"Get source code of lambda", "λ → expression"}},
 
+    /* Macro System (Day 70) */
+    {"⊛⊙", prim_gensym, -1, {"Generate unique symbol for macro hygiene", "() → :symbol | ≈ → :symbol"}},
+    {"⧉→", prim_macro_expand, -1, {"Expand macros in expression (debug)", "α → α | α → 𝔹 → α"}},
+    {"⧉?", prim_macro_list, 0, {"List all defined macros", "() → [:symbol]"}},
+
     /* Testing */
     {"≟", prim_deep_equal, 2, {"Deep equality test (recursive)", "α → α → 𝔹"}},
     {"⊨", prim_test_case, 3, {"Run test case: name, expected, actual", ":symbol → α → α → 𝔹 | ⚠"}},
@@ -4634,6 +4819,11 @@ static Primitive primitives[] = {
     {"⋘", prim_load, 1, {"Load and evaluate file", "≈ → α"}},
     {"⋖", prim_module_import, 2, {"Validate symbols exist in module", "≈ → [::symbol] → ::ok | ⚠"}},
     {"⌂⊚→", prim_module_dependencies, 1, {"Get module dependencies", "≈ → [≈]"}},
+
+    /* Module System Enhancements (Day 70) */
+    {"⌂⊚#", prim_module_version, -1, {"Get/set module version", "≈ → ≈ | ≈ → ≈ → :ok"}},
+    {"⌂⊚↑", prim_module_exports, -1, {"Get/set module exports", "≈ → [:symbol] | ≈ → [:symbol] → :ok"}},
+    {"⌂⊚⊛", prim_module_cycles, -1, {"Detect circular dependencies", "() → [[≈]] | ≈ → [[≈]]"}},
 
     {NULL, NULL, 0, {NULL, NULL}}
 };
