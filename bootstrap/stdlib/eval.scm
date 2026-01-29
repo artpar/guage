@@ -38,7 +38,9 @@
            #t
            (? (≡ (◁ expr) (⌜ ⌜))
               #t
-              #f))))))
+              (? (≡ (◁ expr) (⌜ ≔))
+                 #t
+                 #f)))))))
 
 ;; Evaluate a lambda expression
 ;; Creates a closure: (:closure params body env)
@@ -50,6 +52,31 @@
   (? ((eval cond-expr) env)
      ((eval then-expr) env)
      ((eval else-expr) env)))))))
+
+;; Evaluate a body (sequence of expressions)
+;; Handles defines by extending environment for subsequent expressions
+;; Non-define expressions in non-final position are skipped (no side effects)
+;; Returns value of last expression
+(≔ eval-body (λ (exprs) (λ (env)
+  (? (∅? exprs)
+     ∅                                    ; Empty body returns nil
+     (? (∅? (▷ exprs))
+        ((eval (◁ exprs)) env)           ; Last expression - evaluate and return
+        ; More expressions follow - check for define
+        (? (⟨⟩? (◁ exprs))
+           (? (≡ (◁ (◁ exprs)) (⌜ ≔))
+              ; It's a define: (≔ name value) - extend env for rest
+              ; (◁ exprs) = (≔ name value)
+              ; (◁ (▷ (◁ exprs))) = name
+              ; (◁ (▷ (▷ (◁ exprs)))) = value-expr
+              ((eval-body (▷ exprs))
+               (((env-extend env)
+                 (◁ (▷ (◁ exprs))))              ; name
+                ((eval (◁ (▷ (▷ (◁ exprs))))) env))) ; evaluated value
+              ; Not a define - skip and continue
+              ((eval-body (▷ exprs)) env))
+           ; Not a list - skip and continue
+           ((eval-body (▷ exprs)) env)))))))
 
 ;; Bind parameters to arguments in environment
 (≔ bind-params (λ (params) (λ (args) (λ (env)
@@ -69,15 +96,16 @@
      (? (⟨⟩? fn)
         ; fn is a pair - check if it's a closure
         (? (≡ (◁ fn) :closure)
-           ; Closure: extract params, body, closure-env
+           ; Closure: extract params, body-exprs, closure-env
+           ; fn = (:closure . (params . (body-exprs . closure-env)))
            (? (⟨⟩? (▷ fn))
               ; Get params and rest
               (? (⟨⟩? (▷ (▷ fn)))
-                 ; body-env-pair = (body . env)
-                 ((eval (◁ (▷ (▷ fn))))    ; body
-                  (((bind-params (◁ (▷ fn)))  ; params
+                 ; Use eval-body for body-exprs (supports sequences with define)
+                 ((eval-body (◁ (▷ (▷ fn))))    ; body-exprs
+                  (((bind-params (◁ (▷ fn)))     ; params
                     args)
-                   (▷ (▷ (▷ fn)))))          ; closure-env
+                   (▷ (▷ (▷ fn)))))              ; closure-env
                  (⚠ :invalid-closure-structure fn))
               (⚠ :invalid-closure-structure fn))
            (⚠ :not-a-closure fn))
@@ -97,11 +125,11 @@
   (? (special-form? expr)
      ; Handle special forms
      (? (≡ (◁ expr) (⌜ λ))
-        ; Lambda: (λ (params...) body)
+        ; Lambda: (λ (params...) body-exprs...)
         (? (⟨⟩? (▷ expr))
            (? (⟨⟩? (▷ (▷ expr)))
               (((eval-lambda (◁ (▷ expr)))   ; params list
-                (◁ (▷ (▷ expr))))            ; body (first of body list)
+                (▷ (▷ expr)))                ; body-exprs (full list for sequences)
                env)
               (⚠ :lambda-missing-body expr))
            (⚠ :lambda-missing-params expr))
@@ -122,7 +150,15 @@
               (? (⟨⟩? (▷ expr))
                  (◁ (▷ expr))            ; Return quoted expression
                  (⚠ :quote-missing-expr expr))
-              (⚠ :unknown-special-form expr))))
+              ; Define: (≔ name value) - evaluate value and return it
+              ; Note: Environment extension only persists in body context (eval-body)
+              (? (≡ (◁ expr) (⌜ ≔))
+                 (? (⟨⟩? (▷ expr))
+                    (? (⟨⟩? (▷ (▷ expr)))
+                       ((eval (◁ (▷ (▷ expr)))) env)  ; Evaluate and return value
+                       (⚠ :define-missing-value expr))
+                    (⚠ :define-missing-name expr))
+                 (⚠ :unknown-special-form expr)))))
      ; Regular function application
      (? (∅? expr)
         (⚠ :empty-application)

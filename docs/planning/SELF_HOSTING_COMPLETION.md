@@ -1,17 +1,17 @@
 ---
 Status: CURRENT
 Created: 2026-01-28
-Updated: 2026-01-29 (Day 71)
+Updated: 2026-01-29 (Day 72)
 Purpose: Roadmap for completing self-hosting evaluator
 ---
 
 # Self-Hosting Evaluator Completion Roadmap
 
-## Current State (Day 71)
+## Current State (Day 72)
 
-**Status:** 32/32 eval tests passing (100% of current tests)
-**What Works:** Full lambda calculus + primitives via ⊡
-**What's Missing:** ≔ (define), letrec, ⌞ (eval)
+**Status:** 38/38 eval tests passing (100% of current tests)
+**What Works:** Full lambda calculus + primitives via ⊡ + define (≔)
+**What's Missing:** letrec, ⌞ (eval)
 
 ### Evaluator Capabilities (bootstrap/stdlib/eval.scm)
 
@@ -27,7 +27,7 @@ Purpose: Roadmap for completing self-hosting evaluator
 | Quote (⌜) | ✅ | Added Day 71 |
 | Primitives | ✅ | Via ⊡ apply |
 | Y-combinator recursion | ✅ | Factorial verified |
-| Define (≔) | ❌ | Needs implementation |
+| Define (≔) | ✅ | Added Day 72 via eval-body |
 | Letrec | ❌ | For mutual recursion |
 | Eval (⌞) | ❌ | Meta-evaluation |
 
@@ -167,7 +167,7 @@ bootstrap/tests/test_eval.test # Test suite (32 tests)
 ## Current Test Coverage
 
 ```
-bootstrap/tests/test_eval.test - 32 tests:
+bootstrap/tests/test_eval.test - 38 tests:
 - Atoms (6): numbers, booleans, nil
 - Symbols (2): lookup, undefined error
 - Lambda (3): creation, identity, const
@@ -180,6 +180,7 @@ bootstrap/tests/test_eval.test - 32 tests:
 - Recursion (1): Y-combinator factorial
 - Lists (2): cons-is-pair, cons-head
 - Nested (1): nested conditionals
+- Define (6): simple, expression, sequential, shadow, uses-outer, standalone
 ```
 
 ## Session Continuation Guide
@@ -234,21 +235,21 @@ bootstrap/tests/test_eval.test
 | Recursion (Y-combinator) | 1 | ✅ |
 | Combinators | 3 | ✅ |
 | Lists | 2 | ✅ |
-| Define (≔) | 3 | ⏳ Phase 1 |
+| Define (≔) | 6 | ✅ Day 72 |
 | Letrec | 2 | ⏳ Phase 2 |
 | Meta-eval (⌞) | 2 | ⏳ Phase 3 |
-| **Total** | **~36** | **32/36** |
+| **Total** | **~39** | **38/39** |
 
 ## Estimated Time to Completion
 
-| Phase | Time | Complexity |
-|-------|------|------------|
-| Phase 1: Define | 1-2 hours | Medium |
-| Phase 2: Letrec | 2-3 hours | High |
-| Phase 3: Eval | 1 hour | Low |
-| **Total** | **4-6 hours** | |
+| Phase | Time | Complexity | Status |
+|-------|------|------------|--------|
+| Phase 1: Define | 1-2 hours | Medium | ✅ Complete Day 72 |
+| Phase 2: Letrec | 2-3 hours | High | ⏳ Next |
+| Phase 3: Eval | 1 hour | Low | ⏳ |
+| **Total** | **3-4 hours remaining** | |
 
 ---
 
-**Last Updated:** 2026-01-29 (Day 71)
-**Next Session:** Start with Phase 1 (Define support)
+**Last Updated:** 2026-01-29 (Day 72)
+**Next Session:** Start with Phase 2 (Letrec support)

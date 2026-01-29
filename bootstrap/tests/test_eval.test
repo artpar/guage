@@ -246,3 +246,37 @@
 (⊨ :eval-nested-cond
    :large
    ((eval (⌜ (? (:≤ #10 #5) (⌜ :small) (⌜ :large)))) env-full))
+
+;;; ===================================================================
+;;; Test 17: Define (≔) in lambda bodies
+;;; ===================================================================
+
+;; Simple define - bind and use (use keywords for consistency)
+(⊨ :eval-define-simple
+   #5
+   ((eval (⌜ ((λ () (≔ :x #5) :x)))) env-arith))
+
+;; Define with expression
+(⊨ :eval-define-expr
+   #7
+   ((eval (⌜ ((λ () (≔ :y (:⊕ #3 #4)) :y)))) env-arith))
+
+;; Sequential defines
+(⊨ :eval-define-seq
+   #15
+   ((eval (⌜ ((λ () (≔ :a #5) (≔ :b #10) (:⊕ :a :b))))) env-arith))
+
+;; Define shadows outer binding
+(⊨ :eval-define-shadow
+   #100
+   ((eval (⌜ ((λ (:x) (≔ :x #100) :x) #1))) env-arith))
+
+;; Define uses outer scope
+(⊨ :eval-define-uses-outer
+   #12
+   ((eval (⌜ ((λ (:x) (≔ :y (:⊕ :x #5)) :y) #7))) env-arith))
+
+;; Standalone define returns value
+(⊨ :eval-define-standalone
+   #42
+   ((eval (⌜ (≔ :z #42))) empty-env))
