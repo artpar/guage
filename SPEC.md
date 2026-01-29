@@ -1214,6 +1214,31 @@ All I/O operations return errors on failure:
    (:else #000000))        ; → #000000 if no match
 ```
 
+**Stdlib Control Macros (stdlib/macros_control.scm):**
+
+```scheme
+;; ∧* (and*) - Short-circuit AND (1-4 args)
+;; Returns first #f, or last value if all non-false
+(∧* #t #t)               ; → #t
+(∧* #t #f)               ; → #f
+(∧* #t #t #42)           ; → #42 (returns last value)
+(∧* #f (⊘ #1 #0))        ; → #f (short-circuits, no div-by-zero)
+
+;; ∨* (or*) - Short-circuit OR (1-4 args)
+;; Returns first non-false value, or last value
+(∨* #f #t)               ; → #t
+(∨* #f #42)              ; → #42 (first non-false)
+(∨* #t (⊘ #1 #0))        ; → #t (short-circuits)
+
+;; ⇒ (when) - Execute body if condition true
+(⇒ #t :yes)              ; → :yes
+(⇒ #f :never)            ; → ∅ (nil, body not evaluated)
+
+;; ⇏ (unless) - Execute body if condition false
+(⇏ #f :yes)              ; → :yes
+(⇏ #t :never)            ; → ∅ (nil, body not evaluated)
+```
+
 ### Generic Programming (3) - PARAMETRIC POLYMORPHISM
 | Symbol | Type | Meaning | Status |
 |--------|------|---------|--------|

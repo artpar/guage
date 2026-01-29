@@ -1,0 +1,134 @@
+; ═══════════════════════════════════════════════════════════════
+; Test Suite: Control Flow Macros (Day 77)
+; ═══════════════════════════════════════════════════════════════
+; Tests for short-circuit logical operators and control flow macros
+; - ∧* (and*) - short-circuit AND
+; - ∨* (or*) - short-circuit OR
+; - ⇒ (when) - conditional execution
+; - ⇏ (unless) - negative conditional
+; ═══════════════════════════════════════════════════════════════
+
+; Load the control macros
+(⋘ "bootstrap/stdlib/macros_control.scm")
+
+; ═══════════════════════════════════════════════════════════════
+; ∧* (short-circuit AND) tests
+; ═══════════════════════════════════════════════════════════════
+
+; Basic two-arg AND
+(⊨ (⌜ :and*-tt) #t (∧* #t #t))
+(⊨ (⌜ :and*-tf) #f (∧* #t #f))
+(⊨ (⌜ :and*-ft) #f (∧* #f #t))
+(⊨ (⌜ :and*-ff) #f (∧* #f #f))
+
+; Three-arg AND
+(⊨ (⌜ :and*-ttt) #t (∧* #t #t #t))
+(⊨ (⌜ :and*-ttf) #f (∧* #t #t #f))
+(⊨ (⌜ :and*-tft) #f (∧* #t #f #t))
+(⊨ (⌜ :and*-ftt) #f (∧* #f #t #t))
+
+; Four-arg AND
+(⊨ (⌜ :and*-4-all-true) #t (∧* #t #t #t #t))
+(⊨ (⌜ :and*-4-last-false) #f (∧* #t #t #t #f))
+
+; Single-arg AND (identity)
+(⊨ (⌜ :and*-single-t) #t (∧* #t))
+(⊨ (⌜ :and*-single-f) #f (∧* #f))
+
+; AND returns last value if all truthy (Lisp semantics)
+(⊨ (⌜ :and*-returns-last) #42 (∧* #t #t #42))
+(⊨ (⌜ :and*-returns-value) :done (∧* #t :done))
+
+; AND short-circuits - doesn't evaluate after false
+; We use a side-effect-free test: if short-circuit works,
+; the error won't be evaluated
+(⊨ (⌜ :and*-shortcircuit) #f (∧* #f (⊘ #1 #0)))
+
+; ═══════════════════════════════════════════════════════════════
+; ∨* (short-circuit OR) tests
+; ═══════════════════════════════════════════════════════════════
+
+; Basic two-arg OR
+(⊨ (⌜ :or*-tt) #t (∨* #t #t))
+(⊨ (⌜ :or*-tf) #t (∨* #t #f))
+(⊨ (⌜ :or*-ft) #t (∨* #f #t))
+(⊨ (⌜ :or*-ff) #f (∨* #f #f))
+
+; Three-arg OR
+(⊨ (⌜ :or*-fff) #f (∨* #f #f #f))
+(⊨ (⌜ :or*-fft) #t (∨* #f #f #t))
+(⊨ (⌜ :or*-ftf) #t (∨* #f #t #f))
+(⊨ (⌜ :or*-tff) #t (∨* #t #f #f))
+
+; Four-arg OR
+(⊨ (⌜ :or*-4-all-false) #f (∨* #f #f #f #f))
+(⊨ (⌜ :or*-4-first-true) #t (∨* #t #f #f #f))
+
+; Single-arg OR (identity)
+(⊨ (⌜ :or*-single-t) #t (∨* #t))
+(⊨ (⌜ :or*-single-f) #f (∨* #f))
+
+; OR returns first truthy value (Lisp semantics)
+(⊨ (⌜ :or*-returns-first-truthy) #42 (∨* #f #42 #99))
+(⊨ (⌜ :or*-returns-value) :found (∨* #f :found))
+
+; OR short-circuits - doesn't evaluate after true
+(⊨ (⌜ :or*-shortcircuit) #t (∨* #t (⊘ #1 #0)))
+
+; ═══════════════════════════════════════════════════════════════
+; ⇒ (when) tests - execute body if condition true
+; ═══════════════════════════════════════════════════════════════
+
+; When with true condition - returns body result
+(⊨ (⌜ :when-true-simple) :yes (⇒ #t :yes))
+(⊨ (⌜ :when-true-expr) #42 (⇒ (≡ #1 #1) (⊕ #40 #2)))
+
+; When with false condition - returns nil
+(⊨ (⌜ :when-false) ∅ (⇒ #f :never))
+(⊨ (⌜ :when-false-expr) ∅ (⇒ (≡ #1 #2) :never))
+
+; When doesn't evaluate body on false
+(⊨ (⌜ :when-short-circuit) ∅ (⇒ #f (⊘ #1 #0)))
+
+; When with complex condition
+(⊨ (⌜ :when-complex-cond) :big (⇒ (> #10 #5) :big))
+
+; ═══════════════════════════════════════════════════════════════
+; ⇏ (unless) tests - execute body if condition false
+; ═══════════════════════════════════════════════════════════════
+
+; Unless with false condition - returns body result
+(⊨ (⌜ :unless-false-simple) :yes (⇏ #f :yes))
+(⊨ (⌜ :unless-false-expr) #42 (⇏ (≡ #1 #2) (⊕ #40 #2)))
+
+; Unless with true condition - returns nil
+(⊨ (⌜ :unless-true) ∅ (⇏ #t :never))
+(⊨ (⌜ :unless-true-expr) ∅ (⇏ (≡ #1 #1) :never))
+
+; Unless doesn't evaluate body on true
+(⊨ (⌜ :unless-short-circuit) ∅ (⇏ #t (⊘ #1 #0)))
+
+; Unless with complex condition
+(⊨ (⌜ :unless-complex-cond) :small (⇏ (> #5 #10) :small))
+
+; ═══════════════════════════════════════════════════════════════
+; Combined usage tests
+; ═══════════════════════════════════════════════════════════════
+
+; Nested control flow
+(⊨ (⌜ :nested-when-and) :both
+   (⇒ (∧* #t #t) :both))
+
+(⊨ (⌜ :nested-unless-or) :none
+   (⇏ (∨* #f #f) :none))
+
+; And/or with when/unless
+(≔ check-range (λ (x)
+  (⇒ (∧* (> x #0) (< x #100))
+      :in-range)))
+
+(⊨ (⌜ :combined-in-range) :in-range (check-range #50))
+(⊨ (⌜ :combined-out-range) ∅ (check-range #150))
+
+; ═══════════════════════════════════════════════════════════════
+"✓ Control macros test suite complete"

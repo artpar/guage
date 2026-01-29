@@ -1,13 +1,51 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-01-29 (Day 76 COMPLETE)
+Updated: 2026-01-29 (Day 77 COMPLETE)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 76 - Stdlib Pattern Macros Complete (2026-01-29)
+# Session Handoff: Day 77 - Control Flow Macros Complete (2026-01-29)
 
-## 🎉 Day 76 Progress - Stdlib Pattern Macros!
+## 🎉 Day 77 Progress - Short-Circuit Logical & Control Flow Macros!
+
+**RESULT:** 74/74 test files passing (100%), 46 new control macro tests
+
+**New Macros Using ⧉⊜ (pattern macros):**
+
+1. **∧* (and*)** - Short-circuit AND (1-4 args)
+   ```scheme
+   (∧* #t #t #42)           ; → #42 (returns last value)
+   (∧* #f (⊘ #1 #0))        ; → #f (short-circuits, no div-by-zero)
+   ```
+
+2. **∨* (or*)** - Short-circuit OR (1-4 args)
+   ```scheme
+   (∨* #f #42 #99)          ; → #42 (first non-false value)
+   (∨* #t (⊘ #1 #0))        ; → #t (short-circuits)
+   ```
+
+3. **⇒ (when)** - Execute body if condition true
+   ```scheme
+   (⇒ #t :yes)              ; → :yes
+   (⇒ #f :never)            ; → ∅ (nil, body not evaluated)
+   ```
+
+4. **⇏ (unless)** - Execute body if condition false
+   ```scheme
+   (⇏ #f :yes)              ; → :yes
+   (⇏ #t :never)            ; → ∅
+   ```
+
+**Implementation:**
+- `bootstrap/stdlib/macros_control.scm` - New stdlib module
+- Pattern-based clauses using ⧉⊜ system
+- ∨* uses Lisp semantics: returns first non-#f value (not just #t)
+- True short-circuit evaluation (unlike primitive ∧/∨)
+
+---
+
+## Previous Day: Day 76 - Stdlib Pattern Macros
 
 **RESULT:** 73/73 test files passing (100%), 22 new stdlib macro tests
 
@@ -95,10 +133,11 @@ Pattern-based macros with multiple clauses and pattern matching on syntax.
 
 **System State:**
 - **Primitives:** 125 total
-- **Tests:** 73/73 test files passing (100%)
+- **Tests:** 74/74 test files passing (100%)
 - **Self-Hosting Eval Tests:** 52/52 passing (100%)
 - **Pattern Macros:** 29/29 tests passing
 - **Stdlib Pattern Macros:** 22/22 tests passing (⇒*, ≔⇊, ⇤)
+- **Stdlib Control Macros:** 46/46 tests passing (∧*, ∨*, ⇒, ⇏)
 - **Pattern Matching:** World-class (guards, as-patterns, or-patterns, view patterns)
 - **Build:** Clean, O2 optimized, 32MB stack
 
@@ -148,6 +187,7 @@ Pattern-based macros with multiple clauses and pattern matching on syntax.
 
 | Day | Feature | Tests |
 |-----|---------|-------|
+| 77 | Control Flow Macros (∧*, ∨*, ⇒, ⇏) | 74/74 (100%), 46 control tests |
 | 76 | Stdlib Pattern Macros (⇒*, ≔⇊, ⇤) | 73/73 (100%), 22 stdlib macro tests |
 | 75 | Pattern-Based Macros (⧉⊜) | 72/72 (100%), 29 macro tests |
 | 74 | Mutual Recursion in Letrec | 71/71 (100%), 52 eval tests |
@@ -200,6 +240,15 @@ make rebuild      # Clean + rebuild
 ---
 
 ## Session End Checklist ✅
+
+**Day 77 Complete (2026-01-29):**
+- ✅ Implemented ∧* (and*) - short-circuit AND with 1-4 args
+- ✅ Implemented ∨* (or*) - short-circuit OR with Lisp semantics
+- ✅ Implemented ⇒ (when) - conditional execution
+- ✅ Implemented ⇏ (unless) - negative conditional
+- ✅ Created `bootstrap/stdlib/macros_control.scm` stdlib module
+- ✅ Created `bootstrap/tests/test_control_macros.test` (46 tests)
+- ✅ All 74/74 test files passing (100%)
 
 **Day 76 Complete (2026-01-29):**
 - ✅ Implemented ⇒* (cond) pattern macro with 1-5 clause support
@@ -308,5 +357,5 @@ docs/planning/SELF_HOSTING_COMPLETION.md  # Detailed roadmap
 
 ---
 
-**Last Updated:** 2026-01-29 (Day 76 complete)
-**Next Session:** Day 77 - Rest pattern syntax OR self-hosting parser
+**Last Updated:** 2026-01-29 (Day 77 complete)
+**Next Session:** Day 78 - Rest pattern syntax OR self-hosting parser
