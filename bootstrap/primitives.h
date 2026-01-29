@@ -28,6 +28,7 @@ Cell* prim_apply(Cell* args);     /* · - application */
 /* Metaprogramming */
 Cell* prim_quote(Cell* args);     /* ⌜⌝ - quote */
 Cell* prim_eval(Cell* args);      /* ⌞⌟ - eval */
+Cell* prim_prim_apply(Cell* args); /* ⊡ - prim-apply (apply primitive to args) */
 
 /* Comparison & Logic */
 Cell* prim_equal(Cell* args);     /* ≡ - equality */

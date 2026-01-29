@@ -111,6 +111,28 @@ Cell* prim_eval(Cell* args) {
     return eval(ctx, expr);
 }
 
+/* ⊡ - prim-apply (apply primitive to argument list) */
+Cell* prim_prim_apply(Cell* args) {
+    Cell* fn = arg1(args);
+    Cell* arg_list = arg2(args);
+
+    /* Check that fn is a builtin primitive */
+    if (fn->type != CELL_BUILTIN) {
+        return cell_error("not-a-primitive", fn);
+    }
+
+    /* Check that arg_list is a proper list */
+    if (!cell_is_nil(arg_list) && !cell_is_pair(arg_list)) {
+        return cell_error("not-a-list", arg_list);
+    }
+
+    /* Get the primitive function pointer */
+    Cell* (*builtin_fn)(Cell*) = (Cell* (*)(Cell*))fn->data.atom.builtin;
+
+    /* Apply the primitive to the argument list */
+    return builtin_fn(arg_list);
+}
+
 /* ∇ - pattern match is now a SPECIAL FORM in eval.c (not a primitive) */
 /* This ensures clauses are not evaluated before pattern matching */
 
@@ -3728,6 +3750,7 @@ static Primitive primitives[] = {
     /* Metaprogramming */
     {"⌜", prim_quote, 1, {"Quote expression (prevent evaluation)", "α → α"}},
     {"⌞", prim_eval, 1, {"Evaluate expression as code", "α → β"}},
+    {"⊡", prim_prim_apply, 2, {"Apply primitive to argument list", "(α → β) → [α] → β"}},
 
     /* Pattern Matching - ∇ is now a SPECIAL FORM in eval.c, not a primitive */
 

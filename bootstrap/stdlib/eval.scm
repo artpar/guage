@@ -65,7 +65,7 @@
 ;; env: Current environment
 (≔ apply-fn (λ (fn) (λ (args) (λ (env)
   (? (:? fn)
-     ((env-lookup env) fn)         ; Look up function name
+     (((apply-fn ((env-lookup env) fn)) args) env)  ; Look up and apply
      (? (⟨⟩? fn)
         ; fn is a pair - check if it's a closure
         (? (≡ (◁ fn) :closure)
@@ -81,8 +81,8 @@
                  (⚠ :invalid-closure-structure fn))
               (⚠ :invalid-closure-structure fn))
            (⚠ :not-a-closure fn))
-        ; fn is not a symbol or pair - might be a primitive
-        (⚠ :cannot-apply-primitive fn)))))))
+        ; fn is not a symbol or pair - must be a primitive
+        (⊡ fn args)))))))
 
 ;; Evaluate list of expressions
 (≔ eval-list-args (λ (exprs) (λ (env)

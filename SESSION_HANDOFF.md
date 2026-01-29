@@ -5,11 +5,64 @@ Updated: 2026-01-29
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 64 Complete - Mutation Testing + File Loading Investigation (2026-01-29)
+# Session Handoff: Day 65 Complete - Self-Hosting Evaluator Primitive Support! (2026-01-29)
 
-## 🎯 For Next Session (Day 65): Start Here
+## 🎯 For Next Session (Day 66): Start Here
 
-**Session 64 Status:** ✅ COMPLETE - Mutation Testing (⌂⊨⊗) Implemented, No File Loading Hang!
+**Session 65 Status:** ✅ COMPLETE - Self-Hosting Evaluator 95.5% Complete (21/22 tests)!
+
+### What Was Completed This Session (Day 65)
+
+**Self-Hosting Evaluator - Primitive Support (4 hours)**
+- ✅ Implemented new primitive `⊡` (prim-apply) - applies C primitives to argument lists
+- ✅ Fixed self-hosting evaluator to call C primitives (⊕, ⊗, >, etc.)
+- ✅ Updated eval.scm to use `⊡` for primitive application
+- ✅ Fixed tests to use symbol notation (`:⊕` instead of `⊕` in quoted expressions)
+- ✅ **Self-hosting evaluator: 21/22 tests passing (95.5%)**
+- ✅ Progress: **59% → 95.5%** (13/22 → 21/22 tests)
+- ✅ Updated SPEC.md: 112→113 primitives total
+- ✅ **66/67 main tests still passing (98.5%)**
+
+**Technical Details:**
+- Created C primitive `⊡` (prim-apply) in primitives.c
+- Takes a builtin primitive and an argument list, applies primitive to args
+- Updated `apply-fn` in eval.scm to recursively lookup symbols and use `⊡` for builtins
+- Fixed test file to use `:⊕` notation in quoted expressions (quote issue with bare primitives)
+
+**Example Usage:**
+```scheme
+; Create environment with primitives
+(≔ env (((env-extend ∅) :⊕) ⊕))
+
+; Evaluate arithmetic expression
+((eval (⌜ (:⊕ #2 #3))) env)  ; → #5
+
+; Higher-order function with primitives
+((eval (⌜ ((λ (:x :y) (:⊕ :x :y)) #3 #4))) env)  ; → #7
+```
+
+**Test Results:**
+- ✅ test_eval.test: **21/22 passing (95.5%)**
+  - Tests 1-11: Pure lambda calculus ✅
+  - Tests 12-14: Arithmetic primitives ✅ (NEW!)
+  - Tests 15-16: Conditionals ✅
+  - Test 17: Comparison primitives ✅ (NEW!)
+  - Tests 18-20: Primitives in lambdas ✅ (NEW!)
+  - Test 21: Empty application ⚠️ (semantic ambiguity - nil vs empty list)
+  - Test 22: Non-function error ✅
+
+**Known Limitation:**
+- Empty application test fails due to semantic ambiguity: `∅` as a VALUE should self-evaluate, but `()` as EXPRESSION should be an error. Since `(⌜ ())` === `∅`, the distinction is lost at the value level.
+
+### 🎯 What to Do Next (Day 66)
+
+**Day 65 is COMPLETE!** Self-hosting evaluator can now call C primitives. Ready for new work.
+
+---
+
+## Previous Sessions Archive
+
+### Day 64 Complete: Mutation Testing + File Loading Investigation
 
 ### What Was Completed This Session (Day 64)
 

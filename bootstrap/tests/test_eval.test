@@ -90,15 +90,15 @@
 
 (⊨ :eval-add
    #5
-   ((eval (⌜ (⊕ #2 #3))) env-arith))
+   ((eval (⌜ (:⊕ #2 #3))) env-arith))
 
 (⊨ :eval-multiply
    #12
-   ((eval (⌜ (⊗ #3 #4))) env-arith))
+   ((eval (⌜ (:⊗ #3 #4))) env-arith))
 
 (⊨ :eval-nested-arithmetic
    #14
-   ((eval (⌜ (⊕ (⊗ #2 #3) (⊗ #2 #4)))) env-arith))
+   ((eval (⌜ (:⊕ (:⊗ #2 #3) (:⊗ #2 #4)))) env-arith))
 
 ;;; ===================================================================
 ;;; Test 6: Conditionals
@@ -118,7 +118,7 @@
 
 (⊨ :eval-if-comparison
    #100
-   ((eval (⌜ (? (> #5 #3) #100 #200))) env-cond))
+   ((eval (⌜ (? (:> #5 #3) #100 #200))) env-cond))
 
 ;;; ===================================================================
 ;;; Test 7: Lambda with captured variables
@@ -126,7 +126,7 @@
 
 (⊨ :eval-lambda-capture
    #10
-   ((eval (⌜ ((λ (:x) ((λ (:y) (⊕ :x :y)) #3)) #7))) env-arith))
+   ((eval (⌜ ((λ (:x) ((λ (:y) (:⊕ :x :y)) #3)) #7))) env-arith))
 
 ;;; ===================================================================
 ;;; Test 8: Multiple parameters
@@ -134,7 +134,7 @@
 
 (⊨ :eval-lambda-two-params
    #7
-   ((eval (⌜ ((λ (:x :y) (⊕ :x :y)) #3 #4))) env-arith))
+   ((eval (⌜ ((λ (:x :y) (:⊕ :x :y)) #3 #4))) env-arith))
 
 ;;; ===================================================================
 ;;; Test 9: Higher-order functions
@@ -143,7 +143,7 @@
 ;; Function that returns a function
 (⊨ :eval-higher-order
    #10
-   ((eval (⌜ (((λ (:x) (λ (:y) (⊕ :x :y))) #3) #7))) env-arith))
+   ((eval (⌜ (((λ (:x) (λ (:y) (:⊕ :x :y))) #3) #7))) env-arith))
 
 ;;; ===================================================================
 ;;; Test 10: Error cases

@@ -31,9 +31,9 @@ Everything is a **Cell**:
 
 **See:** `KEYWORDS.md` for complete specification.
 
-## Runtime Primitives (112 Total)
+## Runtime Primitives (113 Total)
 
-**Status:** 112 primitives implemented (6 placeholders, 106 fully functional + 6 placeholders = 112 total)
+**Status:** 113 primitives implemented (6 placeholders, 107 fully functional + 6 placeholders = 113 total)
 
 ### Core Lambda Calculus (3) ✅
 | Symbol | Type | Meaning | Status |
@@ -44,11 +44,12 @@ Everything is a **Cell**:
 
 **Note:** `λ`, `·`, `≔`, and De Bruijn indices (0, 1, 2...) are part of the evaluator, not primitives.
 
-### Metaprogramming Core (4) ✅
+### Metaprogramming Core (5) ✅
 | Symbol | Type | Meaning | Status |
 |--------|------|---------|--------|
 | `⌜` | `α → ⌜α⌝` | Quote (code→data) | ✅ DONE |
 | `⌞` | `⌜α⌝ → α` | Eval (data→code) | ✅ DONE |
+| `⊡` | `(α → β) → [α] → β` | Apply primitive to argument list | ✅ DONE (Day 65) |
 | `⌞̃` | `α → ⌜α⌝` | Quasiquote (template with unquote) | ✅ DONE (Day 32 Part 2) |
 | `~` | `α → α` | Unquote (evaluate in quasiquote) | ✅ DONE (Day 32 Part 2) |
 
