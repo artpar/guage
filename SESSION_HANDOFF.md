@@ -1,13 +1,75 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-01-29 (Day 84 COMPLETE)
+Updated: 2026-01-29 (Day 85 COMPLETE)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 84 - Type Validation (2026-01-29)
+# Session Handoff: Day 85 - Type Inference (2026-01-29)
 
-## 🎉 Day 84 Progress - Type Validation System!
+## 🎉 Day 85 Progress - Type Inference System!
+
+**RESULT:** 83/83 test files passing (100%), 73 new tests (type inference)
+
+### New Feature: Type Inference System
+
+Three-layer type inference: deep value inference, primitive signatures, and expression-level static inference.
+
+**New Primitives (2):**
+- `(∈⍜ val)` - Deep type inference on values (recursive pair/list/struct inference)
+- `(∈⍜⊕ :prim)` - Get type signature of any primitive operation
+
+**New Special Form (1):**
+- `(∈⍜* expr)` - Infer type of expression WITHOUT evaluating it
+
+**Deep Value Inference (∈⍜) — unlike ∈⊙ which returns shallow types:**
+```scheme
+(∈⍜ #42)                      ; → (ℤ)
+(∈⍜ (⟨⟩ #1 #2))               ; → (⟨⟩ₜ (ℤ) (ℤ))  — deep pair type
+(∈⍜ (⟨⟩ #1 (⟨⟩ #2 ∅)))        ; → ([]ₜ (ℤ))       — detects proper lists
+(∈⍜ (⟨⟩ #1 (⟨⟩ "hi" ∅)))      ; → ([]ₜ (∪ₜ (ℤ) (𝕊))) — mixed list = union
+(∈⍜ (λ (x y) (⊕ x y)))        ; → (→ (⊤) (⊤) (⊤)) — from arity
+(∈⍜ (⚠ :oops #0))             ; → error type struct
+(∈⍜ (⊙ :Point #3 #4))         ; → struct type with tag
+```
+
+**Named Binding Inference — uses annotation registry:**
+```scheme
+(≔ x #42) (∈ x (ℤ))
+(∈⍜ x)                        ; → (ℤ) — from annotation
+
+(≔ f (λ (n) (⊕ n #1))) (∈ f (→ (ℤ) (ℤ)))
+(∈⍜ f)                        ; → (→ (ℤ) (ℤ)) — from annotation
+```
+
+**Primitive Type Signatures (∈⍜⊕):**
+```scheme
+(∈⍜⊕ :⊕)                      ; → (→ (ℤ) (ℤ) (ℤ))
+(∈⍜⊕ :<)                      ; → (→ (ℤ) (ℤ) (𝔹))
+(∈⍜⊕ :≡)                      ; → (→ (⊤) (⊤) (𝔹))
+(∈⍜⊕ :¬)                      ; → (→ (𝔹) (𝔹))
+(∈⍜⊕ :≈⊕)                     ; → (→ (𝕊) (𝕊) (𝕊))
+(∈⍜⊕ :≈#)                     ; → (→ (𝕊) (ℤ))
+```
+
+**Expression Type Inference (∈⍜* — static, no evaluation):**
+```scheme
+(∈⍜* #42)                     ; → (ℤ)
+(∈⍜* (⊕ #1 #2))               ; → (ℤ) — from ⊕ signature
+(∈⍜* (< #1 #2))               ; → (𝔹) — from < signature
+(∈⍜* (? #t #1 "hi"))          ; → (∪ₜ (ℤ) (𝕊)) — union of branches
+(∈⍜* (λ (x) (⊕ x #1)))       ; → (→ (⊤) (ℤ)) — body inferred
+(∈⍜* (my-fn #5))              ; → uses function's annotation
+```
+
+**Infrastructure improvements:**
+- `types_equal` now handles `:struct` and `:graph` kinds
+- Type helper functions (`make_type_struct`, `is_type_struct`, `get_type_kind`, `types_equal`) exported for cross-module use
+- `∈⍜` special form handles error values (infers type instead of propagating)
+
+---
+
+## Previous Day: Day 84 - Type Validation
 
 **RESULT:** 82/82 test files passing (100%), 35 new tests (type validation)
 
@@ -449,9 +511,10 @@ Pattern-based macros with multiple clauses and pattern matching on syntax.
 ## Current Status 🎯
 
 **System State:**
-- **Primitives:** 130 total (added ∈✓, ∈✓*, ∈⊢)
-- **Tests:** 82/82 test files passing (100%)
-- **Type Validation Tests:** 35/35 tests passing (new!)
+- **Primitives:** 132 total (added ∈⍜, ∈⍜⊕ + ∈⍜* special form)
+- **Tests:** 83/83 test files passing (100%)
+- **Type Inference Tests:** 73/73 tests passing (new!)
+- **Type Validation Tests:** 35/35 tests passing
 - **Type Annotation Tests:** 55/55 tests passing
 - **Self-Hosting Eval Tests:** 66/66 passing (100%) - includes N-function mutual recursion
 - **Data Flow Tests:** 42/42 tests passing
@@ -515,12 +578,17 @@ Pattern-based macros with multiple clauses and pattern matching on syntax.
    - Runtime type checking against declared types
    - New primitives: ∈✓, ∈✓*, ∈⊢
 
+8. ✅ **Type Inference** (3-4 hours) - COMPLETED DAY 85
+   - Deep value inference, primitive signatures, expression inference
+   - New primitives: ∈⍜, ∈⍜⊕, ∈⍜* special form
+
 ---
 
 ## Recent Milestones
 
 | Day | Feature | Tests |
 |-----|---------|-------|
+| 85 | Type Inference (∈⍜, ∈⍜⊕, ∈⍜*) - deep/static inference | 83/83 (100%), 73 new tests |
 | 84 | Type Validation (∈✓, ∈✓*, ∈⊢) - compiler-level | 82/82 (100%), 35 new tests |
 | 83 | Type Annotations (18 primitives for gradual typing) | 81/81 (100%), 55 new tests |
 | 82 | Exception Handling Macros (⚡, ⚡⊳, ⚡∅, etc.) + ⚠⊙, ⚠→ primitives | 80/80 (100%), 44 new tests |
@@ -682,42 +750,53 @@ git log --oneline -3         # See recent commits
 
 ### System State Summary
 - **Core evaluator:** COMPLETE with N-function mutual recursion (66 eval tests)
-- **Type system:** COMPLETE - annotations (Day 83) + validation (Day 84)
+- **Type system:** COMPLETE - annotations (Day 83) + validation (Day 84) + inference (Day 85)
 - **Data flow analysis:** COMPLETE - set ops, fixed point, reaching defs, live vars
 - **Exception macros:** COMPLETE - ⚡, ⚡⊳, ⚡∅, ⚡?, ⚡⊙, ⚡∧, ⚡∨, ⚡⟲, ⚡↺ (44 tests)
 - **Iteration macros:** COMPLETE - ⊎, ⊲*, ⟳, ⊎↦, ⊎⊲, ⟳← (31 tests)
 - **Pattern macros:** COMPLETE with unlimited arity via ellipsis (Day 78-79)
 - **Stdlib macros:** All macros now support unlimited args/clauses/bindings
 - **String stdlib:** COMPLETE - split, join, trim, replace, contains, index-of
-- **Focus:** Type inference, more compiler features
+- **Focus:** Effect system, optimizer, more compiler features
 
 ### Key Files
 ```
-bootstrap/tests/test_type_validation.test # Type validation tests (35 tests)
+bootstrap/tests/test_type_inference.test   # Type inference tests (73 tests)
+bootstrap/tests/test_type_validation.test  # Type validation tests (35 tests)
 bootstrap/tests/test_type_annotations.test # Type annotation tests (55 tests)
-bootstrap/eval.c                          # Special forms: ∈, ∈?, ∈✓, ∈⊢
-bootstrap/primitives.c                    # Type primitives
+bootstrap/eval.c                           # Special forms: ∈, ∈?, ∈✓, ∈⊢, ∈⍜, ∈⍜*
+bootstrap/primitives.c                     # Type primitives (∈⍜, ∈⍜⊕)
 ```
 
-### What We Built Today (Day 84)
+### What We Built Today (Day 85)
 
-**Type Validation Primitives (Compiler-Level):**
+**Type Inference Primitives:**
 
 | Symbol | Type | Description |
 |--------|------|-------------|
-| ∈✓ | :symbol → 𝔹 \| ⚠ | Validate binding against declared type |
-| ∈✓* | () → 𝔹 \| ⚠ | Validate ALL declared types |
-| ∈⊢ | :symbol → α... → 𝔹 \| ⚠ | Type-check function application |
+| ∈⍜ | α → Type | Deep type inference on values (recursive pair/list/struct) |
+| ∈⍜⊕ | :symbol → Type \| ∅ | Get type signature of primitive operation |
+| ∈⍜* | expr → Type | Infer type of expression without evaluation (special form) |
 
-**Previous Day (Day 83) - Type Annotations:**
-| Symbol | Type | Description |
-|--------|------|-------------|
-| ⚠⊙ | ⚠ → :symbol | Get error type |
-| ⚠→ | ⚠ → α | Get error data |
-
-**Bug Fix:** Macros with nested lambdas now work correctly inside other lambdas. Solution: expand macros BEFORE De Bruijn conversion.
+**Infrastructure:**
+- `types_equal` extended for `:struct` and `:graph` kinds
+- Type helpers exported for cross-module use
+- Primitive type signature registry (arithmetic, comparison, logic, string, math)
 
 ---
+
+**Day 85 Complete (2026-01-29):**
+- ✅ Added `∈⍜` (deep type inference) special form + primitive
+- ✅ Added `∈⍜⊕` (primitive type signatures) primitive with registry for ~40 primitives
+- ✅ Added `∈⍜*` (expression type inference) special form — static analysis without evaluation
+- ✅ Deep value inference: recursive pair/list/struct/function type inference
+- ✅ List detection: proper lists → `([]ₜ elem-type)`, mixed → union element types
+- ✅ Named binding inference: annotation registry first, then value inference
+- ✅ Expression inference: primitives, conditionals (union branches), lambdas (body inference)
+- ✅ Extended `types_equal` for `:struct` and `:graph` kinds
+- ✅ Exported type helpers for cross-module use
+- ✅ Created `bootstrap/tests/test_type_inference.test` (73 tests)
+- ✅ All 83/83 test files passing (100%)
 
 **Day 84 Complete (2026-01-29):**
 - ✅ Added `∈✓` (validate binding) special form + primitive
@@ -730,5 +809,5 @@ bootstrap/primitives.c                    # Type primitives
 
 ---
 
-**Last Updated:** 2026-01-29 (Day 84 complete)
-**Next Session:** Day 85 - Type inference or test runner improvements
+**Last Updated:** 2026-01-29 (Day 85 complete)
+**Next Session:** Day 86 - Effect system foundation or optimizer

@@ -599,7 +599,7 @@ Cell* prim_is_atom(Cell* args) {
 static Cell* type_annotation_registry = NULL;
 
 /* Helper: Create a type structure with given tag and fields */
-static Cell* make_type_struct(const char* kind, Cell* fields) {
+Cell* make_type_struct(const char* kind, Cell* fields) {
     Cell* type_tag = cell_symbol(":type");
     Cell* kind_field = cell_cons(cell_symbol(":kind"), cell_symbol(kind));
     Cell* fields_with_kind = cell_cons(kind_field, fields);
@@ -607,14 +607,14 @@ static Cell* make_type_struct(const char* kind, Cell* fields) {
 }
 
 /* Helper: Check if cell is a type structure */
-static bool is_type_struct(Cell* c) {
+bool is_type_struct(Cell* c) {
     if (!cell_is_struct(c)) return false;
     Cell* tag = cell_struct_type_tag(c);
     return cell_is_symbol(tag) && strcmp(cell_get_symbol(tag), ":type") == 0;
 }
 
 /* Helper: Get type kind from type structure */
-static const char* get_type_kind(Cell* type) {
+const char* get_type_kind(Cell* type) {
     if (!is_type_struct(type)) return NULL;
     Cell* kind = cell_struct_get_field(type, cell_symbol(":kind"));
     if (!kind || !cell_is_symbol(kind)) return NULL;
@@ -622,7 +622,7 @@ static const char* get_type_kind(Cell* type) {
 }
 
 /* Helper: Check type equality recursively */
-static bool types_equal(Cell* t1, Cell* t2) {
+bool types_equal(Cell* t1, Cell* t2) {
     if (!is_type_struct(t1) || !is_type_struct(t2)) {
         return cell_equal(t1, t2);
     }
@@ -673,6 +673,19 @@ static bool types_equal(Cell* t1, Cell* t2) {
         Cell* r1 = cell_struct_get_field(t1, cell_symbol(":right"));
         Cell* r2 = cell_struct_get_field(t2, cell_symbol(":right"));
         return types_equal(l1, l2) && types_equal(r1, r2);
+    }
+
+    /* For struct types, compare tags */
+    if (strcmp(k1, ":struct") == 0) {
+        Cell* tag1 = cell_struct_get_field(t1, cell_symbol(":tag"));
+        Cell* tag2 = cell_struct_get_field(t2, cell_symbol(":tag"));
+        if (tag1 && tag2) return cell_equal(tag1, tag2);
+        return tag1 == tag2; /* Both NULL = equal */
+    }
+
+    /* For graph types, kind equality is sufficient */
+    if (strcmp(k1, ":graph") == 0) {
+        return true;
     }
 
     return false;
@@ -1276,6 +1289,315 @@ Cell* prim_type_check_apply(Cell* args) {
 
     cell_release(fn_type);
     return cell_bool(true);
+}
+
+/* ============================================================================
+ * Type Inference Primitives (Day 85)
+ * ============================================================================ */
+
+/* Helper: Check if value is a proper list (nil-terminated pair chain) */
+static bool is_proper_list(Cell* val) {
+    Cell* current = val;
+    while (cell_is_pair(current)) {
+        current = cell_cdr(current);
+    }
+    return cell_is_nil(current);
+}
+
+/* Forward declaration for recursive inference */
+static Cell* infer_value_type(Cell* val);
+
+/* Helper: Collect all element types from a proper list, returning
+ * a single type (possibly union) that covers all elements.
+ * Assumes val is a proper list (already checked). */
+static Cell* infer_list_element_type(Cell* val) {
+    if (cell_is_nil(val)) {
+        /* Empty list has no element type - use ⊤ */
+        return make_type_struct(":any", cell_nil());
+    }
+
+    /* Infer type of first element */
+    Cell* first = cell_car(val);
+    Cell* result_type = infer_value_type(first);
+
+    /* Walk rest of list, building union if types differ */
+    Cell* current = cell_cdr(val);
+    while (cell_is_pair(current)) {
+        Cell* elem = cell_car(current);
+        Cell* elem_type = infer_value_type(elem);
+
+        if (!types_equal(result_type, elem_type)) {
+            /* Build union of existing result_type and new elem_type */
+            Cell* left_field = cell_cons(cell_symbol(":left"), result_type);
+            Cell* right_field = cell_cons(cell_symbol(":right"), elem_type);
+            Cell* fields = cell_cons(right_field, cell_nil());
+            fields = cell_cons(left_field, fields);
+            result_type = make_type_struct(":union", fields);
+        } else {
+            cell_release(elem_type);
+        }
+
+        current = cell_cdr(current);
+    }
+
+    return result_type;
+}
+
+/* Core: Infer the deep type of a runtime value.
+ * Unlike prim_typeof which returns shallow types (:pair, :function),
+ * this recursively infers structure:
+ *   pairs → (⟨⟩ₜ car-type cdr-type)
+ *   proper lists → ([]ₜ element-type)
+ *   functions → (→ domain codomain) from annotation, or (→ ⊤ ... ⊤)
+ *   structs → struct type with tag
+ */
+static Cell* infer_value_type(Cell* val) {
+    /* Basic types → type structs */
+    if (cell_is_number(val)) {
+        return make_type_struct(":int", cell_nil());
+    }
+    if (cell_is_bool(val)) {
+        return make_type_struct(":bool", cell_nil());
+    }
+    if (cell_is_string(val)) {
+        return make_type_struct(":string", cell_nil());
+    }
+    if (cell_is_nil(val)) {
+        return make_type_struct(":nil", cell_nil());
+    }
+
+    /* Pair/List types → deep inference */
+    if (cell_is_pair(val)) {
+        if (is_proper_list(val)) {
+            /* Proper list: infer element type */
+            Cell* elem_type = infer_list_element_type(val);
+            Cell* elem_field = cell_cons(cell_symbol(":element"), elem_type);
+            Cell* fields = cell_cons(elem_field, cell_nil());
+            return make_type_struct(":list", fields);
+        } else {
+            /* Improper pair: infer car and cdr types */
+            Cell* car_type = infer_value_type(cell_car(val));
+            Cell* cdr_type = infer_value_type(cell_cdr(val));
+            Cell* car_field = cell_cons(cell_symbol(":car"), car_type);
+            Cell* cdr_field = cell_cons(cell_symbol(":cdr"), cdr_type);
+            Cell* fields = cell_cons(cdr_field, cell_nil());
+            fields = cell_cons(car_field, fields);
+            return make_type_struct(":pair-type", fields);
+        }
+    }
+
+    /* Function types → check annotation registry, else generic */
+    if (cell_is_lambda(val)) {
+        /* Check if this function has a declared name in the annotation registry */
+        /* We can't easily map lambda → name, so just build from arity */
+        int arity = val->data.lambda.arity;
+
+        /* Build (→ ⊤ ... ⊤) with arity+1 types (arity domains + 1 codomain) */
+        Cell* any_type = make_type_struct(":any", cell_nil());
+        Cell* result = any_type; /* codomain = ⊤ */
+
+        for (int i = arity - 1; i >= 0; i--) {
+            Cell* domain = make_type_struct(":any", cell_nil());
+            Cell* domain_field = cell_cons(cell_symbol(":domain"), domain);
+            Cell* codomain_field = cell_cons(cell_symbol(":codomain"), result);
+            Cell* fields = cell_cons(codomain_field, cell_nil());
+            fields = cell_cons(domain_field, fields);
+            result = make_type_struct(":func", fields);
+        }
+
+        return result;
+    }
+
+    /* Symbol type */
+    if (cell_is_symbol(val)) {
+        return make_type_struct(":symbol", cell_nil());
+    }
+
+    /* Error type */
+    if (cell_is_error(val)) {
+        return make_type_struct(":error", cell_nil());
+    }
+
+    /* Struct type → return type struct with the struct's tag */
+    if (cell_is_struct(val)) {
+        Cell* tag = cell_struct_type_tag(val);
+        if (tag) {
+            cell_retain(tag);
+            Cell* tag_field = cell_cons(cell_symbol(":tag"), tag);
+            Cell* fields = cell_cons(tag_field, cell_nil());
+            return make_type_struct(":struct", fields);
+        }
+        return make_type_struct(":struct", cell_nil());
+    }
+
+    /* Graph type */
+    if (cell_is_graph(val)) {
+        return make_type_struct(":graph", cell_nil());
+    }
+
+    return make_type_struct(":any", cell_nil());
+}
+
+/* ∈⍜ - Deep type inference on a value
+ * Unlike ∈⊙ which returns shallow types, this recursively infers:
+ *   (∈⍜ (⟨⟩ #1 #2)) → (⟨⟩ₜ (ℤ) (ℤ))  (not just :pair)
+ *   (∈⍜ (⟨⟩ #1 ∅))  → ([]ₜ (ℤ))        (detects proper lists)
+ *   (∈⍜ (λ (x) x))  → (→ (⊤) (⊤))      (from arity)
+ *
+ * For named bindings: checks annotation registry first.
+ */
+Cell* prim_type_infer(Cell* args) {
+    Cell* val = arg1(args);
+    return infer_value_type(val);
+}
+
+/* ∈⍜⊕ - Get type signature of a primitive operation
+ * (∈⍜⊕ :⊕) → (→ (ℤ) (ℤ) (ℤ))
+ * Returns ∅ for unknown primitives
+ */
+Cell* prim_type_prim_sig(Cell* args) {
+    Cell* sym = arg1(args);
+
+    if (!cell_is_symbol(sym)) {
+        return cell_error("∈⍜⊕ requires symbol", sym);
+    }
+
+    const char* name = cell_get_symbol(sym);
+    /* Strip leading : from keyword symbol */
+    if (name[0] == ':') name++;
+
+    /* Build type signatures for known primitives */
+
+    /* Helper macros for building common signatures */
+    #define SIG_INT make_type_struct(":int", cell_nil())
+    #define SIG_BOOL make_type_struct(":bool", cell_nil())
+    #define SIG_STR make_type_struct(":string", cell_nil())
+    #define SIG_ANY make_type_struct(":any", cell_nil())
+    #define SIG_NIL make_type_struct(":nil", cell_nil())
+
+    /* Build (→ a b) */
+    #define FUNC1(dom, cod) ({ \
+        Cell* _d = (dom); Cell* _c = (cod); \
+        Cell* _df = cell_cons(cell_symbol(":domain"), _d); \
+        Cell* _cf = cell_cons(cell_symbol(":codomain"), _c); \
+        Cell* _fs = cell_cons(_cf, cell_nil()); \
+        _fs = cell_cons(_df, _fs); \
+        make_type_struct(":func", _fs); \
+    })
+
+    /* Build (→ a (→ b c)) */
+    #define FUNC2(a, b, c) FUNC1((a), FUNC1((b), (c)))
+
+    /* Arithmetic: ℤ → ℤ → ℤ */
+    if (strcmp(name, "⊕") == 0 || strcmp(name, "⊖") == 0 ||
+        strcmp(name, "⊗") == 0 || strcmp(name, "⊘") == 0 ||
+        strcmp(name, "%") == 0) {
+        return FUNC2(SIG_INT, SIG_INT, SIG_INT);
+    }
+
+    /* Comparison: ℤ → ℤ → 𝔹 */
+    if (strcmp(name, "<") == 0 || strcmp(name, ">") == 0 ||
+        strcmp(name, "≤") == 0 || strcmp(name, "≥") == 0) {
+        return FUNC2(SIG_INT, SIG_INT, SIG_BOOL);
+    }
+
+    /* Equality: ⊤ → ⊤ → 𝔹 */
+    if (strcmp(name, "≡") == 0 || strcmp(name, "≢") == 0 ||
+        strcmp(name, "≟") == 0) {
+        return FUNC2(SIG_ANY, SIG_ANY, SIG_BOOL);
+    }
+
+    /* Logic: 𝔹 → 𝔹 → 𝔹 */
+    if (strcmp(name, "∧") == 0 || strcmp(name, "∨") == 0) {
+        return FUNC2(SIG_BOOL, SIG_BOOL, SIG_BOOL);
+    }
+
+    /* Logic: 𝔹 → 𝔹 */
+    if (strcmp(name, "¬") == 0) {
+        return FUNC1(SIG_BOOL, SIG_BOOL);
+    }
+
+    /* List primitives: ⊤ → ⊤ → ⊤ */
+    if (strcmp(name, "⟨⟩") == 0) {
+        return FUNC2(SIG_ANY, SIG_ANY, SIG_ANY);
+    }
+
+    /* List access: ⊤ → ⊤ */
+    if (strcmp(name, "◁") == 0 || strcmp(name, "▷") == 0) {
+        return FUNC1(SIG_ANY, SIG_ANY);
+    }
+
+    /* Type predicates: ⊤ → 𝔹 */
+    if (strcmp(name, "⚠?") == 0 || strcmp(name, "∅?") == 0) {
+        return FUNC1(SIG_ANY, SIG_BOOL);
+    }
+
+    /* Type introspection: ⊤ → ⊤ */
+    if (strcmp(name, "∈⊙") == 0 || strcmp(name, "⊙") == 0) {
+        return FUNC1(SIG_ANY, SIG_ANY);
+    }
+
+    /* String operations: 𝕊 → ℤ */
+    if (strcmp(name, "≈#") == 0) {
+        return FUNC1(SIG_STR, SIG_INT);
+    }
+
+    /* String concat: 𝕊 → 𝕊 → 𝕊 */
+    if (strcmp(name, "≈⊕") == 0) {
+        return FUNC2(SIG_STR, SIG_STR, SIG_STR);
+    }
+
+    /* String compare: 𝕊 → 𝕊 → 𝔹 */
+    if (strcmp(name, "≈≡") == 0) {
+        return FUNC2(SIG_STR, SIG_STR, SIG_BOOL);
+    }
+
+    /* String substring: 𝕊 → ℤ → ℤ → 𝕊 */
+    if (strcmp(name, "≈⊂") == 0) {
+        Cell* inner = FUNC2(SIG_INT, SIG_INT, SIG_STR);
+        return FUNC1(SIG_STR, inner);
+    }
+
+    /* String index: 𝕊 → ℤ → 𝕊 */
+    if (strcmp(name, "≈@") == 0) {
+        return FUNC2(SIG_STR, SIG_INT, SIG_STR);
+    }
+
+    /* Trace: ⊤ → ⊤ */
+    if (strcmp(name, "⟲") == 0) {
+        return FUNC1(SIG_ANY, SIG_ANY);
+    }
+
+    /* Error create: ⊤ → ⊤ → ⊤ */
+    if (strcmp(name, "⚠") == 0) {
+        return FUNC2(SIG_ANY, SIG_ANY, SIG_ANY);
+    }
+
+    /* Math functions: ℤ → ℤ */
+    if (strcmp(name, "√") == 0 || strcmp(name, "⌊") == 0 ||
+        strcmp(name, "⌈") == 0 || strcmp(name, "abs") == 0 ||
+        strcmp(name, "sin") == 0 || strcmp(name, "cos") == 0 ||
+        strcmp(name, "tan") == 0 || strcmp(name, "log") == 0 ||
+        strcmp(name, "exp") == 0) {
+        return FUNC1(SIG_INT, SIG_INT);
+    }
+
+    /* Math: ℤ → ℤ → ℤ */
+    if (strcmp(name, "^") == 0 || strcmp(name, "min") == 0 ||
+        strcmp(name, "max") == 0) {
+        return FUNC2(SIG_INT, SIG_INT, SIG_INT);
+    }
+
+    #undef SIG_INT
+    #undef SIG_BOOL
+    #undef SIG_STR
+    #undef SIG_ANY
+    #undef SIG_NIL
+    #undef FUNC1
+    #undef FUNC2
+
+    /* Unknown primitive */
+    return cell_nil();
 }
 
 /* Debug & Error Handling Primitives */
@@ -5443,6 +5765,10 @@ static Primitive primitives[] = {
     {"∈✓", prim_type_validate, 1, {"Validate binding against declared type", ":symbol → 𝔹 | ⚠"}},
     {"∈✓*", prim_type_validate_all, 0, {"Validate ALL declared types", "() → 𝔹 | ⚠"}},
     {"∈⊢", prim_type_check_apply, -1, {"Type-check function application", ":symbol → α... → 𝔹 | ⚠"}},
+
+    /* Type Inference (Day 85) */
+    {"∈⍜", prim_type_infer, 1, {"Deep type inference on value", "α → Type"}},
+    {"∈⍜⊕", prim_type_prim_sig, 1, {"Get type signature of primitive", ":symbol → Type | ∅"}},
 
     /* Debug & Error Handling */
     {"⚠", prim_error_create, 2, {"Create error value", ":symbol → α → ⚠"}},

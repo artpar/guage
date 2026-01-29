@@ -515,8 +515,16 @@ Warnings are non-fatal and do not stop execution.
 | `∈✓*` | `() → 𝔹 \| ⚠` | Validate ALL declared types | ✅ DONE (Day 84) |
 | `∈⊢` | `:symbol → α... → 𝔹 \| ⚠` | Type-check function application | ✅ DONE (Day 84) |
 
+### Type Inference (3) ✅
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `∈⍜` | `α → Type` | Deep type inference (recursive pair/list/struct) | ✅ DONE (Day 85) |
+| `∈⍜⊕` | `:symbol → Type \| ∅` | Get primitive type signature | ✅ DONE (Day 85) |
+| `∈⍜*` | `expr → Type` | Infer expression type without evaluation (special form) | ✅ DONE (Day 85) |
+
 **Note:** Type annotations are optional. Type validation (`∈✓`, `∈✓*`, `∈⊢`) provides
-runtime checking of values against their declared types. See `test_type_validation.test`.
+runtime checking. Type inference (`∈⍜`, `∈⍜⊕`, `∈⍜*`) enables static analysis.
+See `test_type_inference.test`, `test_type_validation.test`.
 
 ### Debug & Error Handling (6) ✅
 | Symbol | Type | Meaning | Status |

@@ -1,0 +1,416 @@
+#!/usr/bin/env guage
+; Test suite for type inference (Day 85)
+; Deep type inference: ∈⍜ (infer value type), ∈⍜⊕ (primitive signatures)
+
+(≋ "Testing Type Inference System...")
+
+; ============================================================================
+; Part 1: ∈⍜ (Deep Value Type Inference)
+; ============================================================================
+
+(≋ "\nTesting ∈⍜ (deep value type inference)...")
+
+; --- Basic types (same as ∈⊙ but always returns type structs) ---
+
+(⊨ :infer-int
+   #t
+   (∈≡ (∈⍜ #42) (ℤ)))
+
+(⊨ :infer-bool-true
+   #t
+   (∈≡ (∈⍜ #t) (𝔹)))
+
+(⊨ :infer-bool-false
+   #t
+   (∈≡ (∈⍜ #f) (𝔹)))
+
+(⊨ :infer-string
+   #t
+   (∈≡ (∈⍜ "hello") (𝕊)))
+
+(⊨ :infer-nil
+   #t
+   (∈≡ (∈⍜ ∅) (∅ₜ)))
+
+; --- Pair types (DEEP - unlike ∈⊙ which returns :pair) ---
+
+(⊨ :infer-pair-int-int
+   #t
+   (∈≡ (∈⍜ (⟨⟩ #1 #2)) (⟨⟩ₜ (ℤ) (ℤ))))
+
+(⊨ :infer-pair-string-bool
+   #t
+   (∈≡ (∈⍜ (⟨⟩ "hi" #t)) (⟨⟩ₜ (𝕊) (𝔹))))
+
+(⊨ :infer-pair-int-string
+   #t
+   (∈≡ (∈⍜ (⟨⟩ #1 "abc")) (⟨⟩ₜ (ℤ) (𝕊))))
+
+(⊨ :infer-pair-nested
+   #t
+   (∈≡ (∈⍜ (⟨⟩ #1 (⟨⟩ #2 #3)))
+        (⟨⟩ₜ (ℤ) (⟨⟩ₜ (ℤ) (ℤ)))))
+
+; --- List types (detect proper lists: nil-terminated pair chains) ---
+
+(⊨ :infer-list-empty
+   #t
+   (∈≡ (∈⍜ ∅) (∅ₜ)))
+
+; Single-element list: (⟨⟩ #1 ∅)
+(⊨ :infer-list-single-int
+   #t
+   (∈≡ (∈⍜ (⟨⟩ #1 ∅)) ([]ₜ (ℤ))))
+
+; Multi-element list: (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅)))
+(⊨ :infer-list-multi-int
+   #t
+   (∈≡ (∈⍜ (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅)))) ([]ₜ (ℤ))))
+
+; String list
+(⊨ :infer-list-strings
+   #t
+   (∈≡ (∈⍜ (⟨⟩ "a" (⟨⟩ "b" ∅))) ([]ₜ (𝕊))))
+
+; Bool list
+(⊨ :infer-list-bools
+   #t
+   (∈≡ (∈⍜ (⟨⟩ #t (⟨⟩ #f ∅))) ([]ₜ (𝔹))))
+
+; Mixed-type list → union element type
+(⊨ :infer-list-mixed
+   #t
+   (∈≡ (∈⍜ (⟨⟩ #1 (⟨⟩ "hi" ∅))) ([]ₜ (∪ₜ (ℤ) (𝕊)))))
+
+; Nested list: list of lists
+(⊨ :infer-list-of-lists
+   #t
+   (∈≡ (∈⍜ (⟨⟩ (⟨⟩ #1 ∅) (⟨⟩ (⟨⟩ #2 ∅) ∅)))
+        ([]ₜ ([]ₜ (ℤ)))))
+
+; Improper pair (cdr is NOT nil or pair) stays as pair type
+(⊨ :infer-improper-pair
+   #t
+   (∈≡ (∈⍜ (⟨⟩ #1 #2)) (⟨⟩ₜ (ℤ) (ℤ))))
+
+; --- Function types ---
+
+; Lambda with declared type → use declaration
+(≔ inf-add (λ (x y) (⊕ x y)))
+(∈ inf-add (→ (ℤ) (ℤ) (ℤ)))
+
+(⊨ :infer-func-declared
+   #t
+   (∈≡ (∈⍜ inf-add) (→ (ℤ) (ℤ) (ℤ))))
+
+; Lambda without declared type → generic function type
+(≔ inf-id (λ (x) x))
+
+(⊨ :infer-func-undeclared
+   #t
+   (∈≡ (∈⍜ inf-id) (→ (⊤) (⊤))))
+
+; Multi-arg lambda without declaration
+(≔ inf-pair-fn (λ (x y) (⟨⟩ x y)))
+
+(⊨ :infer-func-multi-undeclared
+   #t
+   (∈≡ (∈⍜ inf-pair-fn) (→ (⊤) (⊤) (⊤))))
+
+; --- Symbol type ---
+
+(⊨ :infer-symbol
+   #t
+   (∈≡ (∈⍜ :hello) (∈⍜ :world)))
+
+; --- Error type ---
+
+(⊨ :infer-error
+   #t
+   (∈≡ (∈⍜ (⚠ :oops #0)) (∈⍜ (⚠ :other #1))))
+
+; --- Struct type (user-defined structures) ---
+
+(⊙≔ :inf-point :x :y)
+(≔ p1 (⊙ :inf-point #3 #4))
+
+; Struct inference returns type struct with the struct's tag
+(⊨ :infer-struct
+   #t
+   (∈≡ (∈⍜ p1) (∈⍜ (⊙ :inf-point #7 #8))))
+
+; ============================================================================
+; Part 2: ∈⍜ for named bindings (uses annotation registry)
+; ============================================================================
+
+(≋ "\nTesting ∈⍜ for named bindings...")
+
+; Annotated binding - use annotation
+(≔ typed-x #42)
+(∈ typed-x (ℤ))
+
+(⊨ :infer-named-annotated
+   #t
+   (∈≡ (∈⍜ typed-x) (ℤ)))
+
+; Annotated function
+(≔ typed-inc (λ (n) (⊕ n #1)))
+(∈ typed-inc (→ (ℤ) (ℤ)))
+
+(⊨ :infer-named-func-annotated
+   #t
+   (∈≡ (∈⍜ typed-inc) (→ (ℤ) (ℤ))))
+
+; Unannotated binding - infer from value
+(≔ untyped-y "hello")
+
+(⊨ :infer-named-unannotated
+   #t
+   (∈≡ (∈⍜ untyped-y) (𝕊)))
+
+; ============================================================================
+; Part 3: ∈⍜⊕ (Primitive Type Signatures)
+; ============================================================================
+
+(≋ "\nTesting ∈⍜⊕ (primitive type signatures)...")
+
+; --- Arithmetic primitives ---
+
+(⊨ :sig-add
+   #t
+   (∈≡ (∈⍜⊕ :⊕) (→ (ℤ) (ℤ) (ℤ))))
+
+(⊨ :sig-sub
+   #t
+   (∈≡ (∈⍜⊕ :⊖) (→ (ℤ) (ℤ) (ℤ))))
+
+(⊨ :sig-mul
+   #t
+   (∈≡ (∈⍜⊕ :⊗) (→ (ℤ) (ℤ) (ℤ))))
+
+(⊨ :sig-div
+   #t
+   (∈≡ (∈⍜⊕ :⊘) (→ (ℤ) (ℤ) (ℤ))))
+
+(⊨ :sig-mod
+   #t
+   (∈≡ (∈⍜⊕ :%) (→ (ℤ) (ℤ) (ℤ))))
+
+; --- Comparison primitives ---
+
+(⊨ :sig-eq
+   #t
+   (∈≡ (∈⍜⊕ :≡) (→ (⊤) (⊤) (𝔹))))
+
+(⊨ :sig-neq
+   #t
+   (∈≡ (∈⍜⊕ :≢) (→ (⊤) (⊤) (𝔹))))
+
+(⊨ :sig-lt
+   #t
+   (∈≡ (∈⍜⊕ :<) (→ (ℤ) (ℤ) (𝔹))))
+
+(⊨ :sig-gt
+   #t
+   (∈≡ (∈⍜⊕ :>) (→ (ℤ) (ℤ) (𝔹))))
+
+(⊨ :sig-le
+   #t
+   (∈≡ (∈⍜⊕ :≤) (→ (ℤ) (ℤ) (𝔹))))
+
+(⊨ :sig-ge
+   #t
+   (∈≡ (∈⍜⊕ :≥) (→ (ℤ) (ℤ) (𝔹))))
+
+; --- Logic primitives ---
+
+(⊨ :sig-and
+   #t
+   (∈≡ (∈⍜⊕ :∧) (→ (𝔹) (𝔹) (𝔹))))
+
+(⊨ :sig-or
+   #t
+   (∈≡ (∈⍜⊕ :∨) (→ (𝔹) (𝔹) (𝔹))))
+
+(⊨ :sig-not
+   #t
+   (∈≡ (∈⍜⊕ :¬) (→ (𝔹) (𝔹))))
+
+; --- List primitives ---
+
+(⊨ :sig-cons
+   #t
+   (∈≡ (∈⍜⊕ :⟨⟩) (→ (⊤) (⊤) (⊤))))
+
+(⊨ :sig-car
+   #t
+   (∈≡ (∈⍜⊕ :◁) (→ (⊤) (⊤))))
+
+(⊨ :sig-cdr
+   #t
+   (∈≡ (∈⍜⊕ :▷) (→ (⊤) (⊤))))
+
+; --- Type primitives ---
+
+(⊨ :sig-typeof
+   #t
+   (∈≡ (∈⍜⊕ :∈⊙) (→ (⊤) (⊤))))
+
+; --- Error primitives ---
+
+(⊨ :sig-is-error
+   #t
+   (∈≡ (∈⍜⊕ :⚠?) (→ (⊤) (𝔹))))
+
+; --- String primitives ---
+
+(⊨ :sig-str-len
+   #t
+   (∈≡ (∈⍜⊕ :≈#) (→ (𝕊) (ℤ))))
+
+(⊨ :sig-str-cat
+   #t
+   (∈≡ (∈⍜⊕ :≈⊕) (→ (𝕊) (𝕊) (𝕊))))
+
+; Unknown primitive returns nil
+(⊨ :sig-unknown
+   #t
+   (≡ (∈⍜⊕ :nonexistent-prim) ∅))
+
+; ============================================================================
+; Part 4: ∈⍜* (Expression Type Inference - without evaluation)
+; ============================================================================
+
+(≋ "\nTesting ∈⍜* (expression type inference)...")
+
+; --- Literal inference ---
+
+(⊨ :expr-infer-number
+   #t
+   (∈≡ (∈⍜* #42) (ℤ)))
+
+(⊨ :expr-infer-bool
+   #t
+   (∈≡ (∈⍜* #t) (𝔹)))
+
+(⊨ :expr-infer-string
+   #t
+   (∈≡ (∈⍜* "hello") (𝕊)))
+
+(⊨ :expr-infer-nil
+   #t
+   (∈≡ (∈⍜* ∅) (∅ₜ)))
+
+; --- Symbol inference (uses annotation registry) ---
+
+(≔ expr-typed-val #42)
+(∈ expr-typed-val (ℤ))
+
+(⊨ :expr-infer-symbol-annotated
+   #t
+   (∈≡ (∈⍜* expr-typed-val) (ℤ)))
+
+; Unannotated symbol → infer from current value
+(≔ expr-untyped-val "world")
+
+(⊨ :expr-infer-symbol-unannotated
+   #t
+   (∈≡ (∈⍜* expr-untyped-val) (𝕊)))
+
+; --- Primitive application inference ---
+
+(⊨ :expr-infer-add
+   #t
+   (∈≡ (∈⍜* (⊕ #1 #2)) (ℤ)))
+
+(⊨ :expr-infer-sub
+   #t
+   (∈≡ (∈⍜* (⊖ #5 #3)) (ℤ)))
+
+(⊨ :expr-infer-mul
+   #t
+   (∈≡ (∈⍜* (⊗ #2 #3)) (ℤ)))
+
+(⊨ :expr-infer-lt
+   #t
+   (∈≡ (∈⍜* (< #1 #2)) (𝔹)))
+
+(⊨ :expr-infer-eq
+   #t
+   (∈≡ (∈⍜* (≡ #1 #2)) (𝔹)))
+
+(⊨ :expr-infer-and
+   #t
+   (∈≡ (∈⍜* (∧ #t #f)) (𝔹)))
+
+(⊨ :expr-infer-not
+   #t
+   (∈≡ (∈⍜* (¬ #t)) (𝔹)))
+
+(⊨ :expr-infer-str-cat
+   #t
+   (∈≡ (∈⍜* (≈⊕ "a" "b")) (𝕊)))
+
+(⊨ :expr-infer-str-len
+   #t
+   (∈≡ (∈⍜* (≈# "hello")) (ℤ)))
+
+; --- Conditional inference (union of branches) ---
+
+(⊨ :expr-infer-cond-same
+   #t
+   (∈≡ (∈⍜* (? #t #1 #2)) (ℤ)))
+
+(⊨ :expr-infer-cond-different
+   #t
+   (∈≡ (∈⍜* (? #t #1 "hello")) (∪ₜ (ℤ) (𝕊))))
+
+(⊨ :expr-infer-cond-bool
+   #t
+   (∈≡ (∈⍜* (? #t #t #f)) (𝔹)))
+
+; --- Lambda inference ---
+
+(⊨ :expr-infer-lambda-simple
+   #t
+   (∈≡ (∈⍜* (λ (x) #42)) (→ (⊤) (ℤ))))
+
+(⊨ :expr-infer-lambda-multi
+   #t
+   (∈≡ (∈⍜* (λ (x y) (⊕ x y))) (→ (⊤) (⊤) (ℤ))))
+
+(⊨ :expr-infer-lambda-bool-body
+   #t
+   (∈≡ (∈⍜* (λ (x) (< x #0))) (→ (⊤) (𝔹))))
+
+; --- Nested expression inference ---
+
+(⊨ :expr-infer-nested-arith
+   #t
+   (∈≡ (∈⍜* (⊕ (⊗ #2 #3) #1)) (ℤ)))
+
+(⊨ :expr-infer-nested-compare
+   #t
+   (∈≡ (∈⍜* (∧ (< #1 #2) (> #3 #0))) (𝔹)))
+
+; --- Function application inference ---
+
+(≔ my-inc (λ (n) (⊕ n #1)))
+(∈ my-inc (→ (ℤ) (ℤ)))
+
+(⊨ :expr-infer-user-func-call
+   #t
+   (∈≡ (∈⍜* (my-inc #5)) (ℤ)))
+
+; Unannotated function application → ⊤
+(≔ my-id (λ (x) x))
+
+(⊨ :expr-infer-untyped-func-call
+   #t
+   (∈≡ (∈⍜* (my-id #5)) (⊤)))
+
+; ============================================================================
+; Summary
+; ============================================================================
+
+(≋ "\nType Inference tests complete!")

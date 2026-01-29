@@ -1215,6 +1215,54 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                 return result;
             }
 
+            /* ∈⍜ - Deep type inference (special form for named bindings)
+             * For symbols: checks annotation registry first, then infers from value.
+             * For expressions: evaluates first, then infers from result.
+             */
+            if (strcmp(sym, "∈⍜") == 0) {
+                Cell* expr = cell_car(rest);
+                extern Cell* prim_type_infer(Cell*);
+                extern Cell* prim_type_query(Cell*);
+
+                if (cell_is_symbol(expr)) {
+                    /* Check annotation registry first */
+                    Cell* query_args = cell_cons(expr, cell_nil());
+                    cell_retain(expr);
+                    Cell* declared = prim_type_query(query_args);
+                    cell_release(query_args);
+
+                    if (!cell_is_nil(declared)) {
+                        return declared;
+                    }
+                    cell_release(declared);
+
+                    /* Fall back to inferring from current value */
+                    const char* sym_name = cell_get_symbol(expr);
+                    Cell* value = eval_lookup(ctx, sym_name);
+                    if (value) {
+                        Cell* infer_args = cell_cons(value, cell_nil());
+                        Cell* inferred = prim_type_infer(infer_args);
+                        cell_release(infer_args);
+                        cell_release(value);
+                        return inferred;
+                    }
+
+                    /* Unknown symbol → ⊤ */
+                    extern Cell* make_type_struct(const char* kind, Cell* fields);
+                    return make_type_struct(":any", cell_nil());
+                }
+
+                /* Non-symbol: evaluate then infer.
+                 * NOTE: Do NOT propagate errors - we want to infer their type too. */
+                Cell* evaled = eval_internal(ctx, env, expr);
+
+                Cell* infer_args = cell_cons(evaled, cell_nil());
+                Cell* result = prim_type_infer(infer_args);
+                cell_release(infer_args);
+                cell_release(evaled);
+                return result;
+            }
+
             /* ∈⊢ - type-check function application (special form: first arg NOT evaluated) */
             if (strcmp(sym, "∈⊢") == 0) {
                 /* Parse: (∈⊢ fn-name arg1 arg2 ...) */
@@ -1256,6 +1304,238 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                 Cell* result = prim_type_check_apply(call_args);
                 cell_release(call_args);
                 return result;
+            }
+
+            /* ∈⍜* - Expression type inference (special form: expr NOT evaluated)
+             * Infers the type of an expression without evaluating it.
+             * Uses primitive signatures, annotation registry, and recursive analysis.
+             */
+            if (strcmp(sym, "∈⍜*") == 0) {
+                Cell* expr = cell_car(rest);
+                extern Cell* prim_type_infer(Cell*);
+                extern Cell* prim_type_prim_sig(Cell*);
+                extern Cell* prim_type_query(Cell*);
+                extern Cell* make_type_struct(const char* kind, Cell* fields);
+                extern bool is_type_struct(Cell* c);
+                extern const char* get_type_kind(Cell* type);
+                extern bool types_equal(Cell* t1, Cell* t2);
+
+                /* Literal number */
+                if (cell_is_number(expr)) {
+                    return make_type_struct(":int", cell_nil());
+                }
+
+                /* Literal boolean */
+                if (cell_is_bool(expr)) {
+                    return make_type_struct(":bool", cell_nil());
+                }
+
+                /* String literal */
+                if (cell_is_string(expr)) {
+                    return make_type_struct(":string", cell_nil());
+                }
+
+                /* Nil */
+                if (cell_is_nil(expr)) {
+                    return make_type_struct(":nil", cell_nil());
+                }
+
+                /* Symbol → check annotation registry, then infer from current value */
+                if (cell_is_symbol(expr)) {
+                    /* Check annotation registry first */
+                    Cell* query_args = cell_cons(expr, cell_nil());
+                    cell_retain(expr);
+                    Cell* declared = prim_type_query(query_args);
+                    cell_release(query_args);
+
+                    if (!cell_is_nil(declared)) {
+                        return declared;
+                    }
+                    cell_release(declared);
+
+                    /* Fall back to inferring from current value */
+                    const char* sym_name = cell_get_symbol(expr);
+                    Cell* value = eval_lookup(ctx, sym_name);
+                    if (value) {
+                        Cell* infer_args = cell_cons(value, cell_nil());
+                        Cell* inferred = prim_type_infer(infer_args);
+                        cell_release(infer_args);
+                        cell_release(value);
+                        return inferred;
+                    }
+
+                    /* Unknown symbol → ⊤ */
+                    return make_type_struct(":any", cell_nil());
+                }
+
+                /* Application: (operator arg1 arg2 ...) */
+                if (cell_is_pair(expr)) {
+                    Cell* op = cell_car(expr);
+                    Cell* op_args = cell_cdr(expr);
+
+                    /* Conditional: (? cond then else) → union of then/else types */
+                    if (cell_is_symbol(op) && strcmp(cell_get_symbol(op), "?") == 0) {
+                        /* Skip condition, infer then and else branches */
+                        Cell* then_expr = cell_car(cell_cdr(op_args));
+                        Cell* else_expr = cell_car(cell_cdr(cell_cdr(op_args)));
+
+                        /* Recursively infer branch types */
+                        Cell* then_wrapped = cell_cons(cell_symbol("∈⍜*"),
+                                             cell_cons(then_expr, cell_nil()));
+                        cell_retain(then_expr);
+                        Cell* then_type = eval_internal(ctx, env, then_wrapped);
+                        cell_release(then_wrapped);
+
+                        Cell* else_wrapped = cell_cons(cell_symbol("∈⍜*"),
+                                             cell_cons(else_expr, cell_nil()));
+                        cell_retain(else_expr);
+                        Cell* else_type = eval_internal(ctx, env, else_wrapped);
+                        cell_release(else_wrapped);
+
+                        if (cell_is_error(then_type)) {
+                            cell_release(else_type);
+                            return then_type;
+                        }
+                        if (cell_is_error(else_type)) {
+                            cell_release(then_type);
+                            return else_type;
+                        }
+
+                        /* Same type → that type. Different → union */
+                        if (types_equal(then_type, else_type)) {
+                            cell_release(else_type);
+                            return then_type;
+                        }
+
+                        /* Build union type */
+                        Cell* left_field = cell_cons(cell_symbol(":left"), then_type);
+                        Cell* right_field = cell_cons(cell_symbol(":right"), else_type);
+                        Cell* fields = cell_cons(right_field, cell_nil());
+                        fields = cell_cons(left_field, fields);
+                        return make_type_struct(":union", fields);
+                    }
+
+                    /* Lambda: (λ (params...) body) → (→ ⊤ ... body-type) */
+                    if (cell_is_symbol(op) && strcmp(cell_get_symbol(op), "λ") == 0) {
+                        Cell* params = cell_car(op_args);
+                        Cell* body = cell_car(cell_cdr(op_args));
+
+                        /* Count parameters */
+                        int arity = 0;
+                        Cell* p = params;
+                        while (cell_is_pair(p)) {
+                            arity++;
+                            p = cell_cdr(p);
+                        }
+
+                        /* Infer body type recursively */
+                        Cell* body_wrapped = cell_cons(cell_symbol("∈⍜*"),
+                                             cell_cons(body, cell_nil()));
+                        cell_retain(body);
+                        Cell* body_type = eval_internal(ctx, env, body_wrapped);
+                        cell_release(body_wrapped);
+
+                        if (cell_is_error(body_type)) {
+                            return body_type;
+                        }
+
+                        /* Build (→ ⊤ ... ⊤ body-type) */
+                        Cell* result_type = body_type;
+                        for (int i = arity - 1; i >= 0; i--) {
+                            Cell* domain = make_type_struct(":any", cell_nil());
+                            Cell* domain_field = cell_cons(cell_symbol(":domain"), domain);
+                            Cell* codomain_field = cell_cons(cell_symbol(":codomain"), result_type);
+                            Cell* flds = cell_cons(codomain_field, cell_nil());
+                            flds = cell_cons(domain_field, flds);
+                            result_type = make_type_struct(":func", flds);
+                        }
+
+                        return result_type;
+                    }
+
+                    /* Primitive/function application: look up operator's return type */
+                    if (cell_is_symbol(op)) {
+                        const char* op_name = cell_get_symbol(op);
+
+                        /* Check primitive signature first */
+                        Cell* sym_with_colon;
+                        if (op_name[0] != ':') {
+                            char buf[256];
+                            snprintf(buf, sizeof(buf), ":%s", op_name);
+                            sym_with_colon = cell_symbol(buf);
+                        } else {
+                            sym_with_colon = cell_symbol(op_name);
+                        }
+
+                        Cell* sig_args = cell_cons(sym_with_colon, cell_nil());
+                        Cell* sig = prim_type_prim_sig(sig_args);
+                        cell_release(sig_args);
+
+                        if (!cell_is_nil(sig) && is_type_struct(sig)) {
+                            /* Walk through the function type to get the return type */
+                            /* (→ A (→ B C)) with 2 args → C */
+                            Cell* current_type = sig;
+                            Cell* arg_iter = op_args;
+                            while (cell_is_pair(arg_iter) && is_type_struct(current_type)) {
+                                const char* k = get_type_kind(current_type);
+                                if (!k || strcmp(k, ":func") != 0) break;
+                                current_type = cell_struct_get_field(current_type, cell_symbol(":codomain"));
+                                arg_iter = cell_cdr(arg_iter);
+                            }
+
+                            /* current_type is the return type */
+                            if (current_type) {
+                                cell_retain(current_type);
+                                cell_release(sig);
+                                return current_type;
+                            }
+                            cell_release(sig);
+                        } else {
+                            cell_release(sig);
+                        }
+
+                        /* Check if it's a user function with annotation */
+                        Cell* fn_query_args = cell_cons(op, cell_nil());
+                        cell_retain(op);
+                        Cell* fn_type = prim_type_query(fn_query_args);
+                        cell_release(fn_query_args);
+
+                        if (!cell_is_nil(fn_type) && is_type_struct(fn_type)) {
+                            /* Walk through function type to get return type */
+                            Cell* current_type = fn_type;
+                            Cell* arg_iter = op_args;
+                            while (cell_is_pair(arg_iter) && is_type_struct(current_type)) {
+                                const char* k = get_type_kind(current_type);
+                                if (!k || strcmp(k, ":func") != 0) break;
+                                current_type = cell_struct_get_field(current_type, cell_symbol(":codomain"));
+                                arg_iter = cell_cdr(arg_iter);
+                            }
+
+                            if (current_type) {
+                                cell_retain(current_type);
+                                cell_release(fn_type);
+                                return current_type;
+                            }
+                            cell_release(fn_type);
+                        } else {
+                            cell_release(fn_type);
+                        }
+
+                        /* Unknown function → ⊤ */
+                        return make_type_struct(":any", cell_nil());
+                    }
+                }
+
+                /* Fallback: evaluate and infer */
+                Cell* evaled = eval_internal(ctx, env, expr);
+                if (cell_is_error(evaled)) {
+                    return evaled;
+                }
+                Cell* infer_args = cell_cons(evaled, cell_nil());
+                Cell* inferred = prim_type_infer(infer_args);
+                cell_release(infer_args);
+                cell_release(evaled);
+                return inferred;
             }
 
             /* :λ-converted - already converted nested lambda */
