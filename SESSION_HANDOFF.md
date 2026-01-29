@@ -144,16 +144,64 @@ make rebuild      # Clean + rebuild
 - ✅ Implemented eval-body for sequences with define in lambda bodies
 - ✅ Added ⊛ (letrec) for let-style bindings (non-recursive)
 - ✅ Added ⌞ (meta-eval) for evaluating code as data
+- ✅ Added substitution helpers (member?, subst, subst-list, subst-all)
 - ✅ Eval tests increased from 32 to 42 (10 new tests)
 - ✅ All 71/71 test files passing (100%)
 
-**For Day 73:**
-- 🎯 True letrec: Implement Y-combinator transformation for recursive bindings
-- 🎯 Self-hosting parser: Begin work on Guage parser in Guage
-- 🎯 Data flow analysis: Build on graph algorithms
-- 🧪 Verify: `make test` shows 71 test files passing
+---
+
+## 🚀 CONTINUATION GUIDE FOR NEXT SESSION
+
+### Quick Start
+```bash
+cd /Users/artpar/workspace/code/guage
+make test                    # Verify 71/71 tests pass
+git log --oneline -3         # See recent commits
+```
+
+### Self-Hosting Status
+- **Core evaluator:** COMPLETE (42 tests)
+- **What's next:** Recursive letrec OR self-hosting parser
+- **Detailed roadmap:** `docs/planning/SELF_HOSTING_COMPLETION.md`
+
+### Option A: Recursive Letrec (3-4 hours, HIGH VALUE)
+
+**Goal:** Make `(⊛ ((:fact (λ (:n) ... :fact ...))) (:fact #5))` work
+
+**Why it matters:** Clean recursion without manual Y-combinator
+
+**Key insight:** Substitution helpers already exist in eval.scm (lines 64-109)
+
+**Implementation approach:**
+1. Detect if binding name appears in its body
+2. Transform using self-application pattern
+3. Replace `(:fact args)` with `((:self :self) args)` in body
+4. Wrap in `(λ (:self) ...)`
+
+**Start here:** Read `docs/planning/SELF_HOSTING_COMPLETION.md` section "NEXT: Recursive Letrec"
+
+### Option B: Self-Hosting Parser (6-9 hours, MILESTONE)
+
+**Goal:** Parser written in Guage that parses Guage source
+
+**Why it matters:** Major milestone toward full self-hosting
+
+**Components:**
+1. Tokenizer (2-3 hours)
+2. Parser (3-4 hours)
+3. Integration (1-2 hours)
+
+**Start here:** Read `docs/planning/SELF_HOSTING_COMPLETION.md` section "ALTERNATIVE: Self-Hosting Parser"
+
+### Key Files
+```
+bootstrap/stdlib/eval.scm      # Main evaluator (~275 lines)
+bootstrap/stdlib/eval-env.scm  # Environment module (37 lines)
+bootstrap/tests/test_eval.test # Test suite (42 tests)
+docs/planning/SELF_HOSTING_COMPLETION.md  # Detailed roadmap
+```
 
 ---
 
 **Last Updated:** 2026-01-29 (Day 72 complete)
-**Next Session:** Day 73 - Y-combinator letrec or self-hosting parser
+**Next Session:** Day 73 - Continue self-hosting (recursive letrec OR parser)
