@@ -141,11 +141,13 @@ make rebuild      # Clean + rebuild
 - ✅ All 71/71 test files passing (100%)
 
 **For Day 72:**
-- 🎯 Continue self-hosting (≔ support, letrec, eval special form)
-- 🎯 Or choose from other options above
+- 🎯 Continue self-hosting: See `docs/planning/SELF_HOSTING_COMPLETION.md`
+- 🎯 Phase 1: Add ≔ (define) support (1-2 hours)
+- 🎯 Phase 2: Add letrec for mutual recursion (2-3 hours)
+- 🎯 Phase 3: Add ⌞ (eval) special form (1 hour)
 - 🧪 Verify: `make test` shows 71 test files passing
 
 ---
 
-**Last Updated:** 2026-01-29 (Day 70 complete)
-**Next Session:** Day 71
+**Last Updated:** 2026-01-29 (Day 71 complete)
+**Next Session:** Day 72 - Continue self-hosting evaluator

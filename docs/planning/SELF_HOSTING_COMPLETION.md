@@ -1,375 +1,254 @@
 ---
 Status: CURRENT
 Created: 2026-01-28
-Updated: 2026-01-28
-Purpose: Roadmap for completing self-hosting evaluator (59% → 100%)
+Updated: 2026-01-29 (Day 71)
+Purpose: Roadmap for completing self-hosting evaluator
 ---
 
 # Self-Hosting Evaluator Completion Roadmap
 
-## Current State (Day 53/54 Extended)
+## Current State (Day 71)
 
-**Status:** 59% complete (13/22 tests passing)
-**What Works:** Pure lambda calculus evaluation
-**What Doesn't:** Cannot call C primitives
+**Status:** 32/32 eval tests passing (100% of current tests)
+**What Works:** Full lambda calculus + primitives via ⊡
+**What's Missing:** ≔ (define), letrec, ⌞ (eval)
 
-## Goal
+### Evaluator Capabilities (bootstrap/stdlib/eval.scm)
 
-**Objective:** Complete self-hosting evaluator to handle full Guage language
-**Target:** 22/22 tests passing (100%)
-**Estimated Time:** 3-4 hours over 1-2 sessions
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Numbers, booleans, nil | ✅ | Self-evaluate |
+| Symbol lookup | ✅ | Via env-lookup |
+| Lambda creation | ✅ | Creates closures |
+| Function application | ✅ | Closures and primitives |
+| Multi-param lambdas | ✅ | Via bind-params |
+| Closures with capture | ✅ | Environment in closure |
+| Conditionals (?) | ✅ | Full support |
+| Quote (⌜) | ✅ | Added Day 71 |
+| Primitives | ✅ | Via ⊡ apply |
+| Y-combinator recursion | ✅ | Factorial verified |
+| Define (≔) | ❌ | Needs implementation |
+| Letrec | ❌ | For mutual recursion |
+| Eval (⌞) | ❌ | Meta-evaluation |
 
-## Architectural Challenge
+## Files Involved
 
-**Problem:** Guage evaluator (pure Guage code) cannot call C primitives
-
-**Root Cause:**
-- Evaluator lives in `bootstrap/stdlib/eval.scm` (Guage code)
-- Primitives live in `bootstrap/primitives.c` (C code)
-- No bridge exists between Guage and C function calls
-- When evaluator gets a primitive from environment, it's opaque
-
-**Current Behavior:**
-```scheme
-(≔ env (((env-extend (env-empty)) :⊕) ⊕))  ; Store primitive
-((eval (⌜ (⊕ #2 #3))) env)                 ; Try to call it
-; → ⚠:cannot-apply-primitive:<builtin>
+```
+bootstrap/stdlib/eval.scm      # Main evaluator (141 lines)
+bootstrap/stdlib/eval-env.scm  # Environment module (37 lines)
+bootstrap/tests/test_eval.test # Test suite (32 tests)
 ```
 
-## Solution Design
+## Next Steps to Complete Self-Hosting
 
-### Phase 1: Expose Primitive Type (30 minutes)
+### Phase 1: Add Define (≔) Support (1-2 hours)
 
-**Goal:** Add `primitive?` predicate to check if value is a primitive
+**Goal:** Allow local definitions within evaluated code
+
+**Challenge:** Define mutates environment, but our evaluator is functional
+
+**Approach A: Let-style binding (Recommended)**
+```scheme
+; Transform (≔ x 5) into a let-binding for the rest of the expression
+; In evaluator, handle ≔ by extending environment and evaluating next expr
+(≔ eval-define (λ (name) (λ (value-expr) (λ (env)
+  (((env-extend env) name) ((eval value-expr) env))))))
+```
+
+**Approach B: Return modified environment**
+```scheme
+; eval returns (value . new-env) pair
+; Allows sequential defines to accumulate
+```
+
+**Implementation in eval-list:**
+```scheme
+; Add to special-form? check
+(? (≡ (◁ expr) (⌜ ≔))
+   #t
+   ...)
+
+; Add to eval-list handling
+(? (≡ (◁ expr) (⌜ ≔))
+   ; (≔ name value) - extend env and return value
+   (? (⟨⟩? (▷ expr))
+      (? (⟨⟩? (▷ (▷ expr)))
+         ; Get name and value
+         (((env-extend env) (◁ (▷ expr)))
+          ((eval (◁ (▷ (▷ expr)))) env))
+         (⚠ :define-missing-value expr))
+      (⚠ :define-missing-name expr))
+   ...)
+```
+
+### Phase 2: Add Letrec (2-3 hours)
+
+**Goal:** Support mutually recursive definitions
+
+**Why needed:** Y-combinator works but is awkward. Letrec is cleaner.
 
 **Implementation:**
-
-1. Add C function in `bootstrap/primitives.c`:
-```c
-// Check if cell is a primitive function
-Cell* prim_is_primitive(Cell* args) {
-    if (!cell_is_pair(args)) return error_create(symbol_create("type-error"));
-    Cell* value = car(args);
-    return value->type == CELL_PRIMITIVE ? cell_true() : cell_false();
-}
-```
-
-2. Register in `init_primitives()`:
-```c
-env_define(env, symbol_create("primitive?"), 
-           primitive_create(prim_is_primitive, "primitive?"));
-```
-
-3. Test from Guage:
 ```scheme
-(primitive? ⊕)   ; → #t
-(primitive? #42) ; → #f
+; letrec creates environment with forward references
+; then fills in the actual values
+
+(≔ eval-letrec (λ (bindings) (λ (body) (λ (env)
+  ; 1. Create env with placeholder values
+  ; 2. Evaluate each binding in extended env
+  ; 3. Update bindings with actual values
+  ; 4. Evaluate body in final env
+  ...))))
 ```
 
-**Files to modify:**
-- `bootstrap/primitives.c` (~15 lines)
+### Phase 3: Add Eval (⌞) Special Form (1 hour)
 
-### Phase 2: Primitive Metadata (1 hour)
-
-**Goal:** Store primitive name and arity with primitive value
-
-**Current Problem:**
-- Primitives are opaque `<builtin>` values
-- No way to know which primitive it is
-- Cannot extract name or arity
-
-**Solution 1: Primitive Wrapper Structure**
-
-Wrap primitives in a structure when storing in environment:
-```scheme
-; Instead of:
-(((env-extend env) :⊕) ⊕)
-
-; Use:
-(((env-extend env) :⊕) (⟨⟩ :primitive (⟨⟩ :⊕ (⟨⟩ ⊕ ∅))))
-```
-
-**Pros:** Pure Guage solution
-**Cons:** Ugly, breaks existing code
-
-**Solution 2: Primitive with Name (Recommended)**
-
-Add name field to primitive in C:
-```c
-// In bootstrap/cell.h
-typedef struct {
-    Cell* (*fn)(Cell*);
-    const char* name;  // NEW: store name
-} Primitive;
-
-// In bootstrap/primitives.c
-Cell* primitive_create_named(Cell* (*fn)(Cell*), const char* name) {
-    Cell* cell = cell_alloc();
-    cell->type = CELL_PRIMITIVE;
-    cell->value.primitive.fn = fn;
-    cell->value.primitive.name = strdup(name);  // NEW
-    return cell;
-}
-
-Cell* prim_primitive_name(Cell* args) {
-    Cell* prim = car(args);
-    if (prim->type != CELL_PRIMITIVE) return error_create(...);
-    return string_create(prim->value.primitive.name);
-}
-```
-
-**Files to modify:**
-- `bootstrap/cell.h` (add name field)
-- `bootstrap/cell.c` (update primitive_create, add primitive_name)
-- `bootstrap/primitives.c` (update all registrations)
-
-### Phase 3: Primitive Call Bridge (1 hour)
-
-**Goal:** Allow Guage code to call C primitives by name
+**Goal:** Meta-circular evaluation - evaluate quoted code
 
 **Implementation:**
-
-Add `call-primitive` function in C:
-```c
-Cell* prim_call_primitive(Cell* args, EvalContext* ctx) {
-    // Args: (name arg-list)
-    Cell* name = car(args);
-    Cell* arg_list = car(cdr(args));
-    
-    // Look up primitive by name
-    Cell* prim = eval_lookup(ctx, symbol_from_string(name));
-    if (prim->type != CELL_PRIMITIVE) {
-        return error_create(symbol_create("not-a-primitive"));
-    }
-    
-    // Call the primitive with args
-    return prim->value.primitive.fn(arg_list);
-}
-```
-
-Register as `call-primitive` or `%call-prim`.
-
-**Files to modify:**
-- `bootstrap/primitives.c` (~30 lines)
-
-### Phase 4: Update Guage Evaluator (30 minutes)
-
-**Goal:** Use primitive call bridge in `apply-fn`
-
-**Implementation:**
-
-Modify `bootstrap/stdlib/eval.scm`:
 ```scheme
-(≔ apply-fn (λ (fn) (λ (args) (λ (env)
-  (? (:? fn)
-     ((env-lookup env) fn)
-     (? (⟨⟩? fn)
-        (? (≡ (◁ fn) :closure)
-           ; ... existing closure logic ...
-           (⚠ :not-a-closure fn))
-        ; NEW: Handle primitives
-        (? (primitive? fn)
-           (call-primitive fn args)  ; Call through bridge
-           (⚠ :not-a-function fn))))))))
+; (⌞ expr) - evaluate expr, then evaluate the result
+(? (≡ (◁ expr) (⌜ ⌞))
+   ((eval ((eval (◁ (▷ expr))) env)) env)
+   ...)
 ```
 
-**Files to modify:**
-- `bootstrap/stdlib/eval.scm` (~10 lines)
+**Test:**
+```scheme
+(≔ code (⌜ (⊕ #1 #2)))
+((eval (⌜ (⌞ code))) env)  ; → #3
+```
 
-### Phase 5: Test and Debug (1 hour)
+### Phase 4: Self-Hosting Parser (Future)
 
-**Goal:** Get all 22 tests passing
+**Goal:** Parser written in Guage that can parse Guage
 
-**Process:**
-1. Run `./guage < bootstrap/tests/test_eval.test`
-2. Check which tests now pass
-3. Debug failures one by one
-4. Handle edge cases (arity checking, error propagation)
+**Prerequisites:** String operations, character handling
 
-**Expected new passing tests:**
-- test 12: eval-add (uses ⊕)
-- test 13: eval-multiply (uses ⊗)
-- test 14: eval-nested-arithmetic (uses ⊕, ⊗)
-- test 17: eval-if-comparison (uses >)
-- test 18: eval-lambda-capture (uses ⊕)
-- test 19: eval-lambda-two-params (uses ⟨⟩)
-- test 20: eval-higher-order (uses ⊕)
+**Not in immediate scope** - focus on evaluator completion first
 
-**Common issues to watch:**
-- Arity mismatches (primitives expect pair, not list)
-- Error propagation (primitive returns error)
-- Environment lookup (correct environment passed)
-- Argument evaluation (already evaluated before call)
+## Test Plan for Each Phase
 
-## Session-by-Session Plan
+### Phase 1 Tests (Define)
+```scheme
+; Test local define
+(⊨ :eval-define-simple
+   #5
+   ((eval (⌜ (≔ x #5))) empty-env))
 
-### Session 1: Infrastructure (1.5-2 hours)
+; Test define with expression
+(⊨ :eval-define-expr
+   #7
+   ((eval (⌜ (≔ y (⊕ #3 #4)))) env-arith))
 
-**Tasks:**
-1. ✅ Phase 1: Add `primitive?` predicate (30 min)
-2. ✅ Phase 2: Add primitive metadata (1 hour)
-3. ⏳ Test primitive detection works
+; Test sequential defines (if supported)
+(⊨ :eval-define-seq
+   #15
+   ((eval (⌜ ((λ () (≔ a #5) (≔ b #10) (⊕ a b))))) env-arith))
+```
 
-**Success Criteria:**
-- `(primitive? ⊕)` returns `#t`
-- `(primitive-name ⊕)` returns `"⊕"` (if implemented)
-- No regressions in main test suite
+### Phase 2 Tests (Letrec)
+```scheme
+; Test mutual recursion: even/odd
+(⊨ :eval-letrec-even-odd
+   #t
+   ((eval (⌜ (letrec ((even? (λ (n) (? (≡ n #0) #t (odd? (⊖ n #1)))))
+                       (odd? (λ (n) (? (≡ n #0) #f (even? (⊖ n #1))))))
+               (even? #4)))) env-full))
+```
 
-**Deliverables:**
-- Modified `bootstrap/cell.h`, `bootstrap/cell.c`, `bootstrap/primitives.c`
-- New tests for primitive predicates
+### Phase 3 Tests (Eval)
+```scheme
+; Test meta-evaluation
+(⊨ :eval-meta-eval
+   #3
+   ((eval (⌜ (⌞ (⌜ (⊕ #1 #2))))) env-arith))
+```
 
-### Session 2: Bridge and Integration (1.5-2 hours)
+## Current Test Coverage
 
-**Tasks:**
-1. ✅ Phase 3: Implement `call-primitive` (1 hour)
-2. ✅ Phase 4: Update Guage evaluator (30 min)
-3. ✅ Phase 5: Test and debug (1 hour)
+```
+bootstrap/tests/test_eval.test - 32 tests:
+- Atoms (6): numbers, booleans, nil
+- Symbols (2): lookup, undefined error
+- Lambda (3): creation, identity, const
+- Arithmetic (3): add, multiply, nested
+- Conditionals (3): true, false, comparison
+- Closures (3): capture, two-params, higher-order
+- Errors (2): empty list, non-function
+- Quote (3): symbol, list, number
+- Combinators (3): curried-add, K-combinator, double-apply
+- Recursion (1): Y-combinator factorial
+- Lists (2): cons-is-pair, cons-head
+- Nested (1): nested conditionals
+```
 
-**Success Criteria:**
-- All 22 eval tests passing (100%)
-- No regressions in main tests
-- Clean error messages for edge cases
+## Session Continuation Guide
 
-**Deliverables:**
-- Modified `bootstrap/primitives.c`, `bootstrap/stdlib/eval.scm`
-- Full test suite passing
-- Documentation updated
+### Starting Next Session
 
-## Alternative: Minimal Bridge Approach
+1. **Read this file** for context
+2. **Run tests:** `make test` (should show 71/71 passing)
+3. **Check eval tests:** `./bootstrap/guage < bootstrap/tests/test_eval.test`
+4. **Choose phase** to work on (recommend Phase 1 first)
 
-**If full implementation is too complex, try this minimal version:**
-
-### Minimal Phase: Hardcoded Primitive Dispatch
-
-Instead of generic bridge, hardcode common primitives in evaluator:
+### Key Files to Understand
 
 ```scheme
-(≔ call-builtin (λ (name) (λ (args)
-  (? (≡ name :⊕)
-     ; Hardcode addition
-     (%native-add (◁ args) (◁ (▷ args)))
-     (? (≡ name :⊗)
-        ; Hardcode multiply
-        (%native-mul (◁ args) (◁ (▷ args)))
-        (? (≡ name :⟨⟩)
-           ; Hardcode cons
-           (%native-cons (◁ args) (◁ (▷ args)))
-           (⚠ :unsupported-primitive name)))))))
+; Main evaluator - add new special forms here
+bootstrap/stdlib/eval.scm
+
+; Environment operations - may need extension for letrec
+bootstrap/stdlib/eval-env.scm
+
+; Tests - add new tests as you implement features
+bootstrap/tests/test_eval.test
 ```
 
-Add minimal native ops in C:
-```c
-Cell* prim_native_add(Cell* args) {
-    double a = car(args)->value.number;
-    double b = car(cdr(args))->value.number;
-    return number_create(a + b);
-}
-// ... similar for mul, cons, car, cdr, etc.
+### Common Patterns in Evaluator
+
+**Adding a special form:**
+1. Add check in `special-form?` function
+2. Add handling in `eval-list` conditional chain
+3. Create helper function if needed (like `eval-lambda`, `eval-if`)
+4. Add tests
+
+**Environment extension:**
+```scheme
+(((env-extend env) name) value)  ; Returns new env with binding
 ```
 
-**Pros:**
-- Simpler implementation
-- No primitive metadata needed
-- Faster (no lookup overhead)
-
-**Cons:**
-- Not extensible
-- Must add each primitive manually
-- Ugly code duplication
-
-**Estimated Time:** 2 hours (simpler but limited)
-
-## Decision Matrix
-
-| Approach | Time | Extensibility | Completeness | Complexity |
-|----------|------|---------------|--------------|------------|
-| Full Bridge | 3-4h | High | 100% | Medium |
-| Minimal Hardcode | 2h | Low | Good enough | Low |
-| Declare Victory | 0h | N/A | 59% | None |
-
-**Recommendation:** Try Full Bridge first. If blocked, fall back to Minimal. If not high-priority, Declare Victory.
+**Recursive evaluation:**
+```scheme
+((eval sub-expr) env)  ; Evaluate in current env
+```
 
 ## Success Metrics
 
-**Goal:** 22/22 tests passing (100%)
+| Milestone | Tests | Status |
+|-----------|-------|--------|
+| Basic eval (atoms, symbols) | 8 | ✅ |
+| Lambda + application | 6 | ✅ |
+| Conditionals | 3 | ✅ |
+| Primitives via ⊡ | 3 | ✅ |
+| Quote support | 3 | ✅ |
+| Recursion (Y-combinator) | 1 | ✅ |
+| Combinators | 3 | ✅ |
+| Lists | 2 | ✅ |
+| Define (≔) | 3 | ⏳ Phase 1 |
+| Letrec | 2 | ⏳ Phase 2 |
+| Meta-eval (⌞) | 2 | ⏳ Phase 3 |
+| **Total** | **~36** | **32/36** |
 
-**Intermediate Milestones:**
-- After Phase 1-2: Can detect primitives ✅
-- After Phase 3: Can call simple primitives (⊕, ⊗)
-- After Phase 4: Can call all primitives from evaluator
-- After Phase 5: All tests passing ✅
+## Estimated Time to Completion
 
-**Quality Metrics:**
-- No regressions in main test suite (52/55)
-- Clean error messages (no crashes)
-- Documented limitation (what primitives work)
-- Maintainable code (not too hacky)
-
-## Risks and Mitigations
-
-**Risk 1: Primitive calling is too complex**
-- Mitigation: Start with minimal hardcoded approach
-- Fallback: Document limitation, move on
-
-**Risk 2: Arity mismatches cause crashes**
-- Mitigation: Add arity checking in bridge
-- Test with various argument counts
-
-**Risk 3: Error propagation breaks**
-- Mitigation: Test error returns from primitives
-- Handle errors explicitly in evaluator
-
-**Risk 4: Performance issues**
-- Mitigation: Don't worry about perf in v1
-- Can optimize later if needed
-
-## Next Steps
-
-**When Starting Next Session:**
-
-1. **Read context:**
-   - `SESSION_END_DAY_53_54_EXTENDED.md` (session notes)
-   - This file (implementation plan)
-   - `bootstrap/stdlib/eval.scm` (current evaluator)
-
-2. **Verify current state:**
-   ```bash
-   ./guage < bootstrap/tests/test_eval.test | grep -E "(PASS|FAIL)"
-   # Should show 13 PASS, 9 FAIL
-   ```
-
-3. **Choose approach:**
-   - Full Bridge (recommended) - 3-4 hours
-   - Minimal Hardcode - 2 hours
-   - Declare Victory - 0 hours, move on
-
-4. **Start implementation:**
-   - Follow phase-by-phase plan
-   - Test after each phase
-   - Document decisions made
-
-## Questions to Answer
-
-**Before starting:**
-- [ ] Is 100% self-hosting evaluator high-priority?
-- [ ] Is time better spent on other features?
-- [ ] Do we need full primitive support or just enough?
-
-**During implementation:**
-- [ ] Should primitives be wrapped or stored directly?
-- [ ] Should we support all primitives or just core ones?
-- [ ] How should arity mismatches be handled?
-- [ ] Should we add primitive documentation to evaluator?
-
-**After completion:**
-- [ ] Can we use this for meta-circular interpreter?
-- [ ] Does this enable new language features?
-- [ ] Is performance acceptable?
-- [ ] Should this become the default evaluator?
+| Phase | Time | Complexity |
+|-------|------|------------|
+| Phase 1: Define | 1-2 hours | Medium |
+| Phase 2: Letrec | 2-3 hours | High |
+| Phase 3: Eval | 1 hour | Low |
+| **Total** | **4-6 hours** | |
 
 ---
 
-**Status:** Ready for implementation
-**Next Session:** Choose approach and start Phase 1
-**Estimated Completion:** 1-2 sessions (3-4 hours total)
+**Last Updated:** 2026-01-29 (Day 71)
+**Next Session:** Start with Phase 1 (Define support)
