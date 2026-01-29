@@ -1,17 +1,17 @@
 ---
 Status: CURRENT
 Created: 2026-01-28
-Updated: 2026-01-29 (Day 72)
+Updated: 2026-01-29 (Day 72 Complete)
 Purpose: Roadmap for completing self-hosting evaluator
 ---
 
 # Self-Hosting Evaluator Completion Roadmap
 
-## Current State (Day 72)
+## Current State (Day 72 Complete)
 
-**Status:** 38/38 eval tests passing (100% of current tests)
-**What Works:** Full lambda calculus + primitives via ⊡ + define (≔)
-**What's Missing:** letrec, ⌞ (eval)
+**Status:** 42/42 eval tests passing (100% of current tests)
+**What Works:** Full lambda calculus + primitives via ⊡ + define (≔) + letrec (⊛) + meta-eval (⌞)
+**What's Missing:** Y-combinator transformation for recursive letrec
 
 ### Evaluator Capabilities (bootstrap/stdlib/eval.scm)
 
@@ -28,8 +28,9 @@ Purpose: Roadmap for completing self-hosting evaluator
 | Primitives | ✅ | Via ⊡ apply |
 | Y-combinator recursion | ✅ | Factorial verified |
 | Define (≔) | ✅ | Added Day 72 via eval-body |
-| Letrec | ❌ | For mutual recursion |
-| Eval (⌞) | ❌ | Meta-evaluation |
+| Letrec (⊛) | ✅ | Let-style bindings (Day 72) |
+| Eval (⌞) | ✅ | Meta-evaluation (Day 72) |
+| Recursive letrec | ⏳ | Needs Y-combinator transform |
 
 ## Files Involved
 
@@ -167,7 +168,7 @@ bootstrap/tests/test_eval.test # Test suite (32 tests)
 ## Current Test Coverage
 
 ```
-bootstrap/tests/test_eval.test - 38 tests:
+bootstrap/tests/test_eval.test - 42 tests:
 - Atoms (6): numbers, booleans, nil
 - Symbols (2): lookup, undefined error
 - Lambda (3): creation, identity, const
@@ -181,6 +182,8 @@ bootstrap/tests/test_eval.test - 38 tests:
 - Lists (2): cons-is-pair, cons-head
 - Nested (1): nested conditionals
 - Define (6): simple, expression, sequential, shadow, uses-outer, standalone
+- Letrec (2): simple binding, multiple bindings
+- Meta-eval (4): simple, variable, nested, conditional
 ```
 
 ## Session Continuation Guide
@@ -236,20 +239,28 @@ bootstrap/tests/test_eval.test
 | Combinators | 3 | ✅ |
 | Lists | 2 | ✅ |
 | Define (≔) | 6 | ✅ Day 72 |
-| Letrec | 2 | ⏳ Phase 2 |
-| Meta-eval (⌞) | 2 | ⏳ Phase 3 |
-| **Total** | **~39** | **38/39** |
+| Letrec (⊛) | 2 | ✅ Day 72 |
+| Meta-eval (⌞) | 4 | ✅ Day 72 |
+| **Total** | **42** | **42/42 (100%)** |
 
-## Estimated Time to Completion
+## Completed Phases
 
 | Phase | Time | Complexity | Status |
 |-------|------|------------|--------|
 | Phase 1: Define | 1-2 hours | Medium | ✅ Complete Day 72 |
-| Phase 2: Letrec | 2-3 hours | High | ⏳ Next |
-| Phase 3: Eval | 1 hour | Low | ⏳ |
-| **Total** | **3-4 hours remaining** | |
+| Phase 2: Letrec | 1 hour | Medium | ✅ Complete Day 72 (let-style) |
+| Phase 3: Eval | 30 min | Low | ✅ Complete Day 72 |
+| **Core Evaluator** | **Complete!** | |
+
+## Future Enhancements
+
+| Feature | Complexity | Notes |
+|---------|------------|-------|
+| Y-combinator transformation for recursive letrec | High | Enable mutual recursion |
+| Self-hosting parser | Very High | Parser in Guage |
+| Tail-call optimization in meta-evaluator | Medium | Performance |
 
 ---
 
-**Last Updated:** 2026-01-29 (Day 72)
-**Next Session:** Start with Phase 2 (Letrec support)
+**Last Updated:** 2026-01-29 (Day 72 Complete)
+**Next Session:** Y-combinator letrec or self-hosting parser

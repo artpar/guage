@@ -40,7 +40,11 @@
               #t
               (? (≡ (◁ expr) (⌜ ≔))
                  #t
-                 #f)))))))
+                 (? (≡ (◁ expr) (⌜ ⊛))
+                    #t
+                    (? (≡ (◁ expr) (⌜ ⌞))
+                       #t
+                       #f)))))))))
 
 ;; Evaluate a lambda expression
 ;; Creates a closure: (:closure params body env)
@@ -52,6 +56,61 @@
   (? ((eval cond-expr) env)
      ((eval then-expr) env)
      ((eval else-expr) env)))))))
+
+;; ===================================================================
+;; Letrec Support (⊛) - Substitution helpers
+;; ===================================================================
+
+;; Check if symbol is in a list
+(≔ member? (λ (x) (λ (lst)
+  (? (∅? lst)
+     #f
+     (? (≡ x (◁ lst))
+        #t
+        ((member? x) (▷ lst)))))))
+
+;; Substitute name with replacement in expression
+;; Handles lambda shadowing correctly
+(≔ subst (λ (name) (λ (replacement) (λ (expr)
+  (? (:? expr)
+     ; Symbol - check if it matches
+     (? (≡ expr name) replacement expr)
+     (? (⟨⟩? expr)
+        ; List - check for lambda (shadowing) or recurse
+        (? (∅? expr)
+           expr
+           (? (≡ (◁ expr) (⌜ λ))
+              ; Lambda - check if name is shadowed by params
+              (? (⟨⟩? (▷ expr))
+                 (? ((member? name) (◁ (▷ expr)))
+                    expr  ; Name shadowed, don't substitute
+                    ; Substitute in body only
+                    (⟨⟩ (⌜ λ)
+                        (⟨⟩ (◁ (▷ expr))
+                            (((subst-list name) replacement) (▷ (▷ expr))))))
+                 expr)
+              ; Not lambda - substitute in all elements
+              (((subst-list name) replacement) expr)))
+        ; Atom - return unchanged
+        expr))))))
+
+;; Substitute in a list of expressions
+(≔ subst-list (λ (name) (λ (replacement) (λ (exprs)
+  (? (∅? exprs)
+     ∅
+     (⟨⟩ (((subst name) replacement) (◁ exprs))
+         (((subst-list name) replacement) (▷ exprs))))))))
+
+;; Substitute multiple names at once
+(≔ subst-all (λ (names) (λ (replacements) (λ (expr)
+  (? (∅? names)
+     expr
+     (((subst-all (▷ names)) (▷ replacements))
+      (((subst (◁ names)) (◁ replacements)) expr)))))))
+
+;; ===================================================================
+;; Evaluation helpers
+;; ===================================================================
 
 ;; Evaluate a body (sequence of expressions)
 ;; Handles defines by extending environment for subsequent expressions
@@ -77,6 +136,26 @@
               ((eval-body (▷ exprs)) env))
            ; Not a list - skip and continue
            ((eval-body (▷ exprs)) env)))))))
+
+;; ===================================================================
+;; Letrec Evaluation (⊛) - Simple let-style (no mutual recursion yet)
+;; ===================================================================
+
+;; Evaluate letrec as sequential let bindings
+;; For recursive single functions, this won't work correctly
+;; Full letrec requires Y-combinator transformation
+(≔ eval-letrec (λ (bindings) (λ (body) (λ (env)
+  (? (∅? bindings)
+     ((eval body) env)
+     ; Extend env with first binding and recurse
+     (((eval-letrec (▷ bindings)) body)
+      (((env-extend env)
+        (◁ (◁ bindings)))
+       ((eval (◁ (▷ (◁ bindings)))) env))))))))
+
+;; ===================================================================
+;; Function Application
+;; ===================================================================
 
 ;; Bind parameters to arguments in environment
 (≔ bind-params (λ (params) (λ (args) (λ (env)
@@ -158,7 +237,22 @@
                        ((eval (◁ (▷ (▷ expr)))) env)  ; Evaluate and return value
                        (⚠ :define-missing-value expr))
                     (⚠ :define-missing-name expr))
-                 (⚠ :unknown-special-form expr)))))
+                 ; Letrec: (⊛ ((name1 val1) (name2 val2) ...) body)
+                 ; Uses self-application transformation for recursion
+                 (? (≡ (◁ expr) (⌜ ⊛))
+                    (? (⟨⟩? (▷ expr))
+                       (? (⟨⟩? (▷ (▷ expr)))
+                          (((eval-letrec (◁ (▷ expr)))   ; bindings
+                            (◁ (▷ (▷ expr))))            ; body
+                           env)
+                          (⚠ :letrec-missing-body expr))
+                       (⚠ :letrec-missing-bindings expr))
+                    ; Meta-eval: (⌞ expr) - evaluate expr, then evaluate result
+                    (? (≡ (◁ expr) (⌜ ⌞))
+                       (? (⟨⟩? (▷ expr))
+                          ((eval ((eval (◁ (▷ expr))) env)) env)
+                          (⚠ :eval-missing-expr expr))
+                       (⚠ :unknown-special-form expr)))))))
      ; Regular function application
      (? (∅? expr)
         (⚠ :empty-application)

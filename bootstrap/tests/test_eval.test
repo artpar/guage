@@ -280,3 +280,45 @@
 (⊨ :eval-define-standalone
    #42
    ((eval (⌜ (≔ :z #42))) empty-env))
+
+;;; ===================================================================
+;;; Test 18: Letrec (⊛) - simple let-style binding
+;;; ===================================================================
+
+;; Simple single-binding letrec (same as let for non-recursive)
+(⊨ :eval-letrec-simple
+   #10
+   ((eval (⌜ (⊛ ((:x #10)) :x))) env-arith))
+
+;; Multiple non-recursive bindings
+(⊨ :eval-letrec-multiple
+   #15
+   ((eval (⌜ (⊛ ((:a #5) (:b #10)) (:⊕ :a :b)))) env-arith))
+
+;; Note: Recursive letrec (factorial, even/odd) requires Y-combinator
+;; transformation which is not yet implemented. For recursion, use
+;; the Y-combinator pattern directly as shown in test_eval.test Test 13.
+
+;;; ===================================================================
+;;; Test 19: Meta-eval (⌞) - evaluate code as data
+;;; ===================================================================
+
+;; Simple meta-eval of quoted expression
+(⊨ :eval-meta-eval-simple
+   #5
+   ((eval (⌜ (⌞ (⌜ (:⊕ #2 #3))))) env-arith))
+
+;; Meta-eval through a variable
+(⊨ :eval-meta-eval-var
+   #7
+   ((eval (⌜ ((λ (:code) (⌞ :code)) (⌜ (:⊕ #3 #4))))) env-arith))
+
+;; Meta-eval of nested arithmetic
+(⊨ :eval-meta-eval-nested
+   #20
+   ((eval (⌜ (⌞ (⌜ (:⊗ (:⊕ #2 #3) #4))))) env-arith))
+
+;; Meta-eval of conditional
+(⊨ :eval-meta-eval-cond
+   :yes
+   ((eval (⌜ (⌞ (⌜ (? #t (⌜ :yes) (⌜ :no)))))) empty-env))
