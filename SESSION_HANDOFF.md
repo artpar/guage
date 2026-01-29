@@ -1,13 +1,69 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-01-29 (Day 85 COMPLETE)
+Updated: 2026-01-29 (Day 86 COMPLETE)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 85 - Type Inference (2026-01-29)
+# Session Handoff: Day 86 - Algebraic Effect System (2026-01-29)
 
-## 🎉 Day 85 Progress - Type Inference System!
+## Day 86 Progress - Algebraic Effect System!
+
+**RESULT:** 84/84 test files passing (100%), 35 new tests (effects)
+
+### New Feature: Algebraic Effect System
+
+Dynamic handler stack with effect declaration, perform, and handle.
+
+**New Special Forms (5):**
+- `(⟪ :name :op1 :op2 ...)` - Declare effect type with operations
+- `(⟪? :name)` - Query if effect is declared
+- `(⟪→ :name)` - Get effect operations list
+- `(⟪⟫ body (:Effect (:op handler) ...))` - Handle effects in body
+- `(↯ :Effect :op args...)` - Perform effect operation
+
+**Updated Primitives (2):**
+- `(⤴ val)` - Pure lift (identity, returns value unchanged)
+- `(≫ val fn)` - Effect bind (applies fn to val)
+
+**Examples:**
+```scheme
+; Declare an effect
+(⟪ :State :get :put)
+
+; Handle effects — perform returns handler's result
+(⟪⟫ (⊕ (↯ :State :get) #1)
+  (:State
+    (:get (λ () #42))
+    (:put (λ (v) ∅))))
+; → #43
+
+; Nested handlers — inner shadows outer
+(⟪⟫
+  (⟪⟫ (↯ :State :get)
+    (:State (:get (λ () #99)) (:put (λ (v) ∅))))
+  (:State (:get (λ () #42)) (:put (λ (v) ∅))))
+; → #99
+
+; Config reader pattern
+(⟪ :Config :get)
+(≔ get-config (λ (key) (↯ :Config :get key)))
+(⟪⟫ (get-config :db-url)
+  (:Config (:get (λ (key)
+    (? (≡ key :db-url) "localhost:5432" "unknown")))))
+; → "localhost:5432"
+```
+
+**Design:**
+- Dynamic handler stack (inner handlers shadow outer)
+- Handlers are closures receiving perform arguments
+- Perform returns handler function's result (non-resumable)
+- Unhandled effects return `⚠:unhandled-effect`
+- TCO in handler dispatch (handler body in tail position)
+
+---
+
+## Previous Day: Day 85 - Type Inference
 
 **RESULT:** 83/83 test files passing (100%), 73 new tests (type inference)
 
@@ -511,9 +567,10 @@ Pattern-based macros with multiple clauses and pattern matching on syntax.
 ## Current Status 🎯
 
 **System State:**
-- **Primitives:** 132 total (added ∈⍜, ∈⍜⊕ + ∈⍜* special form)
-- **Tests:** 83/83 test files passing (100%)
-- **Type Inference Tests:** 73/73 tests passing (new!)
+- **Primitives:** 132 total (⟪, ⟪?, ⟪→, ⟪⟫, ↯ special forms + ⤴, ≫ updated)
+- **Tests:** 84/84 test files passing (100%)
+- **Effect System Tests:** 35/35 tests passing (new!)
+- **Type Inference Tests:** 73/73 tests passing
 - **Type Validation Tests:** 35/35 tests passing
 - **Type Annotation Tests:** 55/55 tests passing
 - **Self-Hosting Eval Tests:** 66/66 passing (100%) - includes N-function mutual recursion
@@ -530,6 +587,7 @@ Pattern-based macros with multiple clauses and pattern matching on syntax.
 
 **Core Capabilities:**
 - Lambda calculus with De Bruijn indices + TCO
+- Algebraic effect system (⟪, ⟪⟫, ↯) with dynamic handler stack
 - Module system (⋘ load, ⌂⊚ info)
 - Structures (⊙ leaf, ⊚ node/ADT)
 - Pattern matching (∇) with guards, as-patterns, or-patterns, view patterns
@@ -588,6 +646,7 @@ Pattern-based macros with multiple clauses and pattern matching on syntax.
 
 | Day | Feature | Tests |
 |-----|---------|-------|
+| 86 | Algebraic Effect System (⟪, ⟪⟫, ↯) - dynamic handlers | 84/84 (100%), 35 new tests |
 | 85 | Type Inference (∈⍜, ∈⍜⊕, ∈⍜*) - deep/static inference | 83/83 (100%), 73 new tests |
 | 84 | Type Validation (∈✓, ∈✓*, ∈⊢) - compiler-level | 82/82 (100%), 35 new tests |
 | 83 | Type Annotations (18 primitives for gradual typing) | 81/81 (100%), 55 new tests |
@@ -757,26 +816,30 @@ git log --oneline -3         # See recent commits
 - **Pattern macros:** COMPLETE with unlimited arity via ellipsis (Day 78-79)
 - **Stdlib macros:** All macros now support unlimited args/clauses/bindings
 - **String stdlib:** COMPLETE - split, join, trim, replace, contains, index-of
-- **Focus:** Effect system, optimizer, more compiler features
+- **Effect system:** COMPLETE (Day 86) - ⟪, ⟪⟫, ↯ with dynamic handler stack (35 tests)
+- **Focus:** Resumable effects, optimizer, more compiler features
 
 ### Key Files
 ```
-bootstrap/tests/test_type_inference.test   # Type inference tests (73 tests)
-bootstrap/tests/test_type_validation.test  # Type validation tests (35 tests)
-bootstrap/tests/test_type_annotations.test # Type annotation tests (55 tests)
-bootstrap/eval.c                           # Special forms: ∈, ∈?, ∈✓, ∈⊢, ∈⍜, ∈⍜*
-bootstrap/primitives.c                     # Type primitives (∈⍜, ∈⍜⊕)
+bootstrap/tests/test_effects.test          # Effect system tests (35 tests)
+bootstrap/eval.c                           # Special forms: ⟪, ⟪?, ⟪→, ⟪⟫, ↯, ∈, ∈?, ∈✓, ∈⊢, ∈⍜, ∈⍜*
+bootstrap/eval.h                           # EffectFrame struct, effect registry/stack APIs
+bootstrap/primitives.c                     # ⤴ (pure), ≫ (bind) primitives
 ```
 
-### What We Built Today (Day 85)
+### What We Built Today (Day 86)
 
-**Type Inference Primitives:**
+**Effect System:**
 
 | Symbol | Type | Description |
 |--------|------|-------------|
-| ∈⍜ | α → Type | Deep type inference on values (recursive pair/list/struct) |
-| ∈⍜⊕ | :symbol → Type \| ∅ | Get type signature of primitive operation |
-| ∈⍜* | expr → Type | Infer type of expression without evaluation (special form) |
+| ⟪ | :name :op... → 𝔹 | Declare effect type with operations (special form) |
+| ⟪? | :name → 𝔹 | Query if effect is declared (special form) |
+| ⟪→ | :name → [:symbol] | Get effect operations list (special form) |
+| ⟪⟫ | expr spec... → α | Handle effects in body (special form) |
+| ↯ | :effect :op args... → α | Perform effect operation (special form) |
+| ⤴ | α → α | Pure lift (identity) |
+| ≫ | α → (α → β) → β | Effect bind (apply fn to val) |
 
 **Infrastructure:**
 - `types_equal` extended for `:struct` and `:graph` kinds
@@ -809,5 +872,21 @@ bootstrap/primitives.c                     # Type primitives (∈⍜, ∈⍜⊕)
 
 ---
 
-**Last Updated:** 2026-01-29 (Day 85 complete)
-**Next Session:** Day 86 - Effect system foundation or optimizer
+**Day 86 Complete (2026-01-29):**
+- ✅ Implemented algebraic effect system with dynamic handler stack
+- ✅ Added `⟪` (declare effect) special form with effect registry
+- ✅ Added `⟪?` (query effect) and `⟪→` (get operations) special forms
+- ✅ Added `⟪⟫` (handle effects) special form with handler parsing
+- ✅ Added `↯` (perform effect) special form with stack-based dispatch
+- ✅ Updated `⤴` (pure) to real identity implementation
+- ✅ Updated `≫` (bind) to real function application
+- ✅ Effect registry in EvalContext, handler stack with dynamic scoping
+- ✅ Nested handlers (inner shadows outer), closures as handlers
+- ✅ Multi-arg perform, multi-effect handling, TCO in handler dispatch
+- ✅ Created `bootstrap/tests/test_effects.test` (35 tests)
+- ✅ All 84/84 test files passing (100%)
+
+---
+
+**Last Updated:** 2026-01-29 (Day 86 complete)
+**Next Session:** Day 87 - Resumable effects or optimizer

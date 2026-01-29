@@ -1985,31 +1985,55 @@ Cell* prim_test_property(Cell* args) {
     }
 }
 
-/* Effect primitives (placeholder implementations) */
-
-Cell* prim_effect_block(Cell* args) {
-    /* ⟪⟫ - effect computation block */
-    /* For now, just evaluate the body */
-    return arg1(args);
-}
-
-Cell* prim_effect_handle(Cell* args) {
-    /* ↯ - effect handler */
-    /* Placeholder: will need proper effect handler implementation */
-    return arg1(args);
-}
+/* Effect primitives
+ * ⟪, ⟪⟫, ↯, ⟪?, ⟪→ are special forms in eval.c
+ * ⤴ and ≫ are primitives (work with evaluated args)
+ */
 
 Cell* prim_effect_pure(Cell* args) {
-    /* ⤴ - pure lift */
+    /* ⤴ - pure lift: returns value unchanged */
     Cell* result = arg1(args);
     cell_retain(result);
     return result;
 }
 
 Cell* prim_effect_bind(Cell* args) {
-    /* ≫ - effect sequencing (monadic bind) */
-    /* Placeholder: will need proper implementation */
-    return arg2(args);
+    /* ≫ - effect bind/sequence: (≫ val fn) applies fn to val */
+    Cell* val = arg1(args);
+    Cell* fn = arg2(args);
+
+    if (fn->type != CELL_LAMBDA && fn->type != CELL_BUILTIN) {
+        return cell_error("bind-requires-function", fn);
+    }
+
+    /* Apply fn to val */
+    cell_retain(val);
+    Cell* apply_args = cell_cons(val, cell_nil());
+
+    if (fn->type == CELL_BUILTIN) {
+        Cell* (*builtin_fn)(Cell*) = (Cell* (*)(Cell*))fn->data.atom.builtin;
+        Cell* result = builtin_fn(apply_args);
+        cell_release(apply_args);
+        return result;
+    }
+
+    /* Lambda application */
+    Cell* closure_env = fn->data.lambda.env;
+    Cell* body = fn->data.lambda.body;
+
+    /* Extend closure env with the value */
+    extern Cell* extend_env(Cell* env, Cell* args);
+    Cell* new_env = extend_env(closure_env, apply_args);
+    cell_release(apply_args);
+
+    /* Evaluate body in extended env */
+    extern Cell* eval_internal(EvalContext* ctx, Cell* env, Cell* expr);
+    EvalContext* ectx = eval_get_current_context();
+    cell_retain(body);
+    Cell* result = eval_internal(ectx, new_env, body);
+    cell_release(new_env);
+    cell_release(body);
+    return result;
 }
 
 /* Actor primitives (placeholder implementations) */
@@ -5800,10 +5824,9 @@ static Primitive primitives[] = {
     {"⊨-prop", prim_test_property, 3, {"Property-based test with shrinking", ":symbol → (α→𝔹) → (()→α) → 𝔹 | ⚠"}},
 
     /* Effects (placeholder) */
-    {"⟪⟫", prim_effect_block, 1, {"Effect computation block", "effect → α"}},
-    {"↯", prim_effect_handle, 2, {"Handle effect with handler", "effect → handler → α"}},
-    {"⤴", prim_effect_pure, 1, {"Lift pure value into effect", "α → effect"}},
-    {"≫", prim_effect_bind, 2, {"Sequence effects", "effect → (α → effect) → effect"}},
+    /* Effects: ⟪, ⟪⟫, ↯, ⟪?, ⟪→ are special forms in eval.c */
+    {"⤴", prim_effect_pure, 1, {"Lift pure value (identity)", "α → α"}},
+    {"≫", prim_effect_bind, 2, {"Effect bind: apply function to value", "α → (α → β) → β"}},
 
     /* Actors (placeholder) */
     {"⟳", prim_spawn, 1, {"Spawn new actor", "behavior → actor"}},

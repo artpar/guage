@@ -23,12 +23,20 @@ typedef struct FunctionDoc {
     struct FunctionDoc* next;      /* Linked list */
 } FunctionDoc;
 
+/* Effect handler frame for dynamic handler stack */
+typedef struct EffectFrame {
+    const char* effect_name;       /* Which effect this handles */
+    Cell* handlers;                /* Alist: (op-name . handler-fn) */
+    struct EffectFrame* parent;    /* Previous frame on stack */
+} EffectFrame;
+
 /* Evaluation context */
 typedef struct {
     Cell* env;          /* Current environment */
     Cell* primitives;   /* Primitive bindings */
     FunctionDoc* user_docs;  /* User function documentation */
     Cell* type_registry;     /* Type definitions (alist: type_tag -> schema) */
+    Cell* effect_registry;   /* Effect definitions (alist: name -> ops-list) */
 } EvalContext;
 
 /* Create new evaluation context */
@@ -65,6 +73,16 @@ EvalContext* eval_get_current_context(void);
 void eval_register_type(EvalContext* ctx, Cell* type_tag, Cell* schema);
 Cell* eval_lookup_type(EvalContext* ctx, Cell* type_tag);
 bool eval_has_type(EvalContext* ctx, Cell* type_tag);
+
+/* Effect registry operations */
+void eval_register_effect(EvalContext* ctx, const char* name, Cell* operations);
+Cell* eval_lookup_effect(EvalContext* ctx, const char* name);
+bool eval_has_effect(EvalContext* ctx, const char* name);
+
+/* Effect handler stack operations */
+void effect_push_handler(EffectFrame* frame);
+void effect_pop_handler(void);
+EffectFrame* effect_find_handler(const char* effect_name);
 
 /* Helper functions for trampoline evaluator */
 Cell* extend_env(Cell* env, Cell* args);

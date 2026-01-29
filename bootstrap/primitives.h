@@ -63,11 +63,9 @@ Cell* prim_is_nil(Cell* args);
 Cell* prim_is_pair(Cell* args);
 Cell* prim_is_atom(Cell* args);
 
-/* Effect primitives (placeholder) */
-Cell* prim_effect_block(Cell* args);   /* ⟪⟫ - effect computation */
-Cell* prim_effect_handle(Cell* args);  /* ↯ - effect handler */
+/* Effect primitives (⟪, ⟪⟫, ↯, ⟪?, ⟪→ are special forms in eval.c) */
 Cell* prim_effect_pure(Cell* args);    /* ⤴ - pure lift */
-Cell* prim_effect_bind(Cell* args);    /* ≫ - effect sequencing */
+Cell* prim_effect_bind(Cell* args);    /* ≫ - effect bind */
 
 /* Actor primitives (placeholder) */
 Cell* prim_spawn(Cell* args);          /* ⟳ - spawn actor */

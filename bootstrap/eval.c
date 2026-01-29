@@ -672,6 +672,7 @@ EvalContext* eval_context_new(void) {
     ctx->primitives = primitives_init();
     ctx->user_docs = NULL;  /* Initialize doc list */
     ctx->type_registry = cell_nil();  /* Initialize type registry */
+    ctx->effect_registry = cell_nil();  /* Initialize effect registry */
     macro_init();  /* Initialize macro system */
     return ctx;
 }
@@ -697,6 +698,7 @@ void eval_context_free(EvalContext* ctx) {
     cell_release(ctx->env);
     cell_release(ctx->primitives);
     cell_release(ctx->type_registry);
+    cell_release(ctx->effect_registry);
     doc_free_all(ctx->user_docs);
     free(ctx);
 }
@@ -1636,6 +1638,287 @@ tail_call:  /* TCO: loop back here instead of recursive call */
 
                 return result;
             }
+
+            /* ============ Effect System Special Forms ============ */
+
+            /* ⟪ - declare effect type
+             * Syntax: (⟪ :name :op1 :op2 ...)
+             * Registers effect with its operations in the effect registry.
+             */
+            if (strcmp(sym, "⟪") == 0) {
+                Cell* name = cell_car(rest);
+                if (!cell_is_symbol(name)) {
+                    return cell_error("effect-declare-requires-symbol", name);
+                }
+                const char* effect_name = cell_get_symbol(name);
+
+                /* Collect operation names into a list */
+                Cell* ops = cell_nil();
+                Cell* op_rest = cell_cdr(rest);
+                while (cell_is_pair(op_rest)) {
+                    Cell* op = cell_car(op_rest);
+                    if (!cell_is_symbol(op)) {
+                        cell_release(ops);
+                        return cell_error("effect-op-requires-symbol", op);
+                    }
+                    cell_retain(op);
+                    ops = cell_cons(op, ops);
+                    op_rest = cell_cdr(op_rest);
+                }
+
+                eval_register_effect(ctx, effect_name, ops);
+                cell_release(ops);
+                return cell_bool(true);
+            }
+
+            /* ⟪? - query if effect is declared
+             * Syntax: (⟪? :name)
+             * Returns #t if effect exists, #f otherwise.
+             */
+            if (strcmp(sym, "⟪?") == 0) {
+                Cell* name = cell_car(rest);
+                if (!cell_is_symbol(name)) {
+                    return cell_error("effect-query-requires-symbol", name);
+                }
+                return cell_bool(eval_has_effect(ctx, cell_get_symbol(name)));
+            }
+
+            /* ⟪→ - get effect operations
+             * Syntax: (⟪→ :name)
+             * Returns list of operation symbols, or error if undeclared.
+             */
+            if (strcmp(sym, "⟪→") == 0) {
+                Cell* name = cell_car(rest);
+                if (!cell_is_symbol(name)) {
+                    return cell_error("effect-ops-requires-symbol", name);
+                }
+                Cell* ops = eval_lookup_effect(ctx, cell_get_symbol(name));
+                if (!ops) {
+                    return cell_error("undeclared-effect", name);
+                }
+                return ops;
+            }
+
+            /* ⟪⟫ - handle effects
+             * Syntax: (⟪⟫ body (:Effect (:op1 handler1) (:op2 handler2)) ...)
+             * Installs handlers, evaluates body, removes handlers.
+             * Body can perform effects which are dispatched to handlers.
+             * Multiple effect handler specs supported.
+             */
+            if (strcmp(sym, "⟪⟫") == 0) {
+                Cell* body = cell_car(rest);
+                Cell* handler_specs = cell_cdr(rest);
+
+                /* Parse handler specs and build frames.
+                 * Each spec: (:EffectName (:op1 handler1) (:op2 handler2) ...)
+                 * We push one frame per effect.
+                 */
+                int frame_count = 0;
+                EffectFrame frames[16]; /* Max 16 effects per handle */
+
+                Cell* spec_iter = handler_specs;
+                while (cell_is_pair(spec_iter)) {
+                    Cell* spec = cell_car(spec_iter);
+                    if (!cell_is_pair(spec)) {
+                        return cell_error("effect-handler-requires-list", spec);
+                    }
+
+                    Cell* effect_name_cell = cell_car(spec);
+                    if (!cell_is_symbol(effect_name_cell)) {
+                        return cell_error("effect-handler-requires-effect-name", effect_name_cell);
+                    }
+
+                    const char* eff_name = cell_get_symbol(effect_name_cell);
+
+                    /* Build handlers alist: (:op . handler-fn) */
+                    Cell* handlers_alist = cell_nil();
+                    Cell* op_iter = cell_cdr(spec);
+                    while (cell_is_pair(op_iter)) {
+                        Cell* op_spec = cell_car(op_iter);
+                        if (!cell_is_pair(op_spec)) {
+                            cell_release(handlers_alist);
+                            return cell_error("effect-op-handler-requires-list", op_spec);
+                        }
+
+                        Cell* op_name = cell_car(op_spec);
+                        Cell* handler_expr = cell_car(cell_cdr(op_spec));
+
+                        if (!cell_is_symbol(op_name)) {
+                            cell_release(handlers_alist);
+                            return cell_error("effect-op-requires-symbol", op_name);
+                        }
+
+                        /* Evaluate the handler expression to get a function */
+                        Cell* handler_fn = eval_internal(ctx, env, handler_expr);
+                        if (cell_is_error(handler_fn)) {
+                            cell_release(handlers_alist);
+                            return handler_fn;
+                        }
+
+                        /* Add to alist: (op-name . handler-fn) */
+                        cell_retain(op_name);
+                        Cell* binding = cell_cons(op_name, handler_fn);
+                        handlers_alist = cell_cons(binding, handlers_alist);
+
+                        op_iter = cell_cdr(op_iter);
+                    }
+
+                    if (frame_count >= 16) {
+                        cell_release(handlers_alist);
+                        return cell_error("too-many-effect-handlers", cell_number(16));
+                    }
+
+                    frames[frame_count].effect_name = eff_name;
+                    frames[frame_count].handlers = handlers_alist;
+                    frames[frame_count].parent = NULL;
+                    frame_count++;
+
+                    spec_iter = cell_cdr(spec_iter);
+                }
+
+                /* Push all handler frames (last pushed = first checked) */
+                for (int i = 0; i < frame_count; i++) {
+                    effect_push_handler(&frames[i]);
+                }
+
+                /* Evaluate body with handlers installed */
+                Cell* result = eval_internal(ctx, env, body);
+
+                /* Pop all handler frames (reverse order) */
+                for (int i = 0; i < frame_count; i++) {
+                    effect_pop_handler();
+                }
+
+                /* Release handler alists */
+                for (int i = 0; i < frame_count; i++) {
+                    cell_release(frames[i].handlers);
+                }
+
+                return result;
+            }
+
+            /* ↯ - perform effect operation
+             * Syntax: (↯ :Effect :op arg1 arg2 ...)
+             * Looks up handler on dynamic stack, calls it with args.
+             * Returns handler function's result.
+             */
+            if (strcmp(sym, "↯") == 0) {
+                Cell* effect_name_cell = cell_car(rest);
+                Cell* op_name_cell = cell_car(cell_cdr(rest));
+                Cell* arg_exprs = cell_cdr(cell_cdr(rest));
+
+                if (!cell_is_symbol(effect_name_cell)) {
+                    return cell_error("perform-requires-effect-symbol", effect_name_cell);
+                }
+                if (!cell_is_symbol(op_name_cell)) {
+                    return cell_error("perform-requires-op-symbol", op_name_cell);
+                }
+
+                const char* eff_name = cell_get_symbol(effect_name_cell);
+                const char* op_name = cell_get_symbol(op_name_cell);
+
+                /* Find handler on the dynamic stack */
+                EffectFrame* frame = effect_find_handler(eff_name);
+                if (!frame) {
+                    return cell_error("unhandled-effect", effect_name_cell);
+                }
+
+                /* Look up operation handler in the frame's alist */
+                Cell* handler_fn = NULL;
+                Cell* h_iter = frame->handlers;
+                while (cell_is_pair(h_iter)) {
+                    Cell* binding = cell_car(h_iter);
+                    if (cell_is_pair(binding)) {
+                        Cell* key = cell_car(binding);
+                        if (cell_is_symbol(key) && strcmp(cell_get_symbol(key), op_name) == 0) {
+                            handler_fn = cell_cdr(binding);
+                            break;
+                        }
+                    }
+                    h_iter = cell_cdr(h_iter);
+                }
+
+                if (!handler_fn) {
+                    return cell_error("unhandled-operation", op_name_cell);
+                }
+
+                /* Evaluate argument expressions */
+                Cell* args = cell_nil();
+                Cell* args_tail = cell_nil();
+                Cell* arg_iter = arg_exprs;
+                while (cell_is_pair(arg_iter)) {
+                    Cell* arg_val = eval_internal(ctx, env, cell_car(arg_iter));
+                    if (cell_is_error(arg_val)) {
+                        cell_release(args);
+                        return arg_val;
+                    }
+                    Cell* new_pair = cell_cons(arg_val, cell_nil());
+                    if (cell_is_nil(args)) {
+                        args = new_pair;
+                        args_tail = new_pair;
+                    } else {
+                        /* Append to end of list */
+                        args_tail->data.pair.cdr = new_pair;
+                        cell_retain(new_pair);
+                        Cell* old_nil = cell_nil();
+                        cell_release(old_nil);
+                        args_tail = new_pair;
+                    }
+                    arg_iter = cell_cdr(arg_iter);
+                }
+
+                /* Call handler function with args */
+                cell_retain(handler_fn);
+
+                if (handler_fn->type == CELL_BUILTIN) {
+                    Cell* (*builtin_fn)(Cell*) = (Cell* (*)(Cell*))handler_fn->data.atom.builtin;
+                    Cell* result = builtin_fn(args);
+                    cell_release(handler_fn);
+                    cell_release(args);
+                    return result;
+                }
+
+                if (handler_fn->type == CELL_LAMBDA) {
+                    Cell* closure_env = handler_fn->data.lambda.env;
+                    Cell* fn_body = handler_fn->data.lambda.body;
+                    int arity = handler_fn->data.lambda.arity;
+
+                    /* Check arity */
+                    int arg_count = list_length(args);
+                    if (arg_count != arity) {
+                        cell_release(handler_fn);
+                        cell_release(args);
+                        Cell* expected = cell_number(arity);
+                        Cell* actual = cell_number(arg_count);
+                        Cell* data = cell_cons(expected, cell_cons(actual, cell_nil()));
+                        cell_release(expected);
+                        cell_release(actual);
+                        return cell_error("handler-arity-mismatch", data);
+                    }
+
+                    cell_retain(fn_body);
+                    Cell* new_env = extend_env(closure_env, args);
+                    cell_release(handler_fn);
+                    cell_release(args);
+
+                    /* TCO: handler body in tail position */
+                    if (owned_env) {
+                        cell_release(owned_env);
+                    }
+                    if (owned_expr) {
+                        cell_release(owned_expr);
+                    }
+                    env = new_env;
+                    owned_env = new_env;
+                    expr = fn_body;
+                    owned_expr = fn_body;
+                    goto tail_call;
+                }
+
+                cell_release(handler_fn);
+                cell_release(args);
+                return cell_error("handler-not-a-function", handler_fn);
+            }
         }
 
         /* Function application */
@@ -1809,4 +2092,92 @@ bool eval_has_type(EvalContext* ctx, Cell* type_tag) {
         return true;
     }
     return false;
+}
+
+/* ============ Effect Registry ============ */
+
+/* Global effect handler stack (dynamic scoping) */
+static EffectFrame* effect_handler_stack = NULL;
+
+/* Register an effect type with its operations */
+void eval_register_effect(EvalContext* ctx, const char* name, Cell* operations) {
+    Cell* name_sym = cell_symbol(name);
+
+    /* Remove old entry if exists */
+    Cell* new_registry = cell_nil();
+    Cell* current = ctx->effect_registry;
+    while (cell_is_pair(current)) {
+        Cell* binding = cell_car(current);
+        if (cell_is_pair(binding)) {
+            Cell* tag = cell_car(binding);
+            if (!cell_equal(tag, name_sym)) {
+                cell_retain(binding);
+                new_registry = cell_cons(binding, new_registry);
+            }
+        }
+        current = cell_cdr(current);
+    }
+    cell_release(ctx->effect_registry);
+    ctx->effect_registry = new_registry;
+
+    /* Add new binding: (name . operations) */
+    cell_retain(operations);
+    Cell* binding = cell_cons(name_sym, operations);
+    ctx->effect_registry = cell_cons(binding, ctx->effect_registry);
+}
+
+/* Lookup an effect's operations list (returns NULL if not found) */
+Cell* eval_lookup_effect(EvalContext* ctx, const char* name) {
+    Cell* name_sym = cell_symbol(name);
+    Cell* current = ctx->effect_registry;
+    while (cell_is_pair(current)) {
+        Cell* binding = cell_car(current);
+        if (cell_is_pair(binding)) {
+            Cell* tag = cell_car(binding);
+            if (cell_equal(tag, name_sym)) {
+                Cell* ops = cell_cdr(binding);
+                cell_retain(ops);
+                cell_release(name_sym);
+                return ops;
+            }
+        }
+        current = cell_cdr(current);
+    }
+    cell_release(name_sym);
+    return NULL;
+}
+
+/* Check if an effect is registered */
+bool eval_has_effect(EvalContext* ctx, const char* name) {
+    Cell* ops = eval_lookup_effect(ctx, name);
+    if (ops) {
+        cell_release(ops);
+        return true;
+    }
+    return false;
+}
+
+/* Push a handler frame onto the global handler stack */
+void effect_push_handler(EffectFrame* frame) {
+    frame->parent = effect_handler_stack;
+    effect_handler_stack = frame;
+}
+
+/* Pop the top handler frame from the stack */
+void effect_pop_handler(void) {
+    if (effect_handler_stack) {
+        effect_handler_stack = effect_handler_stack->parent;
+    }
+}
+
+/* Find a handler for the given effect name (walks stack, inner first) */
+EffectFrame* effect_find_handler(const char* effect_name) {
+    EffectFrame* frame = effect_handler_stack;
+    while (frame) {
+        if (strcmp(frame->effect_name, effect_name) == 0) {
+            return frame;
+        }
+        frame = frame->parent;
+    }
+    return NULL;
 }

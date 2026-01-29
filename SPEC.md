@@ -553,15 +553,33 @@ See `test_type_inference.test`, `test_type_validation.test`.
 | `gen-list` | `(() → α) → ℕ → [α]` | Generate random list | ✅ DONE |
 | `⊨-prop` | `:symbol → (α → 𝔹) → (() → α) → 𝔹 \| ⚠` | Property-based test with shrinking | ✅ DONE |
 
-### Effects (4) - PLACEHOLDERS ONLY
+### Effects (7) - Algebraic Effect System
 | Symbol | Type | Meaning | Status |
 |--------|------|---------|--------|
-| `⟪⟫` | `effect → α` | Effect block | ❌ PLACEHOLDER |
-| `↯` | `effect → handler → α` | Effect handler | ❌ PLACEHOLDER |
-| `⤴` | `α → effect` | Lift to effect | ❌ PLACEHOLDER |
-| `≫` | `effect → (α → effect) → effect` | Effect bind | ❌ PLACEHOLDER |
+| `⟪` | `:name :op... → 𝔹` | Declare effect type with operations | ✅ DONE (special form) |
+| `⟪?` | `:name → 𝔹` | Query if effect is declared | ✅ DONE (special form) |
+| `⟪→` | `:name → [:symbol]` | Get effect operations list | ✅ DONE (special form) |
+| `⟪⟫` | `expr handler-spec... → α` | Handle effects in body | ✅ DONE (special form) |
+| `↯` | `:effect :op args... → α` | Perform effect operation | ✅ DONE (special form) |
+| `⤴` | `α → α` | Pure lift (identity) | ✅ DONE |
+| `≫` | `α → (α → β) → β` | Effect bind (apply fn to value) | ✅ DONE |
 
-**Note:** Effects are stubs for Phase 4+. Return nil currently.
+**Effect System:**
+```scheme
+; Declare effect with operations
+(⟪ :State :get :put)
+
+; Perform inside handler scope
+(⟪⟫ (⊕ (↯ :State :get) #1)
+  (:State
+    (:get (λ () #42))
+    (:put (λ (v) ∅))))
+; → #43 (handler returns #42, body computes #42 + 1)
+```
+
+**Dynamic handler stack:** Inner handlers shadow outer for the same effect.
+Handlers are closures that receive the perform arguments and return a value.
+Unhandled effects return `⚠:unhandled-effect` errors.
 
 ### Actors (3) - PLACEHOLDERS ONLY
 | Symbol | Type | Meaning | Status |
@@ -1444,10 +1462,13 @@ All I/O operations return errors on failure:
 ### Effects (4)
 | Symbol | Type | Meaning | Status |
 |--------|------|---------|--------|
-| `⟪⟫` | Effect block | Effect computation | ❌ PLACEHOLDER |
-| `↯` | Effect handler | Handle effects | ❌ PLACEHOLDER |
-| `⤴` | Pure lift | Lift to effect | ❌ PLACEHOLDER |
-| `≫` | Effect bind | Sequence effects | ❌ PLACEHOLDER |
+| `⟪` | Declare effect | Register effect type with operations | ✅ DONE |
+| `⟪?` | Query effect | Check if effect is declared | ✅ DONE |
+| `⟪→` | Effect operations | Get operations list for effect | ✅ DONE |
+| `⟪⟫` | Handle effects | Install handlers, evaluate body | ✅ DONE |
+| `↯` | Perform effect | Trigger effect operation | ✅ DONE |
+| `⤴` | Pure lift | Identity (value unchanged) | ✅ DONE |
+| `≫` | Effect bind | Apply function to value | ✅ DONE |
 
 ### Refinement Types (4) - COMPILE TIME ONLY
 | Symbol | Type | Meaning |
