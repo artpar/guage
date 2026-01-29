@@ -926,7 +926,21 @@ static Cell* eval_list(EvalContext* ctx, Cell* env, Cell* expr) {
     Cell* rest = cell_cdr(expr);
 
     Cell* first_eval = eval_internal(ctx, env, first);
+
+    /* Propagate perform-request errors (control flow, not user errors) */
+    if (cell_is_error(first_eval) &&
+        strcmp(cell_error_message(first_eval), "perform-request") == 0) {
+        return first_eval;
+    }
+
     Cell* rest_eval = eval_list(ctx, env, rest);
+
+    /* Propagate perform-request from rest */
+    if (cell_is_error(rest_eval) &&
+        strcmp(cell_error_message(rest_eval), "perform-request") == 0) {
+        cell_release(first_eval);
+        return rest_eval;
+    }
 
     Cell* result = cell_cons(first_eval, rest_eval);
 
@@ -1608,6 +1622,12 @@ tail_call:  /* TCO: loop back here instead of recursive call */
 
                 Cell* cond_val = eval_internal(ctx, env, cond_expr);
 
+                /* Propagate perform-request errors */
+                if (cell_is_error(cond_val) &&
+                    strcmp(cell_error_message(cond_val), "perform-request") == 0) {
+                    return cond_val;
+                }
+
                 /* TCO: Branch evaluation is in tail position */
                 if (cell_is_bool(cond_val) && cell_get_bool(cond_val)) {
                     cell_release(cond_val);
@@ -1771,6 +1791,8 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                     frames[frame_count].effect_name = eff_name;
                     frames[frame_count].handlers = handlers_alist;
                     frames[frame_count].parent = NULL;
+                    frames[frame_count].resumable = false;
+                    frames[frame_count].resume_ctx = NULL;
                     frame_count++;
 
                     spec_iter = cell_cdr(spec_iter);
@@ -1797,10 +1819,129 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                 return result;
             }
 
+            /* ⟪↺⟫ - resumable handle effects
+             * Syntax: (⟪↺⟫ body (:Effect (:op1 handler1) ...) ...)
+             * Like ⟪⟫ but handlers receive continuation k as first arg.
+             * Calling (k value) resumes body at the perform point.
+             * Not calling k aborts — handler result replaces ⟪↺⟫.
+             * Implementation: replay-based re-evaluation.
+             */
+            if (strcmp(sym, "⟪↺⟫") == 0) {
+                Cell* body = cell_car(rest);
+                Cell* handler_specs = cell_cdr(rest);
+
+                /* Parse handler specs — same as ⟪⟫ */
+                int frame_count = 0;
+                EffectFrame frames[16];
+
+                Cell* spec_iter = handler_specs;
+                while (cell_is_pair(spec_iter)) {
+                    Cell* spec = cell_car(spec_iter);
+                    if (!cell_is_pair(spec)) {
+                        return cell_error("effect-handler-requires-list", spec);
+                    }
+
+                    Cell* effect_name_cell = cell_car(spec);
+                    if (!cell_is_symbol(effect_name_cell)) {
+                        return cell_error("effect-handler-requires-effect-name", effect_name_cell);
+                    }
+
+                    const char* eff_name = cell_get_symbol(effect_name_cell);
+
+                    /* Build handlers alist */
+                    Cell* handlers_alist = cell_nil();
+                    Cell* op_iter = cell_cdr(spec);
+                    while (cell_is_pair(op_iter)) {
+                        Cell* op_spec = cell_car(op_iter);
+                        if (!cell_is_pair(op_spec)) {
+                            cell_release(handlers_alist);
+                            return cell_error("effect-op-handler-requires-list", op_spec);
+                        }
+
+                        Cell* op_name = cell_car(op_spec);
+                        Cell* handler_expr = cell_car(cell_cdr(op_spec));
+
+                        if (!cell_is_symbol(op_name)) {
+                            cell_release(handlers_alist);
+                            return cell_error("effect-op-requires-symbol", op_name);
+                        }
+
+                        Cell* handler_fn = eval_internal(ctx, env, handler_expr);
+                        if (cell_is_error(handler_fn)) {
+                            cell_release(handlers_alist);
+                            return handler_fn;
+                        }
+
+                        cell_retain(op_name);
+                        Cell* binding = cell_cons(op_name, handler_fn);
+                        handlers_alist = cell_cons(binding, handlers_alist);
+
+                        op_iter = cell_cdr(op_iter);
+                    }
+
+                    if (frame_count >= 16) {
+                        cell_release(handlers_alist);
+                        return cell_error("too-many-effect-handlers", cell_number(16));
+                    }
+
+                    frames[frame_count].effect_name = eff_name;
+                    frames[frame_count].handlers = handlers_alist;
+                    frames[frame_count].parent = NULL;
+                    frames[frame_count].resumable = true;
+                    frames[frame_count].resume_ctx = NULL; /* Set below */
+                    frame_count++;
+
+                    spec_iter = cell_cdr(spec_iter);
+                }
+
+                /* Build resume context */
+                ResumeCtx my_ctx;
+                memset(&my_ctx, 0, sizeof(ResumeCtx));
+                my_ctx.body = body;
+                my_ctx.body_env = env;
+                my_ctx.eval_ctx = ctx;
+                my_ctx.frame_count = frame_count;
+                my_ctx.frames = frames;
+
+                /* Point all frames to this resume context */
+                for (int i = 0; i < frame_count; i++) {
+                    frames[i].resume_ctx = &my_ctx;
+                }
+
+                /* Push onto global resume stack */
+                extern ResumeCtx* g_resume_stack[];
+                extern int g_resume_depth;
+                if (g_resume_depth >= 7) {
+                    for (int i = 0; i < frame_count; i++) {
+                        cell_release(frames[i].handlers);
+                    }
+                    return cell_error("resume-stack-overflow", cell_number(8));
+                }
+                g_resume_stack[++g_resume_depth] = &my_ctx;
+
+                /* Evaluate via resume loop */
+                Cell* result = resume_eval_loop(&my_ctx);
+
+                /* Pop resume stack */
+                g_resume_depth--;
+
+                /* Release handler alists and replay buffer */
+                for (int i = 0; i < frame_count; i++) {
+                    cell_release(frames[i].handlers);
+                }
+                for (int i = 0; i < my_ctx.count; i++) {
+                    cell_release(my_ctx.answers[i]);
+                }
+                free(my_ctx.answers);
+
+                return result;
+            }
+
             /* ↯ - perform effect operation
              * Syntax: (↯ :Effect :op arg1 arg2 ...)
              * Looks up handler on dynamic stack, calls it with args.
-             * Returns handler function's result.
+             * Non-resumable: returns handler function's result directly.
+             * Resumable: checks replay buffer, or signals perform-request.
              */
             if (strcmp(sym, "↯") == 0) {
                 Cell* effect_name_cell = cell_car(rest);
@@ -1822,6 +1963,60 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                 if (!frame) {
                     return cell_error("unhandled-effect", effect_name_cell);
                 }
+
+                /* ===== RESUMABLE PATH ===== */
+                if (frame->resumable && frame->resume_ctx) {
+                    ResumeCtx* rc = frame->resume_ctx;
+
+                    /* Check replay buffer first */
+                    if (rc->cursor < rc->count) {
+                        Cell* answer = rc->answers[rc->cursor++];
+                        cell_retain(answer);
+                        return answer;
+                    }
+
+                    /* Not in replay — evaluate args and signal perform-request */
+                    Cell* args = cell_nil();
+                    Cell* args_tail = cell_nil();
+                    Cell* arg_iter = arg_exprs;
+                    while (cell_is_pair(arg_iter)) {
+                        Cell* arg_val = eval_internal(ctx, env, cell_car(arg_iter));
+                        if (cell_is_error(arg_val)) {
+                            cell_release(args);
+                            return arg_val;
+                        }
+                        Cell* new_pair = cell_cons(arg_val, cell_nil());
+                        if (cell_is_nil(args)) {
+                            args = new_pair;
+                            args_tail = new_pair;
+                        } else {
+                            args_tail->data.pair.cdr = new_pair;
+                            cell_retain(new_pair);
+                            Cell* old_nil = cell_nil();
+                            cell_release(old_nil);
+                            args_tail = new_pair;
+                        }
+                        arg_iter = cell_cdr(arg_iter);
+                    }
+
+                    /* Store perform info in global signal */
+                    extern bool g_perform_pending;
+                    extern const char* g_perform_eff_name;
+                    extern const char* g_perform_op_name;
+                    extern Cell* g_perform_args;
+                    extern ResumeCtx* g_perform_ctx;
+
+                    g_perform_pending = true;
+                    g_perform_eff_name = eff_name;
+                    g_perform_op_name = op_name;
+                    g_perform_args = args;
+                    g_perform_ctx = rc;
+
+                    /* Return perform-request error (propagates up to ⟪↺⟫) */
+                    return cell_error("perform-request", cell_nil());
+                }
+
+                /* ===== NON-RESUMABLE PATH (original behavior) ===== */
 
                 /* Look up operation handler in the frame's alist */
                 Cell* handler_fn = NULL;
@@ -1945,6 +2140,18 @@ tail_call:  /* TCO: loop back here instead of recursive call */
         }
 
         Cell* args = eval_list(ctx, env, rest);
+
+        /* Propagate perform-request errors before calling function */
+        if (cell_is_error(args) &&
+            strcmp(cell_error_message(args), "perform-request") == 0) {
+            cell_release(fn);
+            return args;
+        }
+        if (cell_is_error(fn) &&
+            strcmp(cell_error_message(fn), "perform-request") == 0) {
+            cell_release(args);
+            return fn;
+        }
 
         /* Inline apply() for TCO */
         if (fn->type == CELL_BUILTIN) {
@@ -2180,4 +2387,244 @@ EffectFrame* effect_find_handler(const char* effect_name) {
         frame = frame->parent;
     }
     return NULL;
+}
+
+/* ============ Resumable Effect Infrastructure ============ */
+
+/* Global resume stack (for nested ⟪↺⟫) */
+ResumeCtx* g_resume_stack[8];
+int g_resume_depth = -1;
+
+/* Global perform-request signal (set by ↯, read by resume_eval_loop) */
+bool g_perform_pending = false;
+const char* g_perform_eff_name = NULL;
+const char* g_perform_op_name = NULL;
+Cell* g_perform_args = NULL;
+ResumeCtx* g_perform_ctx = NULL;
+
+/* resume_eval_loop - Core of replay-based resumable effects.
+ *
+ * Evaluates body. If body performs an effect (returns perform-request error),
+ * looks up the handler, builds continuation k, calls handler with (k args...).
+ * If handler calls k, the body is re-evaluated from scratch with the replay
+ * buffer providing answers for previously-handled performs.
+ *
+ * Performance: O(n²) for n performs — acceptable for bootstrap interpreter.
+ * Native compilation will use direct CPS dispatch for O(n).
+ */
+Cell* resume_eval_loop(ResumeCtx* rc) {
+    /* Initial capacity for replay buffer */
+    rc->capacity = 8;
+    rc->count = 0;
+    rc->answers = (Cell**)malloc(sizeof(Cell*) * rc->capacity);
+    rc->cursor = 0;
+
+    /* Push handler frames onto global handler stack */
+    for (int i = 0; i < rc->frame_count; i++) {
+        effect_push_handler(&rc->frames[i]);
+    }
+
+    /* Evaluate body */
+    Cell* result = eval_internal(rc->eval_ctx, rc->body_env, rc->body);
+
+    /* Pop handler frames */
+    for (int i = 0; i < rc->frame_count; i++) {
+        effect_pop_handler();
+    }
+
+    /* If not a perform-request, body completed — return result */
+    if (!cell_is_error(result) ||
+        strcmp(cell_error_message(result), "perform-request") != 0) {
+        return result;
+    }
+
+    /* Perform-request: check it's for our context */
+    if (!g_perform_pending || g_perform_ctx != rc) {
+        /* Not ours — propagate up */
+        return result;
+    }
+
+    /* Consume the signal */
+    g_perform_pending = false;
+    const char* eff_name = g_perform_eff_name;
+    const char* op_name = g_perform_op_name;
+    Cell* args = g_perform_args;
+    g_perform_eff_name = NULL;
+    g_perform_op_name = NULL;
+    g_perform_args = NULL;
+    g_perform_ctx = NULL;
+
+    cell_release(result); /* Release the perform-request error */
+
+    /* Find handler function in our frames */
+    Cell* handler_fn = NULL;
+    for (int i = 0; i < rc->frame_count; i++) {
+        if (strcmp(rc->frames[i].effect_name, eff_name) == 0) {
+            Cell* h_iter = rc->frames[i].handlers;
+            while (cell_is_pair(h_iter)) {
+                Cell* binding = cell_car(h_iter);
+                if (cell_is_pair(binding)) {
+                    Cell* key = cell_car(binding);
+                    if (cell_is_symbol(key) && strcmp(cell_get_symbol(key), op_name) == 0) {
+                        handler_fn = cell_cdr(binding);
+                        break;
+                    }
+                }
+                h_iter = cell_cdr(h_iter);
+            }
+            if (handler_fn) break;
+        }
+    }
+
+    if (!handler_fn) {
+        cell_release(args);
+        return cell_error("unhandled-resumable-op", cell_symbol(op_name));
+    }
+
+    /* Build continuation k as a builtin */
+    Cell* k = cell_builtin((void*)prim_resume_k);
+
+    /* Build call args: (k arg1 arg2 ...) */
+    Cell* call_args = cell_cons(k, args);
+
+    /* Call handler function */
+    cell_retain(handler_fn);
+
+    Cell* handler_result;
+    if (handler_fn->type == CELL_BUILTIN) {
+        Cell* (*builtin_fn)(Cell*) = (Cell* (*)(Cell*))handler_fn->data.atom.builtin;
+        handler_result = builtin_fn(call_args);
+    } else if (handler_fn->type == CELL_LAMBDA) {
+        Cell* lambda_env = handler_fn->data.lambda.env;
+        Cell* lambda_body = handler_fn->data.lambda.body;
+
+        Cell* new_env = extend_env(lambda_env, call_args);
+
+        handler_result = eval_internal(rc->eval_ctx, new_env, lambda_body);
+        cell_release(new_env);
+    } else {
+        handler_result = cell_error("handler-not-callable", handler_fn);
+    }
+
+    cell_release(handler_fn);
+    cell_release(call_args);
+
+    return handler_result;
+}
+
+/* prim_resume_k - Continuation function passed to resumable handlers.
+ *
+ * When handler calls (k value), this stores the value in the replay buffer
+ * and re-evaluates the body. Previous performs get their answers from the
+ * replay buffer; the current perform slot now returns `value`.
+ *
+ * Args: (value)
+ */
+Cell* prim_resume_k(Cell* args) {
+    /* Get the current resume context from global stack */
+    if (g_resume_depth < 0) {
+        return cell_error("resume-k-no-context", cell_nil());
+    }
+    ResumeCtx* rc = g_resume_stack[g_resume_depth];
+
+    /* Get the resume value */
+    Cell* value = cell_car(args);
+    cell_retain(value);
+
+    /* Grow replay buffer if needed */
+    if (rc->count >= rc->capacity) {
+        rc->capacity *= 2;
+        rc->answers = (Cell**)realloc(rc->answers, sizeof(Cell*) * rc->capacity);
+    }
+
+    /* Store answer in replay buffer */
+    rc->answers[rc->count++] = value;
+
+    /* Reset cursor for replay */
+    rc->cursor = 0;
+
+    /* Push handler frames back onto global stack */
+    for (int i = 0; i < rc->frame_count; i++) {
+        effect_push_handler(&rc->frames[i]);
+    }
+
+    /* Re-evaluate body (previous performs will replay from buffer) */
+    Cell* result = eval_internal(rc->eval_ctx, rc->body_env, rc->body);
+
+    /* Pop handler frames */
+    for (int i = 0; i < rc->frame_count; i++) {
+        effect_pop_handler();
+    }
+
+    /* Check if another perform-request occurred */
+    if (cell_is_error(result) &&
+        strcmp(cell_error_message(result), "perform-request") == 0 &&
+        g_perform_pending && g_perform_ctx == rc) {
+
+        /* Another perform in the same body — handle it recursively */
+        g_perform_pending = false;
+        const char* eff_name = g_perform_eff_name;
+        const char* op_name = g_perform_op_name;
+        Cell* perf_args = g_perform_args;
+        g_perform_eff_name = NULL;
+        g_perform_op_name = NULL;
+        g_perform_args = NULL;
+        g_perform_ctx = NULL;
+
+        cell_release(result);
+
+        /* Find handler function */
+        Cell* handler_fn = NULL;
+        for (int i = 0; i < rc->frame_count; i++) {
+            if (strcmp(rc->frames[i].effect_name, eff_name) == 0) {
+                Cell* h_iter = rc->frames[i].handlers;
+                while (cell_is_pair(h_iter)) {
+                    Cell* binding = cell_car(h_iter);
+                    if (cell_is_pair(binding)) {
+                        Cell* key = cell_car(binding);
+                        if (cell_is_symbol(key) && strcmp(cell_get_symbol(key), op_name) == 0) {
+                            handler_fn = cell_cdr(binding);
+                            break;
+                        }
+                    }
+                    h_iter = cell_cdr(h_iter);
+                }
+                if (handler_fn) break;
+            }
+        }
+
+        if (!handler_fn) {
+            cell_release(perf_args);
+            return cell_error("unhandled-resumable-op", cell_symbol(op_name));
+        }
+
+        /* Build k and call handler again */
+        Cell* k = cell_builtin((void*)prim_resume_k);
+        Cell* call_args = cell_cons(k, perf_args);
+
+        cell_retain(handler_fn);
+
+        Cell* handler_result;
+        if (handler_fn->type == CELL_BUILTIN) {
+            Cell* (*builtin_fn)(Cell*) = (Cell* (*)(Cell*))handler_fn->data.atom.builtin;
+            handler_result = builtin_fn(call_args);
+        } else if (handler_fn->type == CELL_LAMBDA) {
+            Cell* lambda_env = handler_fn->data.lambda.env;
+            Cell* lambda_body = handler_fn->data.lambda.body;
+
+            Cell* new_env = extend_env(lambda_env, call_args);
+
+            handler_result = eval_internal(rc->eval_ctx, new_env, lambda_body);
+            cell_release(new_env);
+        } else {
+            handler_result = cell_error("handler-not-callable", handler_fn);
+        }
+
+        cell_release(handler_fn);
+        cell_release(call_args);
+
+        return handler_result;
+    }
+
+    return result;
 }

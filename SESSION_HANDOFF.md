@@ -1,13 +1,88 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-01-29 (Day 86 COMPLETE)
+Updated: 2026-01-29 (Day 87 COMPLETE)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 86 - Algebraic Effect System (2026-01-29)
+# Session Handoff: Day 87 - Resumable Effect Handlers (2026-01-29)
 
-## Day 86 Progress - Algebraic Effect System!
+## Day 87 Progress - Resumable Effects!
+
+**RESULT:** 85/85 test files passing (100%), 30 new tests (resumable effects)
+
+### New Feature: Resumable Effect Handlers (⟪↺⟫)
+
+Replay-based continuations enabling generators, coroutines, and dependency injection.
+
+**New Special Form (1):**
+- `(⟪↺⟫ body (:Effect (:op handler) ...))` - Handle effects with resumable continuation `k`
+
+**New Primitive (1):**
+- `prim_resume_k` - Continuation builtin passed to handlers; stores resume value and re-evaluates body
+
+**How It Works:**
+- Handlers receive continuation `k` as first argument: `(λ (k args...) ...)`
+- Calling `(k value)` resumes body computation at the perform point
+- NOT calling `k` aborts — handler result replaces entire `⟪↺⟫` (exception pattern)
+- Implementation: replay-based re-evaluation (body re-evaluated from scratch; previous performs return stored answers from replay buffer)
+- O(n²) for n performs — acceptable for bootstrap interpreter; native compilation will use direct CPS
+
+**Examples:**
+```scheme
+; Basic resume — handler provides value
+(⟪↺⟫ (↯ :State :get)
+  (:State
+    (:get (λ (k) (k #42)))
+    (:put (λ (k v) (k ∅)))))
+; → #42
+
+; Generator/yield — collect values into list
+(⟪↺⟫ (⊎ (↯ :Yield :value #1)
+          (↯ :Yield :value #2)
+          (↯ :Yield :value #3) ∅)
+  (:Yield
+    (:value (λ (k v) (⟨⟩ v (k ∅))))))
+; → (#1 #2 #3)
+
+; Abort — handler doesn't call k
+(⟪↺⟫ (⊕ (↯ :State :get) #1)
+  (:State
+    (:get (λ (k) :aborted))))
+; → :aborted
+
+; Handler transforms continuation result
+(⟪↺⟫ (↯ :State :get)
+  (:State
+    (:get (λ (k) (⊗ (k #42) #2)))))
+; → #84 (k returns 42, handler doubles)
+
+; Choice effect
+(⟪↺⟫ (↯ :Choice :choose #10 #20)
+  (:Choice
+    (:choose (λ (k a b) (k a)))))
+; → #10
+
+; Dependency injection
+(⟪↺⟫ (get-config-r :db-url)
+  (:Config
+    (:get (λ (k key)
+      (k (? (≡ key :db-url) "localhost:5432" "unknown"))))))
+; → "localhost:5432"
+```
+
+**Infrastructure:**
+- `ResumeCtx` struct: replay buffer (answers array), cursor, body, body_env, eval_ctx, frames
+- `EffectFrame` extended: `bool resumable` + `ResumeCtx* resume_ctx`
+- Global resume stack (`g_resume_stack[8]`) for nesting
+- Global perform-request signal variables for cross-scope communication
+- `perform-request` error propagation through `eval_list`, conditionals, and function application
+- Nested resumable/non-resumable handlers work correctly
+- Mixed `⟪⟫` and `⟪↺⟫` compose properly
+
+---
+
+## Previous Day: Day 86 - Algebraic Effect System
 
 **RESULT:** 84/84 test files passing (100%), 35 new tests (effects)
 

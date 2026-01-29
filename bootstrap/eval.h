@@ -23,21 +23,40 @@ typedef struct FunctionDoc {
     struct FunctionDoc* next;      /* Linked list */
 } FunctionDoc;
 
+/* Forward declarations */
+typedef struct ResumeCtx ResumeCtx;
+typedef struct EvalContext EvalContext;
+
 /* Effect handler frame for dynamic handler stack */
 typedef struct EffectFrame {
     const char* effect_name;       /* Which effect this handles */
     Cell* handlers;                /* Alist: (op-name . handler-fn) */
     struct EffectFrame* parent;    /* Previous frame on stack */
+    bool resumable;                /* true for ⟪↺⟫, false for ⟪⟫ */
+    ResumeCtx* resume_ctx;         /* Non-null for resumable frames */
 } EffectFrame;
 
+/* Resume context for replay-based resumable effects */
+struct ResumeCtx {
+    Cell** answers;                /* Replay buffer (array of resume values) */
+    int count;                     /* How many answers stored */
+    int capacity;                  /* Buffer capacity */
+    int cursor;                    /* Current replay position during re-eval */
+    Cell* body;                    /* Unevaluated body expression */
+    Cell* body_env;                /* Environment for body evaluation */
+    EvalContext* eval_ctx;         /* Evaluation context */
+    int frame_count;               /* Number of handler frames */
+    EffectFrame* frames;           /* Pointer to handler frames array */
+};
+
 /* Evaluation context */
-typedef struct {
+struct EvalContext {
     Cell* env;          /* Current environment */
     Cell* primitives;   /* Primitive bindings */
     FunctionDoc* user_docs;  /* User function documentation */
     Cell* type_registry;     /* Type definitions (alist: type_tag -> schema) */
     Cell* effect_registry;   /* Effect definitions (alist: name -> ops-list) */
-} EvalContext;
+};
 
 /* Create new evaluation context */
 EvalContext* eval_context_new(void);
@@ -83,6 +102,10 @@ bool eval_has_effect(EvalContext* ctx, const char* name);
 void effect_push_handler(EffectFrame* frame);
 void effect_pop_handler(void);
 EffectFrame* effect_find_handler(const char* effect_name);
+
+/* Resumable effect operations */
+Cell* resume_eval_loop(ResumeCtx* rc);
+Cell* prim_resume_k(Cell* args);
 
 /* Helper functions for trampoline evaluator */
 Cell* extend_env(Cell* env, Cell* args);

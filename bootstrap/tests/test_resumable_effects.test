@@ -1,0 +1,316 @@
+; Test: Resumable Effect Handlers
+; Day 87 - Continuations via replay-based resumption
+;
+; ⟪↺⟫ handlers receive continuation k as first argument.
+; Calling (k value) resumes the body computation.
+; Not calling k aborts (handler result replaces ⟪↺⟫).
+
+; Load iteration macros for ⊎ (begin/sequencing)
+(⋘ "bootstrap/stdlib/macros_iteration.scm")
+
+; ============ Declare Effects ============
+
+(⟪ :Ask :prompt)
+(⟪ :State :get :put)
+(⟪ :Yield :value)
+(⟪ :Logger :log)
+(⟪ :Choice :choose)
+(⟪ :Math :compute)
+
+; ============ Basic Resume ============
+
+; Handler calls k — body completes with resumed value
+(⊨ (⌜ :basic-resume)
+  #42
+  (⟪↺⟫ (↯ :State :get)
+    (:State
+      (:get (λ (k) (k #42)))
+      (:put (λ (k v) (k ∅))))))
+
+; Resume in arithmetic expression
+(⊨ (⌜ :resume-in-expr)
+  #43
+  (⟪↺⟫ (⊕ (↯ :State :get) #1)
+    (:State
+      (:get (λ (k) (k #42)))
+      (:put (λ (k v) (k ∅))))))
+
+; Resume with argument passed through
+(⊨ (⌜ :resume-with-arg)
+  #99
+  (⟪↺⟫ (↯ :State :put #99)
+    (:State
+      (:get (λ (k) (k #0)))
+      (:put (λ (k v) (k v))))))
+
+; Handler uses perform arg to compute resume value
+(⊨ (⌜ :handler-computes)
+  #84
+  (⟪↺⟫ (↯ :State :put #42)
+    (:State
+      (:get (λ (k) (k #0)))
+      (:put (λ (k v) (k (⊗ v #2)))))))
+
+; ============ No Resume (Abort) ============
+
+; Handler doesn't call k — acts like exception
+(⊨ (⌜ :abort-no-k)
+  :aborted
+  (⟪↺⟫ (⊕ (↯ :State :get) #1)
+    (:State
+      (:get (λ (k) :aborted))
+      (:put (λ (k v) :aborted)))))
+
+; Abort returns handler's direct value
+(⊨ (⌜ :abort-with-value)
+  #999
+  (⟪↺⟫ (⊕ (↯ :State :get) #1)
+    (:State
+      (:get (λ (k) #999))
+      (:put (λ (k v) ∅)))))
+
+; ============ Handler Transforms Result ============
+
+; Handler wraps continuation result
+(⊨ (⌜ :transform-result)
+  #84
+  (⟪↺⟫ (↯ :State :get)
+    (:State
+      (:get (λ (k) (⊗ (k #42) #2)))
+      (:put (λ (k v) (k ∅))))))
+; k(42) → body returns 42, handler doubles → 84
+
+; Handler post-processes with addition
+(⊨ (⌜ :transform-add)
+  #143
+  (⟪↺⟫ (⊕ (↯ :State :get) #1)
+    (:State
+      (:get (λ (k) (⊕ (k #42) #100)))
+      (:put (λ (k v) (k ∅))))))
+; k(42) → body returns 43, handler adds 100 → 143
+
+; ============ Multiple Performs ============
+
+; Two performs — each handled independently via replay
+(⊨ (⌜ :two-performs)
+  #52
+  (⟪↺⟫ (⊕ (↯ :Ask :prompt "x") (↯ :Ask :prompt "y"))
+    (:Ask
+      (:prompt (λ (k msg)
+        (k (? (≡ msg "x") #10 #42)))))))
+; First: msg="x" → k(10). Second: msg="y" → k(42). 10+42=52
+
+; Three performs
+(⊨ (⌜ :three-performs)
+  #6
+  (⟪↺⟫ (⊕ (↯ :Ask :prompt "a")
+           (⊕ (↯ :Ask :prompt "b")
+               (↯ :Ask :prompt "c")))
+    (:Ask
+      (:prompt (λ (k msg)
+        (k (? (≡ msg "a") #1
+              (? (≡ msg "b") #2 #3))))))))
+; 1 + 2 + 3 = 6
+
+; ============ Perform in Conditional ============
+
+(⊨ (⌜ :perform-in-cond)
+  :big
+  (⟪↺⟫ (? (> (↯ :State :get) #10) :big :small)
+    (:State
+      (:get (λ (k) (k #42)))
+      (:put (λ (k v) (k ∅))))))
+
+; ============ Perform in Lambda ============
+
+; Perform inside zero-arg lambda
+(⊨ (⌜ :perform-in-lambda)
+  #42
+  (⟪↺⟫ ((λ () (↯ :State :get)))
+    (:State
+      (:get (λ (k) (k #42)))
+      (:put (λ (k v) (k ∅))))))
+
+; Higher-order: pass effectful function
+(⊨ (⌜ :effectful-fn)
+  #42
+  (⟪↺⟫ ((λ (f) (f)) (λ () (↯ :State :get)))
+    (:State
+      (:get (λ (k) (k #42)))
+      (:put (λ (k v) (k ∅))))))
+
+; ============ Generator / Yield Pattern ============
+
+; Collect yielded values into a list
+; Handler wraps continuation result with cons
+(⊨ (⌜ :yield-collect)
+  (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅)))
+  (⟪↺⟫ (⊎ (↯ :Yield :value #1)
+            (↯ :Yield :value #2)
+            (↯ :Yield :value #3)
+            ∅)
+    (:Yield
+      (:value (λ (k v) (⟨⟩ v (k ∅)))))))
+
+; Two-element yield
+(⊨ (⌜ :yield-two)
+  (⟨⟩ :a (⟨⟩ :b ∅))
+  (⟪↺⟫ (⊎ (↯ :Yield :value :a)
+            (↯ :Yield :value :b)
+            ∅)
+    (:Yield
+      (:value (λ (k v) (⟨⟩ v (k ∅)))))))
+
+; ============ Choice Effect ============
+
+; Handler picks first option
+(⊨ (⌜ :choice-first)
+  #10
+  (⟪↺⟫ (↯ :Choice :choose #10 #20)
+    (:Choice
+      (:choose (λ (k a b) (k a))))))
+
+; Handler picks second option
+(⊨ (⌜ :choice-second)
+  #20
+  (⟪↺⟫ (↯ :Choice :choose #10 #20)
+    (:Choice
+      (:choose (λ (k a b) (k b))))))
+
+; Choice in arithmetic
+(⊨ (⌜ :choice-in-expr)
+  #15
+  (⟪↺⟫ (⊕ (↯ :Choice :choose #10 #20) #5)
+    (:Choice
+      (:choose (λ (k a b) (k a))))))
+
+; ============ Multi-arg Perform ============
+
+(⊨ (⌜ :multi-arg-resume)
+  #7
+  (⟪↺⟫ (↯ :Math :compute #3 #4)
+    (:Math
+      (:compute (λ (k a b) (k (⊕ a b)))))))
+
+; ============ Handler Closure ============
+
+(≔ multiplier #3)
+(⊨ (⌜ :handler-closure)
+  #126
+  (⟪↺⟫ (↯ :State :get)
+    (:State
+      (:get (λ (k) (k (⊗ #42 multiplier))))
+      (:put (λ (k v) (k ∅))))))
+
+; Handler from named function
+(≔ my-getter (λ (k) (k #77)))
+(⊨ (⌜ :handler-named-fn)
+  #77
+  (⟪↺⟫ (↯ :State :get)
+    (:State
+      (:get my-getter)
+      (:put (λ (k v) (k ∅))))))
+
+; ============ No Effect Performed ============
+
+; Body without performs returns normally
+(⊨ (⌜ :no-perform)
+  #42
+  (⟪↺⟫ #42
+    (:State
+      (:get (λ (k) (k #0)))
+      (:put (λ (k v) (k ∅))))))
+
+; Complex body without performs
+(⊨ (⌜ :no-perform-complex)
+  #10
+  (⟪↺⟫ (⊕ #3 #7)
+    (:State
+      (:get (λ (k) (k #0)))
+      (:put (λ (k v) (k ∅))))))
+
+; ============ Nested Resumable Handlers ============
+
+; Inner resumable shadows outer for same effect
+(⊨ (⌜ :nested-shadow)
+  #99
+  (⟪↺⟫
+    (⟪↺⟫ (↯ :State :get)
+      (:State
+        (:get (λ (k) (k #99)))
+        (:put (λ (k v) (k ∅)))))
+    (:State
+      (:get (λ (k) (k #42)))
+      (:put (λ (k v) (k ∅))))))
+
+; Different effects across nested resumable handlers
+(⊨ (⌜ :nested-different)
+  :logged
+  (⟪↺⟫
+    (⟪↺⟫ (↯ :Logger :log "msg")
+      (:State
+        (:get (λ (k) (k #0)))
+        (:put (λ (k v) (k ∅)))))
+    (:Logger
+      (:log (λ (k msg) (k :logged))))))
+
+; ============ Mix Resumable and Non-Resumable ============
+
+; Resumable inner handles :State, non-resumable outer handles :Logger
+(⊨ (⌜ :mix-resume-nonresume)
+  #43
+  (⟪⟫
+    (⊕ (⟪↺⟫ (↯ :State :get)
+          (:State
+            (:get (λ (k) (k #42)))
+            (:put (λ (k v) (k ∅)))))
+       #1)
+    (:Logger
+      (:log (λ (msg) ∅)))))
+
+; Non-resumable inner, resumable outer
+(⊨ (⌜ :nonresume-inner-resume-outer)
+  #43
+  (⟪↺⟫
+    (⊕ (⟪⟫ (↯ :State :get)
+          (:State
+            (:get (λ () #42))
+            (:put (λ (v) ∅))))
+       (↯ :Logger :log "hi"))
+    (:Logger
+      (:log (λ (k msg) (k #1))))))
+
+; ============ Practical: Dependency Injection ============
+
+(⟪ :Config :get)
+(≔ get-config-r (λ (key) (↯ :Config :get key)))
+
+(⊨ (⌜ :di-config)
+  "localhost:5432"
+  (⟪↺⟫ (get-config-r :db-url)
+    (:Config
+      (:get (λ (k key)
+        (k (? (≡ key :db-url) "localhost:5432"
+              (? (≡ key :port) #8080
+                 "unknown"))))))))
+
+(⊨ (⌜ :di-config-port)
+  #8080
+  (⟪↺⟫ (get-config-r :port)
+    (:Config
+      (:get (λ (k key)
+        (k (? (≡ key :db-url) "localhost:5432"
+              (? (≡ key :port) #8080
+                 "unknown"))))))))
+
+; ============ Zero-arg Perform ============
+
+(⊨ (⌜ :zero-arg-resume)
+  #42
+  (⟪↺⟫ (↯ :State :get)
+    (:State
+      (:get (λ (k) (k #42)))
+      (:put (λ (k v) (k ∅))))))
+
+; ============ Summary ============
+; Total: 30 tests

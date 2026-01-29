@@ -559,7 +559,8 @@ See `test_type_inference.test`, `test_type_validation.test`.
 | `⟪` | `:name :op... → 𝔹` | Declare effect type with operations | ✅ DONE (special form) |
 | `⟪?` | `:name → 𝔹` | Query if effect is declared | ✅ DONE (special form) |
 | `⟪→` | `:name → [:symbol]` | Get effect operations list | ✅ DONE (special form) |
-| `⟪⟫` | `expr handler-spec... → α` | Handle effects in body | ✅ DONE (special form) |
+| `⟪⟫` | `expr handler-spec... → α` | Handle effects in body (non-resumable) | ✅ DONE (special form) |
+| `⟪↺⟫` | `expr handler-spec... → α` | Handle effects with resumable continuation `k` | ✅ DONE (special form) |
 | `↯` | `:effect :op args... → α` | Perform effect operation | ✅ DONE (special form) |
 | `⤴` | `α → α` | Pure lift (identity) | ✅ DONE |
 | `≫` | `α → (α → β) → β` | Effect bind (apply fn to value) | ✅ DONE |
@@ -569,16 +570,35 @@ See `test_type_inference.test`, `test_type_validation.test`.
 ; Declare effect with operations
 (⟪ :State :get :put)
 
-; Perform inside handler scope
+; Non-resumable: handler result replaces perform
 (⟪⟫ (⊕ (↯ :State :get) #1)
   (:State
     (:get (λ () #42))
     (:put (λ (v) ∅))))
-; → #43 (handler returns #42, body computes #42 + 1)
+; → #43
+
+; Resumable: handler receives continuation k
+(⟪↺⟫ (⊕ (↯ :State :get) #1)
+  (:State
+    (:get (λ (k) (k #42)))
+    (:put (λ (k v) (k ∅)))))
+; → #43 (k resumes body at perform point)
+
+; Generator/yield pattern
+(⟪↺⟫ (⊎ (↯ :Yield :value #1) (↯ :Yield :value #2) ∅)
+  (:Yield (:value (λ (k v) (⟨⟩ v (k ∅))))))
+; → (#1 #2)
+
+; Abort (don't call k)
+(⟪↺⟫ (↯ :State :get)
+  (:State (:get (λ (k) :aborted))))
+; → :aborted
 ```
 
 **Dynamic handler stack:** Inner handlers shadow outer for the same effect.
-Handlers are closures that receive the perform arguments and return a value.
+Non-resumable (`⟪⟫`) handlers receive perform arguments directly.
+Resumable (`⟪↺⟫`) handlers receive continuation `k` as first argument; calling `(k value)` resumes body.
+Implementation: replay-based re-evaluation with O(n²) cost for n performs.
 Unhandled effects return `⚠:unhandled-effect` errors.
 
 ### Actors (3) - PLACEHOLDERS ONLY
@@ -1465,7 +1485,8 @@ All I/O operations return errors on failure:
 | `⟪` | Declare effect | Register effect type with operations | ✅ DONE |
 | `⟪?` | Query effect | Check if effect is declared | ✅ DONE |
 | `⟪→` | Effect operations | Get operations list for effect | ✅ DONE |
-| `⟪⟫` | Handle effects | Install handlers, evaluate body | ✅ DONE |
+| `⟪⟫` | Handle effects | Install non-resumable handlers, evaluate body | ✅ DONE |
+| `⟪↺⟫` | Resumable handle | Install handlers with continuation `k` | ✅ DONE |
 | `↯` | Perform effect | Trigger effect operation | ✅ DONE |
 | `⤴` | Pure lift | Identity (value unchanged) | ✅ DONE |
 | `≫` | Effect bind | Apply function to value | ✅ DONE |
