@@ -1,0 +1,27 @@
+; Mutation Testing - Working Test Suite
+; Tests ⌂⊨⊗ with functions that avoid #0 and #1 constants
+; (due to De Bruijn heuristic limitation)
+
+; Test 1: Simple arithmetic with constant > 1
+(≔ double (λ (n) (⊗ n #2)))
+(≔ r1 (⌂⊨⊗ :double))
+(⊨ :double-sum-formula #t (≡ (⊕ (◁ r1) (◁ (▷ r1))) (◁ (▷ (▷ r1)))))
+
+; Test 2: Function with larger constants
+(≔ triple (λ (n) (⊗ n #3)))
+(≔ r2 (⌂⊨⊗ :triple))
+(⊨ :triple-sum-formula #t (≡ (⊕ (◁ r2) (◁ (▷ r2))) (◁ (▷ (▷ r2)))))
+(⊨ :triple-has-muts #t (> (◁ (▷ (▷ r2))) #0))
+
+; Test 3: Multiple operators
+(≔ combo (λ (x) (⊕ (⊗ x #2) #3)))
+(≔ r3 (⌂⊨⊗ :combo))
+(⊨ :combo-sum-formula #t (≡ (⊕ (◁ r3) (◁ (▷ r3))) (◁ (▷ (▷ r3)))))
+(⊨ :combo-multi-muts #t (> (◁ (▷ (▷ r3))) #1))
+
+; Test 4: Error on non-existent function
+(⊨ :nonexistent-error #t (⚠? (⌂⊨⊗ :does-not-exist)))
+
+; Test 5: Result structure
+(⊨ :result-is-pair #t (⟨⟩? r1))
+(⊨ :result-3-elements #t (⟨⟩? (▷ (▷ r1))))

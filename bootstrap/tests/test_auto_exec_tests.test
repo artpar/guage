@@ -1,0 +1,115 @@
+;;;
+;;; Tests for Auto-Execute Generated Tests (⌂⊨!)
+;;;
+
+;;; ===================================================================
+;;; Test 1: Execute tests for simple function
+;;; ===================================================================
+
+; Define simple function
+(≔ double (λ (x) (⊗ x #2)))
+
+; Run auto-generated tests
+(≔ results (⌂⊨! :double))
+
+; Should return a list (passed failed total)
+(⊨ :auto-exec-returns-list
+   #t
+   (⟨⟩? results))
+
+; Should have 3 elements
+(⊨ :auto-exec-has-three-elements
+   #t
+   (⟨⟩? (▷ (▷ results))))
+
+; Extract counts
+(≔ passed (◁ results))
+(≔ failed (◁ (▷ results)))
+(≔ total (◁ (▷ (▷ results))))
+
+; All should be numbers
+(⊨ :auto-exec-passed-is-number
+   #t
+   (ℕ? passed))
+
+(⊨ :auto-exec-failed-is-number
+   #t
+   (ℕ? failed))
+
+(⊨ :auto-exec-total-is-number
+   #t
+   (ℕ? total))
+
+; Total should equal passed + failed
+(⊨ :auto-exec-total-correct
+   #t
+   (≡ total (⊕ passed failed)))
+
+;;; ===================================================================
+;;; Test 2: Execute tests for factorial
+;;; ===================================================================
+
+; Define factorial
+(≔ ! (λ (n) (? (≡ n #0) #1 (⊗ n (! (⊖ n #1))))))
+
+; Run tests
+(≔ fac-results (⌂⊨! :!))
+
+; Extract counts
+(≔ fac-passed (◁ fac-results))
+(≔ fac-failed (◁ (▷ fac-results)))
+(≔ fac-total (◁ (▷ (▷ fac-results))))
+
+; Should have multiple tests (factorial has conditionals and recursion)
+(⊨ :auto-exec-factorial-has-tests
+   #t
+   (> fac-total #0))
+
+; Total should be correct
+(⊨ :auto-exec-factorial-total-correct
+   #t
+   (≡ fac-total (⊕ fac-passed fac-failed)))
+
+; Display results for manual verification
+(≋ "")
+(≋ "Factorial test results:")
+(≋ fac-results)
+
+;;; ===================================================================
+;;; Test 3: Error handling - nonexistent function
+;;; ===================================================================
+
+; Should return error for nonexistent function
+(≔ bad-result (⌂⊨! :nonexistent))
+
+; Should be an error
+(⊨ :auto-exec-error-on-missing
+   #t
+   (⚠? bad-result))
+
+;;; ===================================================================
+;;; Test 4: Function with no auto-generated tests
+;;; ===================================================================
+
+; Define function that might not generate tests
+(≔ identity (λ (x) x))
+
+; Run tests
+(≔ id-results (⌂⊨! :identity))
+
+; Should still return valid structure even if no tests
+(⊨ :auto-exec-handles-empty
+   #t
+   (⟨⟩? id-results))
+
+;;; ===================================================================
+;;; Test 5: Verify all tests pass
+;;; ===================================================================
+
+; For a correct function, failed count should be 0
+(⊨ :auto-exec-all-pass
+   #t
+   (≡ fac-failed #0))
+
+(≋ "")
+(≋ "Auto-execute tests complete!")

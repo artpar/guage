@@ -1,0 +1,221 @@
+;;;
+;;; Tests for Structure-Based Test Generation (Day 63)
+;;;
+
+;;; ===================================================================
+;;; Test 1: Simple function (no special structure)
+;;; ===================================================================
+
+; Define a simple function
+(≔ double (λ (x) (⊗ x #2)))
+
+; Generate tests - should get type-based test
+(≔ double-tests (⌂⊨ :double))
+
+; Should generate tests (non-nil)
+(⊨ :double-tests-generated
+   #f
+   (∅? double-tests))
+
+; Should be a list
+(⊨ :double-tests-is-list
+   #t
+   (⟨⟩? double-tests))
+
+(≋ "Tests generated for 'double' (simple function):")
+(≋ double-tests)
+
+;;; ===================================================================
+;;; Test 2: Function with conditional
+;;; ===================================================================
+
+; Define function with conditional
+(≔ abs (λ (x) (? (< x #0) (⊖ #0 x) x)))
+
+; Generate tests - should get type + branch tests
+(≔ abs-tests (⌂⊨ :abs))
+
+; Should generate tests
+(⊨ :abs-tests-generated
+   #f
+   (∅? abs-tests))
+
+; Should be a list
+(⊨ :abs-tests-is-list
+   #t
+   (⟨⟩? abs-tests))
+
+; Should have multiple tests (tail should also be a pair)
+(⊨ :abs-tests-has-multiple
+   #t
+   (⟨⟩? (▷ abs-tests)))
+
+(≋ "")
+(≋ "Tests generated for 'abs' (with conditional):")
+(≋ abs-tests)
+
+;;; ===================================================================
+;;; Test 3: Function with recursion
+;;; ===================================================================
+
+; Define recursive function (countdown)
+(≔ countdown (λ (n) (? (≡ n #0) #0 (countdown (⊖ n #1)))))
+
+; Generate tests - should get type + branch + base + recursive
+(≔ countdown-tests (⌂⊨ :countdown))
+
+; Should generate tests
+(⊨ :countdown-tests-generated
+   #f
+   (∅? countdown-tests))
+
+; Should be a list with multiple tests
+(⊨ :countdown-tests-is-list
+   #t
+   (⟨⟩? countdown-tests))
+
+; Should have at least 2 tests (check second element exists)
+(⊨ :countdown-tests-multiple
+   #t
+   (⟨⟩? (▷ countdown-tests)))
+
+(≋ "")
+(≋ "Tests generated for 'countdown' (recursive):")
+(≋ countdown-tests)
+
+;;; ===================================================================
+;;; Test 4: Function with zero comparison
+;;; ===================================================================
+
+; Define function with zero comparison
+(≔ is-positive (λ (x) (> x #0)))
+
+; Generate tests - should get type + zero edge
+(≔ positive-tests (⌂⊨ :is-positive))
+
+; Should generate tests
+(⊨ :positive-tests-generated
+   #f
+   (∅? positive-tests))
+
+(≋ "")
+(≋ "Tests generated for 'is-positive' (zero comparison):")
+(≋ positive-tests)
+
+;;; ===================================================================
+;;; Test 5: Factorial (all features)
+;;; ===================================================================
+
+; Define factorial - has conditional, recursion, AND zero comparison
+(≔ ! (λ (n) (? (≡ n #0) #1 (⊗ n (! (⊖ n #1))))))
+
+; Generate tests - should get comprehensive test suite
+(≔ factorial-tests (⌂⊨ :!))
+
+; Should generate tests
+(⊨ :factorial-tests-generated
+   #f
+   (∅? factorial-tests))
+
+; Should be a list
+(⊨ :factorial-tests-is-list
+   #t
+   (⟨⟩? factorial-tests))
+
+; Should have multiple tests
+(⊨ :factorial-tests-multiple
+   #t
+   (⟨⟩? (▷ factorial-tests)))
+
+; Should have at least 3 tests (check third element)
+(⊨ :factorial-tests-many
+   #t
+   (⟨⟩? (▷ (▷ factorial-tests))))
+
+(≋ "")
+(≋ "========================================")
+(≋ "Tests generated for '!' (factorial - all features):")
+(≋ "========================================")
+(≋ factorial-tests)
+
+;;; ===================================================================
+;;; Test 6: Fibonacci (complex recursion)
+;;; ===================================================================
+
+; Define fibonacci
+(≔ fib (λ (n) (? (< n #2) n (⊕ (fib (⊖ n #1)) (fib (⊖ n #2))))))
+
+; Generate tests
+(≔ fib-tests (⌂⊨ :fib))
+
+; Should generate tests
+(⊨ :fib-tests-generated
+   #f
+   (∅? fib-tests))
+
+; Should have multiple tests
+(⊨ :fib-tests-multiple
+   #t
+   (⟨⟩? (▷ fib-tests)))
+
+(≋ "")
+(≋ "Tests generated for 'fib' (fibonacci):")
+(≋ fib-tests)
+
+;;; ===================================================================
+;;; Test 7: Verify test execution
+;;; ===================================================================
+
+(≋ "")
+(≋ "========================================")
+(≋ "Verifying generated tests are executable:")
+(≋ "========================================")
+
+; Get first test from factorial-tests
+(≔ first-test (◁ factorial-tests))
+
+; Display it
+(≋ "First generated test:")
+(≋ first-test)
+
+; The test should be a valid test expression
+(⊨ :generated-test-is-expr
+   #t
+   (⟨⟩? first-test))
+
+; Should have ⊨ as first element
+(⊨ :generated-test-uses-assert
+   #t
+   (≡ (◁ first-test) (⌜ ⊨)))
+
+;;; ===================================================================
+;;; Test 8: Summary
+;;; ===================================================================
+
+(≋ "")
+(≋ "========================================")
+(≋ "Test Generation Summary:")
+(≋ "========================================")
+
+(≋ "Simple function (double):")
+(≋ double-tests)
+
+(≋ "")
+(≋ "Conditional (abs):")
+(≋ abs-tests)
+
+(≋ "")
+(≋ "Recursive (countdown):")
+(≋ countdown-tests)
+
+(≋ "")
+(≋ "Zero comparison (is-positive):")
+(≋ positive-tests)
+
+(≋ "")
+(≋ "All features (factorial):")
+(≋ factorial-tests)
+
+(≋ "")
+(≋ "Complex recursion (fib):")
+(≋ fib-tests)

@@ -2574,6 +2574,372 @@ Cell* prim_module_dependencies(Cell* args) {
     return module_registry_get_dependencies(module_path);
 }
 
+/* Forward declaration */
+Cell* prim_doc_generate(Cell* args);
+
+/* 📖→ - Export documentation to file (Day 63 Phase 2) */
+Cell* prim_doc_export(Cell* args) {
+    /* (📖→ "module-path" "output-path") */
+    /* Generates markdown and writes to file */
+
+    if (cell_is_nil(args)) {
+        return cell_error("doc-export-missing-args", cell_nil());
+    }
+
+    Cell* module_path_cell = arg1(args);
+    Cell* rest = cell_cdr(args);
+
+    if (cell_is_nil(rest)) {
+        return cell_error("doc-export-missing-output-path", module_path_cell);
+    }
+
+    Cell* output_path_cell = arg1(rest);
+
+    /* Arguments must be strings */
+    if (!cell_is_string(module_path_cell)) {
+        return cell_error("module-path-must-be-string", module_path_cell);
+    }
+
+    if (!cell_is_string(output_path_cell)) {
+        return cell_error("output-path-must-be-string", output_path_cell);
+    }
+
+    /* Generate documentation */
+    Cell* doc_args = cell_cons(module_path_cell, cell_nil());
+    Cell* doc = prim_doc_generate(doc_args);
+    cell_release(doc_args);
+
+    /* Check if generation succeeded */
+    if (cell_is_error(doc)) {
+        return doc;
+    }
+
+    if (!cell_is_string(doc)) {
+        cell_release(doc);
+        return cell_error("doc-generate-failed", module_path_cell);
+    }
+
+    /* Write to file */
+    const char* output_path = cell_get_string(output_path_cell);
+    const char* doc_content = cell_get_string(doc);
+
+    FILE* f = fopen(output_path, "w");
+    if (!f) {
+        cell_release(doc);
+        return cell_error("file-write-error", output_path_cell);
+    }
+
+    fputs(doc_content, f);
+    fclose(f);
+
+    cell_release(doc);
+
+    /* Return output path on success */
+    cell_retain(output_path_cell);
+    return output_path_cell;
+}
+
+/* 📖 - Generate markdown documentation for module (Day 63) */
+Cell* prim_doc_generate(Cell* args) {
+    /* (📖 "module-path") */
+    /* Generates markdown documentation for all functions in a module */
+
+    if (cell_is_nil(args)) {
+        return cell_error("doc-generate-missing-args", cell_nil());
+    }
+
+    Cell* module_path_cell = arg1(args);
+
+    /* Argument must be string (module path) */
+    if (!cell_is_string(module_path_cell)) {
+        return cell_error("module-path-must-be-string", module_path_cell);
+    }
+
+    const char* module_path = cell_get_string(module_path_cell);
+
+    /* Check if module is loaded */
+    if (!module_registry_has_module(module_path)) {
+        return cell_error("module-not-loaded", module_path_cell);
+    }
+
+    /* Get all symbols from module */
+    Cell* symbols = module_registry_list_symbols(module_path);
+    if (cell_is_nil(symbols)) {
+        /* Module exists but has no exported symbols - return empty doc */
+        return cell_string("# Empty Module\n\nNo exported functions.\n");
+    }
+
+    /* Build markdown documentation */
+    char* doc_buffer = malloc(65536);  /* 64KB buffer for documentation */
+    if (!doc_buffer) {
+        cell_release(symbols);
+        return cell_error("out-of-memory", cell_nil());
+    }
+
+    /* Module header */
+    int offset = snprintf(doc_buffer, 65536, "# Module: %s\n\n", module_path);
+
+    /* Get module dependencies */
+    Cell* deps = module_registry_get_dependencies(module_path);
+    if (!cell_is_nil(deps)) {
+        offset += snprintf(doc_buffer + offset, 65536 - offset, "## Dependencies\n\n");
+        Cell* curr = deps;
+        while (cell_is_pair(curr)) {
+            Cell* dep = cell_car(curr);
+            if (cell_is_string(dep)) {
+                offset += snprintf(doc_buffer + offset, 65536 - offset,
+                                   "- `%s`\n", cell_get_string(dep));
+            }
+            curr = cell_cdr(curr);
+        }
+        offset += snprintf(doc_buffer + offset, 65536 - offset, "\n");
+    }
+    cell_release(deps);
+
+    /* Functions section */
+    offset += snprintf(doc_buffer + offset, 65536 - offset, "## Functions\n\n");
+
+    /* Iterate over symbols */
+    Cell* curr_sym = symbols;
+    while (cell_is_pair(curr_sym)) {
+        Cell* symbol = cell_car(curr_sym);
+        const char* sym_name = cell_get_symbol(symbol);
+
+        /* Skip special symbols (starting with underscore or double-colon) */
+        if (sym_name[0] == '_' || (sym_name[0] == ':' && sym_name[1] == ':')) {
+            curr_sym = cell_cdr(curr_sym);
+            continue;
+        }
+
+        /* Function header */
+        offset += snprintf(doc_buffer + offset, 65536 - offset,
+                           "### %s\n\n", sym_name);
+
+        /* Get type signature */
+        Cell* type_args = cell_cons(symbol, cell_nil());
+        Cell* type_sig = prim_doc_type(type_args);
+        cell_release(type_args);
+
+        if (cell_is_symbol(type_sig)) {
+            const char* type_str = cell_get_symbol(type_sig);
+            if (strcmp(type_str, ":unknown-type") != 0) {
+                offset += snprintf(doc_buffer + offset, 65536 - offset,
+                                   "**Type:** `%s`\n\n", type_str);
+            }
+        }
+        cell_release(type_sig);
+
+        /* Get description */
+        Cell* desc_args = cell_cons(symbol, cell_nil());
+        Cell* desc = prim_doc_get(desc_args);
+        cell_release(desc_args);
+
+        if (cell_is_symbol(desc)) {
+            const char* desc_str = cell_get_symbol(desc);
+            if (strcmp(desc_str, ":no-documentation") != 0) {
+                offset += snprintf(doc_buffer + offset, 65536 - offset,
+                                   "**Description:** %s\n\n", desc_str);
+            }
+        }
+        cell_release(desc);
+
+        /* Get dependencies */
+        Cell* deps_args = cell_cons(symbol, cell_nil());
+        Cell* func_deps = prim_doc_deps(deps_args);
+        cell_release(deps_args);
+
+        if (cell_is_pair(func_deps)) {
+            offset += snprintf(doc_buffer + offset, 65536 - offset,
+                               "**Uses:** ");
+
+            Cell* dep_curr = func_deps;
+            int dep_count = 0;
+            while (cell_is_pair(dep_curr)) {
+                Cell* dep = cell_car(dep_curr);
+                if (cell_is_symbol(dep)) {
+                    if (dep_count > 0) {
+                        offset += snprintf(doc_buffer + offset, 65536 - offset, ", ");
+                    }
+                    offset += snprintf(doc_buffer + offset, 65536 - offset,
+                                       "`%s`", cell_get_symbol(dep));
+                    dep_count++;
+                }
+                dep_curr = cell_cdr(dep_curr);
+            }
+
+            if (dep_count > 0) {
+                offset += snprintf(doc_buffer + offset, 65536 - offset, "\n\n");
+            }
+        }
+        cell_release(func_deps);
+
+        /* Separator */
+        offset += snprintf(doc_buffer + offset, 65536 - offset, "---\n\n");
+
+        curr_sym = cell_cdr(curr_sym);
+    }
+
+    cell_release(symbols);
+
+    /* Create result string */
+    Cell* result = cell_string(doc_buffer);
+    free(doc_buffer);
+
+    return result;
+}
+
+/* 📖⊛ - Generate module index with cross-references (Day 63 Phase 3) */
+Cell* prim_doc_index(Cell* args) {
+    /* (📖⊛) or (📖⊛ "output-path") */
+    /* Generates markdown index of all loaded modules with cross-references */
+
+    /* Get list of all loaded modules */
+    Cell* modules = module_registry_list_modules();
+    if (cell_is_nil(modules)) {
+        return cell_string("# Module Index\n\nNo modules loaded.\n");
+    }
+
+    /* Build markdown index */
+    char* index_buffer = malloc(131072);  /* 128KB buffer for index */
+    if (!index_buffer) {
+        cell_release(modules);
+        return cell_error("out-of-memory", cell_nil());
+    }
+
+    /* Index header */
+    int offset = snprintf(index_buffer, 131072,
+                         "# Module Index\n\n"
+                         "Documentation index for all loaded modules.\n\n"
+                         "## Modules\n\n");
+
+    /* Count modules */
+    int module_count = 0;
+    Cell* count_curr = modules;
+    while (cell_is_pair(count_curr)) {
+        module_count++;
+        count_curr = cell_cdr(count_curr);
+    }
+
+    offset += snprintf(index_buffer + offset, 131072 - offset,
+                      "**Total modules loaded:** %d\n\n", module_count);
+
+    /* Build dependency graph */
+    offset += snprintf(index_buffer + offset, 131072 - offset,
+                      "## Module List\n\n");
+
+    /* Iterate over modules */
+    Cell* curr_mod = modules;
+    while (cell_is_pair(curr_mod)) {
+        Cell* module_path = cell_car(curr_mod);
+        if (cell_is_string(module_path)) {
+            const char* mod_path = cell_get_string(module_path);
+
+            /* Module header with anchor */
+            offset += snprintf(index_buffer + offset, 131072 - offset,
+                             "### `%s`\n\n", mod_path);
+
+            /* Get module dependencies */
+            Cell* deps = module_registry_get_dependencies(mod_path);
+            if (!cell_is_nil(deps)) {
+                offset += snprintf(index_buffer + offset, 131072 - offset,
+                                 "**Dependencies:**\n");
+
+                Cell* dep_curr = deps;
+                while (cell_is_pair(dep_curr)) {
+                    Cell* dep = cell_car(dep_curr);
+                    if (cell_is_string(dep)) {
+                        offset += snprintf(index_buffer + offset, 131072 - offset,
+                                         "- `%s`\n", cell_get_string(dep));
+                    }
+                    dep_curr = cell_cdr(dep_curr);
+                }
+                offset += snprintf(index_buffer + offset, 131072 - offset, "\n");
+            }
+            cell_release(deps);
+
+            /* List exported functions */
+            Cell* symbols = module_registry_list_symbols(mod_path);
+            if (!cell_is_nil(symbols)) {
+                int func_count = 0;
+                Cell* sym_curr = symbols;
+                while (cell_is_pair(sym_curr)) {
+                    Cell* sym = cell_car(sym_curr);
+                    const char* sym_name = cell_get_symbol(sym);
+
+                    /* Skip internal symbols */
+                    if (sym_name[0] != '_' && !(sym_name[0] == ':' && sym_name[1] == ':')) {
+                        func_count++;
+                    }
+                    sym_curr = cell_cdr(sym_curr);
+                }
+
+                offset += snprintf(index_buffer + offset, 131072 - offset,
+                                 "**Exported functions:** %d\n\n", func_count);
+
+                /* List function names */
+                if (func_count > 0) {
+                    offset += snprintf(index_buffer + offset, 131072 - offset,
+                                     "**Functions:** ");
+
+                    sym_curr = symbols;
+                    int listed = 0;
+                    while (cell_is_pair(sym_curr)) {
+                        Cell* sym = cell_car(sym_curr);
+                        const char* sym_name = cell_get_symbol(sym);
+
+                        /* Skip internal symbols */
+                        if (sym_name[0] != '_' && !(sym_name[0] == ':' && sym_name[1] == ':')) {
+                            if (listed > 0) {
+                                offset += snprintf(index_buffer + offset, 131072 - offset, ", ");
+                            }
+                            offset += snprintf(index_buffer + offset, 131072 - offset,
+                                             "`%s`", sym_name);
+                            listed++;
+                        }
+                        sym_curr = cell_cdr(sym_curr);
+                    }
+                    offset += snprintf(index_buffer + offset, 131072 - offset, "\n\n");
+                }
+            }
+            cell_release(symbols);
+
+            offset += snprintf(index_buffer + offset, 131072 - offset, "---\n\n");
+        }
+        curr_mod = cell_cdr(curr_mod);
+    }
+
+    cell_release(modules);
+
+    /* Check if we should export to file */
+    if (!cell_is_nil(args)) {
+        Cell* output_path_cell = arg1(args);
+        if (cell_is_string(output_path_cell)) {
+            const char* output_path = cell_get_string(output_path_cell);
+
+            FILE* f = fopen(output_path, "w");
+            if (!f) {
+                free(index_buffer);
+                return cell_error("file-write-error", output_path_cell);
+            }
+
+            fputs(index_buffer, f);
+            fclose(f);
+
+            free(index_buffer);
+
+            /* Return output path on success */
+            cell_retain(output_path_cell);
+            return output_path_cell;
+        }
+    }
+
+    /* Create result string */
+    Cell* result = cell_string(index_buffer);
+    free(index_buffer);
+
+    return result;
+}
+
 /* ============ Structure Analysis Helpers for Test Generation ============ */
 
 /* Check if expression contains a conditional (?) */
@@ -2744,6 +3110,11 @@ Cell* prim_doc_tests(Cell* args) {
 
     const char* sym = cell_get_symbol(name);
 
+    /* Strip leading colon if present (handle :symbol → symbol) */
+    if (sym && sym[0] == ':') {
+        sym = sym + 1;
+    }
+
     /* Check if it's a primitive */
     const Primitive* prim = primitive_lookup_by_name(sym);
     if (prim) {
@@ -2767,29 +3138,502 @@ Cell* prim_doc_tests(Cell* args) {
     /* Check if it's a user function */
     FunctionDoc* doc = eval_find_user_doc(sym);
     if (doc) {
+        Cell* tests = cell_nil();
+
+        /* First: Try type-directed generation if we have a type signature */
         const char* type_sig = doc->type_signature;
-
         if (type_sig) {
-            /* Parse type signature */
             TypeExpr* type = type_parse(type_sig);
-
             if (type) {
-                /* Generate tests using type-directed generation */
-                Cell* tests = testgen_for_primitive(sym, type);
-
-                /* Free type expression */
+                tests = testgen_for_primitive(sym, type);
                 type_free(type);
-
-                return tests;
             }
         }
 
-        /* No type signature - return empty tests for now */
-        /* TODO: Add structure-based test generation for untyped functions */
-        return cell_nil();
+        /* Second: Add structure-based tests by analyzing function body */
+        EvalContext* ctx = eval_get_current_context();
+        Cell* func_value = eval_lookup(ctx, sym);
+
+        if (func_value && cell_is_lambda(func_value)) {
+            /* Get lambda body for analysis */
+            Cell* body = func_value->data.lambda.body;
+
+            /* Analyze structure and generate tests */
+            bool has_cond = has_conditional(body);
+            bool has_rec = has_recursion(body, sym);
+            bool has_zero = has_zero_comparison(body);
+
+            /* Generate branch coverage test if conditional found */
+            if (has_cond) {
+                tests = generate_branch_test(sym, tests);
+            }
+
+            /* Generate recursion tests if self-reference found */
+            if (has_rec) {
+                tests = generate_base_case_test(sym, tests);
+                tests = generate_recursive_test(sym, tests);
+            }
+
+            /* Generate zero edge case test if zero comparison found */
+            if (has_zero) {
+                tests = generate_zero_edge_test(sym, tests);
+            }
+        }
+
+        return tests;
     }
 
     return cell_error("⌂⊨ symbol not found", name);
+}
+
+/* ⌂⊨! - Execute auto-generated tests for function
+ * Args: quoted symbol (function name)
+ * Returns: (passed failed total) list
+ *
+ * Generates tests using ⌂⊨ and executes them, returning results.
+ */
+Cell* prim_doc_tests_run(Cell* args) {
+    /* Generate tests first */
+    Cell* tests = prim_doc_tests(args);
+
+    if (cell_is_error(tests)) {
+        return tests;  /* Propagate error */
+    }
+
+    if (cell_is_nil(tests)) {
+        /* No tests generated - return (0 0 0) */
+        return cell_cons(cell_number(0),
+               cell_cons(cell_number(0),
+               cell_cons(cell_number(0), cell_nil())));
+    }
+
+    /* Execute each test and count results */
+    int total = 0;
+    int passed = 0;
+    int failed = 0;
+
+    EvalContext* ctx = eval_get_current_context();
+
+    Cell* current = tests;
+    while (cell_is_pair(current)) {
+        Cell* test_expr = cell_car(current);
+        total++;
+
+        /* Evaluate the test expression */
+        Cell* result = eval_internal(ctx, ctx->env, test_expr);
+
+        /* Check if evaluation succeeded (not an error) */
+        if (!cell_is_error(result)) {
+            passed++;
+        } else {
+            failed++;
+        }
+
+        cell_release(result);
+        current = cell_cdr(current);
+    }
+
+    cell_release(tests);
+
+    /* Return (passed failed total) */
+    return cell_cons(cell_number(passed),
+           cell_cons(cell_number(failed),
+           cell_cons(cell_number(total), cell_nil())));
+}
+
+/* ============ Mutation Testing ============ */
+
+/* Helper: Clone a cell deeply (for mutation) */
+static Cell* clone_cell_deep(Cell* cell) {
+    if (!cell) return NULL;
+
+    switch (cell->type) {
+        case CELL_ATOM_NUMBER:
+            return cell_number(cell->data.atom.number);
+        case CELL_ATOM_BOOL:
+            return cell_bool(cell->data.atom.boolean);
+        case CELL_ATOM_NIL:
+            return cell_nil();
+        case CELL_ATOM_SYMBOL:
+            return cell_symbol(cell->data.atom.symbol);
+        case CELL_ATOM_STRING:
+            return cell_string(cell->data.atom.string);
+        case CELL_PAIR: {
+            Cell* car = clone_cell_deep(cell_car(cell));
+            Cell* cdr = clone_cell_deep(cell_cdr(cell));
+            Cell* pair = cell_cons(car, cdr);
+            cell_release(car);
+            cell_release(cdr);
+            return pair;
+        }
+        case CELL_LAMBDA: {
+            /* Clone lambda structure */
+            Cell* body = clone_cell_deep(cell->data.lambda.body);
+            Cell* env = cell->data.lambda.env;  /* Share environment */
+            /* Use cell_lambda: (env, body, arity, source_module, source_line) */
+            Cell* lambda = cell_lambda(env, body, cell->data.lambda.arity, "<mutation>", 0);
+            cell_release(body);
+            return lambda;
+        }
+        default:
+            /* For other types, just retain */
+            cell_retain(cell);
+            return cell;
+    }
+}
+
+/* Mutate arithmetic operators */
+static Cell* mutate_operator(Cell* expr, int mutation_index, int* current_index) {
+    if (!cell_is_pair(expr)) return NULL;
+
+    Cell* first = cell_car(expr);
+    if (!cell_is_symbol(first)) return NULL;
+
+    const char* op = cell_get_symbol(first);
+    const char* mutations[4] = {NULL, NULL, NULL, NULL};
+    int num_mutations = 0;
+
+    /* Define mutation alternatives for each operator */
+    if (strcmp(op, "⊕") == 0) {
+        mutations[0] = "⊖"; mutations[1] = "⊗"; mutations[2] = "⊘";
+        num_mutations = 3;
+    } else if (strcmp(op, "⊖") == 0) {
+        mutations[0] = "⊕"; mutations[1] = "⊗"; mutations[2] = "⊘";
+        num_mutations = 3;
+    } else if (strcmp(op, "⊗") == 0) {
+        mutations[0] = "⊕"; mutations[1] = "⊖"; mutations[2] = "⊘";
+        num_mutations = 3;
+    } else if (strcmp(op, "⊘") == 0) {
+        mutations[0] = "⊕"; mutations[1] = "⊖"; mutations[2] = "⊗";
+        num_mutations = 3;
+    } else if (strcmp(op, "≡") == 0) {
+        mutations[0] = "≢"; mutations[1] = "<"; mutations[2] = ">";
+        num_mutations = 3;
+    } else if (strcmp(op, "≢") == 0) {
+        mutations[0] = "≡";
+        num_mutations = 1;
+    } else if (strcmp(op, "<") == 0) {
+        mutations[0] = ">"; mutations[1] = "≤"; mutations[2] = "≥";
+        num_mutations = 3;
+    } else if (strcmp(op, ">") == 0) {
+        mutations[0] = "<"; mutations[1] = "≤"; mutations[2] = "≥";
+        num_mutations = 3;
+    } else if (strcmp(op, "∧") == 0) {
+        mutations[0] = "∨";
+        num_mutations = 1;
+    } else if (strcmp(op, "∨") == 0) {
+        mutations[0] = "∧";
+        num_mutations = 1;
+    }
+
+    if (num_mutations == 0) return NULL;
+
+    /* Check if this is the mutation point we want */
+    if (*current_index == mutation_index) {
+        /* Apply the first mutation alternative */
+        Cell* mutated = clone_cell_deep(expr);
+        cell_release(cell_car(mutated));
+        mutated->data.pair.car = cell_symbol(mutations[0]);
+        cell_retain(mutated->data.pair.car);
+        return mutated;
+    }
+
+    (*current_index)++;
+    return NULL;
+}
+
+/* Mutate numeric/boolean constants */
+static Cell* mutate_constant(Cell* expr, int mutation_index, int* current_index) {
+    if (cell_is_number(expr)) {
+        double val = cell_get_number(expr);
+        /* Skip 0 and 1 - most likely De Bruijn indices for first two args
+         * This is a heuristic; real constants like #2, #3 will still mutate */
+        if ((val == 0.0 || val == 1.0)) {
+            return NULL;  /* Don't mutate De Bruijn indices */
+        }
+        if (*current_index == mutation_index) {
+            /* Mutate number: n→n+1 for positive, n→n-1 for negative */
+            if (val > 0) return cell_number(val + 1.0);
+            return cell_number(val - 1.0);
+        }
+        (*current_index)++;
+    } else if (cell_is_bool(expr)) {
+        if (*current_index == mutation_index) {
+            /* Flip boolean */
+            return cell_bool(!cell_get_bool(expr));
+        }
+        (*current_index)++;
+    }
+    return NULL;
+}
+
+/* Mutate conditional (swap branches) */
+static Cell* mutate_conditional(Cell* expr, int mutation_index, int* current_index) {
+    if (!cell_is_pair(expr)) return NULL;
+
+    Cell* first = cell_car(expr);
+    if (!cell_is_symbol(first)) return NULL;
+    if (strcmp(cell_get_symbol(first), "?") != 0) return NULL;
+
+    /* This is a conditional: (? cond then else) */
+    Cell* rest = cell_cdr(expr);
+    if (!cell_is_pair(rest)) return NULL;
+
+    Cell* cond = cell_car(rest);
+    Cell* rest2 = cell_cdr(rest);
+    if (!cell_is_pair(rest2)) return NULL;
+
+    Cell* then_branch = cell_car(rest2);
+    Cell* rest3 = cell_cdr(rest2);
+    if (!cell_is_pair(rest3)) return NULL;
+
+    Cell* else_branch = cell_car(rest3);
+
+    if (*current_index == mutation_index) {
+        /* Swap then/else branches */
+        Cell* mutated_cond = clone_cell_deep(cond);
+        Cell* mutated_then = clone_cell_deep(else_branch);  /* Swapped! */
+        Cell* mutated_else = clone_cell_deep(then_branch);  /* Swapped! */
+
+        Cell* result = cell_cons(cell_symbol("?"),
+                       cell_cons(mutated_cond,
+                       cell_cons(mutated_then,
+                       cell_cons(mutated_else, cell_nil()))));
+
+        cell_release(mutated_cond);
+        cell_release(mutated_then);
+        cell_release(mutated_else);
+
+        return result;
+    }
+
+    (*current_index)++;
+    return NULL;
+}
+
+/* Recursively generate a single mutant from expression */
+static Cell* generate_single_mutant(Cell* expr, int mutation_index, int* current_index) {
+    if (!expr) return NULL;
+
+    /* Try operator mutation */
+    Cell* mutated = mutate_operator(expr, mutation_index, current_index);
+    if (mutated) return mutated;
+
+    /* Try constant mutation */
+    mutated = mutate_constant(expr, mutation_index, current_index);
+    if (mutated) return mutated;
+
+    /* Try conditional mutation */
+    mutated = mutate_conditional(expr, mutation_index, current_index);
+    if (mutated) return mutated;
+
+    /* Recursively try to mutate subexpressions */
+    if (cell_is_pair(expr)) {
+        Cell* car = cell_car(expr);
+        Cell* cdr = cell_cdr(expr);
+
+        /* Try mutating car */
+        mutated = generate_single_mutant(car, mutation_index, current_index);
+        if (mutated) {
+            Cell* cloned_cdr = clone_cell_deep(cdr);
+            Cell* result = cell_cons(mutated, cloned_cdr);
+            cell_release(mutated);
+            cell_release(cloned_cdr);
+            return result;
+        }
+
+        /* Try mutating cdr (don't reset index - continue counting) */
+        mutated = generate_single_mutant(cdr, mutation_index, current_index);
+        if (mutated) {
+            Cell* cloned_car = clone_cell_deep(car);
+            Cell* result = cell_cons(cloned_car, mutated);
+            cell_release(cloned_car);
+            cell_release(mutated);
+            return result;
+        }
+    }
+
+    return NULL;
+}
+
+/* Count total mutation points in expression */
+static int count_mutation_points(Cell* expr) {
+    if (!expr) return 0;
+
+    int count = 0;
+
+    /* Check if this node is a mutation point */
+    if (cell_is_pair(expr)) {
+        Cell* first = cell_car(expr);
+        if (cell_is_symbol(first)) {
+            const char* op = cell_get_symbol(first);
+            /* Arithmetic operators */
+            if (strcmp(op, "⊕") == 0 || strcmp(op, "⊖") == 0 ||
+                strcmp(op, "⊗") == 0 || strcmp(op, "⊘") == 0) {
+                count++;
+            }
+            /* Comparison operators */
+            else if (strcmp(op, "≡") == 0 || strcmp(op, "≢") == 0 ||
+                     strcmp(op, "<") == 0 || strcmp(op, ">") == 0) {
+                count++;
+            }
+            /* Logical operators */
+            else if (strcmp(op, "∧") == 0 || strcmp(op, "∨") == 0) {
+                count++;
+            }
+            /* Conditionals */
+            else if (strcmp(op, "?") == 0) {
+                count++;
+            }
+        }
+    }
+
+    /* Constants (but skip 0 and 1 - likely De Bruijn indices) */
+    if (cell_is_number(expr)) {
+        double val = cell_get_number(expr);
+        /* Skip 0 and 1 - most likely De Bruijn indices
+         * Real constants like #2, #3, #42 will still count */
+        if (!(val == 0.0 || val == 1.0)) {
+            count++;
+        }
+    } else if (cell_is_bool(expr)) {
+        count++;
+    }
+
+    /* Recursively count in subexpressions */
+    if (cell_is_pair(expr)) {
+        count += count_mutation_points(cell_car(expr));
+        count += count_mutation_points(cell_cdr(expr));
+    }
+
+    return count;
+}
+
+/* ⌂⊨⊗ - Mutation testing
+ * Args: quoted symbol (function name)
+ * Returns: (killed survived total)
+ */
+Cell* prim_mutation_test(Cell* args) {
+    if (!cell_is_pair(args)) {
+        return cell_error("⌂⊨⊗ requires a quoted function name", cell_nil());
+    }
+
+    Cell* quoted = arg1(args);
+    if (!cell_is_symbol(quoted)) {
+        return cell_error("⌂⊨⊗ requires a symbol argument", quoted);
+    }
+
+    const char* func_name = cell_get_symbol(quoted);
+
+    /* Strip leading colon if present (handle :symbol → symbol) */
+    if (func_name && func_name[0] == ':') {
+        func_name = func_name + 1;
+    }
+
+    /* Look up function in environment */
+    EvalContext* ctx = eval_get_current_context();
+    Cell* original_func = eval_lookup(ctx, func_name);
+
+    if (!original_func) {
+        return cell_error("⌂⊨⊗ function not found", quoted);
+    }
+
+    /* Verify it's a lambda */
+    if (original_func->type != CELL_LAMBDA) {
+        cell_release(original_func);
+        return cell_error("⌂⊨⊗ argument must be a function", quoted);
+    }
+
+    /* Get lambda body */
+    Cell* body = original_func->data.lambda.body;
+
+    /* Count total mutation points */
+    int total_mutations = count_mutation_points(body);
+
+    if (total_mutations == 0) {
+        cell_release(original_func);
+        /* No mutations possible - return (0 0 0) */
+        return cell_cons(cell_number(0),
+               cell_cons(cell_number(0),
+               cell_cons(cell_number(0), cell_nil())));
+    }
+
+    /* Generate tests for this function */
+    Cell* test_gen_args = cell_cons(quoted, cell_nil());
+    Cell* tests = prim_doc_tests(test_gen_args);
+    cell_release(test_gen_args);
+
+    if (cell_is_error(tests)) {
+        cell_release(original_func);
+        return tests;  /* Propagate error */
+    }
+
+    if (cell_is_nil(tests)) {
+        cell_release(original_func);
+        cell_release(tests);
+        /* No tests to run - return (0 0 total) */
+        return cell_cons(cell_number(0),
+               cell_cons(cell_number(0),
+               cell_cons(cell_number(total_mutations), cell_nil())));
+    }
+
+    /* Run mutation testing */
+    int killed = 0;
+    int survived = 0;
+
+    for (int i = 0; i < total_mutations; i++) {
+        /* Generate mutant */
+        int index = 0;
+        Cell* mutant_body = generate_single_mutant(body, i, &index);
+
+        if (!mutant_body) continue;
+
+        /* Create mutated lambda */
+        Cell* mutant_env = original_func->data.lambda.env;
+        /* cell_lambda: (env, body, arity, source_module, source_line) */
+        Cell* mutant_func = cell_lambda(mutant_env, mutant_body, original_func->data.lambda.arity, "<mutant>", 0);
+        cell_release(mutant_body);
+
+        /* Temporarily replace function in environment */
+        eval_define(ctx, func_name, mutant_func);
+
+        /* Run tests on mutant */
+        bool mutant_killed = false;
+        Cell* current_test = tests;
+        while (cell_is_pair(current_test)) {
+            Cell* test_expr = cell_car(current_test);
+            Cell* result = eval_internal(ctx, ctx->env, test_expr);
+
+            /* If test fails (error), mutant is killed */
+            if (cell_is_error(result)) {
+                mutant_killed = true;
+                cell_release(result);
+                break;
+            }
+
+            cell_release(result);
+            current_test = cell_cdr(current_test);
+        }
+
+        /* Restore original function */
+        eval_define(ctx, func_name, original_func);
+
+        cell_release(mutant_func);
+
+        if (mutant_killed) {
+            killed++;
+        } else {
+            survived++;
+        }
+    }
+
+    cell_release(original_func);
+    cell_release(tests);
+
+    /* Return (killed survived total) */
+    return cell_cons(cell_number(killed),
+           cell_cons(cell_number(survived),
+           cell_cons(cell_number(total_mutations), cell_nil())));
 }
 
 /* ============ CFG/DFG Query Primitives ============ */
@@ -2977,6 +3821,11 @@ static Primitive primitives[] = {
     {"⌂≔", prim_doc_deps, 1, {"Get dependencies for symbol", ":symbol → [symbols]"}},
     {"⌂⊛", prim_doc_source, 1, {"Get source code for symbol", ":symbol → expression"}},
     {"⌂⊨", prim_doc_tests, 1, {"Auto-generate tests for symbol", ":symbol → [tests]"}},
+    {"⌂⊨!", prim_doc_tests_run, 1, {"Execute auto-generated tests for symbol", ":symbol → (passed failed total)"}},
+    {"⌂⊨⊗", prim_mutation_test, 1, {"Mutation testing - test test suite quality", ":symbol → (killed survived total)"}},
+    {"📖", prim_doc_generate, 1, {"Generate markdown documentation for module", "≈ → ≈"}},
+    {"📖→", prim_doc_export, 2, {"Export documentation to file", "≈ → ≈ → ≈"}},
+    {"📖⊛", prim_doc_index, 0, {"Generate module index with cross-references", "() → ≈ | ≈ → ≈"}},
     {"⌂⊚", prim_module_info, 1, {"Query module information", "() → [modules] | :symbol → string | string → [symbols]"}},
 
     /* CFG/DFG Query primitives */
