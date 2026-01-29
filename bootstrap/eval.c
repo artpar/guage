@@ -1068,6 +1068,25 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                 return eval_quasiquote(ctx, env, arg);
             }
 
+            /* ⧉⊜ - pattern-based macro (macro-rules) */
+            if (strcmp(sym, "⧉⊜") == 0) {
+                /* Syntax: (⧉⊜ name ((pattern) template) ...) */
+                Cell* name = cell_car(rest);
+                Cell* clauses = cell_cdr(rest);
+
+                if (!cell_is_symbol(name)) {
+                    return cell_error("macro-name-not-symbol", name);
+                }
+                const char* name_str = cell_get_symbol(name);
+
+                /* Register pattern-based macro */
+                macro_define_pattern(name_str, clauses);
+
+                /* Return name as symbol */
+                cell_retain(name);
+                return name;
+            }
+
             /* ⧉ - macro define (3 args) OR arity (1 arg) */
             if (strcmp(sym, "⧉") == 0) {
                 /* Count arguments */

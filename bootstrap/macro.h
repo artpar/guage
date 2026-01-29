@@ -20,11 +20,20 @@
  *   ; Expands to: (? (> x #0) (⊕ x #1) ∅)
  */
 
+/* Pattern-based macro clause */
+typedef struct MacroClause {
+    Cell* pattern;           /* Pattern to match (list of pattern elements) */
+    Cell* templ;             /* Template for expansion */
+    struct MacroClause* next;/* Next clause */
+} MacroClause;
+
 /* Macro entry in registry */
 typedef struct MacroEntry {
     char* name;              /* Macro name (symbol) */
-    Cell* params;            /* List of parameter symbols */
-    Cell* body;              /* Template body (uses quasiquote/unquote) */
+    Cell* params;            /* List of parameter symbols (NULL for pattern-based) */
+    Cell* body;              /* Template body (NULL for pattern-based) */
+    MacroClause* clauses;    /* Pattern clauses (NULL for simple macros) */
+    bool is_pattern_based;   /* True if pattern-based macro */
     struct MacroEntry* next; /* Next in linked list */
 } MacroEntry;
 
@@ -125,5 +134,55 @@ Cell* macro_list(void);
  * @return Expanded expression (one level only)
  */
 Cell* macro_expand_once(Cell* expr, EvalContext* ctx);
+
+/**
+ * Define a pattern-based macro.
+ * Pattern variables start with $ (e.g., $x, $body).
+ * Literal keywords are quoted symbols.
+ * Rest pattern uses . $rest or $rest ...
+ *
+ * Syntax: (⧉⊜ name ((pattern) template) ...)
+ *
+ * @param name Macro name
+ * @param clauses List of (pattern template) pairs
+ */
+void macro_define_pattern(const char* name, Cell* clauses);
+
+/**
+ * Match a pattern against arguments.
+ * Returns bindings if match, NULL if no match.
+ *
+ * @param pattern Pattern to match
+ * @param args Arguments to match against
+ * @return Association list of bindings, or NULL if no match
+ */
+Cell* macro_pattern_match(Cell* pattern, Cell* args);
+
+/**
+ * Expand template with bindings.
+ * Substitutes pattern variables with bound values.
+ *
+ * @param templ Template expression
+ * @param bindings Association list of (var . value) pairs
+ * @return Expanded expression
+ */
+Cell* macro_expand_template(Cell* templ, Cell* bindings);
+
+/**
+ * Check if symbol is a pattern variable (starts with $).
+ *
+ * @param sym Symbol to check
+ * @return true if pattern variable, false otherwise
+ */
+bool macro_is_pattern_var(Cell* sym);
+
+/**
+ * Apply a pattern-based macro.
+ *
+ * @param macro Macro entry (must be pattern-based)
+ * @param args Argument list
+ * @return Expanded code, or error if no pattern matches
+ */
+Cell* macro_apply_pattern(MacroEntry* macro, Cell* args);
 
 #endif // MACRO_H

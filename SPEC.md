@@ -1125,31 +1125,73 @@ All I/O operations return errors on failure:
     [(⟨⟩ _ tail) (⊕ #1 (length tail))])))
 ```
 
-### Macro System (5) - HYGIENIC CODE TRANSFORMATION
+### Macro System (6) - CODE TRANSFORMATION ✅
 | Symbol | Type | Meaning | Status |
 |--------|------|---------|--------|
-| `⧉` | Macro def | Define structural macro | ⏳ PLANNED |
-| `⧈` | Macro params | Macro parameter list | ⏳ PLANNED |
-| `` ` `` | Backquote | Quote with holes | ⏳ PLANNED |
-| `,` | Unquote | Evaluate in quote | ⏳ PLANNED |
-| `,@` | Splice | Splice list elements | ⏳ PLANNED |
+| `⧉` | Special form | Define simple macro | ✅ DONE |
+| `⧉⊜` | Special form | Define pattern-based macro | ✅ DONE |
+| `~` | Unquote | Evaluate in macro body | ✅ DONE |
+| `⌞̃` | Quasiquote | Quote with unquote support | ✅ DONE |
+| `⧉→` | `expr → expr` | Expand macro (debug) | ✅ DONE |
+| `⧉?` | `() → [:symbol]` | List defined macros | ✅ DONE |
 
-**Macro Syntax:**
+**Simple Macro Syntax (⧉):**
 ```scheme
-(⧉ name (⧈ (param₁ param₂ ...)
-  `(template with ,param₁ and ,param₂)))
+(⧉ name (param₁ param₂ ...)
+  (⌞̃ (template with (~ param₁) and (~ param₂))))
 
 ; Usage: (name arg₁ arg₂)
 ; Expands at compile-time
 ```
 
-**Example:**
+**Example (Simple Macro):**
 ```scheme
-(⧉ when (⧈ (condition body)
-  `(? ,condition ,body ∅)))
+(⧉ when (condition body)
+  (⌞̃ (? (~ condition) (~ body) ∅)))
 
-; (when (> x #0) (⊕ x #1))
+(when (> x #0) (⊕ x #1))
 ; Expands to: (? (> x #0) (⊕ x #1) ∅)
+```
+
+**Pattern-Based Macro Syntax (⧉⊜):**
+```scheme
+(⧉⊜ name
+  ((pattern₁) template₁)
+  ((pattern₂) template₂)
+  ...)
+
+; Pattern variables start with $
+; First matching pattern wins
+; Expands at compile-time
+```
+
+**Example (Pattern Macro):**
+```scheme
+;; Multi-arity add
+(⧉⊜ my-add
+  (($x) $x)
+  (($x $y) (⊕ $x $y))
+  (($x $y $z) (⊕ $x (⊕ $y $z))))
+
+(my-add #3 #4)      ; → #7
+(my-add #1 #2 #3)   ; → #6
+
+;; Keyword dispatch
+(⧉⊜ kw-test
+  ((:left $x) (⟨⟩ :l $x))
+  ((:right $x) (⟨⟩ :r $x)))
+
+(kw-test :left #5)   ; → ⟨:l #5⟩
+(kw-test :right #10) ; → ⟨:r #10⟩
+
+;; Literal matching
+(⧉⊜ factorial-base
+  ((#0) #1)
+  ((#1) #1)
+  (($n) :other))
+
+(factorial-base #0) ; → #1
+(factorial-base #5) ; → :other
 ```
 
 ### Generic Programming (3) - PARAMETRIC POLYMORPHISM

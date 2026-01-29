@@ -1,47 +1,58 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-01-29 (Day 74 COMPLETE)
+Updated: 2026-01-29 (Day 75 COMPLETE)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 74 - Mutual Recursion Complete (2026-01-29)
+# Session Handoff: Day 75 - Pattern-Based Macros Complete (2026-01-29)
 
-## 🎉 Day 74 Progress - Mutual Recursion in Letrec!
+## 🎉 Day 75 Progress - Pattern-Based Macros!
 
-**RESULT:** 71/71 test files passing (100%), 52 eval tests
+**RESULT:** 72/72 test files passing (100%), 29 pattern macro tests
 
-**New Feature: Mutual Recursion**
-- `is-mutual-recursion?` detects cross-referencing bindings
-- `transform-mutual-ast` applies Y-combinator with pair structure
-- Even?/odd? mutual recursion patterns now work!
-- Uses `:⟨⟩`, `:◁`, `:▷` for pair construction/access
+**New Feature: ⧉⊜ (macro-rules)**
+Pattern-based macros with multiple clauses and pattern matching on syntax.
+
+**Syntax:**
+```scheme
+(⧉⊜ name
+  ((pattern1) template1)
+  ((pattern2) template2)
+  ...)
+```
+
+**Pattern Features:**
+- Pattern variables: `$x`, `$body`, `$rest` (start with $)
+- Literal matching: numbers, symbols, keywords match exactly
+- Nested patterns: `(($a $b))` matches nested lists
+- Multi-clause dispatch: first matching pattern wins
 
 **Example:**
 ```scheme
-;; Mutual recursion - even?/odd?
-(⊛ ((:even? (λ (:n) (? (:≡ :n #0) #t (:odd? (:⊖ :n #1)))))
-    (:odd? (λ (:n) (? (:≡ :n #0) #f (:even? (:⊖ :n #1))))))
-   (:even? #4))  ; → #t
+;; Multi-arity add
+(⧉⊜ my-add
+  (($x) $x)
+  (($x $y) (⊕ $x $y))
+  (($x $y $z) (⊕ $x (⊕ $y $z))))
+
+(my-add #3 #4)  ; → #7
+
+;; Keyword dispatch
+(⧉⊜ kw-test
+  ((:left $x) (⟨⟩ :l $x))
+  ((:right $x) (⟨⟩ :r $x)))
+
+(kw-test :left #5)  ; → ⟨:l #5⟩
 ```
 
-**Evaluator now supports:**
-- Atoms (numbers, booleans, nil)
-- Symbol lookup in environments
-- Lambda creation with closures
-- Multi-parameter lambdas
-- Closures with captured variables
-- Conditionals (?)
-- Quote (⌜)
-- Define (≔) - local bindings in lambda bodies
-- Sequences with define (eval-body)
-- Letrec (⊛) - **with single recursive AND mutual recursion!**
-- Meta-eval (⌞) - evaluate code as data
-- Primitives through ⊡
-- Recursion via Y-combinator
-- **Mutual recursion via pair-based Y-combinator**
-- Higher-order functions
-- Pure lambda calculus
+**Implementation:**
+- Extended `macro.h/macro.c` with `MacroClause` structure
+- `macro_define_pattern()` - register pattern-based macros
+- `macro_pattern_match()` - recursive pattern matching on syntax
+- `macro_expand_template()` - substitute pattern vars in template
+- `macro_apply_pattern()` - try clauses until match
+- `⧉⊜` special form in `eval.c`
 
 ---
 
@@ -49,8 +60,9 @@ Purpose: Current project status and progress
 
 **System State:**
 - **Primitives:** 125 total
-- **Tests:** 71/71 test files passing (100%)
+- **Tests:** 72/72 test files passing (100%)
 - **Self-Hosting Eval Tests:** 52/52 passing (100%)
+- **Pattern Macros:** 29/29 tests passing
 - **Pattern Matching:** World-class (guards, as-patterns, or-patterns, view patterns)
 - **Build:** Clean, O2 optimized, 32MB stack
 
@@ -68,18 +80,20 @@ Purpose: Current project status and progress
 
 ---
 
-## 🎯 What to Do Next (Day 75+)
+## 🎯 What to Do Next (Day 76+)
 
 **RECOMMENDED OPTIONS:**
 
-1. **Data Flow Analysis** (3-4 hours) - MEDIUM VALUE
+1. **Stdlib Macros using ⧉⊜** (2-3 hours) - HIGH VALUE
+   - Build cond (⇒*), let* (≔⇊), case using new pattern macros
+   - Demonstrates pattern macro power
+
+2. **Data Flow Analysis** (3-4 hours) - MEDIUM VALUE
    - Build on graph algorithms for liveness analysis, reaching definitions
 
-2. **Pattern-Based Macros** (3-4 hours) - HIGH VALUE
-   - Add syntax-rules style pattern matching for macros
-
-3. **More Stdlib Macros** (2-3 hours) - MEDIUM VALUE
-   - Add cond (⇒*), let* (≔⇊), case, and other common constructs
+3. **Rest Pattern Syntax** (2-3 hours) - MEDIUM VALUE
+   - Add `$rest ...` syntax for variadic patterns
+   - Requires parser extension for ellipsis
 
 4. **Self-Hosting Parser** (6-8 hours) - MILESTONE
    - Parser written in Guage that can parse Guage
@@ -95,6 +109,7 @@ Purpose: Current project status and progress
 
 | Day | Feature | Tests |
 |-----|---------|-------|
+| 75 | Pattern-Based Macros (⧉⊜) | 72/72 (100%), 29 macro tests |
 | 74 | Mutual Recursion in Letrec | 71/71 (100%), 52 eval tests |
 | 73 | Recursive Letrec via Y-Combinator | 71/71 (100%), 47 eval tests |
 | 72 | Self-Hosting Evaluator Complete (≔, ⊛, ⌞) | 71/71 (100%), 42 eval tests |
