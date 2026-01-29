@@ -24,7 +24,8 @@ typedef enum {
     CELL_BUILTIN,        /* Built-in primitive */
     CELL_ERROR,          /* ⚠ - error value */
     CELL_STRUCT,         /* ⊙/⊚ - user-defined structure */
-    CELL_GRAPH           /* ⊝ - graph structure (CFG/DFG/etc) */
+    CELL_GRAPH,          /* ⊝ - graph structure (CFG/DFG/etc) */
+    CELL_ACTOR           /* ⟳ - actor (fiber + mailbox) */
 } CellType;
 
 /* Linear Type Flags */
@@ -121,6 +122,9 @@ struct Cell {
             Cell* entry;          /* Entry point (for CFG) or NULL */
             Cell* exit;           /* Exit point (for CFG) or NULL */
         } graph;
+        struct {
+            int actor_id;         /* Actor registry ID */
+        } actor;
     } data;
 };
 
@@ -136,6 +140,7 @@ Cell* cell_builtin(void* fn);
 Cell* cell_error(const char* message, Cell* data);
 Cell* cell_struct(StructKind kind, Cell* type_tag, Cell* variant, Cell* fields);
 Cell* cell_graph(GraphType graph_type, Cell* nodes, Cell* edges, Cell* metadata);
+Cell* cell_actor(int actor_id);
 
 /* Cell accessors */
 double cell_get_number(Cell* c);
@@ -168,6 +173,8 @@ bool cell_is_atom(Cell* c);
 bool cell_is_error(Cell* c);
 bool cell_is_struct(Cell* c);
 bool cell_is_graph(Cell* c);
+bool cell_is_actor(Cell* c);
+int  cell_get_actor_id(Cell* c);
 
 /* Error accessors */
 const char* cell_error_message(Cell* c);

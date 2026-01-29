@@ -630,14 +630,19 @@ Delimited continuations (`⟪⊸⟫`/`⊸`) provide standalone shift/reset for g
 Continuations are one-shot (linear) — calling `k` twice returns `⚠:one-shot-continuation-already-used`.
 Unhandled effects return `⚠:unhandled-effect` errors.
 
-### Actors (3) - PLACEHOLDERS ONLY
+### Actors (7) ✅
 | Symbol | Type | Meaning | Status |
 |--------|------|---------|--------|
-| `⟳` | `behavior → actor` | Spawn actor | ❌ PLACEHOLDER |
-| `→!` | `actor → message → ()` | Send message | ❌ PLACEHOLDER |
-| `←?` | `() → message` | Receive message | ❌ PLACEHOLDER |
+| `⟳` | `(λ (self) ...) → ⟳[id]` | Spawn actor with behavior | ✅ |
+| `→!` | `⟳ → α → ∅` | Send message (fire-and-forget) | ✅ |
+| `←?` | `() → α` | Receive message (yields if empty) | ✅ |
+| `⟳!` | `ℕ → ℕ` | Run scheduler for N ticks | ✅ |
+| `⟳?` | `⟳ → 𝔹` | Check if actor is alive | ✅ |
+| `⟳→` | `⟳ → α` | Get finished actor's result | ✅ |
+| `⟳∅` | `() → ∅` | Reset all actors (testing) | ✅ |
 
-**Note:** Actors are stubs for Phase 5+. Return nil currently.
+Cooperative actor model built on fibers. Single-threaded round-robin scheduling.
+Actors yield at `←?` when mailbox is empty. Use `≫` (bind) to sequence multiple receives.
 
 ### Documentation (10) ✅
 | Symbol | Type | Meaning | Status |
@@ -1530,12 +1535,16 @@ All I/O operations return errors on failure:
 | `⊨` | `⊨ α φ` | Assert |
 | `∴` | Therefore | Conclusion |
 
-### Actors (3)
+### Actors (7) ✅
 | Symbol | Type | Meaning | Status |
 |--------|------|---------|--------|
-| `⟳` | Spawn | Spawn actor | ❌ PLACEHOLDER |
-| `→!` | Send | Send message | ❌ PLACEHOLDER |
-| `←?` | Receive | Receive message | ❌ PLACEHOLDER |
+| `⟳` | `(λ (self) ...) → ⟳[id]` | Spawn actor | ✅ |
+| `→!` | `⟳ → α → ∅` | Send message | ✅ |
+| `←?` | `() → α` | Receive message | ✅ |
+| `⟳!` | `ℕ → ℕ` | Run scheduler | ✅ |
+| `⟳?` | `⟳ → 𝔹` | Actor alive? | ✅ |
+| `⟳→` | `⟳ → α` | Actor result | ✅ |
+| `⟳∅` | `() → ∅` | Reset actors | ✅ |
 
 ### Data Structures (15) - CRITICAL FOR METAPROGRAMMING
 | Symbol | Type | Meaning | Status |

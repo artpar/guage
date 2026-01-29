@@ -1,13 +1,81 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-01-30 (Day 88 COMPLETE)
+Updated: 2026-01-30 (Day 89 COMPLETE)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 88 - Delimited Continuations via Fibers (2026-01-30)
+# Session Handoff: Day 89 - Actor Model with Message Passing (2026-01-30)
 
-## Day 88 Progress - Fiber-based Delimited Continuations!
+## Day 89 Progress - Cooperative Actor Model!
+
+**RESULT:** 87/87 test files passing (100%), 12 new tests (actor model)
+
+### New Feature: Actor Model with Message Passing
+
+Cooperative actor model built on top of the fiber/coroutine infrastructure from Day 88. Actors are fibers with mailboxes, scheduled cooperatively (single-threaded, round-robin).
+
+**New Files (2):**
+- `bootstrap/actor.h` — Actor struct, registry API, scheduler API
+- `bootstrap/actor.c` — Actor implementation: mailbox, registry, round-robin scheduler
+
+**New Cell Type:**
+- `CELL_ACTOR` — First-class actor values, printed as `⟳[N]`
+
+**New/Replaced Primitives (7):**
+- `⟳` (spawn) — Create actor from behavior function `(λ (self) ...)`
+- `→!` (send) — Send message to actor (fire-and-forget)
+- `←?` (receive) — Receive message (yields fiber if mailbox empty)
+- `⟳!` (run) — Run cooperative round-robin scheduler for N ticks
+- `⟳?` (alive?) — Check if actor is still running
+- `⟳→` (result) — Get finished actor's result
+- `⟳∅` (reset) — Reset all actors (for testing)
+
+**How It Works:**
+- `⟳` creates an Actor with a Fiber, registers in global registry
+- `→!` appends message to actor's array-based FIFO mailbox
+- `←?` dequeues from mailbox; if empty, yields fiber (suspends actor)
+- `⟳!` runs round-robin: starts READY fibers, resumes SUSPENDED actors with messages
+- Actors communicate via `≫` (bind) to sequence multiple receives
+
+**Examples:**
+```scheme
+; Spawn actor that returns immediately
+(≔ a (⟳ (λ (self) :done)))
+(⟳! #100)
+(⟳→ a)           ; → :done
+
+; Send and receive
+(≔ echo (⟳ (λ (self) (←?))))
+(→! echo :hello)
+(⟳! #100)
+(⟳→ echo)         ; → :hello
+
+; Multiple messages with ≫ (bind) for sequencing
+(≔ pair-actor (⟳ (λ (self)
+  (≫ (←?) (λ (m1)
+    (≫ (←?) (λ (m2)
+      (⟨⟩ m1 m2))))))))
+(→! pair-actor :first)
+(→! pair-actor :second)
+(⟳! #100)
+(⟳→ pair-actor)    ; → ⟨:first :second⟩
+```
+
+**Design Decisions:**
+- Single-threaded cooperative — no OS threads, actors yield at `←?`
+- FIFO mailbox — array-based ring buffer (1024 capacity per actor)
+- Fire-and-forget send — `→!` never blocks
+- Yield on empty receive — `←?` suspends actor until message arrives
+- Explicit scheduler — `⟳!` drives execution (no implicit background scheduling)
+- Actor cell type — actors are first-class values (`CELL_ACTOR`)
+- Uses `≫` (effect bind) for sequencing multi-step actor behaviors
+
+---
+
+## Previous Day: Day 88 - Delimited Continuations via Fibers
+
+**RESULT:** 86/86 test files passing (100%), 21 new tests (delimited continuations + fiber verification)
 
 **RESULT:** 86/86 test files passing (100%), 21 new tests (delimited continuations + fiber verification)
 
@@ -646,9 +714,10 @@ Pattern-based macros with multiple clauses and pattern matching on syntax.
 ## Current Status 🎯
 
 **System State:**
-- **Primitives:** 134 total (added ⟪⊸⟫, ⊸ special forms)
-- **Tests:** 86/86 test files passing (100%)
-- **Delimited Continuation Tests:** 21/21 tests passing (new!)
+- **Primitives:** 141 total (added 7 actor primitives)
+- **Tests:** 87/87 test files passing (100%)
+- **Actor Tests:** 12/12 tests passing (new!)
+- **Delimited Continuation Tests:** 21/21 tests passing
 - **Effect System Tests:** 35/35 tests passing
 - **Resumable Effects Tests:** 30/30 tests passing
 - **Type Inference Tests:** 73/73 tests passing
@@ -727,6 +796,7 @@ Pattern-based macros with multiple clauses and pattern matching on syntax.
 
 | Day | Feature | Tests |
 |-----|---------|-------|
+| 89 | Actor Model with Message Passing (⟳, →!, ←?, ⟳!, ⟳?, ⟳→, ⟳∅) | 87/87 (100%), 12 new tests |
 | 88 | Delimited Continuations via Fibers (⟪⊸⟫, ⊸) - O(n) effects | 86/86 (100%), 21 new tests |
 | 87 | Resumable Effect Handlers (⟪↺⟫) - replay-based | 85/85 (100%), 30 new tests |
 | 86 | Algebraic Effect System (⟪, ⟪⟫, ↯) - dynamic handlers | 84/84 (100%), 35 new tests |
@@ -910,22 +980,25 @@ bootstrap/eval.h                           # EffectFrame struct, effect registry
 bootstrap/primitives.c                     # ⤴ (pure), ≫ (bind) primitives
 ```
 
-### What We Built Today (Day 88)
+### What We Built Today (Day 89)
 
-**Delimited Continuations & Fiber Rewrite:**
+**Actor Model with Message Passing:**
 
 | Symbol | Type | Description |
 |--------|------|-------------|
-| ⟪⊸⟫ | expr → α | Reset/prompt — delimited continuation delimiter (special form) |
-| ⊸ | (α → β) → α | Shift/control — capture one-shot continuation (special form) |
-| ⟪↺⟫ | expr spec... → α | Resumable effects — rewritten to use fibers (O(n)) |
-| ↯ | :effect :op args... → α | Perform — rewritten to yield fiber |
+| ⟳ | (λ (self) ...) → ⟳[id] | Spawn actor with behavior function |
+| →! | ⟳ → α → ∅ | Send message to actor (fire-and-forget) |
+| ←? | () → α | Receive message (yields if mailbox empty) |
+| ⟳! | ℕ → ℕ | Run scheduler for N ticks, return ticks executed |
+| ⟳? | ⟳ → 𝔹 | Check if actor is alive |
+| ⟳→ | ⟳ → α | Get finished actor's result |
+| ⟳∅ | () → ∅ | Reset all actors (for testing) |
 
 **Infrastructure:**
-- `fiber.h`/`fiber.c` — ucontext-based coroutine system
-- `prim_fiber_resume_k` — One-shot continuation with recursive perform dispatch
-- Cross-fiber propagation for nested effect handlers
-- Removed replay-based infrastructure (~250 lines of dead code)
+- `actor.h`/`actor.c` — Actor struct, global registry (256 max), array-based FIFO mailbox
+- Round-robin scheduler with cooperative yielding
+- `CELL_ACTOR` cell type for first-class actor values
+- Uses `≫` (bind) for sequencing multi-expression actor behaviors
 
 ---
 
@@ -969,5 +1042,5 @@ bootstrap/primitives.c                     # ⤴ (pure), ≫ (bind) primitives
 
 ---
 
-**Last Updated:** 2026-01-30 (Day 88 complete)
-**Next Session:** Day 89 - Multi-shot continuations, optimizer, or concurrency
+**Last Updated:** 2026-01-30 (Day 89 complete)
+**Next Session:** Day 90 - Channels, supervision trees, or optimizer

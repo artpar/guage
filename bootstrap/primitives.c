@@ -7,6 +7,7 @@
 #include "testgen.h"
 #include "module.h"
 #include "macro.h"
+#include "actor.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
@@ -893,6 +894,9 @@ Cell* prim_typeof(Cell* args) {
     if (cell_is_graph(val)) {
         return cell_symbol(":graph");
     }
+    if (cell_is_actor(val)) {
+        return cell_symbol(":actor");
+    }
 
     return cell_symbol(":unknown");
 }
@@ -1687,6 +1691,7 @@ Cell* prim_type_of(Cell* args) {
     else if (cell_is_pair(value)) type_name = "pair";
     else if (cell_is_lambda(value)) type_name = "lambda";
     else if (cell_is_error(value)) type_name = "error";
+    else if (cell_is_actor(value)) type_name = "actor";
 
     return cell_symbol(type_name);
 }
@@ -2036,29 +2041,163 @@ Cell* prim_effect_bind(Cell* args) {
     return result;
 }
 
-/* Actor primitives (placeholder implementations) */
+/* ============ Actor Primitives ============ */
 
+/* ⟳ - spawn actor
+ * (⟳ behavior) where behavior is (λ (self) ...)
+ * Creates actor, passes self-reference as actor cell.
+ * The behavior body should use ←? to receive messages. */
 Cell* prim_spawn(Cell* args) {
-    (void)args;  /* Unused for now */
-    /* ⟳ - spawn actor */
-    /* Placeholder: will need actor runtime */
-    printf("spawn: not yet implemented\n");
-    return cell_nil();
+    Cell* behavior = arg1(args);
+    if (!cell_is_lambda(behavior)) {
+        return cell_error("spawn-not-lambda", behavior);
+    }
+
+    EvalContext* ctx = eval_get_current_context();
+
+    /* We need a fiber body that applies behavior to self-actor-cell.
+     * Since the evaluator resolves named symbols via ctx->env,
+     * we define unique bindings there per actor. */
+
+    /* Create actor first to get the ID */
+    Cell* placeholder = cell_nil();
+    Actor* actor = actor_create(ctx, placeholder, ctx->env);
+    cell_release(placeholder);
+
+    if (!actor) {
+        return cell_error("max-actors-exceeded", cell_nil());
+    }
+
+    /* Build unique symbol names using actor ID */
+    char fn_name[64], self_name[64];
+    snprintf(fn_name, sizeof(fn_name), "__actor_fn_%d", actor->id);
+    snprintf(self_name, sizeof(self_name), "__actor_self_%d", actor->id);
+
+    /* Define behavior and self in ctx->env */
+    Cell* self_cell = cell_actor(actor->id);
+    eval_define(ctx, fn_name, behavior);
+    eval_define(ctx, self_name, self_cell);
+    cell_release(self_cell);
+
+    /* Build body expression: (__actor_fn_N __actor_self_N) */
+    Cell* fn_sym = cell_symbol(fn_name);
+    Cell* self_sym = cell_symbol(self_name);
+    Cell* body = cell_cons(fn_sym, cell_cons(self_sym, cell_nil()));
+    cell_release(fn_sym);
+    cell_release(self_sym);
+
+    /* Update fiber body */
+    cell_release(actor->fiber->body);
+    actor->fiber->body = body;
+    cell_retain(body);
+    cell_release(body);
+
+    return cell_actor(actor->id);
 }
 
+/* →! - send message to actor
+ * (→! actor message) */
 Cell* prim_send(Cell* args) {
-    (void)args;  /* Unused for now */
-    /* →! - send message */
-    /* Placeholder: will need actor runtime */
-    printf("send: not yet implemented\n");
+    Cell* target = arg1(args);
+    Cell* message = arg2(args);
+
+    if (!cell_is_actor(target)) {
+        return cell_error("send-not-actor", target);
+    }
+
+    int id = cell_get_actor_id(target);
+    Actor* actor = actor_lookup(id);
+    if (!actor || !actor->alive) {
+        return cell_error("dead-actor", target);
+    }
+
+    actor_send(actor, message);
     return cell_nil();
 }
 
+/* ←? - receive message
+ * (←?) — dequeues from current actor's mailbox.
+ * If empty, yields the fiber (suspends the actor). */
 Cell* prim_receive(Cell* args) {
-    (void)args;  /* Unused for now */
-    /* ←? - receive message */
-    /* Placeholder: will need actor runtime */
-    printf("receive: not yet implemented\n");
+    (void)args;
+
+    Actor* actor = actor_current();
+    if (!actor) {
+        return cell_error("receive-no-actor", cell_nil());
+    }
+
+    /* Check mailbox */
+    Cell* msg = actor_receive(actor);
+    if (msg) {
+        return msg;
+    }
+
+    /* Empty mailbox — yield fiber to scheduler */
+    Fiber* fiber = actor->fiber;
+    if (fiber) {
+        fiber_yield(fiber);
+        /* Resumed by scheduler with message as resume_value */
+        Cell* resumed = fiber->resume_value;
+        if (resumed) {
+            cell_retain(resumed);
+            return resumed;
+        }
+    }
+
+    return cell_nil();
+}
+
+/* ⟳! - run scheduler
+ * (⟳! max-ticks) — run cooperative round-robin scheduler */
+Cell* prim_actor_run(Cell* args) {
+    Cell* max_cell = arg1(args);
+    if (!cell_is_number(max_cell)) {
+        return cell_error("run-not-number", max_cell);
+    }
+    int max_ticks = (int)cell_get_number(max_cell);
+    int ran = actor_run_all(max_ticks);
+    return cell_number((double)ran);
+}
+
+/* ⟳? - check if actor is alive
+ * (⟳? actor) → #t or #f */
+Cell* prim_actor_alive(Cell* args) {
+    Cell* target = arg1(args);
+    if (!cell_is_actor(target)) {
+        return cell_error("alive-not-actor", target);
+    }
+    int id = cell_get_actor_id(target);
+    Actor* actor = actor_lookup(id);
+    if (!actor) return cell_bool(false);
+    return cell_bool(actor->alive);
+}
+
+/* ⟳→ - get finished actor's result
+ * (⟳→ actor) → result or error */
+Cell* prim_actor_result(Cell* args) {
+    Cell* target = arg1(args);
+    if (!cell_is_actor(target)) {
+        return cell_error("result-not-actor", target);
+    }
+    int id = cell_get_actor_id(target);
+    Actor* actor = actor_lookup(id);
+    if (!actor) {
+        return cell_error("actor-not-found", target);
+    }
+    if (actor->alive) {
+        return cell_error("actor-still-running", target);
+    }
+    if (actor->result) {
+        cell_retain(actor->result);
+        return actor->result;
+    }
+    return cell_nil();
+}
+
+/* ⟳∅ - reset all actors (for testing) */
+Cell* prim_actor_reset(Cell* args) {
+    (void)args;
+    actor_reset_all();
     return cell_nil();
 }
 
@@ -5828,10 +5967,14 @@ static Primitive primitives[] = {
     {"⤴", prim_effect_pure, 1, {"Lift pure value (identity)", "α → α"}},
     {"≫", prim_effect_bind, 2, {"Effect bind: apply function to value", "α → (α → β) → β"}},
 
-    /* Actors (placeholder) */
-    {"⟳", prim_spawn, 1, {"Spawn new actor", "behavior → actor"}},
-    {"→!", prim_send, 2, {"Send message to actor", "actor → message → ()"}},
-    {"←?", prim_receive, 0, {"Receive message (blocks)", "() → message"}},
+    /* Actor primitives */
+    {"⟳", prim_spawn, 1, {"Spawn new actor with behavior function", "(λ (self) ...) → ⟳[id]"}},
+    {"→!", prim_send, 2, {"Send message to actor (fire-and-forget)", "⟳ → α → ∅"}},
+    {"←?", prim_receive, 0, {"Receive message (yields if mailbox empty)", "() → α"}},
+    {"⟳!", prim_actor_run, 1, {"Run actor scheduler for N ticks", "ℕ → ℕ"}},
+    {"⟳?", prim_actor_alive, 1, {"Check if actor is alive", "⟳ → 𝔹"}},
+    {"⟳→", prim_actor_result, 1, {"Get finished actor result", "⟳ → α | ⚠"}},
+    {"⟳∅", prim_actor_reset, 0, {"Reset all actors (testing)", "() → ∅"}},
 
     /* Documentation primitives */
     {"⌂", prim_doc_get, 1, {"Get documentation for symbol", ":symbol → string"}},

@@ -121,6 +121,12 @@ Cell* cell_graph(GraphType graph_type, Cell* nodes, Cell* edges, Cell* metadata)
     return c;
 }
 
+Cell* cell_actor(int actor_id) {
+    Cell* c = cell_alloc(CELL_ACTOR);
+    c->data.actor.actor_id = actor_id;
+    return c;
+}
+
 /* Cell accessors */
 double cell_get_number(Cell* c) {
     assert(c->type == CELL_ATOM_NUMBER);
@@ -201,6 +207,9 @@ void cell_release(Cell* c) {
                 cell_release(c->data.graph.metadata);
                 cell_release(c->data.graph.entry);
                 cell_release(c->data.graph.exit);
+                break;
+            case CELL_ACTOR:
+                /* Actor ID is just an int, no children to release */
                 break;
             default:
                 break;
@@ -291,6 +300,15 @@ bool cell_is_struct(Cell* c) {
 
 bool cell_is_graph(Cell* c) {
     return c && c->type == CELL_GRAPH;
+}
+
+bool cell_is_actor(Cell* c) {
+    return c && c->type == CELL_ACTOR;
+}
+
+int cell_get_actor_id(Cell* c) {
+    assert(c->type == CELL_ACTOR);
+    return c->data.actor.actor_id;
 }
 
 /* Error accessors */
@@ -516,6 +534,8 @@ bool cell_equal(Cell* a, Cell* b) {
             return a->data.graph.graph_type == b->data.graph.graph_type &&
                    cell_equal(a->data.graph.nodes, b->data.graph.nodes) &&
                    cell_equal(a->data.graph.edges, b->data.graph.edges);
+        case CELL_ACTOR:
+            return a->data.actor.actor_id == b->data.actor.actor_id;
         case CELL_LAMBDA:
         case CELL_BUILTIN:
         case CELL_ERROR:
@@ -614,6 +634,9 @@ void cell_print(Cell* c) {
 
             printf(" N:%d E:%d", node_count, edge_count);
             printf("]");
+            break;
+        case CELL_ACTOR:
+            printf("⟳[%d]", c->data.actor.actor_id);
             break;
     }
 }

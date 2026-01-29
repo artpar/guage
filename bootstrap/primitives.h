@@ -67,10 +67,14 @@ Cell* prim_is_atom(Cell* args);
 Cell* prim_effect_pure(Cell* args);    /* ⤴ - pure lift */
 Cell* prim_effect_bind(Cell* args);    /* ≫ - effect bind */
 
-/* Actor primitives (placeholder) */
+/* Actor primitives */
 Cell* prim_spawn(Cell* args);          /* ⟳ - spawn actor */
 Cell* prim_send(Cell* args);           /* →! - send message */
 Cell* prim_receive(Cell* args);        /* ←? - receive message */
+Cell* prim_actor_run(Cell* args);      /* ⟳! - run scheduler */
+Cell* prim_actor_alive(Cell* args);    /* ⟳? - check alive */
+Cell* prim_actor_result(Cell* args);   /* ⟳→ - get result */
+Cell* prim_actor_reset(Cell* args);    /* ⟳∅ - reset all actors */
 
 /* Documentation primitives */
 Cell* prim_doc_get(Cell* args);        /* ⌂ - get documentation */
