@@ -1,794 +1,127 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-01-30 (Day 89 COMPLETE)
+Updated: 2026-01-30 (Day 90 COMPLETE)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 89 - Actor Model with Message Passing (2026-01-30)
+# Session Handoff: Day 90 - Channels with Typed Communication (2026-01-30)
 
-## Day 89 Progress - Cooperative Actor Model!
+## Day 90 Progress - Channel Primitives
 
-**RESULT:** 87/87 test files passing (100%), 12 new tests (actor model)
+**RESULT:** 88/88 test files passing (100%), 12 new tests (channels)
 
-### New Feature: Actor Model with Message Passing
+### New Feature: Channels — Typed Communication Primitives
 
-Cooperative actor model built on top of the fiber/coroutine infrastructure from Day 88. Actors are fibers with mailboxes, scheduled cooperatively (single-threaded, round-robin).
+Channels are first-class bounded ring buffers that any actor can send to or receive from. They complement the actor mailbox system with shared, named communication endpoints. Blocking semantics are integrated into the cooperative scheduler via `SuspendReason`.
 
 **New Files (2):**
-- `bootstrap/actor.h` — Actor struct, registry API, scheduler API
-- `bootstrap/actor.c` — Actor implementation: mailbox, registry, round-robin scheduler
+- `bootstrap/channel.h` — Channel struct, registry API
+- `bootstrap/channel.c` — Ring buffer operations, registry, create/close/destroy/try_send/try_recv/reset_all
 
 **New Cell Type:**
-- `CELL_ACTOR` — First-class actor values, printed as `⟳[N]`
+- `CELL_CHANNEL` — First-class channel values, printed as `⟿[N]`
 
-**New/Replaced Primitives (7):**
-- `⟳` (spawn) — Create actor from behavior function `(λ (self) ...)`
-- `→!` (send) — Send message to actor (fire-and-forget)
-- `←?` (receive) — Receive message (yields fiber if mailbox empty)
-- `⟳!` (run) — Run cooperative round-robin scheduler for N ticks
-- `⟳?` (alive?) — Check if actor is still running
-- `⟳→` (result) — Get finished actor's result
-- `⟳∅` (reset) — Reset all actors (for testing)
+**New Primitives (5):**
+- `⟿⊚` (create) — Create channel with optional capacity (default 64)
+- `⟿→` (send) — Send value to channel (yields if buffer full)
+- `⟿←` (recv) — Receive from channel (yields if buffer empty)
+- `⟿×` (close) — Close channel (no more sends)
+- `⟿∅` (reset) — Reset all channels (for testing)
 
-**How It Works:**
-- `⟳` creates an Actor with a Fiber, registers in global registry
-- `→!` appends message to actor's array-based FIFO mailbox
-- `←?` dequeues from mailbox; if empty, yields fiber (suspends actor)
-- `⟳!` runs round-robin: starts READY fibers, resumes SUSPENDED actors with messages
-- Actors communicate via `≫` (bind) to sequence multiple receives
+**Scheduler Extension — SuspendReason:**
+- Added `SuspendReason` enum to `fiber.h`: `SUSPEND_GENERAL`, `SUSPEND_MAILBOX`, `SUSPEND_CHAN_RECV`, `SUSPEND_CHAN_SEND`
+- Scheduler in `actor_run_all()` now dispatches on suspend reason instead of just checking mailbox
+- `prim_receive` (←?) now sets `SUSPEND_MAILBOX` before yielding
+- Channel recv/send set `SUSPEND_CHAN_RECV`/`SUSPEND_CHAN_SEND` with channel ID
 
 **Examples:**
 ```scheme
-; Spawn actor that returns immediately
-(≔ a (⟳ (λ (self) :done)))
+; Create and use a channel
+(≔ ch (⟿⊚))
+(≔ producer (⟳ (λ (self) (⟿→ ch :hello))))
+(≔ consumer (⟳ (λ (self) (⟿← ch))))
 (⟳! #100)
-(⟳→ a)           ; → :done
+(⟳→ consumer)         ; → :hello
 
-; Send and receive
-(≔ echo (⟳ (λ (self) (←?))))
-(→! echo :hello)
+; Blocking recv — consumer starts before producer
+(≔ ch (⟿⊚))
+(≔ c (⟳ (λ (self) (⟿← ch))))   ; blocks
+(≔ p (⟳ (λ (self) (⟿→ ch :wakeup))))
 (⟳! #100)
-(⟳→ echo)         ; → :hello
+(⟳→ c)                ; → :wakeup
 
-; Multiple messages with ≫ (bind) for sequencing
-(≔ pair-actor (⟳ (λ (self)
-  (≫ (←?) (λ (m1)
-    (≫ (←?) (λ (m2)
-      (⟨⟩ m1 m2))))))))
-(→! pair-actor :first)
-(→! pair-actor :second)
-(⟳! #100)
-(⟳→ pair-actor)    ; → ⟨:first :second⟩
+; Capacity-1 channel with blocking send
+(≔ ch (⟿⊚ #1))
+(≔ s (⟳ (λ (self)
+  (≫ (⟿→ ch :a) (λ (_)
+  (≫ (⟿→ ch :b) (λ (_)  ; blocks until :a drained
+    :done)))))))
+(≔ d (⟳ (λ (self)
+  (≫ (⟿← ch) (λ (v1)
+    (≫ (⟿← ch) (λ (v2)
+      (⟨⟩ v1 v2))))))))
+(⟳! #200)
+(⟳→ d)                ; → ⟨:a :b⟩
 ```
 
 **Design Decisions:**
-- Single-threaded cooperative — no OS threads, actors yield at `←?`
-- FIFO mailbox — array-based ring buffer (1024 capacity per actor)
-- Fire-and-forget send — `→!` never blocks
-- Yield on empty receive — `←?` suspends actor until message arrives
-- Explicit scheduler — `⟳!` drives execution (no implicit background scheduling)
-- Actor cell type — actors are first-class values (`CELL_ACTOR`)
-- Uses `≫` (effect bind) for sequencing multi-step actor behaviors
+- Channels are independent of actors — any actor can send/recv on any channel
+- Bounded ring buffer (configurable capacity, default 64)
+- Scheduler-polled suspension — no wait queues, scheduler checks channel state each tick
+- Close semantics: send to closed → error; recv from closed empty → error; recv from closed non-empty → returns buffered values
+- `actor_reset_all()` also calls `channel_reset_all()` for clean test isolation
+
+---
+
+## Previous Day: Day 89 - Actor Model with Message Passing
+
+**RESULT:** 87/87 test files passing (100%), 12 new tests (actor model)
+
+Cooperative actor model built on top of the fiber/coroutine infrastructure from Day 88. Actors are fibers with mailboxes, scheduled cooperatively (single-threaded, round-robin).
+
+**New Files:** `bootstrap/actor.h`, `bootstrap/actor.c`
+**New Cell Type:** `CELL_ACTOR` — printed as `⟳[N]`
+
+**Primitives (7):** `⟳` (spawn), `→!` (send), `←?` (receive), `⟳!` (run), `⟳?` (alive?), `⟳→` (result), `⟳∅` (reset)
 
 ---
 
 ## Previous Day: Day 88 - Delimited Continuations via Fibers
 
-**RESULT:** 86/86 test files passing (100%), 21 new tests (delimited continuations + fiber verification)
+**RESULT:** 86/86 test files passing (100%), 21 new tests
 
-**RESULT:** 86/86 test files passing (100%), 21 new tests (delimited continuations + fiber verification)
+Replaced replay-based resumable effects with real delimited continuations using fiber/coroutine-based context switching via `ucontext`. O(n) instead of O(n²).
 
-### Major Rewrite: Fiber-based Resumable Effects (O(n) replaces O(n²))
-
-Replaced the replay-based resumable effect system with real delimited continuations using fiber/coroutine-based context switching via `ucontext`.
-
-**New Files (2):**
-- `bootstrap/fiber.h` — Fiber struct and API declarations
-- `bootstrap/fiber.c` — Fiber implementation using `ucontext` (create, start, resume, yield, destroy)
-
-**New Special Forms (2):**
-- `(⟪⊸⟫ body)` — Reset/prompt: install delimited continuation delimiter
-- `(⊸ handler-fn)` — Shift/control: capture one-shot continuation `k`
-
-**Rewritten Special Forms (2):**
-- `(⟪↺⟫ body handler-specs...)` — Now fiber-based (was replay-based)
-- `(↯ :Effect :op args...)` — Now yields fiber (was replay buffer + perform-request propagation)
-
-**Removed Infrastructure:**
-- `ResumeCtx` struct (replay buffer, cursor, etc.)
-- `g_resume_stack[8]`, `g_resume_depth` (replay nesting)
-- `g_perform_pending`, `g_perform_eff_name`, `g_perform_op_name`, `g_perform_args` (signal globals)
-- `resume_eval_loop()` (replay evaluator)
-- `prim_resume_k()` (replay-based continuation)
-- 5 perform-request propagation checks in eval_list, conditionals, function application
-
-**New Infrastructure:**
-- `Fiber` struct: ucontext-based coroutine with communication slots
-- `prim_fiber_resume_k()` — One-shot continuation that resumes fiber, recursively dispatches subsequent performs
-- `g_handling_fiber`, `g_handling_frames`, `g_handling_frame_count` — Handler dispatch context
-- Cross-fiber effect propagation for nested `⟪↺⟫` handlers
-
-**How It Works:**
-- `⟪↺⟫` creates a fiber for body evaluation, pushes handler frames, runs dispatch loop
-- `↯` (perform) yields the fiber with effect info; dispatch loop finds handler, builds k, calls handler
-- `⟪⊸⟫` creates a fiber for body, dispatches shift yields by calling handler with k
-- `⊸` (shift) stores handler on fiber, yields; resumed with k's value
-- All continuations are one-shot (linear) — calling k twice returns `⚠:one-shot-continuation-already-used`
-- Nested handlers with different effects propagate across fibers
-
-**Examples:**
-```scheme
-; Shift/reset — capture continuation
-(⟪⊸⟫ (⊕ (⊸ (λ (k) (k #10))) #2))         ; → #12
-(⟪⊸⟫ (⊸ (λ (k) (⊗ (k #42) #2))))         ; → #84
-
-; Multiple shifts in sequence
-(⟪⊸⟫ (⊕ (⊸ (λ (k) (k #10)))
-          (⊸ (λ (k) (k #20)))))            ; → #30
-
-; Resumable effects — now O(n) instead of O(n²)
-(⟪↺⟫ (⊕ (↯ :Ask :prompt "x") (↯ :Ask :prompt "y"))
-  (:Ask (:prompt (λ (k msg) (k (? (≡ msg "x") #10 #42))))))
-; → #52
-```
+**New Files:** `bootstrap/fiber.h`, `bootstrap/fiber.c`
+**New Special Forms:** `⟪⊸⟫` (reset/prompt), `⊸` (shift/control)
+**Rewritten:** `⟪↺⟫` and `↯` now fiber-based
 
 ---
 
-## Previous Day: Day 87 - Resumable Effect Handlers
-
-**RESULT:** 85/85 test files passing (100%), 30 new tests (resumable effects)
-
-### New Feature: Resumable Effect Handlers (⟪↺⟫)
-
-Replay-based continuations (now replaced by fibers in Day 88).
-
-**Examples:**
-```scheme
-(⟪↺⟫ (↯ :State :get)
-  (:State (:get (λ (k) (k #42))))) ; → #42
-
-(⟪↺⟫ (⊎ (↯ :Yield :value #1) (↯ :Yield :value #2) ∅)
-  (:Yield (:value (λ (k v) (⟨⟩ v (k ∅)))))) ; → (#1 #2)
-```
-
----
-
-## Previous Day: Day 86 - Algebraic Effect System
-
-**RESULT:** 84/84 test files passing (100%), 35 new tests (effects)
-
-### New Feature: Algebraic Effect System
-
-Dynamic handler stack with effect declaration, perform, and handle.
-
-**New Special Forms (5):**
-- `(⟪ :name :op1 :op2 ...)` - Declare effect type with operations
-- `(⟪? :name)` - Query if effect is declared
-- `(⟪→ :name)` - Get effect operations list
-- `(⟪⟫ body (:Effect (:op handler) ...))` - Handle effects in body
-- `(↯ :Effect :op args...)` - Perform effect operation
-
-**Updated Primitives (2):**
-- `(⤴ val)` - Pure lift (identity, returns value unchanged)
-- `(≫ val fn)` - Effect bind (applies fn to val)
-
-**Examples:**
-```scheme
-; Declare an effect
-(⟪ :State :get :put)
-
-; Handle effects — perform returns handler's result
-(⟪⟫ (⊕ (↯ :State :get) #1)
-  (:State
-    (:get (λ () #42))
-    (:put (λ (v) ∅))))
-; → #43
-
-; Nested handlers — inner shadows outer
-(⟪⟫
-  (⟪⟫ (↯ :State :get)
-    (:State (:get (λ () #99)) (:put (λ (v) ∅))))
-  (:State (:get (λ () #42)) (:put (λ (v) ∅))))
-; → #99
-
-; Config reader pattern
-(⟪ :Config :get)
-(≔ get-config (λ (key) (↯ :Config :get key)))
-(⟪⟫ (get-config :db-url)
-  (:Config (:get (λ (key)
-    (? (≡ key :db-url) "localhost:5432" "unknown")))))
-; → "localhost:5432"
-```
-
-**Design:**
-- Dynamic handler stack (inner handlers shadow outer)
-- Handlers are closures receiving perform arguments
-- Perform returns handler function's result (non-resumable)
-- Unhandled effects return `⚠:unhandled-effect`
-- TCO in handler dispatch (handler body in tail position)
-
----
-
-## Previous Day: Day 85 - Type Inference
-
-**RESULT:** 83/83 test files passing (100%), 73 new tests (type inference)
-
-### New Feature: Type Inference System
-
-Three-layer type inference: deep value inference, primitive signatures, and expression-level static inference.
-
-**New Primitives (2):**
-- `(∈⍜ val)` - Deep type inference on values (recursive pair/list/struct inference)
-- `(∈⍜⊕ :prim)` - Get type signature of any primitive operation
-
-**New Special Form (1):**
-- `(∈⍜* expr)` - Infer type of expression WITHOUT evaluating it
-
-**Deep Value Inference (∈⍜) — unlike ∈⊙ which returns shallow types:**
-```scheme
-(∈⍜ #42)                      ; → (ℤ)
-(∈⍜ (⟨⟩ #1 #2))               ; → (⟨⟩ₜ (ℤ) (ℤ))  — deep pair type
-(∈⍜ (⟨⟩ #1 (⟨⟩ #2 ∅)))        ; → ([]ₜ (ℤ))       — detects proper lists
-(∈⍜ (⟨⟩ #1 (⟨⟩ "hi" ∅)))      ; → ([]ₜ (∪ₜ (ℤ) (𝕊))) — mixed list = union
-(∈⍜ (λ (x y) (⊕ x y)))        ; → (→ (⊤) (⊤) (⊤)) — from arity
-(∈⍜ (⚠ :oops #0))             ; → error type struct
-(∈⍜ (⊙ :Point #3 #4))         ; → struct type with tag
-```
-
-**Named Binding Inference — uses annotation registry:**
-```scheme
-(≔ x #42) (∈ x (ℤ))
-(∈⍜ x)                        ; → (ℤ) — from annotation
-
-(≔ f (λ (n) (⊕ n #1))) (∈ f (→ (ℤ) (ℤ)))
-(∈⍜ f)                        ; → (→ (ℤ) (ℤ)) — from annotation
-```
-
-**Primitive Type Signatures (∈⍜⊕):**
-```scheme
-(∈⍜⊕ :⊕)                      ; → (→ (ℤ) (ℤ) (ℤ))
-(∈⍜⊕ :<)                      ; → (→ (ℤ) (ℤ) (𝔹))
-(∈⍜⊕ :≡)                      ; → (→ (⊤) (⊤) (𝔹))
-(∈⍜⊕ :¬)                      ; → (→ (𝔹) (𝔹))
-(∈⍜⊕ :≈⊕)                     ; → (→ (𝕊) (𝕊) (𝕊))
-(∈⍜⊕ :≈#)                     ; → (→ (𝕊) (ℤ))
-```
-
-**Expression Type Inference (∈⍜* — static, no evaluation):**
-```scheme
-(∈⍜* #42)                     ; → (ℤ)
-(∈⍜* (⊕ #1 #2))               ; → (ℤ) — from ⊕ signature
-(∈⍜* (< #1 #2))               ; → (𝔹) — from < signature
-(∈⍜* (? #t #1 "hi"))          ; → (∪ₜ (ℤ) (𝕊)) — union of branches
-(∈⍜* (λ (x) (⊕ x #1)))       ; → (→ (⊤) (ℤ)) — body inferred
-(∈⍜* (my-fn #5))              ; → uses function's annotation
-```
-
-**Infrastructure improvements:**
-- `types_equal` now handles `:struct` and `:graph` kinds
-- Type helper functions (`make_type_struct`, `is_type_struct`, `get_type_kind`, `types_equal`) exported for cross-module use
-- `∈⍜` special form handles error values (infers type instead of propagating)
-
----
-
-## Previous Day: Day 84 - Type Validation
-
-**RESULT:** 82/82 test files passing (100%), 35 new tests (type validation)
-
-### New Feature: Type Validation (Compiler-Level)
-
-Runtime type checking that validates values against declared types:
-
-**Type Validation Primitives (3 new):**
-- `(∈✓ name)` - Validate binding against declared type → `#t` or `⚠:type-error`
-- `(∈✓*)` - Validate ALL declared types → `#t` or `⚠:type-errors`
-- `(∈⊢ fn arg...)` - Type-check function application
-
-**Special Forms:**
-- `∈✓` and `∈⊢` are special forms (first arg not evaluated, like `∈` and `∈?`)
-
-**Examples:**
-```scheme
-; Declare and validate
-(≔ x #42)
-(∈ x (ℤ))
-(∈✓ x)              ; → #t (value matches declared type)
-
-; Type mismatch detection
-(≔ bad "not-an-int")
-(∈ bad (ℤ))
-(∈✓ bad)            ; → ⚠:type-error (string doesn't match int)
-
-; Type-check function application
-(≔ add (λ (x y) (⊕ x y)))
-(∈ add (→ (ℤ) (ℤ) (ℤ)))
-(∈⊢ add #1 #2)      ; → #t (args match declared domain)
-(∈⊢ add "bad" #2)   ; → ⚠:type-error (string doesn't match int)
-
-; Validate all declarations
-(∈✓*)               ; → #t if all pass, ⚠:type-errors with list if any fail
-```
-
----
-
-## Previous Day: Day 83 - Type Annotations
-
-**RESULT:** 81/81 test files passing (100%), 55 new tests (type annotations)
-
-### New Feature: Type Annotation System
-
-Complete gradual typing foundation with 18 new primitives:
-
-**Type Constants (5):**
-- `(ℤ)` - Integer type
-- `(𝔹)` - Boolean type
-- `(𝕊)` - String type
-- `(⊤)` - Any type (top type)
-- `(∅ₜ)` - Nil type
-
-**Type Constructors (4):**
-- `(→ T₁ T₂)` - Function type
-- `([]ₜ T)` - List type
-- `(⟨⟩ₜ T₁ T₂)` - Pair type
-- `(∪ₜ T₁ T₂)` - Union type
-
-**Type Operations (4):**
-- `(∈⊙ val)` - Get runtime type
-- `(∈≡ T₁ T₂)` - Type equality
-- `(∈⊆ T₁ T₂)` - Subtype check
-- `(∈! val T)` - Type assertion
-
-**Type Declaration (2 special forms):**
-- `(∈ name T)` - Declare type for binding
-- `(∈? name)` - Query declared type
-
-**Type Introspection (3):**
-- `(∈◁ T)` - Get function domain
-- `(∈▷ T)` - Get function codomain
-- `(∈⊙ₜ T)` - Get list element type
-
-**Examples:**
-```scheme
-; Declare type for a value
-(≔ x #42)
-(∈ x (ℤ))
-(∈? x)              ; → ⊙[:type ⟨⟨:kind :int⟩ ∅⟩]
-
-; Function type annotation
-(≔ inc (λ (n) (⊕ n #1)))
-(∈ inc (→ (ℤ) (ℤ)))
-
-; Type assertion (returns value or error)
-(∈! #42 (ℤ))        ; → #42
-(∈! "hi" (ℤ))       ; → ⚠:type-error
-
-; Subtype checking
-(∈⊆ (ℤ) (⊤))        ; → #t (int is subtype of any)
-(∈⊆ (ℤ) (∪ₜ (ℤ) (𝕊)))  ; → #t (int is subtype of int|string)
-```
-
-### Symbol Rename: `∈` → `∋` in stdlib
-
-Renamed list membership function from `∈` to `∋` to avoid conflict with type annotation:
-- Old: `((∈ x) lst)` - list membership
-- New: `((∋ x) lst)` - list contains
-
-Updated files: `list.scm`, `dataflow.scm`, `list_utilities.scm`, `test_dataflow.test`
-
----
-
-## Previous Day: Day 82 - Exception Handling Macros
-
-**RESULT:** 80/80 test files passing (100%), 44 new tests (exception macros)
-
-### New Feature: Exception Handling Macros Module
-
-New `stdlib/macros_exception.scm` provides convenient error handling patterns:
-
-**Core Error Handling:**
-- `⚡` (try-with) - Execute body, call handler if error
-  ```scheme
-  (⚡ (⊘ #6 #2) (λ (e) :error))   ; → #3 (success)
-  (⚡ (⊘ #1 #0) (λ (e) :error))   ; → :error (handler called)
-  ```
-
-- `⚡⊳` (try-or) - Execute with fallback default on error
-  ```scheme
-  (⚡⊳ (⊘ #1 #0) #0)              ; → #0 (default on error)
-  ```
-
-- `⚡∅` (ignore-errors) - Execute, return nil on error
-  ```scheme
-  (⚡∅ (⊘ #1 #0))                 ; → ∅ (error ignored)
-  ```
-
-**Error Inspection:**
-- `⚡?` (error-type?) - Check if error has specific type
-- `⚡⊙` (error-data) - Extract error data safely
-
-**Combinators:**
-- `⚡∧` (all-succeed) - Execute all, fail if any fails
-- `⚡∨` (first-success) - Return first successful result
-- `⚡⟲` (try-finally) - Execute with cleanup
-- `⚡↺` (retry) - Retry on error up to n times
-
-### New Primitives (2)
-
-Added error introspection primitives:
-- `⚠⊙` - Get error type as symbol
-- `⚠→` - Get error data
-
-### Bug Fix: Macro Expansion in Lambdas
-
-Fixed critical bug where macros containing nested lambdas didn't work inside other lambdas. Solution: expand macros BEFORE De Bruijn conversion in lambda bodies.
-
----
-
-## Previous Day: Day 81 - Iteration Macros
-
-**RESULT:** 79/79 test files passing (100%), 31 new tests (iteration macros)
-
-### New Feature: Iteration Macros Module
-
-New `stdlib/macros_iteration.scm` provides iteration and sequencing constructs:
-
-**Sequencing:**
-- `⊎` (begin/progn) - Sequence expressions, return last
-
-**Iteration:**
-- `⊲*` (for-each) - Iterate with side effects (returns nil)
-- `⟳` (dotimes) - Repeat body n times
-
-**Comprehensions:**
-- `⊎↦` (list-comp) - List comprehension with variable binding
-- `⊎⊲` (filter-comp) - Filter comprehension with inline predicate
-- `⟳←` (reduce) - Fold with cleaner syntax
-
----
-
-## Previous Day: Day 80 - Data Flow Analysis & N-Function Mutual Recursion
-
-**RESULT:** 77/77 test files passing (100%), 56 new tests (42 dataflow + 14 mutual recursion)
-
-### Feature 1: N-Function Mutual Recursion
-
-Extended mutual recursion from exactly 2 functions to **any number of functions**:
-
-```scheme
-;; 3 mutually recursive functions (mod3 calculator)
-(⊛ ((:zero (λ (n) (? (≡ n #0) #t (two (⊖ n #1)))))
-    (:one (λ (n) (? (≡ n #0) #f (zero (⊖ n #1)))))
-    (:two (λ (n) (? (≡ n #0) #f (one (⊖ n #1))))))
-   (zero #9))  ; → #t (9 mod 3 = 0)
-
-;; 4 mutually recursive functions (state machine)
-(⊛ ((:s0 (λ (n) (? (≡ n #0) :A (s1 (⊖ n #1)))))
-    (:s1 (λ (n) (? (≡ n #0) :B (s2 (⊖ n #1)))))
-    (:s2 (λ (n) (? (≡ n #0) :C (s3 (⊖ n #1)))))
-    (:s3 (λ (n) (? (≡ n #0) :D (s0 (⊖ n #1))))))
-   (s0 #7))  ; → :D (7 mod 4 = 3)
-```
-
-**Implementation:** Generalized `build-accessor` to handle arbitrary indices via nested `◁`/`▷` navigation in the pair-based Y-combinator structure.
-
-### Feature 2: Data Flow Analysis Module
-
-New `stdlib/dataflow.scm` provides foundational compiler analysis tools:
-
-**Set Operations:**
-- `∪∪` (union) - Combine sets, no duplicates
-- `∩` (intersection) - Elements in both sets
-- `∖` (difference) - Elements in first but not second
-- `⊆` (subset) - Test subset relationship
-- `≡∪` (set-equal) - Same elements, order independent
-
-**Fixed Point Iteration:**
-- `⊛⊛` - Iterate function until convergence
-
-**Reaching Definitions (Forward Analysis):**
-- `⇝⊃-transfer` - out = gen ∪ (in - kill)
-- `⇝⊃-meet` - in = ∪ out[predecessors]
-- `⇝⊃-get-out` - Lookup out set from solution
-
-**Live Variables (Backward Analysis):**
-- `⇝←-transfer` - in = use ∪ (out - def)
-- `⇝←-meet` - out = ∪ in[successors]
-- `⇝←-get-in` - Lookup in set from solution
-
-**Available Expressions:**
-- `⇝∪-meet` - in = ∩ out[predecessors]
-
----
-
-## Previous Day: Day 79 - Variadic Stdlib Macros
-
-**RESULT:** 76/76 test files passing (100%), 58 new variadic tests
-
-**Upgraded Macros (from fixed arity to UNLIMITED):**
-
-1. **∧* (and*)** - From 1-4 args → unlimited args
-   ```scheme
-   (∧* #t #t #t #t #t #t #t #t #t #t)  ; → #t (10 args!)
-   (∧* #t #f (⊘ #1 #0))                ; → #f (short-circuits)
-   ```
-
-2. **∨* (or*)** - From 1-4 args → unlimited args
-   ```scheme
-   (∨* #f #f #f #f #f #f #f #f #f #t)  ; → #t (10 args!)
-   (∨* #t (⊘ #1 #0))                   ; → #t (short-circuits)
-   ```
-
-3. **⇒* (cond)** - From 1-5 clauses → unlimited clauses
-   ```scheme
-   (⇒* (#f :1) (#f :2) (#f :3) (#f :4) (#f :5)
-       (#f :6) (#f :7) (#f :8) (#f :9) (#t :ten))  ; → :ten
-   ```
-
-4. **≔⇊ (let*)** - From 1-4 bindings → unlimited bindings
-   ```scheme
-   (≔⇊ ((:a #1) (:b (⊗ :a #2)) (:c (⊗ :b #3))
-        (:d (⊗ :c #4)) (:e (⊗ :d #5)) (:f (⊗ :e #6)))
-     :f)  ; → #720 (factorial via chained bindings)
-   ```
-
-5. **⇤ (case)** - From 2-5 cases → unlimited cases
-   ```scheme
-   (⇤ #10 (#1 :1) (#2 :2) (#3 :3) (#4 :4) (#5 :5)
-          (#6 :6) (#7 :7) (#8 :8) (#9 :9) (#10 :ten))  ; → :ten
-   ```
-
-**Implementation:**
-- Refactored `macros_control.scm` to use `$rest ...` ellipsis patterns
-- Refactored `macros_pattern.scm` to use `$rest ...` ellipsis patterns
-- Each macro now uses just 2-3 clauses instead of 4-5+ fixed arities
-- Created `test_variadic_stdlib.test` (58 tests)
-
----
-
-## Previous Day: Day 78 - Rest Pattern Syntax
-
-**RESULT:** 75/75 test files passing (100%), 51 new rest pattern tests
-
-**New Feature: `$var ...` Ellipsis Pattern Syntax**
-
-Pattern-based macros now support variadic patterns using `...` ellipsis:
-
-1. **Pattern Capture:** `($var ...)` captures remaining args as list
-   ```scheme
-   (⧉⊜ sum
-     (() #0)
-     (($x $rest ...) (⊕ $x (sum $rest ...))))
-
-   (sum #1 #2 #3 #4 #5)  ; → #15
-   ```
-
-2. **Template Splice:** `(f $var ...)` splices list elements as args
-   ```scheme
-   (⧉⊜ calc
-     ((:sum $rest ...) (sum $rest ...))      ; splices into sum
-     ((:product $rest ...) (product $rest ...)))
-
-   (calc :sum #1 #2 #3)  ; → #6
-   ```
-
-3. **Unlimited Arity:** Enables true variadic macros
-   ```scheme
-   ; Unlimited arity cond
-   (⧉⊜ cond*
-     (() ∅)
-     ((($c $r) $rest ...) (? $c $r (cond* $rest ...))))
-
-   (cond* (#f :a) (#f :b) (#f :c) (#t :d))  ; → :d
-   ```
-
-**Implementation:**
-- `macro.c`: Added `has_ellipsis_rest()` helper
-- `macro_pattern_match()`: Detect `$var ...` and capture remaining args
-- `macro_expand_template()`: Splice bound lists at `$var ...` positions
-
----
-
-## Previous Day: Day 77 - Control Flow Macros
-
-**RESULT:** 74/74 test files passing (100%), 46 new control macro tests
-
-**New Macros Using ⧉⊜ (pattern macros):**
-
-1. **∧* (and*)** - Short-circuit AND (1-4 args)
-   ```scheme
-   (∧* #t #t #42)           ; → #42 (returns last value)
-   (∧* #f (⊘ #1 #0))        ; → #f (short-circuits, no div-by-zero)
-   ```
-
-2. **∨* (or*)** - Short-circuit OR (1-4 args)
-   ```scheme
-   (∨* #f #42 #99)          ; → #42 (first non-false value)
-   (∨* #t (⊘ #1 #0))        ; → #t (short-circuits)
-   ```
-
-3. **⇒ (when)** - Execute body if condition true
-   ```scheme
-   (⇒ #t :yes)              ; → :yes
-   (⇒ #f :never)            ; → ∅ (nil, body not evaluated)
-   ```
-
-4. **⇏ (unless)** - Execute body if condition false
-   ```scheme
-   (⇏ #f :yes)              ; → :yes
-   (⇏ #t :never)            ; → ∅
-   ```
-
-**Implementation:**
-- `bootstrap/stdlib/macros_control.scm` - New stdlib module
-- Pattern-based clauses using ⧉⊜ system
-- ∨* uses Lisp semantics: returns first non-#f value (not just #t)
-- True short-circuit evaluation (unlike primitive ∧/∨)
-
----
-
-## Previous Day: Day 76 - Stdlib Pattern Macros
-
-**RESULT:** 73/73 test files passing (100%), 22 new stdlib macro tests
-
-**New Macros Using ⧉⊜ (pattern macros):**
-
-1. **⇒* (cond)** - Multi-branch conditional (1-5 clauses)
-   ```scheme
-   (⇒* ((> x #10) :big)
-       ((> x #5) :medium)
-       (#t :small))
-   ```
-
-2. **≔⇊ (let\*)** - Sequential bindings (1-4 bindings)
-   ```scheme
-   (≔⇊ ((:x #5)
-         (:y (⊕ :x #1)))  ; :y can reference :x
-        (⊕ :x :y))        ; → 11
-   ```
-
-3. **⇤ (case)** - Value dispatch with :else
-   ```scheme
-   (⇤ color
-      (:red #ff0000)
-      (:green #00ff00)
-      (:else #000000))
-   ```
-
-**Implementation:**
-- `bootstrap/stdlib/macros_pattern.scm` - New stdlib module
-- Pattern-based clauses for multiple arities
-- Expands to nested `?` (cond), nested `λ` (let*), or `≡` chains (case)
-
----
-
-## Previous Day: Day 75 - Pattern-Based Macros
-
-**RESULT:** 72/72 test files passing (100%), 29 pattern macro tests
-
-**New Feature: ⧉⊜ (macro-rules)**
-Pattern-based macros with multiple clauses and pattern matching on syntax.
-
-**Syntax:**
-```scheme
-(⧉⊜ name
-  ((pattern1) template1)
-  ((pattern2) template2)
-  ...)
-```
-
-**Pattern Features:**
-- Pattern variables: `$x`, `$body`, `$rest` (start with $)
-- Literal matching: numbers, symbols, keywords match exactly
-- Nested patterns: `(($a $b))` matches nested lists
-- Multi-clause dispatch: first matching pattern wins
-
-**Example:**
-```scheme
-;; Multi-arity add
-(⧉⊜ my-add
-  (($x) $x)
-  (($x $y) (⊕ $x $y))
-  (($x $y $z) (⊕ $x (⊕ $y $z))))
-
-(my-add #3 #4)  ; → #7
-
-;; Keyword dispatch
-(⧉⊜ kw-test
-  ((:left $x) (⟨⟩ :l $x))
-  ((:right $x) (⟨⟩ :r $x)))
-
-(kw-test :left #5)  ; → ⟨:l #5⟩
-```
-
-**Implementation:**
-- Extended `macro.h/macro.c` with `MacroClause` structure
-- `macro_define_pattern()` - register pattern-based macros
-- `macro_pattern_match()` - recursive pattern matching on syntax
-- `macro_expand_template()` - substitute pattern vars in template
-- `macro_apply_pattern()` - try clauses until match
-- `⧉⊜` special form in `eval.c`
-
----
-
-## Current Status 🎯
+## Current Status
 
 **System State:**
-- **Primitives:** 141 total (added 7 actor primitives)
-- **Tests:** 87/87 test files passing (100%)
-- **Actor Tests:** 12/12 tests passing (new!)
-- **Delimited Continuation Tests:** 21/21 tests passing
-- **Effect System Tests:** 35/35 tests passing
-- **Resumable Effects Tests:** 30/30 tests passing
-- **Type Inference Tests:** 73/73 tests passing
-- **Type Validation Tests:** 35/35 tests passing
-- **Type Annotation Tests:** 55/55 tests passing
-- **Self-Hosting Eval Tests:** 66/66 passing (100%) - includes N-function mutual recursion
-- **Data Flow Tests:** 42/42 tests passing
-- **Exception Macros:** 44/44 tests passing
-- **Iteration Macros:** 31/31 tests passing
-- **Pattern Macros:** 29/29 tests passing
-- **Rest Pattern Syntax:** 51/51 tests passing
-- **Variadic Stdlib Macros:** 58/58 tests passing
-- **Stdlib Pattern Macros:** 22/22 tests passing (⇒*, ≔⇊, ⇤ - variadic)
-- **Stdlib Control Macros:** 46/46 tests passing (∧*, ∨*, ⇒, ⇏ - variadic)
-- **Pattern Matching:** World-class (guards, as-patterns, or-patterns, view patterns)
+- **Primitives:** 146 total (141 + 5 channel primitives)
+- **Tests:** 88/88 test files passing (100%)
 - **Build:** Clean, O2 optimized, 32MB stack
 
 **Core Capabilities:**
 - Lambda calculus with De Bruijn indices + TCO
 - Algebraic effect system (⟪, ⟪⟫, ↯) with dynamic handler stack
+- Resumable effects via fibers (⟪↺⟫) — O(n) delimited continuations
+- Delimited continuations (⟪⊸⟫, ⊸) — shift/reset
+- Actor model (⟳, →!, ←?, ⟳!) — cooperative round-robin scheduler
+- Channels (⟿⊚, ⟿→, ⟿←, ⟿×) — bounded ring buffers with blocking
 - Module system (⋘ load, ⌂⊚ info)
 - Structures (⊙ leaf, ⊚ node/ADT)
 - Pattern matching (∇) with guards, as-patterns, or-patterns, view patterns
 - CFG/DFG graphs (⊝) with traversal, reachability, path finding, cycle detection
-- Auto-documentation (⌂, ⌂∈, ⌂≔, ⌂⊛, ⌂⊨)
-- Property-based testing (⊨-prop with shrinking)
-- Mutation testing (⌂⊨⊗)
-- Math library (22 primitives: √, ^, sin, cos, log, π, e, rand, etc.)
-- String operations, Result/Either type, REPL with history/completion
-
----
-
-## 🎯 What to Do Next (Day 81+)
-
-**Focus: Language Strength & Completeness**
-
-1. ✅ **Exception Handling Macros** (2-3 hours) - COMPLETED DAY 82
-   - ⚡ (try-with), ⚡⊳ (try-or), ⚡∅ (ignore-errors)
-   - ⚡?, ⚡⊙, ⚡∧, ⚡∨, ⚡⟲, ⚡↺
-   - New primitives: ⚠⊙, ⚠→
-   - 44 tests in test file
-
-2. ✅ **Iteration Macros** (2-3 hours) - COMPLETED DAY 81
-   - ⊎ (begin), ⊲* (for-each), ⟳ (dotimes)
-   - ⊎↦ (list-comp), ⊎⊲ (filter-comp), ⟳← (reduce)
-   - 31 tests in 2 test files
-
-3. ✅ **Data Flow Analysis** (3-4 hours) - COMPLETED DAY 80
-   - Set operations (∪∪, ∩, ∖, ⊆, ≡∪)
-   - Fixed point iteration (⊛⊛)
-   - Reaching definitions, live variables, available expressions
-
-4. ✅ **N-Function Mutual Recursion** (1-2 hours) - COMPLETED DAY 80
-   - Extended from exactly 2 functions to any number
-   - Tested with 3-function mod3 and 4-function state machine
-
-5. ✅ **String Manipulation Stdlib** - ALREADY COMPLETE
-   - stdlib/string.scm already exists with all functions
-   - split, join, trim, replace, contains, index-of, etc.
-
-6. ✅ **Type Annotations** (4-6 hours) - COMPLETED DAY 83
-   - Add optional type hints to function definitions
-   - Foundation for gradual typing and self-hosting
-
-7. ✅ **Type Validation** (2-3 hours) - COMPLETED DAY 84
-   - Runtime type checking against declared types
-   - New primitives: ∈✓, ∈✓*, ∈⊢
-
-8. ✅ **Type Inference** (3-4 hours) - COMPLETED DAY 85
-   - Deep value inference, primitive signatures, expression inference
-   - New primitives: ∈⍜, ∈⍜⊕, ∈⍜* special form
+- Type system: annotations (Day 83) + validation (Day 84) + inference (Day 85)
+- Auto-documentation, property-based testing, mutation testing
+- Math library (22 primitives), string operations, REPL with history/completion
+- Pattern-based macros (⧉⊜) with unlimited arity via ellipsis
+- Stdlib macros: ∧*, ∨*, ⇒*, ≔⇊, ⇤, ⚡, ⊎, ⊲*, etc.
 
 ---
 
@@ -796,24 +129,22 @@ Pattern-based macros with multiple clauses and pattern matching on syntax.
 
 | Day | Feature | Tests |
 |-----|---------|-------|
-| 89 | Actor Model with Message Passing (⟳, →!, ←?, ⟳!, ⟳?, ⟳→, ⟳∅) | 87/87 (100%), 12 new tests |
+| 90 | Channels (⟿⊚, ⟿→, ⟿←, ⟿×, ⟿∅) — bounded ring buffers | 88/88 (100%), 12 new tests |
+| 89 | Actor Model (⟳, →!, ←?, ⟳!, ⟳?, ⟳→, ⟳∅) | 87/87 (100%), 12 new tests |
 | 88 | Delimited Continuations via Fibers (⟪⊸⟫, ⊸) - O(n) effects | 86/86 (100%), 21 new tests |
 | 87 | Resumable Effect Handlers (⟪↺⟫) - replay-based | 85/85 (100%), 30 new tests |
 | 86 | Algebraic Effect System (⟪, ⟪⟫, ↯) - dynamic handlers | 84/84 (100%), 35 new tests |
 | 85 | Type Inference (∈⍜, ∈⍜⊕, ∈⍜*) - deep/static inference | 83/83 (100%), 73 new tests |
 | 84 | Type Validation (∈✓, ∈✓*, ∈⊢) - compiler-level | 82/82 (100%), 35 new tests |
 | 83 | Type Annotations (18 primitives for gradual typing) | 81/81 (100%), 55 new tests |
-| 82 | Exception Handling Macros (⚡, ⚡⊳, ⚡∅, etc.) + ⚠⊙, ⚠→ primitives | 80/80 (100%), 44 new tests |
+| 82 | Exception Handling Macros (⚡, ⚡⊳, ⚡∅, etc.) + ⚠⊙, ⚠→ | 80/80 (100%), 44 new tests |
 | 81 | Iteration Macros (⊎, ⊲*, ⟳, ⊎↦, ⊎⊲, ⟳←) | 79/79 (100%), 31 new tests |
 | 80 | Data Flow Analysis + N-Function Mutual Recursion | 77/77 (100%), 56 new tests |
-| 79 | Variadic Stdlib Macros (∧*, ∨*, ⇒*, ≔⇊, ⇤) | 76/76 (100%), 58 variadic tests |
-| 78 | Rest Pattern Syntax ($var ... ellipsis) | 75/75 (100%), 51 rest pattern tests |
-| 77 | Control Flow Macros (∧*, ∨*, ⇒, ⇏) | 74/74 (100%), 46 control tests |
-| 76 | Stdlib Pattern Macros (⇒*, ≔⇊, ⇤) | 73/73 (100%), 22 stdlib macro tests |
-| 75 | Pattern-Based Macros (⧉⊜) | 72/72 (100%), 29 macro tests |
-| 74 | Mutual Recursion in Letrec | 71/71 (100%), 52 eval tests |
-| 73 | Recursive Letrec via Y-Combinator | 71/71 (100%), 47 eval tests |
-| 72 | Self-Hosting Evaluator Complete (≔, ⊛, ⌞) | 71/71 (100%), 42 eval tests |
+| 79 | Variadic Stdlib Macros (∧*, ∨*, ⇒*, ≔⇊, ⇤) | 76/76 (100%), 58 new tests |
+| 78 | Rest Pattern Syntax ($var ... ellipsis) | 75/75 (100%), 51 new tests |
+| 77 | Control Flow Macros (∧*, ∨*, ⇒, ⇏) | 74/74 (100%), 46 new tests |
+| 76 | Stdlib Pattern Macros (⇒*, ≔⇊, ⇤) | 73/73 (100%), 22 new tests |
+| 75 | Pattern-Based Macros (⧉⊜) | 72/72 (100%), 29 new tests |
 
 **Full historical details:** See `docs/archive/2026-01/sessions/DAYS_43_68_HISTORY.md`
 
@@ -824,19 +155,31 @@ Pattern-based macros with multiple clauses and pattern matching on syntax.
 ### Build & Test
 ```bash
 make              # Build (O2 optimized, 32MB stack)
-make test         # Run full test suite (80 test files)
+make test         # Run full test suite (88 test files)
 make repl         # Start interactive REPL
 make clean        # Clean build artifacts
 make rebuild      # Clean + rebuild
 ```
 
+### Key Files
+```
+bootstrap/channel.{h,c}     # Channel implementation (Day 90)
+bootstrap/actor.{h,c}       # Actor model (Day 89)
+bootstrap/fiber.{h,c}       # Fiber/coroutine infrastructure (Day 88)
+bootstrap/eval.c             # Special forms: ⟪, ⟪⟫, ↯, ⟪↺⟫, ⟪⊸⟫, ⊸, ∈, ∈?, ∈✓, ∈⊢, ∈⍜, ∈⍜*
+bootstrap/primitives.c       # All primitive operations (146 total)
+bootstrap/cell.{h,c}        # Core data structures
+bootstrap/macro.{h,c}       # Pattern-based macro system
+bootstrap/stdlib/            # Standard library modules
+bootstrap/tests/             # Test suite (88 test files)
+```
+
 ### Documentation
 - **README.md** - Project overview
-- **SPEC.md** - Language specification (119 primitives)
+- **SPEC.md** - Language specification (146 primitives)
 - **CLAUDE.md** - Philosophy and principles
 - **docs/INDEX.md** - Documentation hub
 - **docs/reference/** - Deep technical docs
-- **docs/archive/** - Historical sessions
 
 ---
 
@@ -854,193 +197,5 @@ make rebuild      # Clean + rebuild
 
 ---
 
-## Session End Checklist ✅
-
-**Day 81 Complete (2026-01-29):**
-- ✅ Created `bootstrap/stdlib/macros_iteration.scm` (new module)
-- ✅ Implemented ⊎ (begin/progn) - sequence expressions, return last
-- ✅ Implemented ⊲* (for-each) - iterate with side effects, return nil
-- ✅ Implemented ⟳ (dotimes) - repeat body n times
-- ✅ Implemented ⊎↦ (list-comp) - list comprehension with variable binding
-- ✅ Implemented ⊎⊲ (filter-comp) - filter comprehension with inline predicate
-- ✅ Implemented ⟳← (reduce) - fold with cleaner syntax
-- ✅ Created `bootstrap/tests/test_iteration_macros.test` (20 tests)
-- ✅ Created `bootstrap/tests/test_iteration_macros2.test` (11 tests)
-- ✅ All 79/79 test files passing (100%)
-
-**Day 80 Complete (2026-01-29):**
-- ✅ Generalized mutual recursion to support N functions (not just 2)
-- ✅ Added `build-accessor-tails` for nested ◁/▷ pair navigation
-- ✅ Added `list-length` helper function
-- ✅ Updated `build-mutual-substitutions` with total count parameter
-- ✅ Added 14 new eval tests (8 for 3-function mod3, 6 for 4-function state machine)
-- ✅ Created `bootstrap/stdlib/dataflow.scm` (new module)
-- ✅ Implemented set operations: ∪∪, ∩, ∖, ⊆, ≡∪
-- ✅ Implemented fixed point iteration: ⊛⊛
-- ✅ Implemented reaching definitions: ⇝⊃-transfer, ⇝⊃-meet, ⇝⊃-get-out
-- ✅ Implemented live variables: ⇝←-transfer, ⇝←-meet, ⇝←-get-in
-- ✅ Implemented available expressions: ⇝∪-meet
-- ✅ Created `bootstrap/tests/test_dataflow.test` (42 tests)
-- ✅ All 77/77 test files passing (100%)
-
-**Day 79 Complete (2026-01-29):**
-- ✅ Upgraded ∧* (and*) from 1-4 args to unlimited args
-- ✅ Upgraded ∨* (or*) from 1-4 args to unlimited args
-- ✅ Upgraded ⇒* (cond) from 1-5 clauses to unlimited clauses
-- ✅ Upgraded ≔⇊ (let*) from 1-4 bindings to unlimited bindings
-- ✅ Upgraded ⇤ (case) from 2-5 cases to unlimited cases
-- ✅ Updated `bootstrap/stdlib/macros_control.scm` with ellipsis patterns
-- ✅ Updated `bootstrap/stdlib/macros_pattern.scm` with ellipsis patterns
-- ✅ Created `bootstrap/tests/test_variadic_stdlib.test` (58 tests)
-- ✅ All 76/76 test files passing (100%)
-
-**Day 78 Complete (2026-01-29):**
-- ✅ Implemented `$var ...` ellipsis pattern syntax
-- ✅ Pattern capture: `($x $rest ...)` captures remaining args
-- ✅ Template splice: `(f $rest ...)` splices list as args
-- ✅ Added `has_ellipsis_rest()` helper to macro.c
-- ✅ Modified `macro_pattern_match()` for rest capture
-- ✅ Modified `macro_expand_template()` for splice
-- ✅ Created `bootstrap/tests/test_rest_patterns.test` (51 tests)
-- ✅ Tested variadic sum, product, all, any, cond*, max*, min*
-- ✅ All 75/75 test files passing (100%)
-
-**Day 77 Complete (2026-01-29):**
-- ✅ Implemented ∧* (and*) - short-circuit AND with 1-4 args
-- ✅ Implemented ∨* (or*) - short-circuit OR with Lisp semantics
-- ✅ Implemented ⇒ (when) - conditional execution
-- ✅ Implemented ⇏ (unless) - negative conditional
-- ✅ Created `bootstrap/stdlib/macros_control.scm` stdlib module
-- ✅ Created `bootstrap/tests/test_control_macros.test` (46 tests)
-- ✅ All 74/74 test files passing (100%)
-
-**Day 76 Complete (2026-01-29):**
-- ✅ Implemented ⇒* (cond) pattern macro with 1-5 clause support
-- ✅ Implemented ≔⇊ (let*) pattern macro with 1-4 binding support
-- ✅ Implemented ⇤ (case) pattern macro with value dispatch
-- ✅ Created `bootstrap/stdlib/macros_pattern.scm` stdlib module
-- ✅ Created `bootstrap/tests/test_stdlib_pattern_macros.test` (22 tests)
-- ✅ All 73/73 test files passing (100%)
-
-**Day 74 Complete (2026-01-29):**
-- ✅ Implemented mutual recursion via pair-based Y-combinator
-- ✅ Added `is-mutual-recursion?` to detect cross-referencing bindings
-- ✅ Added `transform-mutual-ast` for pair-based Y-combinator transformation
-- ✅ Added `eval-mutual-letrec` for mutually recursive binding evaluation
-- ✅ Added helper functions: `collect-binding-names`, `build-accessor`, `build-mutual-pair`, etc.
-- ✅ Eval tests increased from 47 to 52 (5 new mutual recursion tests)
-- ✅ All 71/71 test files passing (100%)
-
-**Day 73 Complete (2026-01-29):**
-- ✅ Implemented recursive letrec via Y-combinator transformation
-- ✅ Added `contains-symbol?` and `contains-symbol-list?` for recursion detection
-- ✅ Added `is-recursive-binding?` to detect recursive definitions
-- ✅ Added `transform-recursive-ast` for Y-combinator pattern
-- ✅ Updated `eval-letrec` to auto-transform recursive bindings
-- ✅ Eval tests increased from 42 to 47 (5 new tests)
-- ✅ All 71/71 test files passing (100%)
-
-**Day 72 Complete (2026-01-29):**
-- ✅ Added ≔ (define) special form to meta-circular evaluator
-- ✅ Implemented eval-body for sequences with define in lambda bodies
-- ✅ Added ⊛ (letrec) for let-style bindings (non-recursive)
-- ✅ Added ⌞ (meta-eval) for evaluating code as data
-- ✅ Added substitution helpers (member?, subst, subst-list, subst-all)
-- ✅ Eval tests increased from 32 to 42 (10 new tests)
-- ✅ All 71/71 test files passing (100%)
-
----
-
-## 🚀 CONTINUATION GUIDE FOR NEXT SESSION
-
-### Quick Start
-```bash
-cd /Users/artpar/workspace/code/guage
-make test                    # Verify 80/80 tests pass
-git log --oneline -3         # See recent commits
-```
-
-### System State Summary
-- **Core evaluator:** COMPLETE with N-function mutual recursion (66 eval tests)
-- **Type system:** COMPLETE - annotations (Day 83) + validation (Day 84) + inference (Day 85)
-- **Data flow analysis:** COMPLETE - set ops, fixed point, reaching defs, live vars
-- **Exception macros:** COMPLETE - ⚡, ⚡⊳, ⚡∅, ⚡?, ⚡⊙, ⚡∧, ⚡∨, ⚡⟲, ⚡↺ (44 tests)
-- **Iteration macros:** COMPLETE - ⊎, ⊲*, ⟳, ⊎↦, ⊎⊲, ⟳← (31 tests)
-- **Pattern macros:** COMPLETE with unlimited arity via ellipsis (Day 78-79)
-- **Stdlib macros:** All macros now support unlimited args/clauses/bindings
-- **String stdlib:** COMPLETE - split, join, trim, replace, contains, index-of
-- **Effect system:** COMPLETE (Day 86) - ⟪, ⟪⟫, ↯ with dynamic handler stack (35 tests)
-- **Focus:** Resumable effects, optimizer, more compiler features
-
-### Key Files
-```
-bootstrap/tests/test_effects.test          # Effect system tests (35 tests)
-bootstrap/eval.c                           # Special forms: ⟪, ⟪?, ⟪→, ⟪⟫, ↯, ∈, ∈?, ∈✓, ∈⊢, ∈⍜, ∈⍜*
-bootstrap/eval.h                           # EffectFrame struct, effect registry/stack APIs
-bootstrap/primitives.c                     # ⤴ (pure), ≫ (bind) primitives
-```
-
-### What We Built Today (Day 89)
-
-**Actor Model with Message Passing:**
-
-| Symbol | Type | Description |
-|--------|------|-------------|
-| ⟳ | (λ (self) ...) → ⟳[id] | Spawn actor with behavior function |
-| →! | ⟳ → α → ∅ | Send message to actor (fire-and-forget) |
-| ←? | () → α | Receive message (yields if mailbox empty) |
-| ⟳! | ℕ → ℕ | Run scheduler for N ticks, return ticks executed |
-| ⟳? | ⟳ → 𝔹 | Check if actor is alive |
-| ⟳→ | ⟳ → α | Get finished actor's result |
-| ⟳∅ | () → ∅ | Reset all actors (for testing) |
-
-**Infrastructure:**
-- `actor.h`/`actor.c` — Actor struct, global registry (256 max), array-based FIFO mailbox
-- Round-robin scheduler with cooperative yielding
-- `CELL_ACTOR` cell type for first-class actor values
-- Uses `≫` (bind) for sequencing multi-expression actor behaviors
-
----
-
-**Day 85 Complete (2026-01-29):**
-- ✅ Added `∈⍜` (deep type inference) special form + primitive
-- ✅ Added `∈⍜⊕` (primitive type signatures) primitive with registry for ~40 primitives
-- ✅ Added `∈⍜*` (expression type inference) special form — static analysis without evaluation
-- ✅ Deep value inference: recursive pair/list/struct/function type inference
-- ✅ List detection: proper lists → `([]ₜ elem-type)`, mixed → union element types
-- ✅ Named binding inference: annotation registry first, then value inference
-- ✅ Expression inference: primitives, conditionals (union branches), lambdas (body inference)
-- ✅ Extended `types_equal` for `:struct` and `:graph` kinds
-- ✅ Exported type helpers for cross-module use
-- ✅ Created `bootstrap/tests/test_type_inference.test` (73 tests)
-- ✅ All 83/83 test files passing (100%)
-
-**Day 84 Complete (2026-01-29):**
-- ✅ Added `∈✓` (validate binding) special form + primitive
-- ✅ Added `∈✓*` (validate all) primitive
-- ✅ Added `∈⊢` (type-check application) special form + primitive
-- ✅ Helper function `value_matches_type` for runtime type checking
-- ✅ Supports: int, bool, string, nil, function, list, pair, union, any types
-- ✅ Created `bootstrap/tests/test_type_validation.test` (35 tests)
-- ✅ All 82/82 test files passing (100%)
-
----
-
-**Day 86 Complete (2026-01-29):**
-- ✅ Implemented algebraic effect system with dynamic handler stack
-- ✅ Added `⟪` (declare effect) special form with effect registry
-- ✅ Added `⟪?` (query effect) and `⟪→` (get operations) special forms
-- ✅ Added `⟪⟫` (handle effects) special form with handler parsing
-- ✅ Added `↯` (perform effect) special form with stack-based dispatch
-- ✅ Updated `⤴` (pure) to real identity implementation
-- ✅ Updated `≫` (bind) to real function application
-- ✅ Effect registry in EvalContext, handler stack with dynamic scoping
-- ✅ Nested handlers (inner shadows outer), closures as handlers
-- ✅ Multi-arg perform, multi-effect handling, TCO in handler dispatch
-- ✅ Created `bootstrap/tests/test_effects.test` (35 tests)
-- ✅ All 84/84 test files passing (100%)
-
----
-
-**Last Updated:** 2026-01-30 (Day 89 complete)
-**Next Session:** Day 90 - Channels, supervision trees, or optimizer
+**Last Updated:** 2026-01-30 (Day 90 complete)
+**Next Session:** Day 91 - Supervision trees, select/alt, or optimizer

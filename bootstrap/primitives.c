@@ -8,6 +8,7 @@
 #include "module.h"
 #include "macro.h"
 #include "actor.h"
+#include "channel.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
@@ -1692,6 +1693,7 @@ Cell* prim_type_of(Cell* args) {
     else if (cell_is_lambda(value)) type_name = "lambda";
     else if (cell_is_error(value)) type_name = "error";
     else if (cell_is_actor(value)) type_name = "actor";
+    else if (cell_is_channel(value)) type_name = "channel";
 
     return cell_symbol(type_name);
 }
@@ -2135,6 +2137,7 @@ Cell* prim_receive(Cell* args) {
     /* Empty mailbox — yield fiber to scheduler */
     Fiber* fiber = actor->fiber;
     if (fiber) {
+        fiber->suspend_reason = SUSPEND_MAILBOX;
         fiber_yield(fiber);
         /* Resumed by scheduler with message as resume_value */
         Cell* resumed = fiber->resume_value;
@@ -2198,6 +2201,148 @@ Cell* prim_actor_result(Cell* args) {
 Cell* prim_actor_reset(Cell* args) {
     (void)args;
     actor_reset_all();
+    return cell_nil();
+}
+
+/* ============ Channel Primitives ============ */
+
+/* ⟿⊚ - create channel
+ * (⟿⊚) or (⟿⊚ capacity) — create bounded channel */
+Cell* prim_chan_create(Cell* args) {
+    int capacity = DEFAULT_CHANNEL_CAPACITY;
+    if (args && !cell_is_nil(args)) {
+        Cell* cap_cell = cell_car(args);
+        if (cell_is_number(cap_cell)) {
+            capacity = (int)cell_get_number(cap_cell);
+            if (capacity <= 0) capacity = DEFAULT_CHANNEL_CAPACITY;
+        }
+    }
+
+    Channel* chan = channel_create(capacity);
+    if (!chan) {
+        return cell_error("channel-limit", cell_nil());
+    }
+    return cell_channel(chan->id);
+}
+
+/* ⟿→ - send to channel
+ * (⟿→ chan value) — send value, yields if buffer full */
+Cell* prim_chan_send(Cell* args) {
+    if (!args || cell_is_nil(args)) {
+        return cell_error("chan-send-args", cell_nil());
+    }
+    Cell* chan_cell = cell_car(args);
+    if (!cell_is_channel(chan_cell)) {
+        return cell_error("chan-send-not-channel", chan_cell);
+    }
+
+    Cell* rest = cell_cdr(args);
+    if (!rest || cell_is_nil(rest)) {
+        return cell_error("chan-send-no-value", cell_nil());
+    }
+    Cell* value = cell_car(rest);
+
+    int chan_id = cell_get_channel_id(chan_cell);
+    Channel* chan = channel_lookup(chan_id);
+    if (!chan) {
+        return cell_error("chan-send-invalid", cell_nil());
+    }
+    if (chan->closed) {
+        return cell_error("chan-send-closed", cell_nil());
+    }
+
+    /* Try non-blocking send */
+    if (channel_try_send(chan, value)) {
+        return cell_nil();
+    }
+
+    /* Buffer full — yield fiber to scheduler */
+    Actor* actor = actor_current();
+    if (actor && actor->fiber) {
+        Fiber* fiber = actor->fiber;
+        fiber->suspend_reason = SUSPEND_CHAN_SEND;
+        fiber->suspend_channel_id = chan_id;
+        fiber->suspend_send_value = value;
+        cell_retain(value);
+        fiber_yield(fiber);
+        /* Resumed by scheduler after successful send */
+        return cell_nil();
+    }
+
+    return cell_error("chan-send-full", cell_nil());
+}
+
+/* ⟿← - receive from channel
+ * (⟿← chan) — receive value, yields if buffer empty */
+Cell* prim_chan_recv(Cell* args) {
+    if (!args || cell_is_nil(args)) {
+        return cell_error("chan-recv-args", cell_nil());
+    }
+    Cell* chan_cell = cell_car(args);
+    if (!cell_is_channel(chan_cell)) {
+        return cell_error("chan-recv-not-channel", chan_cell);
+    }
+
+    int chan_id = cell_get_channel_id(chan_cell);
+    Channel* chan = channel_lookup(chan_id);
+    if (!chan) {
+        return cell_error("chan-recv-invalid", cell_nil());
+    }
+
+    /* Try non-blocking recv */
+    Cell* value = channel_try_recv(chan);
+    if (value) {
+        return value;
+    }
+
+    /* Empty and closed → error */
+    if (chan->closed) {
+        return cell_error("chan-recv-closed", cell_nil());
+    }
+
+    /* Empty — yield fiber to scheduler */
+    Actor* actor = actor_current();
+    if (actor && actor->fiber) {
+        Fiber* fiber = actor->fiber;
+        fiber->suspend_reason = SUSPEND_CHAN_RECV;
+        fiber->suspend_channel_id = chan_id;
+        fiber_yield(fiber);
+        /* Resumed by scheduler with received value */
+        Cell* resumed = fiber->resume_value;
+        if (resumed) {
+            cell_retain(resumed);
+            return resumed;
+        }
+    }
+
+    return cell_error("chan-recv-empty", cell_nil());
+}
+
+/* ⟿× - close channel
+ * (⟿× chan) — close channel, no more sends */
+Cell* prim_chan_close(Cell* args) {
+    if (!args || cell_is_nil(args)) {
+        return cell_error("chan-close-args", cell_nil());
+    }
+    Cell* chan_cell = cell_car(args);
+    if (!cell_is_channel(chan_cell)) {
+        return cell_error("chan-close-not-channel", chan_cell);
+    }
+
+    int chan_id = cell_get_channel_id(chan_cell);
+    Channel* chan = channel_lookup(chan_id);
+    if (!chan) {
+        return cell_error("chan-close-invalid", cell_nil());
+    }
+
+    channel_close(chan);
+    return cell_nil();
+}
+
+/* ⟿∅ - reset all channels (for testing) */
+Cell* prim_chan_reset(Cell* args) {
+    (void)args;
+    channel_reset_all();
     return cell_nil();
 }
 
@@ -5975,6 +6120,13 @@ static Primitive primitives[] = {
     {"⟳?", prim_actor_alive, 1, {"Check if actor is alive", "⟳ → 𝔹"}},
     {"⟳→", prim_actor_result, 1, {"Get finished actor result", "⟳ → α | ⚠"}},
     {"⟳∅", prim_actor_reset, 0, {"Reset all actors (testing)", "() → ∅"}},
+
+    /* Channel primitives */
+    {"⟿⊚", prim_chan_create, -1, {"Create channel (optional capacity)", "() → ⟿ | ℕ → ⟿"}},
+    {"⟿→", prim_chan_send, 2, {"Send value to channel (yields if full)", "⟿ → α → ∅"}},
+    {"⟿←", prim_chan_recv, 1, {"Receive from channel (yields if empty)", "⟿ → α"}},
+    {"⟿×", prim_chan_close, 1, {"Close channel", "⟿ → ∅"}},
+    {"⟿∅", prim_chan_reset, 0, {"Reset all channels (testing)", "() → ∅"}},
 
     /* Documentation primitives */
     {"⌂", prim_doc_get, 1, {"Get documentation for symbol", ":symbol → string"}},

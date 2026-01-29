@@ -25,7 +25,8 @@ typedef enum {
     CELL_ERROR,          /* ⚠ - error value */
     CELL_STRUCT,         /* ⊙/⊚ - user-defined structure */
     CELL_GRAPH,          /* ⊝ - graph structure (CFG/DFG/etc) */
-    CELL_ACTOR           /* ⟳ - actor (fiber + mailbox) */
+    CELL_ACTOR,          /* ⟳ - actor (fiber + mailbox) */
+    CELL_CHANNEL         /* ⟿ - channel (typed buffer) */
 } CellType;
 
 /* Linear Type Flags */
@@ -125,6 +126,9 @@ struct Cell {
         struct {
             int actor_id;         /* Actor registry ID */
         } actor;
+        struct {
+            int channel_id;       /* Channel registry ID */
+        } channel;
     } data;
 };
 
@@ -141,6 +145,7 @@ Cell* cell_error(const char* message, Cell* data);
 Cell* cell_struct(StructKind kind, Cell* type_tag, Cell* variant, Cell* fields);
 Cell* cell_graph(GraphType graph_type, Cell* nodes, Cell* edges, Cell* metadata);
 Cell* cell_actor(int actor_id);
+Cell* cell_channel(int channel_id);
 
 /* Cell accessors */
 double cell_get_number(Cell* c);
@@ -175,6 +180,8 @@ bool cell_is_struct(Cell* c);
 bool cell_is_graph(Cell* c);
 bool cell_is_actor(Cell* c);
 int  cell_get_actor_id(Cell* c);
+bool cell_is_channel(Cell* c);
+int  cell_get_channel_id(Cell* c);
 
 /* Error accessors */
 const char* cell_error_message(Cell* c);

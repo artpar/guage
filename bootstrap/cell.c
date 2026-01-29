@@ -127,6 +127,12 @@ Cell* cell_actor(int actor_id) {
     return c;
 }
 
+Cell* cell_channel(int channel_id) {
+    Cell* c = cell_alloc(CELL_CHANNEL);
+    c->data.channel.channel_id = channel_id;
+    return c;
+}
+
 /* Cell accessors */
 double cell_get_number(Cell* c) {
     assert(c->type == CELL_ATOM_NUMBER);
@@ -210,6 +216,9 @@ void cell_release(Cell* c) {
                 break;
             case CELL_ACTOR:
                 /* Actor ID is just an int, no children to release */
+                break;
+            case CELL_CHANNEL:
+                /* Channel ID is just an int, no children to release */
                 break;
             default:
                 break;
@@ -309,6 +318,15 @@ bool cell_is_actor(Cell* c) {
 int cell_get_actor_id(Cell* c) {
     assert(c->type == CELL_ACTOR);
     return c->data.actor.actor_id;
+}
+
+bool cell_is_channel(Cell* c) {
+    return c && c->type == CELL_CHANNEL;
+}
+
+int cell_get_channel_id(Cell* c) {
+    assert(c->type == CELL_CHANNEL);
+    return c->data.channel.channel_id;
 }
 
 /* Error accessors */
@@ -536,6 +554,8 @@ bool cell_equal(Cell* a, Cell* b) {
                    cell_equal(a->data.graph.edges, b->data.graph.edges);
         case CELL_ACTOR:
             return a->data.actor.actor_id == b->data.actor.actor_id;
+        case CELL_CHANNEL:
+            return a->data.channel.channel_id == b->data.channel.channel_id;
         case CELL_LAMBDA:
         case CELL_BUILTIN:
         case CELL_ERROR:
@@ -637,6 +657,9 @@ void cell_print(Cell* c) {
             break;
         case CELL_ACTOR:
             printf("⟳[%d]", c->data.actor.actor_id);
+            break;
+        case CELL_CHANNEL:
+            printf("⟿[%d]", c->data.channel.channel_id);
             break;
     }
 }

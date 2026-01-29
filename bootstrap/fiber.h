@@ -18,6 +18,14 @@ typedef enum {
     FIBER_FINISHED
 } FiberState;
 
+/* Suspend reasons — why a fiber yielded */
+typedef enum {
+    SUSPEND_GENERAL,     /* shift/reset, perform */
+    SUSPEND_MAILBOX,     /* ←? on empty mailbox */
+    SUSPEND_CHAN_RECV,   /* ⟿← on empty channel */
+    SUSPEND_CHAN_SEND,   /* ⟿→ on full channel */
+} SuspendReason;
+
 /* Fiber - lightweight coroutine for delimited continuations */
 typedef struct Fiber {
     ucontext_t ctx;            /* Fiber's saved execution context */
@@ -41,6 +49,11 @@ typedef struct Fiber {
 
     /* One-shot tracking */
     bool k_used;               /* true after k has been called once */
+
+    /* Channel/mailbox suspend info */
+    SuspendReason suspend_reason;
+    int suspend_channel_id;        /* channel ID for CHAN_RECV/CHAN_SEND */
+    Cell* suspend_send_value;      /* pending value for CHAN_SEND */
 
     /* Evaluation context */
     EvalContext* eval_ctx;

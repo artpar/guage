@@ -1,6 +1,7 @@
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
 
 #include "actor.h"
+#include "channel.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -154,9 +155,25 @@ int actor_run_all(int max_ticks) {
 
             Fiber* fiber = actor->fiber;
 
-            /* Skip actors waiting for messages with empty mailbox */
-            if (fiber->state == FIBER_SUSPENDED && actor->mailbox_count == 0) {
-                continue;
+            /* Skip suspended actors whose condition isn't met yet */
+            if (fiber->state == FIBER_SUSPENDED) {
+                switch (fiber->suspend_reason) {
+                    case SUSPEND_MAILBOX:
+                        if (actor->mailbox_count == 0) continue;
+                        break;
+                    case SUSPEND_CHAN_RECV: {
+                        Channel* chan = channel_lookup(fiber->suspend_channel_id);
+                        if (chan && chan->count == 0 && !chan->closed) continue;
+                        break;
+                    }
+                    case SUSPEND_CHAN_SEND: {
+                        Channel* chan = channel_lookup(fiber->suspend_channel_id);
+                        if (chan && chan->count >= chan->capacity) continue;
+                        break;
+                    }
+                    case SUSPEND_GENERAL:
+                        continue; /* Wait for explicit resume */
+                }
             }
 
             /* Set current actor so ←? can find it */
@@ -170,10 +187,48 @@ int actor_run_all(int max_ticks) {
                 fiber_start(fiber);
                 any_ran = true;
             } else if (fiber->state == FIBER_SUSPENDED) {
-                /* Has messages — resume with next message */
-                Cell* msg = actor_receive(actor);
-                fiber_resume(fiber, msg ? msg : cell_nil());
-                if (msg) cell_release(msg);
+                Cell* resume_val = NULL;
+
+                switch (fiber->suspend_reason) {
+                    case SUSPEND_MAILBOX: {
+                        Cell* msg = actor_receive(actor);
+                        resume_val = msg ? msg : cell_nil();
+                        break;
+                    }
+                    case SUSPEND_CHAN_RECV: {
+                        Channel* chan = channel_lookup(fiber->suspend_channel_id);
+                        if (chan) {
+                            Cell* val = channel_try_recv(chan);
+                            if (val) {
+                                resume_val = val;
+                            } else if (chan->closed) {
+                                resume_val = cell_error("chan-recv-closed", cell_nil());
+                            } else {
+                                resume_val = cell_nil();
+                            }
+                        } else {
+                            resume_val = cell_error("chan-recv-invalid", cell_nil());
+                        }
+                        break;
+                    }
+                    case SUSPEND_CHAN_SEND: {
+                        Channel* chan = channel_lookup(fiber->suspend_channel_id);
+                        if (chan && fiber->suspend_send_value) {
+                            channel_try_send(chan, fiber->suspend_send_value);
+                            cell_release(fiber->suspend_send_value);
+                            fiber->suspend_send_value = NULL;
+                        }
+                        resume_val = cell_nil();
+                        break;
+                    }
+                    case SUSPEND_GENERAL:
+                        resume_val = cell_nil();
+                        break;
+                }
+
+                fiber->suspend_reason = SUSPEND_GENERAL;
+                fiber_resume(fiber, resume_val);
+                if (resume_val) cell_release(resume_val);
                 any_ran = true;
             }
 
@@ -212,4 +267,5 @@ void actor_reset_all(void) {
     g_actor_count = 0;
     g_next_actor_id = 1;
     g_current_actor = NULL;
+    channel_reset_all();
 }

@@ -76,6 +76,13 @@ Cell* prim_actor_alive(Cell* args);    /* ⟳? - check alive */
 Cell* prim_actor_result(Cell* args);   /* ⟳→ - get result */
 Cell* prim_actor_reset(Cell* args);    /* ⟳∅ - reset all actors */
 
+/* Channel primitives */
+Cell* prim_chan_create(Cell* args);     /* ⟿⊚ - create channel */
+Cell* prim_chan_send(Cell* args);       /* ⟿→ - send to channel */
+Cell* prim_chan_recv(Cell* args);       /* ⟿← - receive from channel */
+Cell* prim_chan_close(Cell* args);      /* ⟿× - close channel */
+Cell* prim_chan_reset(Cell* args);      /* ⟿∅ - reset all channels */
+
 /* Documentation primitives */
 Cell* prim_doc_get(Cell* args);        /* ⌂ - get documentation */
 Cell* prim_doc_type(Cell* args);       /* ⌂∈ - get type signature */
