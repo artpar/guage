@@ -1,13 +1,67 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-01-29 (Day 79 COMPLETE)
+Updated: 2026-01-29 (Day 80 COMPLETE)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 79 - Variadic Stdlib Macros Complete (2026-01-29)
+# Session Handoff: Day 80 - Data Flow Analysis & N-Function Mutual Recursion (2026-01-29)
 
-## 🎉 Day 79 Progress - Unlimited Arity Stdlib Macros!
+## 🎉 Day 80 Progress - Two Major Features!
+
+**RESULT:** 77/77 test files passing (100%), 56 new tests (42 dataflow + 14 mutual recursion)
+
+### Feature 1: N-Function Mutual Recursion
+
+Extended mutual recursion from exactly 2 functions to **any number of functions**:
+
+```scheme
+;; 3 mutually recursive functions (mod3 calculator)
+(⊛ ((:zero (λ (n) (? (≡ n #0) #t (two (⊖ n #1)))))
+    (:one (λ (n) (? (≡ n #0) #f (zero (⊖ n #1)))))
+    (:two (λ (n) (? (≡ n #0) #f (one (⊖ n #1))))))
+   (zero #9))  ; → #t (9 mod 3 = 0)
+
+;; 4 mutually recursive functions (state machine)
+(⊛ ((:s0 (λ (n) (? (≡ n #0) :A (s1 (⊖ n #1)))))
+    (:s1 (λ (n) (? (≡ n #0) :B (s2 (⊖ n #1)))))
+    (:s2 (λ (n) (? (≡ n #0) :C (s3 (⊖ n #1)))))
+    (:s3 (λ (n) (? (≡ n #0) :D (s0 (⊖ n #1))))))
+   (s0 #7))  ; → :D (7 mod 4 = 3)
+```
+
+**Implementation:** Generalized `build-accessor` to handle arbitrary indices via nested `◁`/`▷` navigation in the pair-based Y-combinator structure.
+
+### Feature 2: Data Flow Analysis Module
+
+New `stdlib/dataflow.scm` provides foundational compiler analysis tools:
+
+**Set Operations:**
+- `∪∪` (union) - Combine sets, no duplicates
+- `∩` (intersection) - Elements in both sets
+- `∖` (difference) - Elements in first but not second
+- `⊆` (subset) - Test subset relationship
+- `≡∪` (set-equal) - Same elements, order independent
+
+**Fixed Point Iteration:**
+- `⊛⊛` - Iterate function until convergence
+
+**Reaching Definitions (Forward Analysis):**
+- `⇝⊃-transfer` - out = gen ∪ (in - kill)
+- `⇝⊃-meet` - in = ∪ out[predecessors]
+- `⇝⊃-get-out` - Lookup out set from solution
+
+**Live Variables (Backward Analysis):**
+- `⇝←-transfer` - in = use ∪ (out - def)
+- `⇝←-meet` - out = ∪ in[successors]
+- `⇝←-get-in` - Lookup in set from solution
+
+**Available Expressions:**
+- `⇝∪-meet` - in = ∩ out[predecessors]
+
+---
+
+## Previous Day: Day 79 - Variadic Stdlib Macros
 
 **RESULT:** 76/76 test files passing (100%), 58 new variadic tests
 
@@ -221,13 +275,14 @@ Pattern-based macros with multiple clauses and pattern matching on syntax.
 
 **System State:**
 - **Primitives:** 125 total
-- **Tests:** 76/76 test files passing (100%)
-- **Self-Hosting Eval Tests:** 52/52 passing (100%)
+- **Tests:** 77/77 test files passing (100%)
+- **Self-Hosting Eval Tests:** 66/66 passing (100%) - includes N-function mutual recursion
+- **Data Flow Tests:** 42/42 tests passing (new!)
 - **Pattern Macros:** 29/29 tests passing
 - **Rest Pattern Syntax:** 51/51 tests passing
-- **Variadic Stdlib Macros:** 58/58 tests passing (new!)
-- **Stdlib Pattern Macros:** 22/22 tests passing (⇒*, ≔⇊, ⇤ - now variadic)
-- **Stdlib Control Macros:** 46/46 tests passing (∧*, ∨*, ⇒, ⇏ - now variadic)
+- **Variadic Stdlib Macros:** 58/58 tests passing
+- **Stdlib Pattern Macros:** 22/22 tests passing (⇒*, ≔⇊, ⇤ - variadic)
+- **Stdlib Control Macros:** 46/46 tests passing (∧*, ∨*, ⇒, ⇏ - variadic)
 - **Pattern Matching:** World-class (guards, as-patterns, or-patterns, view patterns)
 - **Build:** Clean, O2 optimized, 32MB stack
 
@@ -245,7 +300,7 @@ Pattern-based macros with multiple clauses and pattern matching on syntax.
 
 ---
 
-## 🎯 What to Do Next (Day 79+)
+## 🎯 What to Do Next (Day 80+)
 
 **Focus: Language Strength & Completeness**
 
@@ -254,17 +309,22 @@ Pattern-based macros with multiple clauses and pattern matching on syntax.
    - Build iterator/loop constructs
    - Essential for practical programming
 
-2. **Data Flow Analysis** (3-4 hours) - MEDIUM VALUE
-   - Build on graph algorithms for liveness analysis, reaching definitions
-   - Foundation for optimization passes
+2. ✅ **Data Flow Analysis** (3-4 hours) - COMPLETED DAY 80
+   - Set operations (∪∪, ∩, ∖, ⊆, ≡∪)
+   - Fixed point iteration (⊛⊛)
+   - Reaching definitions, live variables, available expressions
 
-3. **3+ Function Mutual Recursion** (1-2 hours) - LOW VALUE
-   - Extend mutual recursion to handle more than 2 functions
-   - Currently limited to exactly 2 mutually recursive functions
+3. ✅ **N-Function Mutual Recursion** (1-2 hours) - COMPLETED DAY 80
+   - Extended from exactly 2 functions to any number
+   - Tested with 3-function mod3 and 4-function state machine
 
 4. **String Manipulation Stdlib** (2-3 hours) - MEDIUM VALUE
    - Higher-level string functions built on primitives
    - split, join, trim, replace, etc.
+
+5. **Type Annotations** (4-6 hours) - HIGH VALUE
+   - Add optional type hints to function definitions
+   - Foundation for gradual typing and self-hosting
 
 ---
 
@@ -272,6 +332,7 @@ Pattern-based macros with multiple clauses and pattern matching on syntax.
 
 | Day | Feature | Tests |
 |-----|---------|-------|
+| 80 | Data Flow Analysis + N-Function Mutual Recursion | 77/77 (100%), 56 new tests |
 | 79 | Variadic Stdlib Macros (∧*, ∨*, ⇒*, ≔⇊, ⇤) | 76/76 (100%), 58 variadic tests |
 | 78 | Rest Pattern Syntax ($var ... ellipsis) | 75/75 (100%), 51 rest pattern tests |
 | 77 | Control Flow Macros (∧*, ∨*, ⇒, ⇏) | 74/74 (100%), 46 control tests |
@@ -282,7 +343,6 @@ Pattern-based macros with multiple clauses and pattern matching on syntax.
 | 72 | Self-Hosting Evaluator Complete (≔, ⊛, ⌞) | 71/71 (100%), 42 eval tests |
 | 71 | Self-Hosting Evaluator Enhanced | 71/71 (100%), 32 eval tests |
 | 70 | Macro & Module Enhancements | 71/71 (100%) |
-| 69 | Graph Algorithms Complete | 69/69 (100%) |
 
 **Full historical details:** See `docs/archive/2026-01/sessions/DAYS_43_68_HISTORY.md`
 
@@ -324,6 +384,21 @@ make rebuild      # Clean + rebuild
 ---
 
 ## Session End Checklist ✅
+
+**Day 80 Complete (2026-01-29):**
+- ✅ Generalized mutual recursion to support N functions (not just 2)
+- ✅ Added `build-accessor-tails` for nested ◁/▷ pair navigation
+- ✅ Added `list-length` helper function
+- ✅ Updated `build-mutual-substitutions` with total count parameter
+- ✅ Added 14 new eval tests (8 for 3-function mod3, 6 for 4-function state machine)
+- ✅ Created `bootstrap/stdlib/dataflow.scm` (new module)
+- ✅ Implemented set operations: ∪∪, ∩, ∖, ⊆, ≡∪
+- ✅ Implemented fixed point iteration: ⊛⊛
+- ✅ Implemented reaching definitions: ⇝⊃-transfer, ⇝⊃-meet, ⇝⊃-get-out
+- ✅ Implemented live variables: ⇝←-transfer, ⇝←-meet, ⇝←-get-in
+- ✅ Implemented available expressions: ⇝∪-meet
+- ✅ Created `bootstrap/tests/test_dataflow.test` (42 tests)
+- ✅ All 77/77 test files passing (100%)
 
 **Day 79 Complete (2026-01-29):**
 - ✅ Upgraded ∧* (and*) from 1-4 args to unlimited args
@@ -398,12 +473,13 @@ make rebuild      # Clean + rebuild
 ### Quick Start
 ```bash
 cd /Users/artpar/workspace/code/guage
-make test                    # Verify 76/76 tests pass
+make test                    # Verify 77/77 tests pass
 git log --oneline -3         # See recent commits
 ```
 
 ### System State Summary
-- **Core evaluator:** COMPLETE with recursive AND mutual letrec (52 tests)
+- **Core evaluator:** COMPLETE with N-function mutual recursion (66 eval tests)
+- **Data flow analysis:** COMPLETE - set ops, fixed point, reaching defs, live vars
 - **Pattern macros:** COMPLETE with unlimited arity via ellipsis (Day 78-79)
 - **Stdlib macros:** All 5 macros now support unlimited args/clauses/bindings
 - **Focus:** Language strength and completeness
@@ -418,33 +494,35 @@ git log --oneline -3         # See recent commits
 
 ### Key Files
 ```
-bootstrap/stdlib/macros_control.scm   # Control macros (∧*, ∨*, ⇒, ⇏) - NOW VARIADIC
-bootstrap/stdlib/macros_pattern.scm   # Pattern macros (⇒*, ≔⇊, ⇤) - NOW VARIADIC
-bootstrap/stdlib/eval.scm             # Main evaluator (~400 lines)
-bootstrap/tests/test_variadic_stdlib.test  # 58 variadic tests (NEW)
+bootstrap/stdlib/dataflow.scm         # NEW: Data flow analysis (∪∪, ∩, ∖, ⊆, ≡∪, ⊛⊛, ⇝⊃, ⇝←)
+bootstrap/stdlib/eval.scm             # Main evaluator - now with N-function mutual recursion
+bootstrap/stdlib/macros_control.scm   # Control macros (∧*, ∨*, ⇒, ⇏) - variadic
+bootstrap/stdlib/macros_pattern.scm   # Pattern macros (⇒*, ≔⇊, ⇤) - variadic
+bootstrap/tests/test_dataflow.test    # NEW: 42 data flow tests
+bootstrap/tests/test_eval.test        # Extended: 66 eval tests
 ```
 
-### What We Built Today (Day 79)
+### What We Built Today (Day 80)
 
-**Upgraded 5 stdlib macros from fixed arity to unlimited arity:**
+**1. N-Function Mutual Recursion:**
+- Extended Y-combinator pair structure to handle any number of functions
+- Works via nested pairs: `⟨f₁ ⟨f₂ ⟨f₃ ∅⟩⟩⟩`
+- Access via `◁ ▷ ▷ self` for f₃ in 3-function group
 
-| Macro | Before | After |
-|-------|--------|-------|
-| ∧* (and*) | 1-4 args | Unlimited |
-| ∨* (or*) | 1-4 args | Unlimited |
-| ⇒* (cond) | 1-5 clauses | Unlimited |
-| ≔⇊ (let*) | 1-4 bindings | Unlimited |
-| ⇤ (case) | 2-5 cases | Unlimited |
+**2. Data Flow Analysis Module:**
 
-**Pattern used:** Each macro now uses 2-3 simple clauses with `$rest ...` instead of enumerating all arities:
-```scheme
-(⧉⊜ ∧*
-  (() #t)                              ; base: zero args
-  (($a) $a)                            ; base: one arg
-  (($a $rest ...) (? $a (∧* $rest ...) #f)))  ; recursive
-```
+| Symbol | Operation | Type |
+|--------|-----------|------|
+| ∪∪ | Set union | [α] → [α] → [α] |
+| ∩ | Set intersection | [α] → [α] → [α] |
+| ∖ | Set difference | [α] → [α] → [α] |
+| ⊆ | Subset test | [α] → [α] → 𝔹 |
+| ≡∪ | Set equality | [α] → [α] → 𝔹 |
+| ⊛⊛ | Fixed point | (α → α) → α → α |
+| ⇝⊃-transfer | Reaching defs | gen → kill → in → out |
+| ⇝←-transfer | Live vars | use → def → out → in |
 
 ---
 
-**Last Updated:** 2026-01-29 (Day 79 complete)
-**Next Session:** Day 80 - More stdlib macros (language completeness)
+**Last Updated:** 2026-01-29 (Day 80 complete)
+**Next Session:** Day 81 - More stdlib macros or type annotations
