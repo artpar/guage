@@ -1,13 +1,58 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-01-29 (Day 78 COMPLETE)
+Updated: 2026-01-29 (Day 79 COMPLETE)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 78 - Rest Pattern Syntax Complete (2026-01-29)
+# Session Handoff: Day 79 - Variadic Stdlib Macros Complete (2026-01-29)
 
-## 🎉 Day 78 Progress - Ellipsis Rest Pattern Syntax!
+## 🎉 Day 79 Progress - Unlimited Arity Stdlib Macros!
+
+**RESULT:** 76/76 test files passing (100%), 58 new variadic tests
+
+**Upgraded Macros (from fixed arity to UNLIMITED):**
+
+1. **∧* (and*)** - From 1-4 args → unlimited args
+   ```scheme
+   (∧* #t #t #t #t #t #t #t #t #t #t)  ; → #t (10 args!)
+   (∧* #t #f (⊘ #1 #0))                ; → #f (short-circuits)
+   ```
+
+2. **∨* (or*)** - From 1-4 args → unlimited args
+   ```scheme
+   (∨* #f #f #f #f #f #f #f #f #f #t)  ; → #t (10 args!)
+   (∨* #t (⊘ #1 #0))                   ; → #t (short-circuits)
+   ```
+
+3. **⇒* (cond)** - From 1-5 clauses → unlimited clauses
+   ```scheme
+   (⇒* (#f :1) (#f :2) (#f :3) (#f :4) (#f :5)
+       (#f :6) (#f :7) (#f :8) (#f :9) (#t :ten))  ; → :ten
+   ```
+
+4. **≔⇊ (let*)** - From 1-4 bindings → unlimited bindings
+   ```scheme
+   (≔⇊ ((:a #1) (:b (⊗ :a #2)) (:c (⊗ :b #3))
+        (:d (⊗ :c #4)) (:e (⊗ :d #5)) (:f (⊗ :e #6)))
+     :f)  ; → #720 (factorial via chained bindings)
+   ```
+
+5. **⇤ (case)** - From 2-5 cases → unlimited cases
+   ```scheme
+   (⇤ #10 (#1 :1) (#2 :2) (#3 :3) (#4 :4) (#5 :5)
+          (#6 :6) (#7 :7) (#8 :8) (#9 :9) (#10 :ten))  ; → :ten
+   ```
+
+**Implementation:**
+- Refactored `macros_control.scm` to use `$rest ...` ellipsis patterns
+- Refactored `macros_pattern.scm` to use `$rest ...` ellipsis patterns
+- Each macro now uses just 2-3 clauses instead of 4-5+ fixed arities
+- Created `test_variadic_stdlib.test` (58 tests)
+
+---
+
+## Previous Day: Day 78 - Rest Pattern Syntax
 
 **RESULT:** 75/75 test files passing (100%), 51 new rest pattern tests
 
@@ -176,12 +221,13 @@ Pattern-based macros with multiple clauses and pattern matching on syntax.
 
 **System State:**
 - **Primitives:** 125 total
-- **Tests:** 75/75 test files passing (100%)
+- **Tests:** 76/76 test files passing (100%)
 - **Self-Hosting Eval Tests:** 52/52 passing (100%)
 - **Pattern Macros:** 29/29 tests passing
-- **Rest Pattern Syntax:** 51/51 tests passing (new!)
-- **Stdlib Pattern Macros:** 22/22 tests passing (⇒*, ≔⇊, ⇤)
-- **Stdlib Control Macros:** 46/46 tests passing (∧*, ∨*, ⇒, ⇏)
+- **Rest Pattern Syntax:** 51/51 tests passing
+- **Variadic Stdlib Macros:** 58/58 tests passing (new!)
+- **Stdlib Pattern Macros:** 22/22 tests passing (⇒*, ≔⇊, ⇤ - now variadic)
+- **Stdlib Control Macros:** 46/46 tests passing (∧*, ∨*, ⇒, ⇏ - now variadic)
 - **Pattern Matching:** World-class (guards, as-patterns, or-patterns, view patterns)
 - **Build:** Clean, O2 optimized, 32MB stack
 
@@ -199,19 +245,19 @@ Pattern-based macros with multiple clauses and pattern matching on syntax.
 
 ---
 
-## 🎯 What to Do Next (Day 78+)
+## 🎯 What to Do Next (Day 79+)
 
 **RECOMMENDED OPTIONS:**
 
-1. **Upgrade Stdlib Macros to Variadic** (1-2 hours) - HIGH VALUE
-   - Update ∧*, ∨*, ⇒*, ≔⇊, ⇤ to use ellipsis patterns
-   - Replace fixed-arity enumeration with unlimited arity
-   - Simple refactor using new `$rest ...` syntax
-
-2. **Self-Hosting Parser** (6-8 hours) - MILESTONE
+1. **Self-Hosting Parser** (6-8 hours) - MILESTONE
    - Parser written in Guage that can parse Guage
    - Requires string operations, character handling
    - Major step toward full self-hosting
+
+2. **More Stdlib Macros** (2-3 hours) - MEDIUM VALUE
+   - Add do-loop, for-each, map*, filter* using variadic ellipsis
+   - Build iterator/loop constructs
+   - Use ⧉⊜ pattern macros with ellipsis
 
 3. **Data Flow Analysis** (3-4 hours) - MEDIUM VALUE
    - Build on graph algorithms for liveness analysis, reaching definitions
@@ -221,16 +267,13 @@ Pattern-based macros with multiple clauses and pattern matching on syntax.
    - Extend mutual recursion to handle more than 2 functions
    - Currently limited to exactly 2 mutually recursive functions
 
-5. **More Stdlib Macros** (2-3 hours) - MEDIUM VALUE
-   - Add do-loop, for-each, map*, filter*
-   - Use ⧉⊜ pattern macros with ellipsis
-
 ---
 
 ## Recent Milestones
 
 | Day | Feature | Tests |
 |-----|---------|-------|
+| 79 | Variadic Stdlib Macros (∧*, ∨*, ⇒*, ≔⇊, ⇤) | 76/76 (100%), 58 variadic tests |
 | 78 | Rest Pattern Syntax ($var ... ellipsis) | 75/75 (100%), 51 rest pattern tests |
 | 77 | Control Flow Macros (∧*, ∨*, ⇒, ⇏) | 74/74 (100%), 46 control tests |
 | 76 | Stdlib Pattern Macros (⇒*, ≔⇊, ⇤) | 73/73 (100%), 22 stdlib macro tests |
@@ -241,8 +284,6 @@ Pattern-based macros with multiple clauses and pattern matching on syntax.
 | 71 | Self-Hosting Evaluator Enhanced | 71/71 (100%), 32 eval tests |
 | 70 | Macro & Module Enhancements | 71/71 (100%) |
 | 69 | Graph Algorithms Complete | 69/69 (100%) |
-| 68 | Pattern Recursion Bug Fixed | 68/68 |
-| 66 | View Patterns | 66/68 |
 
 **Full historical details:** See `docs/archive/2026-01/sessions/DAYS_43_68_HISTORY.md`
 
@@ -284,6 +325,17 @@ make rebuild      # Clean + rebuild
 ---
 
 ## Session End Checklist ✅
+
+**Day 79 Complete (2026-01-29):**
+- ✅ Upgraded ∧* (and*) from 1-4 args to unlimited args
+- ✅ Upgraded ∨* (or*) from 1-4 args to unlimited args
+- ✅ Upgraded ⇒* (cond) from 1-5 clauses to unlimited clauses
+- ✅ Upgraded ≔⇊ (let*) from 1-4 bindings to unlimited bindings
+- ✅ Upgraded ⇤ (case) from 2-5 cases to unlimited cases
+- ✅ Updated `bootstrap/stdlib/macros_control.scm` with ellipsis patterns
+- ✅ Updated `bootstrap/stdlib/macros_pattern.scm` with ellipsis patterns
+- ✅ Created `bootstrap/tests/test_variadic_stdlib.test` (58 tests)
+- ✅ All 76/76 test files passing (100%)
 
 **Day 78 Complete (2026-01-29):**
 - ✅ Implemented `$var ...` ellipsis pattern syntax
@@ -347,13 +399,15 @@ make rebuild      # Clean + rebuild
 ### Quick Start
 ```bash
 cd /Users/artpar/workspace/code/guage
-make test                    # Verify 71/71 tests pass
+make test                    # Verify 76/76 tests pass
 git log --oneline -3         # See recent commits
 ```
 
-### Self-Hosting Status
+### System State Summary
 - **Core evaluator:** COMPLETE with recursive AND mutual letrec (52 tests)
-- **What's next:** Self-hosting parser OR stdlib macros
+- **Pattern macros:** COMPLETE with unlimited arity via ellipsis (Day 78-79)
+- **Stdlib macros:** All 5 macros now support unlimited args/clauses/bindings
+- **What's next:** Self-hosting parser OR more stdlib macros
 - **Detailed roadmap:** `docs/planning/SELF_HOSTING_COMPLETION.md`
 
 ### Option A: Self-Hosting Parser (6-9 hours, MILESTONE)
@@ -379,38 +433,43 @@ git log --oneline -3         # See recent commits
 
 **Start here:** Read `docs/planning/SELF_HOSTING_COMPLETION.md` section "ALTERNATIVE: Self-Hosting Parser"
 
+### Option B: More Stdlib Macros (2-3 hours)
+
+**Add common iteration/loop constructs using variadic ellipsis:**
+- `do*` - Simple do-loop
+- `for-each*` - Iterate over list with side effects
+- `map*` - Transform list elements
+- `filter*` - Select list elements
+
 ### Key Files
 ```
-bootstrap/stdlib/eval.scm      # Main evaluator (~400 lines)
-  - Lines 111-145: Recursive letrec support functions
-  - Lines 147-169: transform-recursive-ast (Y-combinator pattern)
-  - Lines 171-280: Mutual recursion support functions
-  - Lines 282-310: eval-letrec (detects recursive and mutual recursion)
-
-bootstrap/stdlib/eval-env.scm  # Environment module (37 lines)
-bootstrap/tests/test_eval.test # Test suite (52 tests)
-docs/planning/SELF_HOSTING_COMPLETION.md  # Detailed roadmap
+bootstrap/stdlib/macros_control.scm   # Control macros (∧*, ∨*, ⇒, ⇏) - NOW VARIADIC
+bootstrap/stdlib/macros_pattern.scm   # Pattern macros (⇒*, ≔⇊, ⇤) - NOW VARIADIC
+bootstrap/stdlib/eval.scm             # Main evaluator (~400 lines)
+bootstrap/tests/test_variadic_stdlib.test  # 58 variadic tests (NEW)
 ```
 
-### What We Built Today (Day 74)
+### What We Built Today (Day 79)
 
-**New functions in eval.scm for mutual recursion:**
-- `is-mutual-recursion?` - Detect if bindings cross-reference each other
-- `transform-mutual-ast` - Transform mutually recursive bindings via pair-based Y-combinator
-- `build-accessor` - Create `:◁`/`:▷` accessor expressions
-- `build-mutual-pair` - Build `(:⟨⟩ λ1 λ2)` pair structure
-- `eval-mutual-letrec` - Evaluate and bind mutually recursive functions
+**Upgraded 5 stdlib macros from fixed arity to unlimited arity:**
 
-**The mutual recursion transformation:**
+| Macro | Before | After |
+|-------|--------|-------|
+| ∧* (and*) | 1-4 args | Unlimited |
+| ∨* (or*) | 1-4 args | Unlimited |
+| ⇒* (cond) | 1-5 clauses | Unlimited |
+| ≔⇊ (let*) | 1-4 bindings | Unlimited |
+| ⇤ (case) | 2-5 cases | Unlimited |
+
+**Pattern used:** Each macro now uses 2-3 simple clauses with `$rest ...` instead of enumerating all arities:
 ```scheme
-; (⊛ ((:even? (λ ...)) (:odd? (λ ...))) body)
-; becomes:
-; ((λ (:self) (:⟨⟩ λ1' λ2')) (λ (:self) (:⟨⟩ λ1' λ2')))
-; where λ1' and λ2' substitute :even?/:odd? with (:◁ (:self :self))/(:▷ (:self :self))
-; Results bound: :even? → (◁ pair), :odd? → (▷ pair)
+(⧉⊜ ∧*
+  (() #t)                              ; base: zero args
+  (($a) $a)                            ; base: one arg
+  (($a $rest ...) (? $a (∧* $rest ...) #f)))  ; recursive
 ```
 
 ---
 
-**Last Updated:** 2026-01-29 (Day 77 complete)
-**Next Session:** Day 78 - Rest pattern syntax OR self-hosting parser
+**Last Updated:** 2026-01-29 (Day 79 complete)
+**Next Session:** Day 80 - Self-hosting parser OR more stdlib macros

@@ -1,19 +1,20 @@
 ; ═══════════════════════════════════════════════════════════════
 ; Guage Standard Library: Control Flow Macros
 ; ═══════════════════════════════════════════════════════════════
-; Status: NEW
+; Status: UPGRADED (Day 79)
 ; Created: 2026-01-29 (Day 77)
+; Updated: 2026-01-29 (Day 79 - variadic ellipsis patterns)
 ; Purpose: Short-circuit logical operators and control flow
 ;
 ; Symbols defined:
-; - ∧* (and*) - Short-circuit AND (1-4 args)
-; - ∨* (or*)  - Short-circuit OR (1-4 args)
+; - ∧* (and*) - Short-circuit AND (unlimited args)
+; - ∨* (or*)  - Short-circuit OR (unlimited args)
 ; - ⇒ (when)  - Conditional execution
 ; - ⇏ (unless) - Negative conditional
 ; ═══════════════════════════════════════════════════════════════
 
 ; ═══════════════════════════════════════════════════════════════
-; ∧* (and*) - Short-circuit AND
+; ∧* (and*) - Short-circuit AND (UNLIMITED ARGS)
 ; ═══════════════════════════════════════════════════════════════
 ; Syntax: (∧* expr1 expr2 ...)
 ; Evaluates expressions left-to-right
@@ -23,24 +24,20 @@
 ; Lisp semantics: returns actual values, not just booleans
 ; (∧* #t #42) → #42
 ; (∧* #f anything) → #f (anything not evaluated)
+;
+; Uses ellipsis pattern for unlimited arity (Day 79)
 ; ═══════════════════════════════════════════════════════════════
 
 (⧉⊜ ∧*
+  ; Zero args - vacuous truth
+  (() #t)
   ; Single arg - identity
-  (($a)
-   $a)
-  ; Two args - short-circuit
-  (($a $b)
-   (? $a $b #f))
-  ; Three args
-  (($a $b $c)
-   (? $a (? $b $c #f) #f))
-  ; Four args
-  (($a $b $c $d)
-   (? $a (? $b (? $c $d #f) #f) #f)))
+  (($a) $a)
+  ; Multiple args - short-circuit recursively
+  (($a $rest ...) (? $a (∧* $rest ...) #f)))
 
 ; ═══════════════════════════════════════════════════════════════
-; ∨* (or*) - Short-circuit OR
+; ∨* (or*) - Short-circuit OR (UNLIMITED ARGS)
 ; ═══════════════════════════════════════════════════════════════
 ; Syntax: (∨* expr1 expr2 ...)
 ; Evaluates expressions left-to-right
@@ -50,30 +47,18 @@
 ; Lisp semantics: returns actual values, not just booleans
 ; (∨* #f #42) → #42
 ; (∨* #42 anything) → #42 (anything not evaluated)
+;
+; Uses ellipsis pattern for unlimited arity (Day 79)
 ; ═══════════════════════════════════════════════════════════════
 
 (⧉⊜ ∨*
+  ; Zero args - vacuous false
+  (() #f)
   ; Single arg - identity
-  (($a)
-   $a)
-  ; Two args - short-circuit
-  ; Need to avoid double evaluation of $a
-  ; Test for "not #f" rather than "truthy" (Lisp semantics)
-  ; (? (≡ val #f) else val) - if val is #f, go else; otherwise return val
-  (($a $b)
-   ((λ (:∨tmp) (? (≡ :∨tmp #f) $b :∨tmp)) $a))
-  ; Three args
-  (($a $b $c)
-   ((λ (:∨tmp) (? (≡ :∨tmp #f)
-     ((λ (:∨tmp2) (? (≡ :∨tmp2 #f) $c :∨tmp2)) $b)
-     :∨tmp)) $a))
-  ; Four args
-  (($a $b $c $d)
-   ((λ (:∨tmp) (? (≡ :∨tmp #f)
-     ((λ (:∨tmp2) (? (≡ :∨tmp2 #f)
-       ((λ (:∨tmp3) (? (≡ :∨tmp3 #f) $d :∨tmp3)) $c)
-       :∨tmp2)) $b)
-     :∨tmp)) $a)))
+  (($a) $a)
+  ; Multiple args - short-circuit recursively
+  ; Use lambda to avoid double evaluation, check for "not #f" (Lisp semantics)
+  (($a $rest ...) ((λ (:∨tmp) (? (≡ :∨tmp #f) (∨* $rest ...) :∨tmp)) $a)))
 
 ; ═══════════════════════════════════════════════════════════════
 ; ⇒ (when) - Conditional execution
@@ -105,10 +90,10 @@
 ; Module Complete
 ; ═══════════════════════════════════════════════════════════════
 ; Control macros defined: 4
-; - ∧* (and*) - 4 arities, short-circuit
-; - ∨* (or*)  - 4 arities, short-circuit
+; - ∧* (and*) - UNLIMITED arity, short-circuit (Day 79)
+; - ∨* (or*)  - UNLIMITED arity, short-circuit (Day 79)
 ; - ⇒ (when)  - 1 arity
 ; - ⇏ (unless) - 1 arity
 ; ═══════════════════════════════════════════════════════════════
 
-"✓ 4 control flow macros loaded"
+"✓ 4 control flow macros loaded (variadic)"
