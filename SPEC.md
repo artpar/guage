@@ -469,11 +469,13 @@ Warnings are non-fatal and do not stop execution.
 | `⟨⟩?` | `α → 𝔹` | Is pair | ✅ DONE |
 | `#?` | `α → 𝔹` | Is atom | ✅ DONE |
 
-### Debug & Error Handling (4) ✅
+### Debug & Error Handling (6) ✅
 | Symbol | Type | Meaning | Status |
 |--------|------|---------|--------|
 | `⚠` | `:symbol → α → ⚠` | Create error value | ✅ DONE |
 | `⚠?` | `α → 𝔹` | Test if error | ✅ DONE |
+| `⚠⊙` | `⚠ → :symbol` | Get error type | ✅ DONE |
+| `⚠→` | `⚠ → α` | Get error data | ✅ DONE |
 | `⊢` | `𝔹 → :symbol → 𝔹 \| ⚠` | Assert condition | ✅ DONE |
 | `⟲` | `α → α` | Trace (debug print) | ✅ DONE |
 
@@ -1289,6 +1291,44 @@ All I/O operations return errors on failure:
 ;; ⇏ (unless) - Execute body if condition false
 (⇏ #f :yes)              ; → :yes
 (⇏ #t :never)            ; → ∅ (nil, body not evaluated)
+```
+
+**Stdlib Exception Macros (stdlib/macros_exception.scm):**
+
+```scheme
+;; ⚡ (try-with) - Execute body, call handler if error
+(⚡ (⊘ #6 #2) (λ (e) :error))   ; → #3 (success)
+(⚡ (⊘ #1 #0) (λ (e) :error))   ; → :error (handler called)
+
+;; ⚡⊳ (try-or) - Execute with fallback default on error
+(⚡⊳ (⊘ #6 #2) #0)              ; → #3 (success)
+(⚡⊳ (⊘ #1 #0) #0)              ; → #0 (default on error)
+
+;; ⚡∅ (ignore-errors) - Execute, return nil on any error
+(⚡∅ (⊘ #6 #2))                 ; → #3 (success)
+(⚡∅ (⊘ #1 #0))                 ; → ∅ (error ignored)
+
+;; ⚡? (error-type?) - Check if error has specific type
+(⚡? (⊘ #1 #0) :div-by-zero)    ; → #t (error type matches)
+(⚡? #42 :any)                   ; → #f (not an error)
+
+;; ⚡⊙ (error-data) - Extract error data safely
+(⚡⊙ (⚠ :not-found "key"))      ; → "key"
+(⚡⊙ #42)                        ; → ∅ (not an error)
+
+;; ⚡∧ (all-succeed) - Execute all, fail if any fails
+(⚡∧ (⊘ #6 #2) (⊕ #1 #1))       ; → #2 (both succeed)
+(⚡∧ (⊘ #1 #0) (⊕ #1 #1))       ; → ⚠:div-by-zero (first fails)
+
+;; ⚡∨ (first-success) - Return first successful result
+(⚡∨ (⊘ #1 #0) (⊘ #6 #2))       ; → #3 (first fails, second succeeds)
+(⚡∨ (⊘ #1 #0) (⊘ #1 #0))       ; → ⚠ (all fail)
+
+;; ⚡⟲ (try-finally) - Execute with cleanup
+(⚡⟲ (⊘ #6 #2) (⟲ :cleanup))    ; → #3 (prints :cleanup)
+
+;; ⚡↺ (retry) - Retry on error up to n times
+(⚡↺ #3 (may-fail))             ; Try up to 3 times
 ```
 
 ### Generic Programming (3) - PARAMETRIC POLYMORPHISM

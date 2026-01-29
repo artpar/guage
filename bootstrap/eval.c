@@ -1179,6 +1179,13 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                 Cell* params = cell_car(rest);
                 Cell* body_expr = cell_car(cell_cdr(rest));
 
+                /* Expand macros in body BEFORE De Bruijn conversion */
+                /* This ensures macro templates with lambdas work correctly */
+                Cell* expanded_body = macro_expand(body_expr, ctx);
+                if (cell_is_error(expanded_body)) {
+                    return expanded_body;
+                }
+
                 /* Count parameters and extract names */
                 int arity = list_length(params);
                 const char** param_names = extract_param_names(params);
@@ -1187,7 +1194,8 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                 NameContext* ctx_convert = context_new(param_names, arity, NULL);
 
                 /* Convert body to De Bruijn indices */
-                Cell* converted_body = debruijn_convert(body_expr, ctx_convert);
+                Cell* converted_body = debruijn_convert(expanded_body, ctx_convert);
+                cell_release(expanded_body);
 
                 /* Closure env: use indexed env if we're in a lambda, empty if top-level */
                 Cell* closure_env = env_is_indexed(env) ? env : cell_nil();

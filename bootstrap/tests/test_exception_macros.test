@@ -1,0 +1,312 @@
+#!/usr/bin/env guage
+; Test suite for exception handling macros
+; Tests all macros in stdlib/macros_exception.scm
+
+(≋ "Testing Exception Handling Macros...")
+
+; Load the exception macros
+(⋘ "bootstrap/stdlib/macros_exception.scm")
+
+; ============================================================================
+; Test: ⚡ (try-with)
+; ============================================================================
+
+(≋ "\nTesting ⚡ (try-with)...")
+
+; Success case - no error, handler not called
+(⊨ :try-success
+   #3
+   (⚡ (⊘ #6 #2) (λ (e) :error-handled)))
+
+; Error case - handler called
+(⊨ :try-error
+   :handled
+   (⚡ (⊘ #1 #0) (λ (e) :handled)))
+
+; Handler receives error value
+(⊨ :try-receives-error
+   #t
+   (⚡ (⊘ #1 #0) (λ (e) (⚠? e))))
+
+; ============================================================================
+; Test: ⚡⊳ (try-or)
+; ============================================================================
+
+(≋ "Testing ⚡⊳ (try-or)...")
+
+; Success case - returns result
+(⊨ :try-or-success
+   #3
+   (⚡⊳ (⊘ #6 #2) :default))
+
+; Error case - returns default
+(⊨ :try-or-error
+   :default
+   (⚡⊳ (⊘ #1 #0) :default))
+
+; Default is number
+(⊨ :try-or-num-default
+   #0
+   (⚡⊳ (⊘ #1 #0) #0))
+
+; Default is nil
+(⊨ :try-or-nil-default
+   ∅
+   (⚡⊳ (⊘ #1 #0) ∅))
+
+; ============================================================================
+; Test: ⚡∅ (ignore-errors)
+; ============================================================================
+
+(≋ "Testing ⚡∅ (ignore-errors)...")
+
+; Success case - returns result
+(⊨ :ignore-success
+   #3
+   (⚡∅ (⊘ #6 #2)))
+
+; Error case - returns nil
+(⊨ :ignore-error
+   ∅
+   (⚡∅ (⊘ #1 #0)))
+
+; Nested expression success
+(⊨ :ignore-nested
+   #5
+   (⚡∅ (⊕ #2 #3)))
+
+; ============================================================================
+; Test: ⚡? (error-type?)
+; ============================================================================
+
+(≋ "Testing ⚡? (error-type?)...")
+
+; Create test errors
+(≔ div-error (⚠ :div-by-zero #0))
+(≔ not-found-error (⚠ :not-found "x"))
+
+; Match correct type
+(⊨ :errtype-match
+   #t
+   (⚡? div-error :div-by-zero))
+
+; No match different type
+(⊨ :errtype-no-match
+   #f
+   (⚡? div-error :not-found))
+
+; Not an error at all
+(⊨ :errtype-not-error
+   #f
+   (⚡? #42 :any))
+
+; Match :not-found
+(⊨ :errtype-not-found
+   #t
+   (⚡? not-found-error :not-found))
+
+; ============================================================================
+; Test: ⚡⊙ (error-data)
+; ============================================================================
+
+(≋ "Testing ⚡⊙ (error-data)...")
+
+; Extract data from error
+(⊨ :errdata-extract
+   #0
+   (⚡⊙ (⚠ :div-by-zero #0)))
+
+; Extract string data
+(⊨ :errdata-string
+   "missing key"
+   (⚡⊙ (⚠ :not-found "missing key")))
+
+; Not an error returns nil
+(⊨ :errdata-not-error
+   ∅
+   (⚡⊙ #42))
+
+; ============================================================================
+; Test: ⚡⇒ (error-case)
+; ============================================================================
+
+(≋ "Testing ⚡⇒ (error-case)...")
+
+; Match first clause
+(⊨ :errcase-first
+   :zero
+   (⚡⇒ (⊘ #1 #0)
+      ((:div-by-zero (λ (d) :zero)))))
+
+; Match with data access
+(⊨ :errcase-data
+   #t
+   (⚡⇒ (⊘ #1 #0)
+      ((:div-by-zero (λ (d) #t)))))
+
+; Success passes through
+(⊨ :errcase-success
+   #3
+   (⚡⇒ (⊘ #6 #2)
+      ((:div-by-zero (λ (d) :error)))))
+
+; Two clauses - match second
+(⊨ :errcase-two-match
+   :not-found
+   (⚡⇒ (⚠ :not-found "x")
+      ((:div-by-zero (λ (d) :zero)))
+      ((:not-found (λ (d) :not-found)))))
+
+; :else clause
+(⊨ :errcase-else
+   :other
+   (⚡⇒ (⚠ :unknown-error "?")
+      ((:div-by-zero (λ (d) :zero)))
+      ((:else (λ (d) :other)))))
+
+; ============================================================================
+; Test: ⚡⟲ (try-finally)
+; ============================================================================
+
+(≋ "Testing ⚡⟲ (try-finally)...")
+
+; Success case - cleanup runs, returns result
+; Note: Can't test side effects easily, but can test return value
+(⊨ :finally-success
+   #3
+   (⚡⟲ (⊘ #6 #2) :cleanup))
+
+; Error case - cleanup runs, returns error
+(⊨ :finally-error
+   #t
+   (⚠? (⚡⟲ (⊘ #1 #0) :cleanup)))
+
+; ============================================================================
+; Test: ⚡↺ (retry)
+; ============================================================================
+
+(≋ "Testing ⚡↺ (retry)...")
+
+; Success on first try
+(⊨ :retry-first-success
+   #3
+   (⚡↺ #3 (⊘ #6 #2)))
+
+; All retries exhausted (always errors)
+(⊨ :retry-exhausted
+   #t
+   (⚠? (⚡↺ #3 (⊘ #1 #0))))
+
+; Verify exhausted error type
+(⊨ :retry-exhausted-type
+   :retry-exhausted
+   (⚠⊙ (⚡↺ #1 (⊘ #1 #0))))
+
+; ============================================================================
+; Test: ⚡∧ (all-succeed)
+; ============================================================================
+
+(≋ "Testing ⚡∧ (all-succeed)...")
+
+; Single success
+(⊨ :allsucceed-single
+   #3
+   (⚡∧ (⊘ #6 #2)))
+
+; Two successes - returns last
+(⊨ :allsucceed-two
+   #5
+   (⚡∧ (⊘ #6 #2) (⊕ #2 #3)))
+
+; First fails
+(⊨ :allsucceed-first-fails
+   #t
+   (⚠? (⚡∧ (⊘ #1 #0) (⊕ #2 #3))))
+
+; Second fails
+(⊨ :allsucceed-second-fails
+   #t
+   (⚠? (⚡∧ (⊘ #6 #2) (⊘ #1 #0))))
+
+; Three expressions - all succeed
+(⊨ :allsucceed-three
+   #9
+   (⚡∧ (⊘ #6 #2) (⊕ #2 #3) (⊗ #3 #3)))
+
+; ============================================================================
+; Test: ⚡∨ (first-success)
+; ============================================================================
+
+(≋ "Testing ⚡∨ (first-success)...")
+
+; Single success
+(⊨ :firstsuccess-single
+   #3
+   (⚡∨ (⊘ #6 #2)))
+
+; First succeeds - returns first
+(⊨ :firstsuccess-first
+   #3
+   (⚡∨ (⊘ #6 #2) (⊘ #8 #2)))
+
+; First fails, second succeeds
+(⊨ :firstsuccess-second
+   #4
+   (⚡∨ (⊘ #1 #0) (⊘ #8 #2)))
+
+; All fail - returns last error
+(⊨ :firstsuccess-all-fail
+   #t
+   (⚠? (⚡∨ (⊘ #1 #0) (⊘ #1 #0))))
+
+; Three expressions - first succeeds
+(⊨ :firstsuccess-three-first
+   #2
+   (⚡∨ (⊘ #6 #3) (⊘ #1 #0) (⊘ #1 #0)))
+
+; Three expressions - third succeeds
+(⊨ :firstsuccess-three-third
+   #5
+   (⚡∨ (⊘ #1 #0) (⊘ #1 #0) (⊕ #2 #3)))
+
+; ============================================================================
+; Integration Tests
+; ============================================================================
+
+(≋ "Testing integration scenarios...")
+
+; Chain of error handling
+(⊨ :chain-or-then-with
+   :recovered
+   (⚡ (⚡⊳ (⊘ #1 #0) (⚠ :fallback-error #0))
+      (λ (e) :recovered)))
+
+; All-succeed with error case handling
+(⊨ :chain-all-with-case
+   :caught
+   (⚡⊳ (⚡∧ (⊘ #6 #2) (⊘ #1 #0)) :caught))
+
+; First-success with finally
+(⊨ :chain-first-finally
+   #3
+   (⚡⟲ (⚡∨ (⊘ #1 #0) (⊘ #6 #2)) :cleanup))
+
+; Safe division function
+(≔ safe-div (λ (x y)
+  (⚡⊳ (⊘ x y) #0)))
+
+(⊨ :safe-div-success
+   #3
+   (safe-div #9 #3))
+
+(⊨ :safe-div-error
+   #0
+   (safe-div #9 #0))
+
+; Multiple operations with fallback
+(⊨ :multi-ops
+   #6
+   (⊕ (⚡⊳ (⊘ #6 #2) #0)
+      (⚡⊳ (⊘ #9 #3) #0)))
+
+(≋ "\n✅ All exception handling macro tests passed!")

@@ -610,6 +610,32 @@ Cell* prim_is_error(Cell* args) {
     return cell_bool(cell_is_error(arg1(args)));
 }
 
+/* ⚠⊙ - get error type (returns symbol with : prefix) */
+Cell* prim_error_type(Cell* args) {
+    Cell* val = arg1(args);
+    if (!cell_is_error(val)) {
+        return cell_error("not-an-error", val);
+    }
+    const char* msg = cell_error_message(val);
+    /* Only prepend : if message doesn't already start with : */
+    if (msg[0] == ':') {
+        return cell_symbol(msg);
+    } else {
+        char buffer[256];
+        snprintf(buffer, sizeof(buffer), ":%s", msg);
+        return cell_symbol(buffer);
+    }
+}
+
+/* ⚠→ - get error data */
+Cell* prim_error_data(Cell* args) {
+    Cell* val = arg1(args);
+    if (!cell_is_error(val)) {
+        return cell_error("not-an-error", val);
+    }
+    return cell_error_data(val);
+}
+
 /* ⊢ - assert */
 Cell* prim_assert(Cell* args) {
     Cell* condition = arg1(args);
@@ -4711,6 +4737,8 @@ static Primitive primitives[] = {
     /* Debug & Error Handling */
     {"⚠", prim_error_create, 2, {"Create error value", ":symbol → α → ⚠"}},
     {"⚠?", prim_is_error, 1, {"Test if value is an error", "α → 𝔹"}},
+    {"⚠⊙", prim_error_type, 1, {"Get error type as symbol", "⚠ → :symbol"}},
+    {"⚠→", prim_error_data, 1, {"Get error data", "⚠ → α"}},
     {"⊢", prim_assert, 2, {"Assert condition is true, error otherwise", "𝔹 → :symbol → 𝔹 | ⚠"}},
     {"⟲", prim_trace, 1, {"Print value for debugging and return it", "α → α"}},
 

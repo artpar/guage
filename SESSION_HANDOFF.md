@@ -1,13 +1,60 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-01-29 (Day 81 COMPLETE)
+Updated: 2026-01-29 (Day 82 COMPLETE)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 81 - Iteration Macros (2026-01-29)
+# Session Handoff: Day 82 - Exception Handling Macros (2026-01-29)
 
-## 🎉 Day 81 Progress - Iteration & Sequencing Macros!
+## 🎉 Day 82 Progress - Exception Handling Macros!
+
+**RESULT:** 80/80 test files passing (100%), 44 new tests (exception macros)
+
+### New Feature: Exception Handling Macros Module
+
+New `stdlib/macros_exception.scm` provides convenient error handling patterns:
+
+**Core Error Handling:**
+- `⚡` (try-with) - Execute body, call handler if error
+  ```scheme
+  (⚡ (⊘ #6 #2) (λ (e) :error))   ; → #3 (success)
+  (⚡ (⊘ #1 #0) (λ (e) :error))   ; → :error (handler called)
+  ```
+
+- `⚡⊳` (try-or) - Execute with fallback default on error
+  ```scheme
+  (⚡⊳ (⊘ #1 #0) #0)              ; → #0 (default on error)
+  ```
+
+- `⚡∅` (ignore-errors) - Execute, return nil on error
+  ```scheme
+  (⚡∅ (⊘ #1 #0))                 ; → ∅ (error ignored)
+  ```
+
+**Error Inspection:**
+- `⚡?` (error-type?) - Check if error has specific type
+- `⚡⊙` (error-data) - Extract error data safely
+
+**Combinators:**
+- `⚡∧` (all-succeed) - Execute all, fail if any fails
+- `⚡∨` (first-success) - Return first successful result
+- `⚡⟲` (try-finally) - Execute with cleanup
+- `⚡↺` (retry) - Retry on error up to n times
+
+### New Primitives (2)
+
+Added error introspection primitives:
+- `⚠⊙` - Get error type as symbol
+- `⚠→` - Get error data
+
+### Bug Fix: Macro Expansion in Lambdas
+
+Fixed critical bug where macros containing nested lambdas didn't work inside other lambdas. Solution: expand macros BEFORE De Bruijn conversion in lambda bodies.
+
+---
+
+## Previous Day: Day 81 - Iteration Macros
 
 **RESULT:** 79/79 test files passing (100%), 31 new tests (iteration macros)
 
@@ -17,36 +64,15 @@ New `stdlib/macros_iteration.scm` provides iteration and sequencing constructs:
 
 **Sequencing:**
 - `⊎` (begin/progn) - Sequence expressions, return last
-  ```scheme
-  (⊎ (⟲ :start) (do-work) (⟲ :end) :result)  ; → :result
-  ```
 
 **Iteration:**
 - `⊲*` (for-each) - Iterate with side effects (returns nil)
-  ```scheme
-  (⊲* (λ (x) (⟲ x)) (⟨⟩ :a (⟨⟩ :b ∅)))  ; prints :a, :b, returns ∅
-  ```
-
 - `⟳` (dotimes) - Repeat body n times
-  ```scheme
-  (⟳ #5 (⟲ :tick))  ; prints :tick 5 times
-  ```
 
 **Comprehensions:**
 - `⊎↦` (list-comp) - List comprehension with variable binding
-  ```scheme
-  (⊎↦ (⊗ :x #2) (:x (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅))))  ; → ⟨#2 ⟨#4 ⟨#6 ∅⟩⟩⟩
-  ```
-
 - `⊎⊲` (filter-comp) - Filter comprehension with inline predicate
-  ```scheme
-  (⊎⊲ (> :x #3) (:x (⟨⟩ #1 (⟨⟩ #5 ∅))))  ; → ⟨#5 ∅⟩
-  ```
-
 - `⟳←` (reduce) - Fold with cleaner syntax
-  ```scheme
-  (⟳← (⊕ :acc :x) #0 (:x (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅)))))  ; → #6
-  ```
 
 ---
 
@@ -317,11 +343,12 @@ Pattern-based macros with multiple clauses and pattern matching on syntax.
 ## Current Status 🎯
 
 **System State:**
-- **Primitives:** 125 total
-- **Tests:** 79/79 test files passing (100%)
+- **Primitives:** 127 total (added ⚠⊙, ⚠→)
+- **Tests:** 80/80 test files passing (100%)
 - **Self-Hosting Eval Tests:** 66/66 passing (100%) - includes N-function mutual recursion
 - **Data Flow Tests:** 42/42 tests passing
-- **Iteration Macros:** 31/31 tests passing (new!)
+- **Exception Macros:** 44/44 tests passing (new!)
+- **Iteration Macros:** 31/31 tests passing
 - **Pattern Macros:** 29/29 tests passing
 - **Rest Pattern Syntax:** 51/51 tests passing
 - **Variadic Stdlib Macros:** 58/58 tests passing
@@ -348,31 +375,33 @@ Pattern-based macros with multiple clauses and pattern matching on syntax.
 
 **Focus: Language Strength & Completeness**
 
-1. ✅ **Iteration Macros** (2-3 hours) - COMPLETED DAY 81
+1. ✅ **Exception Handling Macros** (2-3 hours) - COMPLETED DAY 82
+   - ⚡ (try-with), ⚡⊳ (try-or), ⚡∅ (ignore-errors)
+   - ⚡?, ⚡⊙, ⚡∧, ⚡∨, ⚡⟲, ⚡↺
+   - New primitives: ⚠⊙, ⚠→
+   - 44 tests in test file
+
+2. ✅ **Iteration Macros** (2-3 hours) - COMPLETED DAY 81
    - ⊎ (begin), ⊲* (for-each), ⟳ (dotimes)
    - ⊎↦ (list-comp), ⊎⊲ (filter-comp), ⟳← (reduce)
    - 31 tests in 2 test files
 
-2. ✅ **Data Flow Analysis** (3-4 hours) - COMPLETED DAY 80
+3. ✅ **Data Flow Analysis** (3-4 hours) - COMPLETED DAY 80
    - Set operations (∪∪, ∩, ∖, ⊆, ≡∪)
    - Fixed point iteration (⊛⊛)
    - Reaching definitions, live variables, available expressions
 
-3. ✅ **N-Function Mutual Recursion** (1-2 hours) - COMPLETED DAY 80
+4. ✅ **N-Function Mutual Recursion** (1-2 hours) - COMPLETED DAY 80
    - Extended from exactly 2 functions to any number
    - Tested with 3-function mod3 and 4-function state machine
 
-4. **String Manipulation Stdlib** (2-3 hours) - MEDIUM VALUE
-   - Higher-level string functions built on primitives
-   - split, join, trim, replace, etc.
+5. ✅ **String Manipulation Stdlib** - ALREADY COMPLETE
+   - stdlib/string.scm already exists with all functions
+   - split, join, trim, replace, contains, index-of, etc.
 
-5. **Type Annotations** (4-6 hours) - HIGH VALUE
+6. **Type Annotations** (4-6 hours) - HIGH VALUE
    - Add optional type hints to function definitions
    - Foundation for gradual typing and self-hosting
-
-6. **Exception Handling Macros** (2-3 hours) - MEDIUM VALUE
-   - try/catch style error handling built on ⚠
-   - Convenient error recovery patterns
 
 ---
 
@@ -380,6 +409,7 @@ Pattern-based macros with multiple clauses and pattern matching on syntax.
 
 | Day | Feature | Tests |
 |-----|---------|-------|
+| 82 | Exception Handling Macros (⚡, ⚡⊳, ⚡∅, etc.) + ⚠⊙, ⚠→ primitives | 80/80 (100%), 44 new tests |
 | 81 | Iteration Macros (⊎, ⊲*, ⟳, ⊎↦, ⊎⊲, ⟳←) | 79/79 (100%), 31 new tests |
 | 80 | Data Flow Analysis + N-Function Mutual Recursion | 77/77 (100%), 56 new tests |
 | 79 | Variadic Stdlib Macros (∧*, ∨*, ⇒*, ≔⇊, ⇤) | 76/76 (100%), 58 variadic tests |
@@ -390,8 +420,6 @@ Pattern-based macros with multiple clauses and pattern matching on syntax.
 | 74 | Mutual Recursion in Letrec | 71/71 (100%), 52 eval tests |
 | 73 | Recursive Letrec via Y-Combinator | 71/71 (100%), 47 eval tests |
 | 72 | Self-Hosting Evaluator Complete (≔, ⊛, ⌞) | 71/71 (100%), 42 eval tests |
-| 71 | Self-Hosting Evaluator Enhanced | 71/71 (100%), 32 eval tests |
-| 70 | Macro & Module Enhancements | 71/71 (100%) |
 
 **Full historical details:** See `docs/archive/2026-01/sessions/DAYS_43_68_HISTORY.md`
 
@@ -402,7 +430,7 @@ Pattern-based macros with multiple clauses and pattern matching on syntax.
 ### Build & Test
 ```bash
 make              # Build (O2 optimized, 32MB stack)
-make test         # Run full test suite (71 test files)
+make test         # Run full test suite (80 test files)
 make repl         # Start interactive REPL
 make clean        # Clean build artifacts
 make rebuild      # Clean + rebuild
@@ -534,53 +562,63 @@ make rebuild      # Clean + rebuild
 ### Quick Start
 ```bash
 cd /Users/artpar/workspace/code/guage
-make test                    # Verify 79/79 tests pass
+make test                    # Verify 80/80 tests pass
 git log --oneline -3         # See recent commits
 ```
 
 ### System State Summary
 - **Core evaluator:** COMPLETE with N-function mutual recursion (66 eval tests)
 - **Data flow analysis:** COMPLETE - set ops, fixed point, reaching defs, live vars
+- **Exception macros:** COMPLETE - ⚡, ⚡⊳, ⚡∅, ⚡?, ⚡⊙, ⚡∧, ⚡∨, ⚡⟲, ⚡↺ (44 tests)
 - **Iteration macros:** COMPLETE - ⊎, ⊲*, ⟳, ⊎↦, ⊎⊲, ⟳← (31 tests)
 - **Pattern macros:** COMPLETE with unlimited arity via ellipsis (Day 78-79)
 - **Stdlib macros:** All macros now support unlimited args/clauses/bindings
+- **String stdlib:** COMPLETE - split, join, trim, replace, contains, index-of
 - **Focus:** Language strength and completeness
 
-### Next: String Manipulation Stdlib (2-3 hours)
+### Next: Type Annotations (4-6 hours)
 
-**Add common string functions built on primitives:**
-- `⊏` (split) - Split string by delimiter
-- `⊎⊏` (join) - Join list with delimiter
-- `⊏←` (trim) - Remove whitespace
-- `⊏↔` (replace) - Replace substring
+**Add optional type hints to function definitions:**
+- Foundation for gradual typing
+- Enables better documentation and error messages
+- Step toward self-hosting
 
 ### Key Files
 ```
-bootstrap/stdlib/macros_iteration.scm # NEW: Iteration macros (⊎, ⊲*, ⟳, ⊎↦, ⊎⊲, ⟳←)
+bootstrap/stdlib/macros_exception.scm # NEW: Exception macros (⚡, ⚡⊳, ⚡∅, etc.)
+bootstrap/stdlib/macros_iteration.scm # Iteration macros (⊎, ⊲*, ⟳, ⊎↦, ⊎⊲, ⟳←)
 bootstrap/stdlib/dataflow.scm         # Data flow analysis (∪∪, ∩, ∖, ⊆, ≡∪, ⊛⊛, ⇝⊃, ⇝←)
+bootstrap/stdlib/string.scm           # String utilities (split, join, trim, etc.)
 bootstrap/stdlib/eval.scm             # Main evaluator - with N-function mutual recursion
-bootstrap/stdlib/macros_control.scm   # Control macros (∧*, ∨*, ⇒, ⇏) - variadic
-bootstrap/stdlib/macros_pattern.scm   # Pattern macros (⇒*, ≔⇊, ⇤) - variadic
-bootstrap/tests/test_iteration_macros.test  # NEW: 20 iteration tests (Part 1)
-bootstrap/tests/test_iteration_macros2.test # NEW: 11 iteration tests (Part 2)
-bootstrap/tests/test_dataflow.test    # 42 data flow tests
+bootstrap/tests/test_exception_macros.test # NEW: 44 exception tests
 bootstrap/tests/test_eval.test        # 66 eval tests
 ```
 
-### What We Built Today (Day 81)
+### What We Built Today (Day 82)
 
-**Iteration Macros Module:**
+**Exception Handling Macros Module:**
 
 | Symbol | Operation | Description |
 |--------|-----------|-------------|
-| ⊎ | begin/progn | Sequence expressions, return last |
-| ⊲* | for-each | Iterate with side effects |
-| ⟳ | dotimes | Repeat body n times |
-| ⊎↦ | list-comp | List comprehension |
-| ⊎⊲ | filter-comp | Filter comprehension |
-| ⟳← | reduce | Fold with cleaner syntax |
+| ⚡ | try-with | Execute body, call handler if error |
+| ⚡⊳ | try-or | Execute with fallback default |
+| ⚡∅ | ignore-errors | Return nil on error |
+| ⚡? | error-type? | Check if error has specific type |
+| ⚡⊙ | error-data | Extract error data safely |
+| ⚡∧ | all-succeed | Execute all, fail if any fails |
+| ⚡∨ | first-success | Return first successful result |
+| ⚡⟲ | try-finally | Execute with cleanup |
+| ⚡↺ | retry | Retry on error up to n times |
+
+**New Primitives:**
+| Symbol | Type | Description |
+|--------|------|-------------|
+| ⚠⊙ | ⚠ → :symbol | Get error type |
+| ⚠→ | ⚠ → α | Get error data |
+
+**Bug Fix:** Macros with nested lambdas now work correctly inside other lambdas. Solution: expand macros BEFORE De Bruijn conversion.
 
 ---
 
-**Last Updated:** 2026-01-29 (Day 81 complete)
-**Next Session:** Day 82 - String manipulation stdlib or type annotations
+**Last Updated:** 2026-01-29 (Day 82 complete)
+**Next Session:** Day 83 - Type annotations
