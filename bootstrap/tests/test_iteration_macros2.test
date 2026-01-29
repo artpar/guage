@@ -1,0 +1,83 @@
+; ═══════════════════════════════════════════════════════════════
+; Test: Iteration Macros - Part 2 (Day 81)
+; ═══════════════════════════════════════════════════════════════
+; Tests for stdlib iteration/sequencing macros (continued)
+; - ⊎⊲ (filter comprehension)
+; - Nested/combined usage
+; - ⟳← (reduce)
+; ═══════════════════════════════════════════════════════════════
+
+(⋘ "bootstrap/stdlib/macros_iteration.scm")
+
+; ═══════════════════════════════════════════════════════════════
+; ⊎⊲ (list filter comprehension) - Filter with inline predicate
+; ═══════════════════════════════════════════════════════════════
+
+; Filter even numbers
+(⊨ (⌜ :filtercomp-even)
+   (⟨⟩ #2 (⟨⟩ #4 ∅))
+   (⊎⊲ (≡ (% :x #2) #0) (:x (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 (⟨⟩ #4 (⟨⟩ #5 ∅))))))))
+
+; Filter greater than 3
+(⊨ (⌜ :filtercomp-gt3)
+   (⟨⟩ #4 (⟨⟩ #5 ∅))
+   (⊎⊲ (> :x #3) (:x (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 (⟨⟩ #4 (⟨⟩ #5 ∅))))))))
+
+; Filter all pass
+(⊨ (⌜ :filtercomp-all)
+   (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅)))
+   (⊎⊲ #t (:x (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅))))))
+
+; Filter none pass
+(⊨ (⌜ :filtercomp-none)
+   ∅
+   (⊎⊲ #f (:x (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅))))))
+
+; ═══════════════════════════════════════════════════════════════
+; Nested/Combined Usage
+; ═══════════════════════════════════════════════════════════════
+
+; Begin inside list comprehension body
+(⊨ (⌜ :nested-begin-in-comp)
+   (⟨⟩ #3 (⟨⟩ #6 (⟨⟩ #9 ∅)))
+   (⊎↦ (⊎ (⊗ :x #2) (⊗ :x #3)) (:x (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅))))))
+
+; List comprehension with begin for tracing
+(⊨ (⌜ :comp-with-trace)
+   (⟨⟩ #10 (⟨⟩ #20 ∅))
+   (⊎↦ (⊎ (⟲ :processing) (⊗ :n #10)) (:n (⟨⟩ #1 (⟨⟩ #2 ∅)))))
+
+; ═══════════════════════════════════════════════════════════════
+; ⟳← (reduce) - Fold with cleaner syntax
+; ═══════════════════════════════════════════════════════════════
+
+; Sum using reduce
+(⊨ (⌜ :reduce-sum)
+   #15
+   (⟳← (⊕ :acc :x) #0 (:x (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 (⟨⟩ #4 (⟨⟩ #5 ∅))))))))
+
+; Product using reduce
+(⊨ (⌜ :reduce-product)
+   #120
+   (⟳← (⊗ :acc :x) #1 (:x (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 (⟨⟩ #4 (⟨⟩ #5 ∅))))))))
+
+; Max using reduce
+(⊨ (⌜ :reduce-max)
+   #9
+   (⟳← (? (> :x :acc) :x :acc) #0 (:x (⟨⟩ #3 (⟨⟩ #1 (⟨⟩ #9 (⟨⟩ #4 ∅)))))))
+
+; Count using reduce
+(⊨ (⌜ :reduce-count)
+   #5
+   (⟳← (⊕ :acc #1) #0 (:x (⟨⟩ :a (⟨⟩ :b (⟨⟩ :c (⟨⟩ :d (⟨⟩ :e ∅))))))))
+
+; Empty list reduce
+(⊨ (⌜ :reduce-empty)
+   #42
+   (⟳← (⊕ :acc :x) #42 (:x ∅)))
+
+; ═══════════════════════════════════════════════════════════════
+; Summary: 11 iteration macro tests (Part 2)
+; ═══════════════════════════════════════════════════════════════
+
+"✓ 11 iteration macro tests (Part 2) passed"

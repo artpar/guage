@@ -1,0 +1,101 @@
+; ═══════════════════════════════════════════════════════════════
+; Test: Iteration Macros - Part 1 (Day 81)
+; ═══════════════════════════════════════════════════════════════
+; Tests for stdlib iteration/sequencing macros
+; - ⊎ (begin/progn) - sequence expressions
+; - ⊲* (for-each) - iterate with side effects
+; - ⟳ (dotimes) - repeat n times
+; - ⊎↦ (list comprehension syntax)
+; ═══════════════════════════════════════════════════════════════
+
+(⋘ "bootstrap/stdlib/macros_iteration.scm")
+
+; ═══════════════════════════════════════════════════════════════
+; ⊎ (begin/progn) - Sequence expressions, return last
+; ═══════════════════════════════════════════════════════════════
+
+; Single expression - just returns it
+(⊨ (⌜ :begin-single) #42 (⊎ #42))
+
+; Two expressions - returns last
+(⊨ (⌜ :begin-two) #2 (⊎ #1 #2))
+
+; Three expressions - returns last
+(⊨ (⌜ :begin-three) #3 (⊎ #1 #2 #3))
+
+; Five expressions - returns last
+(⊨ (⌜ :begin-five) #5 (⊎ #1 #2 #3 #4 #5))
+
+; Ten expressions - returns last
+(⊨ (⌜ :begin-ten) #10 (⊎ #1 #2 #3 #4 #5 #6 #7 #8 #9 #10))
+
+; With trace side effects - all execute, returns last
+(⊨ (⌜ :begin-with-trace) :done (⊎ (⟲ :a) (⟲ :b) :done))
+
+; Nested begin
+(⊨ (⌜ :begin-nested) #9 (⊎ (⊎ #1 #2) (⊎ #3 #9)))
+
+; Begin with computation
+(⊨ (⌜ :begin-compute) #6 (⊎ (⊕ #1 #2) (⊕ #2 #3) (⊕ #1 #5)))
+
+; ═══════════════════════════════════════════════════════════════
+; ⊲* (for-each) - Iterate over list with side effects
+; ═══════════════════════════════════════════════════════════════
+
+; For-each returns nil after iteration
+(⊨ (⌜ :foreach-empty) ∅ (⊲* (λ (x) x) ∅))
+
+; For-each on single element list
+(⊨ (⌜ :foreach-single) ∅ (⊲* (λ (x) (⊗ x #2)) (⟨⟩ #5 ∅)))
+
+; For-each on multiple elements - returns nil
+(⊨ (⌜ :foreach-multi) ∅ (⊲* (λ (x) x) (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅)))))
+
+; For-each with trace (side effect)
+(⊨ (⌜ :foreach-trace) ∅ (⊲* (λ (x) (⟲ x)) (⟨⟩ :a (⟨⟩ :b (⟨⟩ :c ∅)))))
+
+; ═══════════════════════════════════════════════════════════════
+; ⟳ (dotimes) - Repeat body n times
+; ═══════════════════════════════════════════════════════════════
+
+; Zero times - returns nil
+(⊨ (⌜ :dotimes-zero) ∅ (⟳ #0 :body))
+
+; One time - returns nil after execution
+(⊨ (⌜ :dotimes-one) ∅ (⟳ #1 :body))
+
+; Multiple times - returns nil
+(⊨ (⌜ :dotimes-five) ∅ (⟳ #5 :body))
+
+; With trace (verify side effect)
+(⊨ (⌜ :dotimes-trace) ∅ (⟳ #3 (⟲ :tick)))
+
+; ═══════════════════════════════════════════════════════════════
+; ⊎↦ (list comprehension) - Build list from pattern
+; ═══════════════════════════════════════════════════════════════
+
+; Simple list comprehension - double each
+(⊨ (⌜ :listcomp-double)
+   (⟨⟩ #2 (⟨⟩ #4 (⟨⟩ #6 ∅)))
+   (⊎↦ (⊗ :x #2) (:x (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅))))))
+
+; Identity list comprehension
+(⊨ (⌜ :listcomp-identity)
+   (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅)))
+   (⊎↦ :x (:x (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅))))))
+
+; List comprehension with complex expression
+(⊨ (⌜ :listcomp-complex)
+   (⟨⟩ #10 (⟨⟩ #20 (⟨⟩ #30 ∅)))
+   (⊎↦ (⊗ :n #10) (:n (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅))))))
+
+; Empty list comprehension
+(⊨ (⌜ :listcomp-empty)
+   ∅
+   (⊎↦ :x (:x ∅)))
+
+; ═══════════════════════════════════════════════════════════════
+; Summary: 20 iteration macro tests (Part 1)
+; ═══════════════════════════════════════════════════════════════
+
+"✓ 20 iteration macro tests (Part 1) passed"

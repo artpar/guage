@@ -1,13 +1,56 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-01-29 (Day 80 COMPLETE)
+Updated: 2026-01-29 (Day 81 COMPLETE)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 80 - Data Flow Analysis & N-Function Mutual Recursion (2026-01-29)
+# Session Handoff: Day 81 - Iteration Macros (2026-01-29)
 
-## 🎉 Day 80 Progress - Two Major Features!
+## 🎉 Day 81 Progress - Iteration & Sequencing Macros!
+
+**RESULT:** 79/79 test files passing (100%), 31 new tests (iteration macros)
+
+### New Feature: Iteration Macros Module
+
+New `stdlib/macros_iteration.scm` provides iteration and sequencing constructs:
+
+**Sequencing:**
+- `⊎` (begin/progn) - Sequence expressions, return last
+  ```scheme
+  (⊎ (⟲ :start) (do-work) (⟲ :end) :result)  ; → :result
+  ```
+
+**Iteration:**
+- `⊲*` (for-each) - Iterate with side effects (returns nil)
+  ```scheme
+  (⊲* (λ (x) (⟲ x)) (⟨⟩ :a (⟨⟩ :b ∅)))  ; prints :a, :b, returns ∅
+  ```
+
+- `⟳` (dotimes) - Repeat body n times
+  ```scheme
+  (⟳ #5 (⟲ :tick))  ; prints :tick 5 times
+  ```
+
+**Comprehensions:**
+- `⊎↦` (list-comp) - List comprehension with variable binding
+  ```scheme
+  (⊎↦ (⊗ :x #2) (:x (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅))))  ; → ⟨#2 ⟨#4 ⟨#6 ∅⟩⟩⟩
+  ```
+
+- `⊎⊲` (filter-comp) - Filter comprehension with inline predicate
+  ```scheme
+  (⊎⊲ (> :x #3) (:x (⟨⟩ #1 (⟨⟩ #5 ∅))))  ; → ⟨#5 ∅⟩
+  ```
+
+- `⟳←` (reduce) - Fold with cleaner syntax
+  ```scheme
+  (⟳← (⊕ :acc :x) #0 (:x (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅)))))  ; → #6
+  ```
+
+---
+
+## Previous Day: Day 80 - Data Flow Analysis & N-Function Mutual Recursion
 
 **RESULT:** 77/77 test files passing (100%), 56 new tests (42 dataflow + 14 mutual recursion)
 
@@ -275,9 +318,10 @@ Pattern-based macros with multiple clauses and pattern matching on syntax.
 
 **System State:**
 - **Primitives:** 125 total
-- **Tests:** 77/77 test files passing (100%)
+- **Tests:** 79/79 test files passing (100%)
 - **Self-Hosting Eval Tests:** 66/66 passing (100%) - includes N-function mutual recursion
-- **Data Flow Tests:** 42/42 tests passing (new!)
+- **Data Flow Tests:** 42/42 tests passing
+- **Iteration Macros:** 31/31 tests passing (new!)
 - **Pattern Macros:** 29/29 tests passing
 - **Rest Pattern Syntax:** 51/51 tests passing
 - **Variadic Stdlib Macros:** 58/58 tests passing
@@ -300,14 +344,14 @@ Pattern-based macros with multiple clauses and pattern matching on syntax.
 
 ---
 
-## 🎯 What to Do Next (Day 80+)
+## 🎯 What to Do Next (Day 81+)
 
 **Focus: Language Strength & Completeness**
 
-1. **More Stdlib Macros** (2-3 hours) - HIGH VALUE
-   - Add do-loop, for-each, map*, filter* using variadic ellipsis
-   - Build iterator/loop constructs
-   - Essential for practical programming
+1. ✅ **Iteration Macros** (2-3 hours) - COMPLETED DAY 81
+   - ⊎ (begin), ⊲* (for-each), ⟳ (dotimes)
+   - ⊎↦ (list-comp), ⊎⊲ (filter-comp), ⟳← (reduce)
+   - 31 tests in 2 test files
 
 2. ✅ **Data Flow Analysis** (3-4 hours) - COMPLETED DAY 80
    - Set operations (∪∪, ∩, ∖, ⊆, ≡∪)
@@ -326,12 +370,17 @@ Pattern-based macros with multiple clauses and pattern matching on syntax.
    - Add optional type hints to function definitions
    - Foundation for gradual typing and self-hosting
 
+6. **Exception Handling Macros** (2-3 hours) - MEDIUM VALUE
+   - try/catch style error handling built on ⚠
+   - Convenient error recovery patterns
+
 ---
 
 ## Recent Milestones
 
 | Day | Feature | Tests |
 |-----|---------|-------|
+| 81 | Iteration Macros (⊎, ⊲*, ⟳, ⊎↦, ⊎⊲, ⟳←) | 79/79 (100%), 31 new tests |
 | 80 | Data Flow Analysis + N-Function Mutual Recursion | 77/77 (100%), 56 new tests |
 | 79 | Variadic Stdlib Macros (∧*, ∨*, ⇒*, ≔⇊, ⇤) | 76/76 (100%), 58 variadic tests |
 | 78 | Rest Pattern Syntax ($var ... ellipsis) | 75/75 (100%), 51 rest pattern tests |
@@ -384,6 +433,18 @@ make rebuild      # Clean + rebuild
 ---
 
 ## Session End Checklist ✅
+
+**Day 81 Complete (2026-01-29):**
+- ✅ Created `bootstrap/stdlib/macros_iteration.scm` (new module)
+- ✅ Implemented ⊎ (begin/progn) - sequence expressions, return last
+- ✅ Implemented ⊲* (for-each) - iterate with side effects, return nil
+- ✅ Implemented ⟳ (dotimes) - repeat body n times
+- ✅ Implemented ⊎↦ (list-comp) - list comprehension with variable binding
+- ✅ Implemented ⊎⊲ (filter-comp) - filter comprehension with inline predicate
+- ✅ Implemented ⟳← (reduce) - fold with cleaner syntax
+- ✅ Created `bootstrap/tests/test_iteration_macros.test` (20 tests)
+- ✅ Created `bootstrap/tests/test_iteration_macros2.test` (11 tests)
+- ✅ All 79/79 test files passing (100%)
 
 **Day 80 Complete (2026-01-29):**
 - ✅ Generalized mutual recursion to support N functions (not just 2)
@@ -473,56 +534,53 @@ make rebuild      # Clean + rebuild
 ### Quick Start
 ```bash
 cd /Users/artpar/workspace/code/guage
-make test                    # Verify 77/77 tests pass
+make test                    # Verify 79/79 tests pass
 git log --oneline -3         # See recent commits
 ```
 
 ### System State Summary
 - **Core evaluator:** COMPLETE with N-function mutual recursion (66 eval tests)
 - **Data flow analysis:** COMPLETE - set ops, fixed point, reaching defs, live vars
+- **Iteration macros:** COMPLETE - ⊎, ⊲*, ⟳, ⊎↦, ⊎⊲, ⟳← (31 tests)
 - **Pattern macros:** COMPLETE with unlimited arity via ellipsis (Day 78-79)
-- **Stdlib macros:** All 5 macros now support unlimited args/clauses/bindings
+- **Stdlib macros:** All macros now support unlimited args/clauses/bindings
 - **Focus:** Language strength and completeness
 
-### Next: More Stdlib Macros (2-3 hours)
+### Next: String Manipulation Stdlib (2-3 hours)
 
-**Add common iteration/loop constructs using variadic ellipsis:**
-- `do*` - Simple do-loop
-- `for-each*` - Iterate over list with side effects
-- `map*` - Transform list elements
-- `filter*` - Select list elements
+**Add common string functions built on primitives:**
+- `⊏` (split) - Split string by delimiter
+- `⊎⊏` (join) - Join list with delimiter
+- `⊏←` (trim) - Remove whitespace
+- `⊏↔` (replace) - Replace substring
 
 ### Key Files
 ```
-bootstrap/stdlib/dataflow.scm         # NEW: Data flow analysis (∪∪, ∩, ∖, ⊆, ≡∪, ⊛⊛, ⇝⊃, ⇝←)
-bootstrap/stdlib/eval.scm             # Main evaluator - now with N-function mutual recursion
+bootstrap/stdlib/macros_iteration.scm # NEW: Iteration macros (⊎, ⊲*, ⟳, ⊎↦, ⊎⊲, ⟳←)
+bootstrap/stdlib/dataflow.scm         # Data flow analysis (∪∪, ∩, ∖, ⊆, ≡∪, ⊛⊛, ⇝⊃, ⇝←)
+bootstrap/stdlib/eval.scm             # Main evaluator - with N-function mutual recursion
 bootstrap/stdlib/macros_control.scm   # Control macros (∧*, ∨*, ⇒, ⇏) - variadic
 bootstrap/stdlib/macros_pattern.scm   # Pattern macros (⇒*, ≔⇊, ⇤) - variadic
-bootstrap/tests/test_dataflow.test    # NEW: 42 data flow tests
-bootstrap/tests/test_eval.test        # Extended: 66 eval tests
+bootstrap/tests/test_iteration_macros.test  # NEW: 20 iteration tests (Part 1)
+bootstrap/tests/test_iteration_macros2.test # NEW: 11 iteration tests (Part 2)
+bootstrap/tests/test_dataflow.test    # 42 data flow tests
+bootstrap/tests/test_eval.test        # 66 eval tests
 ```
 
-### What We Built Today (Day 80)
+### What We Built Today (Day 81)
 
-**1. N-Function Mutual Recursion:**
-- Extended Y-combinator pair structure to handle any number of functions
-- Works via nested pairs: `⟨f₁ ⟨f₂ ⟨f₃ ∅⟩⟩⟩`
-- Access via `◁ ▷ ▷ self` for f₃ in 3-function group
+**Iteration Macros Module:**
 
-**2. Data Flow Analysis Module:**
-
-| Symbol | Operation | Type |
-|--------|-----------|------|
-| ∪∪ | Set union | [α] → [α] → [α] |
-| ∩ | Set intersection | [α] → [α] → [α] |
-| ∖ | Set difference | [α] → [α] → [α] |
-| ⊆ | Subset test | [α] → [α] → 𝔹 |
-| ≡∪ | Set equality | [α] → [α] → 𝔹 |
-| ⊛⊛ | Fixed point | (α → α) → α → α |
-| ⇝⊃-transfer | Reaching defs | gen → kill → in → out |
-| ⇝←-transfer | Live vars | use → def → out → in |
+| Symbol | Operation | Description |
+|--------|-----------|-------------|
+| ⊎ | begin/progn | Sequence expressions, return last |
+| ⊲* | for-each | Iterate with side effects |
+| ⟳ | dotimes | Repeat body n times |
+| ⊎↦ | list-comp | List comprehension |
+| ⊎⊲ | filter-comp | Filter comprehension |
+| ⟳← | reduce | Fold with cleaner syntax |
 
 ---
 
-**Last Updated:** 2026-01-29 (Day 80 complete)
-**Next Session:** Day 81 - More stdlib macros or type annotations
+**Last Updated:** 2026-01-29 (Day 81 complete)
+**Next Session:** Day 82 - String manipulation stdlib or type annotations
