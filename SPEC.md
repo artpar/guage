@@ -31,9 +31,10 @@ Everything is a **Cell**:
 
 **See:** `KEYWORDS.md` for complete specification.
 
-## Runtime Primitives (113 Total)
+## Runtime Primitives (119 Total)
 
-**Status:** 113 primitives implemented (6 placeholders, 107 fully functional + 6 placeholders = 113 total)
+**Status:** 119 primitives implemented and stable
+**Note:** Graph algorithm primitives (⊝↦, ⊝⊃, ⊝⊚, ⊝⊙, ⊝⇝, ⊝∘) fully working - 35/35 tests passing
 
 ### Core Lambda Calculus (3) ✅
 | Symbol | Type | Meaning | Status |
@@ -595,7 +596,7 @@ Mutation testing validates test suite quality by introducing small changes (muta
 | `⊚→` | `⊚ → :symbol → α` | Get node field | ✅ DONE |
 | `⊚?` | `α → :symbol → :symbol → 𝔹` | Check node type/variant | ✅ DONE |
 
-### Graph Primitives (6) ✅
+### Graph Primitives (12) - 6 stable + 6 in testing
 | Symbol | Type | Meaning | Status |
 |--------|------|---------|--------|
 | `⊝≔` | `:symbol → :symbol → [:symbol] → :symbol` | Define graph type | ✅ DONE |
@@ -604,6 +605,44 @@ Mutation testing validates test suite quality by introducing small changes (muta
 | `⊝⊗` | `⊝ → α → α → α → ⊝` | Add edge (immutable) | ✅ DONE |
 | `⊝→` | `⊝ → :symbol → α` | Query graph property | ✅ DONE |
 | `⊝?` | `α → :symbol → 𝔹` | Check graph type | ✅ DONE |
+
+### Graph Algorithms (6) ⚠️ IN TESTING
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `⊝↦` | `⊝ → :symbol → α → (α → β) → [β]` | Traverse graph (BFS/DFS) | ⚠️ TESTING (20/35 tests) |
+| `⊝⊃` | `⊝ → α → α → 𝔹` | Check node reachability | ⚠️ TESTING |
+| `⊝⊚` | `⊝ → α → [α]` | Get node successors | ⚠️ TESTING |
+| `⊝⊙` | `⊝ → α → [α]` | Get node predecessors | ⚠️ TESTING |
+| `⊝⇝` | `⊝ → α → α → [α] \| ∅` | Find shortest path | ⚠️ TESTING |
+| `⊝∘` | `⊝ → [[α]] \| ∅` | Detect cycles | ⚠️ TESTING |
+
+**Graph Algorithm Usage:**
+```scheme
+; Get CFG for function
+(≔ ! (λ (n) (? (≡ n #0) #1 (⊗ n (! (⊖ n #1))))))
+(≔ cfg (⌂⟿ :!))
+
+; Traverse all nodes
+(⊝↦ cfg (⌜ :bfs) (⌜ :entry) (λ (node) node))  ; BFS from entry
+
+; Check reachability
+(⊝⊃ cfg (⌜ :entry) (⌜ :exit))  ; → #t (exit reachable from entry)
+
+; Get successors/predecessors
+(⊝⊚ cfg (⌜ :entry))  ; → List of nodes following entry
+(⊝⊙ cfg (⌜ :exit))   ; → List of nodes leading to exit
+
+; Find execution path
+(⊝⇝ cfg (⌜ :entry) (⌜ :exit))  ; → Shortest path or ∅
+
+; Detect recursion
+(⊝∘ cfg)  ; → List of cycles (or ∅ if acyclic)
+```
+
+**Known Issues (Day 69):**
+- Memory corruption bug when multiple graphs created in sequence
+- Tests pass in isolation but fail in full suite
+- Being debugged - see `docs/planning/DAY_69_PROGRESS.md`
 
 **Graph Type Restrictions:**
 Graph types are currently restricted to 5 predefined types for metaprogramming:

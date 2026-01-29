@@ -1,0 +1,174 @@
+; test_cfg_algorithms.test - Graph algorithm primitives
+; Tests for ⊝↦, ⊝⊃, ⊝⊚, ⊝⊙, ⊝⇝, ⊝∘
+
+; === Setup: Define :TestGraph type ===
+
+; Define the graph type
+(⊝≔ (⌜ :TestGraph) (⌜ :cfg) (⌜ :nodes) (⌜ :edges) (⌜ :entry) (⌜ :exit) (⌜ :metadata))
+
+; Simple linear graph: A -> B -> C
+(≔ linear-g (⊝ (⌜ :TestGraph)))
+(≔ linear-g (⊝⊕ linear-g (⌜ :A)))
+(≔ linear-g (⊝⊕ linear-g (⌜ :B)))
+(≔ linear-g (⊝⊕ linear-g (⌜ :C)))
+(≔ linear-g (⊝⊗ linear-g (⌜ :A) (⌜ :B) (⌜ :next)))
+(≔ linear-g (⊝⊗ linear-g (⌜ :B) (⌜ :C) (⌜ :next)))
+
+; Branching graph: A -> B, A -> C, B -> D, C -> D
+(≔ branch-g (⊝ (⌜ :TestGraph)))
+(≔ branch-g (⊝⊕ branch-g (⌜ :A)))
+(≔ branch-g (⊝⊕ branch-g (⌜ :B)))
+(≔ branch-g (⊝⊕ branch-g (⌜ :C)))
+(≔ branch-g (⊝⊕ branch-g (⌜ :D)))
+(≔ branch-g (⊝⊗ branch-g (⌜ :A) (⌜ :B) (⌜ :left)))
+(≔ branch-g (⊝⊗ branch-g (⌜ :A) (⌜ :C) (⌜ :right)))
+(≔ branch-g (⊝⊗ branch-g (⌜ :B) (⌜ :D) (⌜ :next)))
+(≔ branch-g (⊝⊗ branch-g (⌜ :C) (⌜ :D) (⌜ :next)))
+
+; Cyclic graph: A -> B -> C -> A
+(≔ cycle-g (⊝ (⌜ :TestGraph)))
+(≔ cycle-g (⊝⊕ cycle-g (⌜ :A)))
+(≔ cycle-g (⊝⊕ cycle-g (⌜ :B)))
+(≔ cycle-g (⊝⊕ cycle-g (⌜ :C)))
+(≔ cycle-g (⊝⊗ cycle-g (⌜ :A) (⌜ :B) (⌜ :next)))
+(≔ cycle-g (⊝⊗ cycle-g (⌜ :B) (⌜ :C) (⌜ :next)))
+(≔ cycle-g (⊝⊗ cycle-g (⌜ :C) (⌜ :A) (⌜ :back)))
+
+; Disconnected graph: A -> B, C -> D
+(≔ disc-g (⊝ (⌜ :TestGraph)))
+(≔ disc-g (⊝⊕ disc-g (⌜ :A)))
+(≔ disc-g (⊝⊕ disc-g (⌜ :B)))
+(≔ disc-g (⊝⊕ disc-g (⌜ :C)))
+(≔ disc-g (⊝⊕ disc-g (⌜ :D)))
+(≔ disc-g (⊝⊗ disc-g (⌜ :A) (⌜ :B) (⌜ :next)))
+(≔ disc-g (⊝⊗ disc-g (⌜ :C) (⌜ :D) (⌜ :next)))
+
+; Empty graph
+(≔ empty-g (⊝ (⌜ :TestGraph)))
+
+; Single node graph
+(≔ single-g (⊝ (⌜ :TestGraph)))
+(≔ single-g (⊝⊕ single-g (⌜ :A)))
+
+; Self-loop graph
+(≔ self-loop-g (⊝ (⌜ :TestGraph)))
+(≔ self-loop-g (⊝⊕ self-loop-g (⌜ :A)))
+(≔ self-loop-g (⊝⊗ self-loop-g (⌜ :A) (⌜ :A) (⌜ :loop)))
+
+; === Tests: Graph Traversal (⊝↦) ===
+
+; Test: BFS traversal of linear graph returns non-empty list
+(⊨ (⌜ :bfs-linear) #t (⟨⟩? (⊝↦ linear-g (⌜ :bfs) (⌜ :A) (λ (n) n))))
+
+; Test: DFS traversal of linear graph returns non-empty list
+(⊨ (⌜ :dfs-linear) #t (⟨⟩? (⊝↦ linear-g (⌜ :dfs) (⌜ :A) (λ (n) n))))
+
+; Test: BFS traversal of branching graph returns non-empty list
+(⊨ (⌜ :bfs-branch) #t (⟨⟩? (⊝↦ branch-g (⌜ :bfs) (⌜ :A) (λ (n) n))))
+
+; Test: DFS traversal of branching graph returns non-empty list
+(⊨ (⌜ :dfs-branch) #t (⟨⟩? (⊝↦ branch-g (⌜ :dfs) (⌜ :A) (λ (n) n))))
+
+; Test: Visitor function returns correct results
+(⊨ (⌜ :traverse-visitor-result) #t (⟨⟩? (⊝↦ linear-g (⌜ :bfs) (⌜ :A) (λ (n) #1))))
+
+; Test: Empty traversal (node not in graph)
+(⊨ (⌜ :traverse-missing-node) ∅ (⊝↦ linear-g (⌜ :bfs) (⌜ :X) (λ (n) n)))
+
+; Test: Cyclic graph BFS (should visit each node once)
+(⊨ (⌜ :bfs-cycle) #t (⟨⟩? (⊝↦ cycle-g (⌜ :bfs) (⌜ :A) (λ (n) n))))
+
+; Test: Invalid mode error
+(⊨ (⌜ :traverse-invalid-mode) #t (⚠? (⊝↦ linear-g (⌜ :invalid) (⌜ :A) (λ (n) n))))
+
+; Test: Non-function visitor error
+(⊨ (⌜ :traverse-non-function) #t (⚠? (⊝↦ linear-g (⌜ :bfs) (⌜ :A) #42)))
+
+; === Tests: Reachability (⊝⊃) ===
+
+; Test: Reachable in linear graph
+(⊨ (⌜ :reach-linear-yes) #t (⊝⊃ linear-g (⌜ :A) (⌜ :C)))
+
+; Test: Unreachable in linear graph (reverse direction)
+(⊨ (⌜ :reach-linear-no) #f (⊝⊃ linear-g (⌜ :C) (⌜ :A)))
+
+; Test: Reachable through branching
+(⊨ (⌜ :reach-branch) #t (⊝⊃ branch-g (⌜ :A) (⌜ :D)))
+
+; Test: Reachable in cycle (all nodes reach all nodes)
+(⊨ (⌜ :reach-cycle-forward) #t (⊝⊃ cycle-g (⌜ :A) (⌜ :C)))
+
+(⊨ (⌜ :reach-cycle-backward) #t (⊝⊃ cycle-g (⌜ :C) (⌜ :A)))
+
+; Test: Unreachable in disconnected graph
+(⊨ (⌜ :reach-disconnected) #f (⊝⊃ disc-g (⌜ :A) (⌜ :C)))
+
+; Test: Node reachable from itself
+(⊨ (⌜ :reach-self) #t (⊝⊃ linear-g (⌜ :A) (⌜ :A)))
+
+; Test: Missing node
+(⊨ (⌜ :reach-missing) #f (⊝⊃ linear-g (⌜ :A) (⌜ :X)))
+
+; === Tests: Successors (⊝⊚) ===
+
+; Test: Successors in linear graph (non-empty)
+(⊨ (⌜ :succ-linear-a) #t (⟨⟩? (⊝⊚ linear-g (⌜ :A))))
+
+; Test: Multiple successors in branching graph (non-empty)
+(⊨ (⌜ :succ-branch) #t (⟨⟩? (⊝⊚ branch-g (⌜ :A))))
+
+; Test: No successors (leaf node)
+(⊨ (⌜ :succ-leaf) ∅ (⊝⊚ linear-g (⌜ :C)))
+
+; === Tests: Predecessors (⊝⊙) ===
+
+; Test: Predecessors in linear graph (non-empty)
+(⊨ (⌜ :pred-linear-c) #t (⟨⟩? (⊝⊙ linear-g (⌜ :C))))
+
+; Test: Multiple predecessors in branching graph (non-empty)
+(⊨ (⌜ :pred-branch-d) #t (⟨⟩? (⊝⊙ branch-g (⌜ :D))))
+
+; Test: No predecessors (root node)
+(⊨ (⌜ :pred-root) ∅ (⊝⊙ linear-g (⌜ :A)))
+
+; === Tests: Path Finding (⊝⇝) ===
+
+; Test: Path in linear graph (non-empty)
+(⊨ (⌜ :path-linear) #t (⟨⟩? (⊝⇝ linear-g (⌜ :A) (⌜ :C))))
+
+; Test: No path (reverse direction)
+(⊨ (⌜ :path-none) ∅ (⊝⇝ linear-g (⌜ :C) (⌜ :A)))
+
+; Test: Path through branching (non-empty)
+(⊨ (⌜ :path-branch) #t (⟨⟩? (⊝⇝ branch-g (⌜ :A) (⌜ :D))))
+
+; Test: Path in cycle (non-empty)
+(⊨ (⌜ :path-cycle) #t (⟨⟩? (⊝⇝ cycle-g (⌜ :A) (⌜ :C))))
+
+; Test: No path in disconnected graph
+(⊨ (⌜ :path-disconnected) ∅ (⊝⇝ disc-g (⌜ :A) (⌜ :C)))
+
+; Test: Path to self (non-empty)
+(⊨ (⌜ :path-self) #t (⟨⟩? (⊝⇝ linear-g (⌜ :A) (⌜ :A))))
+
+; === Tests: Cycle Detection (⊝∘) ===
+
+; Test: No cycles in linear graph
+(⊨ (⌜ :cycles-linear) ∅ (⊝∘ linear-g))
+
+; Test: No cycles in branching graph
+(⊨ (⌜ :cycles-branch) ∅ (⊝∘ branch-g))
+
+; Test: Cycle detected in cyclic graph
+(⊨ (⌜ :cycles-detected) #t (¬ (∅? (⊝∘ cycle-g))))
+
+; Test: Self-loop detection
+(⊨ (⌜ :self-loop) #t (¬ (∅? (⊝∘ self-loop-g))))
+
+; === Edge Cases ===
+
+; Test: Empty graph
+(⊨ (⌜ :empty-graph) ∅ (⊝↦ empty-g (⌜ :bfs) (⌜ :A) (λ (n) n)))
+
+; Test: Single node graph
+(⊨ (⌜ :single-node) #t (⟨⟩? (⊝↦ single-g (⌜ :bfs) (⌜ :A) (λ (n) n))))

@@ -1777,6 +1777,729 @@ Cell* prim_graph_is(Cell* args) {
     return cell_bool(value->data.graph.graph_type == GRAPH_GENERIC);
 }
 
+/* ⊝↦ - Graph traverse (BFS or DFS)
+ * Args: graph :bfs/:dfs start_node visitor_fn
+ * Example: (⊝↦ cfg :bfs :entry (λ (n) n))
+ * Returns: list of visited nodes in traversal order
+ */
+Cell* prim_graph_traverse(Cell* args) {
+    Cell* graph = arg1(args);
+    Cell* mode = arg2(args);
+    Cell* start = arg3(args);
+    Cell* visitor = arg4(args);
+
+    if (!cell_is_graph(graph)) {
+        return cell_error("⊝↦ first arg must be graph", graph);
+    }
+
+    if (!cell_is_symbol(mode)) {
+        return cell_error("⊝↦ mode must be :bfs or :dfs", mode);
+    }
+
+    if (!cell_is_lambda(visitor)) {
+        return cell_error("⊝↦ visitor must be function", visitor);
+    }
+
+    const char* mode_str = cell_get_symbol(mode);
+    bool is_bfs = strcmp(mode_str, ":bfs") == 0;
+    bool is_dfs = strcmp(mode_str, ":dfs") == 0;
+
+    if (!is_bfs && !is_dfs) {
+        return cell_error("⊝↦ mode must be :bfs or :dfs", mode);
+    }
+
+    /* Check if start node exists in graph */
+    Cell* nodes = cell_graph_nodes(graph);
+    bool start_exists = false;
+    Cell* node_iter = nodes;
+    while (cell_is_pair(node_iter)) {
+        if (cell_equal(cell_car(node_iter), start)) {
+            start_exists = true;
+            break;
+        }
+        node_iter = cell_cdr(node_iter);
+    }
+    if (!start_exists) {
+        return cell_nil();  /* Node not in graph, return empty list */
+    }
+
+    /* Get graph edges */
+    Cell* edges = cell_graph_edges(graph);
+
+    /* Build adjacency list: node -> list of successors */
+    /* Use a simple association list */
+    Cell* adj_list = cell_nil();
+
+    Cell* edge_iter = edges;
+    while (cell_is_pair(edge_iter)) {
+        Cell* edge = cell_car(edge_iter);
+        /* Edge format: ⟨from ⟨to ⟨label ∅⟩⟩⟩ */
+        if (cell_is_pair(edge)) {
+            Cell* from = cell_car(edge);
+            Cell* rest = cell_cdr(edge);
+            if (cell_is_pair(rest)) {
+                Cell* to = cell_car(rest);
+
+                /* Find or create entry for 'from' in adj_list */
+                Cell* entry = cell_nil();
+                Cell* adj_iter = adj_list;
+                bool found = false;
+
+                while (cell_is_pair(adj_iter)) {
+                    Cell* pair = cell_car(adj_iter);
+                    Cell* key = cell_car(pair);
+
+                    /* Compare nodes using deep equality */
+                    if (cell_equal(key, from)) {
+                        entry = pair;
+                        found = true;
+                        break;
+                    }
+                    adj_iter = cell_cdr(adj_iter);
+                }
+
+                if (found) {
+                    /* Add 'to' to existing successors list */
+                    Cell* successors = cell_cdr(entry);
+                    cell_retain(to);
+                    Cell* new_successors = cell_cons(to, successors);
+                    /* Update the entry (immutable, rebuild adj_list) */
+                    cell_retain(from);
+                    Cell* new_entry = cell_cons(from, new_successors);
+
+                    /* Replace old entry in adj_list */
+                    Cell* new_adj = cell_nil();
+                    adj_iter = adj_list;
+                    while (cell_is_pair(adj_iter)) {
+                        Cell* pair = cell_car(adj_iter);
+                        Cell* key = cell_car(pair);
+                        if (cell_equal(key, from)) {
+                            cell_retain(new_entry);
+                            new_adj = cell_cons(new_entry, new_adj);
+                        } else {
+                            cell_retain(pair);
+                            new_adj = cell_cons(pair, new_adj);
+                        }
+                        adj_iter = cell_cdr(adj_iter);
+                    }
+                    cell_release(adj_list);
+                    adj_list = new_adj;
+                } else {
+                    /* Create new entry */
+                    cell_retain(to);
+                    Cell* successors = cell_cons(to, cell_nil());
+                    cell_retain(from);
+                    Cell* new_entry = cell_cons(from, successors);
+                    adj_list = cell_cons(new_entry, adj_list);
+                }
+            }
+        }
+        edge_iter = cell_cdr(edge_iter);
+    }
+
+    /* Perform traversal */
+    Cell* visited = cell_nil();  /* List of visited nodes */
+    Cell* queue = cell_cons(start, cell_nil());  /* Queue/stack for traversal */
+    Cell* visited_set = cell_nil();  /* Set of visited nodes (for cycle detection) */
+
+    while (cell_is_pair(queue)) {
+        /* Pop from queue/stack (retain current, release old queue head) */
+        Cell* current = cell_car(queue);
+        cell_retain(current);
+        Cell* old_queue = queue;
+        queue = cell_cdr(queue);
+        cell_retain(queue);
+        cell_release(old_queue);
+
+        /* Check if already visited */
+        bool already_visited = false;
+        Cell* vs_iter = visited_set;
+        while (cell_is_pair(vs_iter)) {
+            if (cell_equal(cell_car(vs_iter), current)) {
+                already_visited = true;
+                break;
+            }
+            vs_iter = cell_cdr(vs_iter);
+        }
+
+        if (already_visited) {
+            cell_release(current);
+            continue;
+        }
+
+        /* Mark as visited (cons will retain current) */
+        Cell* old_visited_set = visited_set;
+        visited_set = cell_cons(current, visited_set);
+        cell_release(old_visited_set);
+
+        /* Apply visitor function */
+        EvalContext* ctx = eval_get_current_context();
+        Cell* visitor_arg = cell_cons(current, cell_nil());
+        Cell* visitor_env = extend_env(visitor->data.lambda.env, visitor_arg);
+        Cell* result = eval_internal(ctx, visitor_env, visitor->data.lambda.body);
+        cell_release(visitor_arg);
+        cell_release(visitor_env);
+
+        /* Add result to visited list (cons will retain result) */
+        Cell* old_visited = visited;
+        visited = cell_cons(result, visited);
+        cell_release(old_visited);
+
+        /* Add successors to queue */
+        Cell* adj_iter = adj_list;
+        while (cell_is_pair(adj_iter)) {
+            Cell* pair = cell_car(adj_iter);
+            Cell* key = cell_car(pair);
+
+            if (cell_equal(key, current)) {
+                Cell* successors = cell_cdr(pair);
+                Cell* succ_iter = successors;
+
+                while (cell_is_pair(succ_iter)) {
+                    Cell* succ = cell_car(succ_iter);
+
+                    /* Check if successor already in visited_set */
+                    bool succ_visited = false;
+                    Cell* vs_iter2 = visited_set;
+                    while (cell_is_pair(vs_iter2)) {
+                        if (cell_equal(cell_car(vs_iter2), succ)) {
+                            succ_visited = true;
+                            break;
+                        }
+                        vs_iter2 = cell_cdr(vs_iter2);
+                    }
+
+                    if (!succ_visited) {
+                        /* Add to queue (cons will retain succ) */
+                        Cell* old_q = queue;
+                        queue = cell_cons(succ, queue);
+                        cell_release(old_q);
+                    }
+
+                    succ_iter = cell_cdr(succ_iter);
+                }
+                break;
+            }
+            adj_iter = cell_cdr(adj_iter);
+        }
+
+        cell_release(current);
+    }
+
+    /* Cleanup */
+    cell_release(adj_list);
+    cell_release(queue);
+    cell_release(visited_set);
+    /* Note: edges is a borrowed reference from the graph, don't release */
+
+    /* Reverse visited list to get correct order */
+    Cell* result = cell_nil();
+    while (cell_is_pair(visited)) {
+        Cell* node = cell_car(visited);
+        cell_retain(node);
+        result = cell_cons(node, result);
+        Cell* next = cell_cdr(visited);
+        cell_release(visited);
+        visited = next;
+    }
+
+    return result;
+}
+
+/* ⊝⊃ - Check if to_node is reachable from from_node
+ * Args: graph from_node to_node
+ * Example: (⊝⊃ cfg :entry :exit)
+ * Returns: #t or #f
+ */
+Cell* prim_graph_reachable(Cell* args) {
+    Cell* graph = arg1(args);
+    Cell* from = arg2(args);
+    Cell* to = arg3(args);
+
+    if (!cell_is_graph(graph)) {
+        return cell_error("⊝⊃ first arg must be graph", graph);
+    }
+
+    /* Use BFS to check reachability */
+    Cell* queue = cell_cons(from, cell_nil());
+    Cell* visited = cell_nil();
+    Cell* edges = cell_graph_edges(graph);
+    bool found = false;
+
+    while (cell_is_pair(queue) && !found) {
+        /* Pop from queue (retain current, release old queue head) */
+        Cell* current = cell_car(queue);
+        cell_retain(current);
+        Cell* old_queue = queue;
+        queue = cell_cdr(queue);
+        cell_retain(queue);
+        cell_release(old_queue);
+
+        /* Check if we've reached the target */
+        if (cell_equal(current, to)) {
+            found = true;
+            cell_release(current);
+            break;
+        }
+
+        /* Check if already visited */
+        bool already_visited = false;
+        Cell* v_iter = visited;
+        while (cell_is_pair(v_iter)) {
+            if (cell_equal(cell_car(v_iter), current)) {
+                already_visited = true;
+                break;
+            }
+            v_iter = cell_cdr(v_iter);
+        }
+
+        if (already_visited) {
+            cell_release(current);
+            continue;
+        }
+
+        /* Mark as visited (cons will retain current) */
+        Cell* old_visited = visited;
+        visited = cell_cons(current, visited);
+        cell_release(old_visited);
+
+        /* Add successors to queue */
+        Cell* edge_iter = edges;
+        while (cell_is_pair(edge_iter)) {
+            Cell* edge = cell_car(edge_iter);
+            if (cell_is_pair(edge)) {
+                Cell* edge_from = cell_car(edge);
+                Cell* rest = cell_cdr(edge);
+                if (cell_is_pair(rest)) {
+                    Cell* edge_to = cell_car(rest);
+
+                    if (cell_equal(edge_from, current)) {
+                        /* Add to queue (cons will retain edge_to) */
+                        Cell* old_q = queue;
+                        queue = cell_cons(edge_to, queue);
+                        cell_release(old_q);
+                    }
+                }
+            }
+            edge_iter = cell_cdr(edge_iter);
+        }
+
+        cell_release(current);
+    }
+
+    /* Cleanup */
+    cell_release(queue);
+    cell_release(visited);
+    /* Note: edges is a borrowed reference from the graph, don't release */
+
+    return cell_bool(found);
+}
+
+/* ⊝⊚ - Get successors of a node
+ * Args: graph node
+ * Example: (⊝⊚ cfg :entry)
+ * Returns: list of successor nodes
+ */
+Cell* prim_graph_successors(Cell* args) {
+    Cell* graph = arg1(args);
+    Cell* node = arg2(args);
+
+    if (!cell_is_graph(graph)) {
+        return cell_error("⊝⊚ first arg must be graph", graph);
+    }
+
+    Cell* edges = cell_graph_edges(graph);
+    Cell* result = cell_nil();
+
+    /* Find all edges from 'node' */
+    Cell* edge_iter = edges;
+    while (cell_is_pair(edge_iter)) {
+        Cell* edge = cell_car(edge_iter);
+        if (cell_is_pair(edge)) {
+            Cell* from = cell_car(edge);
+            Cell* rest = cell_cdr(edge);
+            if (cell_is_pair(rest)) {
+                Cell* to = cell_car(rest);
+
+                if (cell_equal(from, node)) {
+                    /* Add to result (cons will retain to) */
+                    Cell* old_result = result;
+                    result = cell_cons(to, old_result);
+                    cell_release(old_result);
+                }
+            }
+        }
+        edge_iter = cell_cdr(edge_iter);
+    }
+
+    /* Note: edges is a borrowed reference from the graph, don't release */
+    return result;
+}
+
+/* ⊝⊙ - Get predecessors of a node
+ * Args: graph node
+ * Example: (⊝⊙ cfg :exit)
+ * Returns: list of predecessor nodes
+ */
+Cell* prim_graph_predecessors(Cell* args) {
+    Cell* graph = arg1(args);
+    Cell* node = arg2(args);
+
+    if (!cell_is_graph(graph)) {
+        return cell_error("⊝⊙ first arg must be graph", graph);
+    }
+
+    Cell* edges = cell_graph_edges(graph);
+    Cell* result = cell_nil();
+
+    /* Find all edges to 'node' */
+    Cell* edge_iter = edges;
+    while (cell_is_pair(edge_iter)) {
+        Cell* edge = cell_car(edge_iter);
+        if (cell_is_pair(edge)) {
+            Cell* from = cell_car(edge);
+            Cell* rest = cell_cdr(edge);
+            if (cell_is_pair(rest)) {
+                Cell* to = cell_car(rest);
+
+                if (cell_equal(to, node)) {
+                    /* Add to result (cons will retain from) */
+                    Cell* old_result = result;
+                    result = cell_cons(from, old_result);
+                    cell_release(old_result);
+                }
+            }
+        }
+        edge_iter = cell_cdr(edge_iter);
+    }
+
+    /* Note: edges is a borrowed reference from the graph, don't release */
+    return result;
+}
+
+/* ⊝⇝ - Find path from from_node to to_node
+ * Args: graph from_node to_node
+ * Example: (⊝⇝ cfg :entry :exit)
+ * Returns: list of nodes in path, or ∅ if no path exists
+ */
+Cell* prim_graph_path(Cell* args) {
+    Cell* graph = arg1(args);
+    Cell* from = arg2(args);
+    Cell* to = arg3(args);
+
+    if (!cell_is_graph(graph)) {
+        return cell_error("⊝⇝ first arg must be graph", graph);
+    }
+
+    /* BFS with parent tracking */
+    Cell* queue = cell_cons(from, cell_nil());
+    Cell* visited = cell_nil();
+    Cell* parents = cell_nil();  /* Association list: node -> parent */
+    Cell* edges = cell_graph_edges(graph);
+    bool found = false;
+
+    while (cell_is_pair(queue) && !found) {
+        /* Pop from queue (retain current, release old queue head) */
+        Cell* current = cell_car(queue);
+        cell_retain(current);
+        Cell* old_queue = queue;
+        queue = cell_cdr(queue);
+        cell_retain(queue);
+        cell_release(old_queue);
+
+        /* Check if we've reached the target */
+        if (cell_equal(current, to)) {
+            found = true;
+            /* Don't release current yet - need it for path reconstruction */
+            break;
+        }
+
+        /* Check if already visited */
+        bool already_visited = false;
+        Cell* v_iter = visited;
+        while (cell_is_pair(v_iter)) {
+            if (cell_equal(cell_car(v_iter), current)) {
+                already_visited = true;
+                break;
+            }
+            v_iter = cell_cdr(v_iter);
+        }
+
+        if (already_visited) {
+            cell_release(current);
+            continue;
+        }
+
+        /* Mark as visited (cons will retain current) */
+        Cell* old_visited = visited;
+        visited = cell_cons(current, visited);
+        cell_release(old_visited);
+
+        /* Add successors to queue */
+        Cell* edge_iter = edges;
+        while (cell_is_pair(edge_iter)) {
+            Cell* edge = cell_car(edge_iter);
+            if (cell_is_pair(edge)) {
+                Cell* edge_from = cell_car(edge);
+                Cell* rest = cell_cdr(edge);
+                if (cell_is_pair(rest)) {
+                    Cell* edge_to = cell_car(rest);
+
+                    if (cell_equal(edge_from, current)) {
+                        /* Check if successor already visited */
+                        bool succ_visited = false;
+                        Cell* v_iter2 = visited;
+                        while (cell_is_pair(v_iter2)) {
+                            if (cell_equal(cell_car(v_iter2), edge_to)) {
+                                succ_visited = true;
+                                break;
+                            }
+                            v_iter2 = cell_cdr(v_iter2);
+                        }
+
+                        if (!succ_visited) {
+                            /* Record parent relationship (cons will retain both) */
+                            Cell* parent_entry = cell_cons(edge_to, current);
+                            Cell* old_parents = parents;
+                            parents = cell_cons(parent_entry, parents);
+                            cell_release(old_parents);
+
+                            /* Add to queue (cons will retain edge_to) */
+                            Cell* old_q = queue;
+                            queue = cell_cons(edge_to, queue);
+                            cell_release(old_q);
+                        }
+                    }
+                }
+            }
+            edge_iter = cell_cdr(edge_iter);
+        }
+
+        cell_release(current);
+    }
+
+    /* Reconstruct path if found */
+    Cell* result;
+    if (found) {
+        result = cell_nil();
+        Cell* current_node = to;
+        cell_retain(current_node);
+
+        /* Build path from end to start */
+        result = cell_cons(current_node, result);
+
+        while (!cell_equal(current_node, from)) {
+            /* Find parent of current_node */
+            Cell* parent = NULL;
+            Cell* p_iter = parents;
+            while (cell_is_pair(p_iter)) {
+                Cell* entry = cell_car(p_iter);
+                Cell* child = cell_car(entry);
+                if (cell_equal(child, current_node)) {
+                    parent = cell_cdr(entry);
+                    break;
+                }
+                p_iter = cell_cdr(p_iter);
+            }
+
+            if (parent) {
+                cell_retain(parent);
+                result = cell_cons(parent, result);
+                cell_release(current_node);
+                current_node = parent;
+            } else {
+                /* Path broken - should not happen if found==true */
+                cell_release(current_node);
+                cell_release(result);
+                result = cell_nil();
+                break;
+            }
+        }
+
+        cell_release(current_node);
+    } else {
+        result = cell_nil();
+    }
+
+    /* Cleanup */
+    cell_release(queue);
+    cell_release(visited);
+    cell_release(parents);
+    /* Note: edges is a borrowed reference from the graph, don't release */
+
+    return result;
+}
+
+/* ⊝∘ - Detect cycles in graph
+ * Args: graph
+ * Example: (⊝∘ cfg)
+ * Returns: list of cycles (each cycle is a list of nodes), or ∅ if no cycles
+ */
+Cell* prim_graph_cycles(Cell* args) {
+    Cell* graph = arg1(args);
+
+    if (!cell_is_graph(graph)) {
+        return cell_error("⊝∘ first arg must be graph", graph);
+    }
+
+    Cell* nodes = cell_graph_nodes(graph);
+    Cell* edges = cell_graph_edges(graph);
+    Cell* cycles = cell_nil();
+
+    /* Use DFS with colors: white (unvisited), gray (visiting), black (visited) */
+    Cell* white = nodes;  /* All nodes start as white */
+    Cell* gray = cell_nil();
+    Cell* black = cell_nil();
+    Cell* stack = cell_nil();  /* DFS stack */
+
+    /* Start DFS from each unvisited node */
+    Cell* node_iter = white;
+    while (cell_is_pair(node_iter)) {
+        Cell* start = cell_car(node_iter);
+
+        /* Check if start is already black */
+        bool is_black = false;
+        Cell* b_iter = black;
+        while (cell_is_pair(b_iter)) {
+            if (cell_equal(cell_car(b_iter), start)) {
+                is_black = true;
+                break;
+            }
+            b_iter = cell_cdr(b_iter);
+        }
+
+        if (!is_black) {
+            /* DFS from start */
+            Cell* old_stack = stack;
+            stack = cell_cons(start, old_stack);
+            cell_release(old_stack);
+
+            Cell* old_gray = gray;
+            gray = cell_cons(start, old_gray);
+            cell_release(old_gray);
+
+            while (cell_is_pair(stack)) {
+                Cell* current = cell_car(stack);
+                bool has_unvisited_successor = false;
+
+                /* Check successors */
+                Cell* edge_iter = edges;
+                while (cell_is_pair(edge_iter)) {
+                    Cell* edge = cell_car(edge_iter);
+                    if (cell_is_pair(edge)) {
+                        Cell* from = cell_car(edge);
+                        Cell* rest = cell_cdr(edge);
+                        if (cell_is_pair(rest)) {
+                            Cell* to = cell_car(rest);
+
+                            if (cell_equal(from, current)) {
+                                /* Check if 'to' is gray (back edge - cycle detected) */
+                                bool is_gray = false;
+                                Cell* g_iter = gray;
+                                while (cell_is_pair(g_iter)) {
+                                    if (cell_equal(cell_car(g_iter), to)) {
+                                        is_gray = true;
+                                        break;
+                                    }
+                                    g_iter = cell_cdr(g_iter);
+                                }
+
+                                if (is_gray) {
+                                    /* Cycle detected! Record it */
+                                    Cell* cycle = cell_nil();
+                                    cycle = cell_cons(to, cycle);
+                                    Cell* old_cycle = cycle;
+                                    cycle = cell_cons(current, old_cycle);
+                                    cell_release(old_cycle);
+
+                                    Cell* old_cycles = cycles;
+                                    cycles = cell_cons(cycle, old_cycles);
+                                    cell_release(old_cycles);
+                                }
+
+                                /* Check if 'to' is white (unvisited) */
+                                bool is_white = true;
+                                g_iter = gray;
+                                while (cell_is_pair(g_iter)) {
+                                    if (cell_equal(cell_car(g_iter), to)) {
+                                        is_white = false;
+                                        break;
+                                    }
+                                    g_iter = cell_cdr(g_iter);
+                                }
+                                Cell* b_iter2 = black;
+                                while (cell_is_pair(b_iter2)) {
+                                    if (cell_equal(cell_car(b_iter2), to)) {
+                                        is_white = false;
+                                        break;
+                                    }
+                                    b_iter2 = cell_cdr(b_iter2);
+                                }
+
+                                if (is_white) {
+                                    /* Visit this successor */
+                                    Cell* old_stk = stack;
+                                    stack = cell_cons(to, old_stk);
+                                    cell_release(old_stk);
+
+                                    Cell* old_gry = gray;
+                                    gray = cell_cons(to, old_gry);
+                                    cell_release(old_gry);
+
+                                    has_unvisited_successor = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    edge_iter = cell_cdr(edge_iter);
+                }
+
+                if (!has_unvisited_successor) {
+                    /* Finished with current node - mark as black */
+                    Cell* popped = cell_car(stack);
+                    cell_retain(popped);
+
+                    Cell* old_stack = stack;
+                    stack = cell_cdr(stack);
+                    cell_retain(stack);
+                    cell_release(old_stack);
+
+                    /* Move from gray to black */
+                    Cell* new_gray = cell_nil();
+                    Cell* g_iter = gray;
+                    while (cell_is_pair(g_iter)) {
+                        Cell* node = cell_car(g_iter);
+                        if (!cell_equal(node, popped)) {
+                            Cell* old_new_gray = new_gray;
+                            new_gray = cell_cons(node, old_new_gray);
+                            cell_release(old_new_gray);
+                        }
+                        g_iter = cell_cdr(g_iter);
+                    }
+                    cell_release(gray);
+                    gray = new_gray;
+
+                    Cell* old_black = black;
+                    black = cell_cons(popped, old_black);
+                    cell_release(old_black);
+                    cell_release(popped);
+                }
+            }
+        }
+
+        node_iter = cell_cdr(node_iter);
+    }
+
+    /* Cleanup */
+    /* Note: nodes and edges are borrowed references from the graph, don't release */
+    cell_release(stack);
+    cell_release(gray);
+    cell_release(black);
+
+    return cycles;
+}
+
 /* String Operations */
 
 /* ≈ - Convert value to string */
@@ -3875,6 +4598,14 @@ static Primitive primitives[] = {
     {"⊝⊗", prim_graph_add_edge, 4, {"Add edge to graph (immutable)", "⊝ → α → α → α → ⊝"}},
     {"⊝→", prim_graph_query, 2, {"Query graph property (:nodes, :edges, :entry, :exit, :metadata)", "⊝ → :symbol → α"}},
     {"⊝?", prim_graph_is, 2, {"Check if value is graph of given type", "α → :symbol → 𝔹"}},
+
+    /* Graph algorithm primitives */
+    {"⊝↦", prim_graph_traverse, 4, {"Graph traverse with visitor (BFS or DFS)", "⊝ → :symbol → α → (α → β) → [β]"}},
+    {"⊝⊃", prim_graph_reachable, 3, {"Check if to-node reachable from from-node", "⊝ → α → α → 𝔹"}},
+    {"⊝⊚", prim_graph_successors, 2, {"Get direct successor nodes", "⊝ → α → [α]"}},
+    {"⊝⊙", prim_graph_predecessors, 2, {"Get direct predecessor nodes", "⊝ → α → [α]"}},
+    {"⊝⇝", prim_graph_path, 3, {"Find shortest path between nodes", "⊝ → α → α → [α] | ∅"}},
+    {"⊝∘", prim_graph_cycles, 1, {"Detect cycles in graph", "⊝ → [[α]] | ∅"}},
 
     /* String operations */
     {"≈", prim_str, 1, {"Convert value to string", "α → ≈"}},
