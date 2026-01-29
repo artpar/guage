@@ -1,84 +1,88 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-01-29 (Day 87 COMPLETE)
+Updated: 2026-01-30 (Day 88 COMPLETE)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 87 - Resumable Effect Handlers (2026-01-29)
+# Session Handoff: Day 88 - Delimited Continuations via Fibers (2026-01-30)
 
-## Day 87 Progress - Resumable Effects!
+## Day 88 Progress - Fiber-based Delimited Continuations!
+
+**RESULT:** 86/86 test files passing (100%), 21 new tests (delimited continuations + fiber verification)
+
+### Major Rewrite: Fiber-based Resumable Effects (O(n) replaces O(n²))
+
+Replaced the replay-based resumable effect system with real delimited continuations using fiber/coroutine-based context switching via `ucontext`.
+
+**New Files (2):**
+- `bootstrap/fiber.h` — Fiber struct and API declarations
+- `bootstrap/fiber.c` — Fiber implementation using `ucontext` (create, start, resume, yield, destroy)
+
+**New Special Forms (2):**
+- `(⟪⊸⟫ body)` — Reset/prompt: install delimited continuation delimiter
+- `(⊸ handler-fn)` — Shift/control: capture one-shot continuation `k`
+
+**Rewritten Special Forms (2):**
+- `(⟪↺⟫ body handler-specs...)` — Now fiber-based (was replay-based)
+- `(↯ :Effect :op args...)` — Now yields fiber (was replay buffer + perform-request propagation)
+
+**Removed Infrastructure:**
+- `ResumeCtx` struct (replay buffer, cursor, etc.)
+- `g_resume_stack[8]`, `g_resume_depth` (replay nesting)
+- `g_perform_pending`, `g_perform_eff_name`, `g_perform_op_name`, `g_perform_args` (signal globals)
+- `resume_eval_loop()` (replay evaluator)
+- `prim_resume_k()` (replay-based continuation)
+- 5 perform-request propagation checks in eval_list, conditionals, function application
+
+**New Infrastructure:**
+- `Fiber` struct: ucontext-based coroutine with communication slots
+- `prim_fiber_resume_k()` — One-shot continuation that resumes fiber, recursively dispatches subsequent performs
+- `g_handling_fiber`, `g_handling_frames`, `g_handling_frame_count` — Handler dispatch context
+- Cross-fiber effect propagation for nested `⟪↺⟫` handlers
+
+**How It Works:**
+- `⟪↺⟫` creates a fiber for body evaluation, pushes handler frames, runs dispatch loop
+- `↯` (perform) yields the fiber with effect info; dispatch loop finds handler, builds k, calls handler
+- `⟪⊸⟫` creates a fiber for body, dispatches shift yields by calling handler with k
+- `⊸` (shift) stores handler on fiber, yields; resumed with k's value
+- All continuations are one-shot (linear) — calling k twice returns `⚠:one-shot-continuation-already-used`
+- Nested handlers with different effects propagate across fibers
+
+**Examples:**
+```scheme
+; Shift/reset — capture continuation
+(⟪⊸⟫ (⊕ (⊸ (λ (k) (k #10))) #2))         ; → #12
+(⟪⊸⟫ (⊸ (λ (k) (⊗ (k #42) #2))))         ; → #84
+
+; Multiple shifts in sequence
+(⟪⊸⟫ (⊕ (⊸ (λ (k) (k #10)))
+          (⊸ (λ (k) (k #20)))))            ; → #30
+
+; Resumable effects — now O(n) instead of O(n²)
+(⟪↺⟫ (⊕ (↯ :Ask :prompt "x") (↯ :Ask :prompt "y"))
+  (:Ask (:prompt (λ (k msg) (k (? (≡ msg "x") #10 #42))))))
+; → #52
+```
+
+---
+
+## Previous Day: Day 87 - Resumable Effect Handlers
 
 **RESULT:** 85/85 test files passing (100%), 30 new tests (resumable effects)
 
 ### New Feature: Resumable Effect Handlers (⟪↺⟫)
 
-Replay-based continuations enabling generators, coroutines, and dependency injection.
-
-**New Special Form (1):**
-- `(⟪↺⟫ body (:Effect (:op handler) ...))` - Handle effects with resumable continuation `k`
-
-**New Primitive (1):**
-- `prim_resume_k` - Continuation builtin passed to handlers; stores resume value and re-evaluates body
-
-**How It Works:**
-- Handlers receive continuation `k` as first argument: `(λ (k args...) ...)`
-- Calling `(k value)` resumes body computation at the perform point
-- NOT calling `k` aborts — handler result replaces entire `⟪↺⟫` (exception pattern)
-- Implementation: replay-based re-evaluation (body re-evaluated from scratch; previous performs return stored answers from replay buffer)
-- O(n²) for n performs — acceptable for bootstrap interpreter; native compilation will use direct CPS
+Replay-based continuations (now replaced by fibers in Day 88).
 
 **Examples:**
 ```scheme
-; Basic resume — handler provides value
 (⟪↺⟫ (↯ :State :get)
-  (:State
-    (:get (λ (k) (k #42)))
-    (:put (λ (k v) (k ∅)))))
-; → #42
+  (:State (:get (λ (k) (k #42))))) ; → #42
 
-; Generator/yield — collect values into list
-(⟪↺⟫ (⊎ (↯ :Yield :value #1)
-          (↯ :Yield :value #2)
-          (↯ :Yield :value #3) ∅)
-  (:Yield
-    (:value (λ (k v) (⟨⟩ v (k ∅))))))
-; → (#1 #2 #3)
-
-; Abort — handler doesn't call k
-(⟪↺⟫ (⊕ (↯ :State :get) #1)
-  (:State
-    (:get (λ (k) :aborted))))
-; → :aborted
-
-; Handler transforms continuation result
-(⟪↺⟫ (↯ :State :get)
-  (:State
-    (:get (λ (k) (⊗ (k #42) #2)))))
-; → #84 (k returns 42, handler doubles)
-
-; Choice effect
-(⟪↺⟫ (↯ :Choice :choose #10 #20)
-  (:Choice
-    (:choose (λ (k a b) (k a)))))
-; → #10
-
-; Dependency injection
-(⟪↺⟫ (get-config-r :db-url)
-  (:Config
-    (:get (λ (k key)
-      (k (? (≡ key :db-url) "localhost:5432" "unknown"))))))
-; → "localhost:5432"
+(⟪↺⟫ (⊎ (↯ :Yield :value #1) (↯ :Yield :value #2) ∅)
+  (:Yield (:value (λ (k v) (⟨⟩ v (k ∅)))))) ; → (#1 #2)
 ```
-
-**Infrastructure:**
-- `ResumeCtx` struct: replay buffer (answers array), cursor, body, body_env, eval_ctx, frames
-- `EffectFrame` extended: `bool resumable` + `ResumeCtx* resume_ctx`
-- Global resume stack (`g_resume_stack[8]`) for nesting
-- Global perform-request signal variables for cross-scope communication
-- `perform-request` error propagation through `eval_list`, conditionals, and function application
-- Nested resumable/non-resumable handlers work correctly
-- Mixed `⟪⟫` and `⟪↺⟫` compose properly
 
 ---
 
@@ -642,9 +646,11 @@ Pattern-based macros with multiple clauses and pattern matching on syntax.
 ## Current Status 🎯
 
 **System State:**
-- **Primitives:** 132 total (⟪, ⟪?, ⟪→, ⟪⟫, ↯ special forms + ⤴, ≫ updated)
-- **Tests:** 84/84 test files passing (100%)
-- **Effect System Tests:** 35/35 tests passing (new!)
+- **Primitives:** 134 total (added ⟪⊸⟫, ⊸ special forms)
+- **Tests:** 86/86 test files passing (100%)
+- **Delimited Continuation Tests:** 21/21 tests passing (new!)
+- **Effect System Tests:** 35/35 tests passing
+- **Resumable Effects Tests:** 30/30 tests passing
 - **Type Inference Tests:** 73/73 tests passing
 - **Type Validation Tests:** 35/35 tests passing
 - **Type Annotation Tests:** 55/55 tests passing
@@ -721,6 +727,8 @@ Pattern-based macros with multiple clauses and pattern matching on syntax.
 
 | Day | Feature | Tests |
 |-----|---------|-------|
+| 88 | Delimited Continuations via Fibers (⟪⊸⟫, ⊸) - O(n) effects | 86/86 (100%), 21 new tests |
+| 87 | Resumable Effect Handlers (⟪↺⟫) - replay-based | 85/85 (100%), 30 new tests |
 | 86 | Algebraic Effect System (⟪, ⟪⟫, ↯) - dynamic handlers | 84/84 (100%), 35 new tests |
 | 85 | Type Inference (∈⍜, ∈⍜⊕, ∈⍜*) - deep/static inference | 83/83 (100%), 73 new tests |
 | 84 | Type Validation (∈✓, ∈✓*, ∈⊢) - compiler-level | 82/82 (100%), 35 new tests |
@@ -902,24 +910,22 @@ bootstrap/eval.h                           # EffectFrame struct, effect registry
 bootstrap/primitives.c                     # ⤴ (pure), ≫ (bind) primitives
 ```
 
-### What We Built Today (Day 86)
+### What We Built Today (Day 88)
 
-**Effect System:**
+**Delimited Continuations & Fiber Rewrite:**
 
 | Symbol | Type | Description |
 |--------|------|-------------|
-| ⟪ | :name :op... → 𝔹 | Declare effect type with operations (special form) |
-| ⟪? | :name → 𝔹 | Query if effect is declared (special form) |
-| ⟪→ | :name → [:symbol] | Get effect operations list (special form) |
-| ⟪⟫ | expr spec... → α | Handle effects in body (special form) |
-| ↯ | :effect :op args... → α | Perform effect operation (special form) |
-| ⤴ | α → α | Pure lift (identity) |
-| ≫ | α → (α → β) → β | Effect bind (apply fn to val) |
+| ⟪⊸⟫ | expr → α | Reset/prompt — delimited continuation delimiter (special form) |
+| ⊸ | (α → β) → α | Shift/control — capture one-shot continuation (special form) |
+| ⟪↺⟫ | expr spec... → α | Resumable effects — rewritten to use fibers (O(n)) |
+| ↯ | :effect :op args... → α | Perform — rewritten to yield fiber |
 
 **Infrastructure:**
-- `types_equal` extended for `:struct` and `:graph` kinds
-- Type helpers exported for cross-module use
-- Primitive type signature registry (arithmetic, comparison, logic, string, math)
+- `fiber.h`/`fiber.c` — ucontext-based coroutine system
+- `prim_fiber_resume_k` — One-shot continuation with recursive perform dispatch
+- Cross-fiber propagation for nested effect handlers
+- Removed replay-based infrastructure (~250 lines of dead code)
 
 ---
 
@@ -963,5 +969,5 @@ bootstrap/primitives.c                     # ⤴ (pure), ≫ (bind) primitives
 
 ---
 
-**Last Updated:** 2026-01-29 (Day 86 complete)
-**Next Session:** Day 87 - Resumable effects or optimizer
+**Last Updated:** 2026-01-30 (Day 88 complete)
+**Next Session:** Day 89 - Multi-shot continuations, optimizer, or concurrency

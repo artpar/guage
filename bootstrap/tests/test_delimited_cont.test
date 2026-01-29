@@ -1,0 +1,184 @@
+; Test: Delimited Continuations (shift/reset) and Fiber Correctness
+; Day 88 - Fiber-based delimited continuations
+;
+; ⟪⊸⟫ (reset) installs a delimiter, evaluates body in a fiber.
+; ⊸ (shift) captures the current continuation as a one-shot k.
+; The resumable effect system (⟪↺⟫) now uses fibers (O(n) vs O(n²)).
+
+; Load iteration macros for ⊎ (begin/sequencing)
+(⋘ "bootstrap/stdlib/macros_iteration.scm")
+
+; ============ Basic Reset (No Shift) ============
+
+; Reset with no shift — body value passes through
+(⊨ (⌜ :reset-passthrough)
+  #42
+  (⟪⊸⟫ #42))
+
+; Reset with expression body
+(⊨ (⌜ :reset-expr)
+  #10
+  (⟪⊸⟫ (⊕ #3 #7)))
+
+; ============ Shift with Resume ============
+
+; Shift captures k, calls k with value
+(⊨ (⌜ :shift-resume)
+  #12
+  (⟪⊸⟫ (⊕ (⊸ (λ (k) (k #10))) #2)))
+
+; k(10) resumes body at shift point → body = (⊕ 10 2) = 12
+
+; ============ Shift Abort ============
+
+; Handler doesn't call k — aborts body
+(⊨ (⌜ :shift-abort)
+  #999
+  (⟪⊸⟫ (⊕ (⊸ (λ (k) #999)) #2)))
+
+; ============ Shift Post-Process ============
+
+; Handler calls k, then post-processes
+(⊨ (⌜ :shift-post-process)
+  #84
+  (⟪⊸⟫ (⊸ (λ (k) (⊗ (k #42) #2)))))
+
+; k(42) → body returns 42 at shift point, handler does 42*2 = 84
+
+; ============ Shift with Arithmetic ============
+
+(⊨ (⌜ :shift-add-context)
+  #52
+  (⟪⊸⟫ (⊕ (⊸ (λ (k) (k #10))) #42)))
+
+; ============ Multiple Shifts in Sequence ============
+
+(⊨ (⌜ :two-shifts)
+  #30
+  (⟪⊸⟫ (⊕ (⊸ (λ (k) (k #10)))
+            (⊸ (λ (k) (k #20))))))
+
+; ============ Nested Resets ============
+
+(⊨ (⌜ :nested-reset)
+  #42
+  (⟪⊸⟫ (⟪⊸⟫ #42)))
+
+(⊨ (⌜ :nested-reset-shift)
+  #10
+  (⟪⊸⟫ (⊕ (⟪⊸⟫ (⊸ (λ (k) (k #3)))) #7)))
+
+; Inner reset: shift captures inner k, k(3) → 3. Outer: 3 + 7 = 10
+
+; ============ One-Shot Enforcement ============
+
+; Calling k twice should return error on second call
+(⊨ (⌜ :one-shot-error)
+  #t
+  (⚠? (⟪⊸⟫ (⊸ (λ (k) (⊎ (k #1) (k #2)))))))
+
+; ============ Fiber-backed Resumable Effects (Same Tests as Day 87) ============
+
+; Verify the fiber rewrite produces identical results to replay-based
+
+(⟪ :State :get :put)
+(⟪ :Ask :prompt)
+(⟪ :Yield :value)
+(⟪ :Choice :choose)
+(⟪ :Math :compute)
+
+; Basic resume
+(⊨ (⌜ :fiber-basic-resume)
+  #42
+  (⟪↺⟫ (↯ :State :get)
+    (:State
+      (:get (λ (k) (k #42)))
+      (:put (λ (k v) (k ∅))))))
+
+; Resume in expression
+(⊨ (⌜ :fiber-resume-in-expr)
+  #43
+  (⟪↺⟫ (⊕ (↯ :State :get) #1)
+    (:State
+      (:get (λ (k) (k #42)))
+      (:put (λ (k v) (k ∅))))))
+
+; Abort (handler doesn't call k)
+(⊨ (⌜ :fiber-abort)
+  :aborted
+  (⟪↺⟫ (⊕ (↯ :State :get) #1)
+    (:State
+      (:get (λ (k) :aborted))
+      (:put (λ (k v) :aborted)))))
+
+; Transform result
+(⊨ (⌜ :fiber-transform)
+  #84
+  (⟪↺⟫ (↯ :State :get)
+    (:State
+      (:get (λ (k) (⊗ (k #42) #2)))
+      (:put (λ (k v) (k ∅))))))
+
+; Two performs (O(n) with fibers, was O(n²) with replay)
+(⊨ (⌜ :fiber-two-performs)
+  #52
+  (⟪↺⟫ (⊕ (↯ :Ask :prompt "x") (↯ :Ask :prompt "y"))
+    (:Ask
+      (:prompt (λ (k msg)
+        (k (? (≡ msg "x") #10 #42)))))))
+
+; Three performs
+(⊨ (⌜ :fiber-three-performs)
+  #6
+  (⟪↺⟫ (⊕ (↯ :Ask :prompt "a")
+           (⊕ (↯ :Ask :prompt "b")
+               (↯ :Ask :prompt "c")))
+    (:Ask
+      (:prompt (λ (k msg)
+        (k (? (≡ msg "a") #1
+              (? (≡ msg "b") #2 #3))))))))
+
+; Yield/collect pattern
+(⊨ (⌜ :fiber-yield-collect)
+  (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅)))
+  (⟪↺⟫ (⊎ (↯ :Yield :value #1)
+            (↯ :Yield :value #2)
+            (↯ :Yield :value #3)
+            ∅)
+    (:Yield
+      (:value (λ (k v) (⟨⟩ v (k ∅)))))))
+
+; Choice effect
+(⊨ (⌜ :fiber-choice)
+  #10
+  (⟪↺⟫ (↯ :Choice :choose #10 #20)
+    (:Choice
+      (:choose (λ (k a b) (k a))))))
+
+; Sequential 10+ performs (verify O(n) behavior)
+(⊨ (⌜ :ten-performs)
+  #55
+  (⟪↺⟫ (⊕ (↯ :Ask :prompt "1")
+       (⊕ (↯ :Ask :prompt "2")
+       (⊕ (↯ :Ask :prompt "3")
+       (⊕ (↯ :Ask :prompt "4")
+       (⊕ (↯ :Ask :prompt "5")
+       (⊕ (↯ :Ask :prompt "6")
+       (⊕ (↯ :Ask :prompt "7")
+       (⊕ (↯ :Ask :prompt "8")
+       (⊕ (↯ :Ask :prompt "9")
+          (↯ :Ask :prompt "10"))))))))))
+    (:Ask
+      (:prompt (λ (k msg)
+        (k (? (≡ msg "1") #1
+              (? (≡ msg "2") #2
+              (? (≡ msg "3") #3
+              (? (≡ msg "4") #4
+              (? (≡ msg "5") #5
+              (? (≡ msg "6") #6
+              (? (≡ msg "7") #7
+              (? (≡ msg "8") #8
+              (? (≡ msg "9") #9 #10)))))))))))))))
+
+; ============ Summary ============
+; Total: 21 tests

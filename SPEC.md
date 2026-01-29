@@ -553,15 +553,17 @@ See `test_type_inference.test`, `test_type_validation.test`.
 | `gen-list` | `(() → α) → ℕ → [α]` | Generate random list | ✅ DONE |
 | `⊨-prop` | `:symbol → (α → 𝔹) → (() → α) → 𝔹 \| ⚠` | Property-based test with shrinking | ✅ DONE |
 
-### Effects (7) - Algebraic Effect System
+### Effects (9) - Algebraic Effect System & Delimited Continuations
 | Symbol | Type | Meaning | Status |
 |--------|------|---------|--------|
 | `⟪` | `:name :op... → 𝔹` | Declare effect type with operations | ✅ DONE (special form) |
 | `⟪?` | `:name → 𝔹` | Query if effect is declared | ✅ DONE (special form) |
 | `⟪→` | `:name → [:symbol]` | Get effect operations list | ✅ DONE (special form) |
 | `⟪⟫` | `expr handler-spec... → α` | Handle effects in body (non-resumable) | ✅ DONE (special form) |
-| `⟪↺⟫` | `expr handler-spec... → α` | Handle effects with resumable continuation `k` | ✅ DONE (special form) |
+| `⟪↺⟫` | `expr handler-spec... → α` | Handle effects with resumable continuation `k` (fiber-based) | ✅ DONE (special form) |
 | `↯` | `:effect :op args... → α` | Perform effect operation | ✅ DONE (special form) |
+| `⟪⊸⟫` | `expr → α` | Reset/prompt — install delimited continuation delimiter | ✅ DONE (special form) |
+| `⊸` | `(α → β) → α` | Shift/control — capture one-shot delimited continuation | ✅ DONE (special form) |
 | `⤴` | `α → α` | Pure lift (identity) | ✅ DONE |
 | `≫` | `α → (α → β) → β` | Effect bind (apply fn to value) | ✅ DONE |
 
@@ -595,10 +597,37 @@ See `test_type_inference.test`, `test_type_validation.test`.
 ; → :aborted
 ```
 
+**Delimited Continuations (shift/reset):**
+```scheme
+; Reset with no shift — body value passes through
+(⟪⊸⟫ #42)                                    ; → #42
+
+; Shift captures k, handler calls k with value
+(⟪⊸⟫ (⊕ (⊸ (λ (k) (k #10))) #2))            ; → #12
+
+; Shift abort — handler doesn't call k
+(⟪⊸⟫ (⊕ (⊸ (λ (k) #999)) #2))               ; → #999
+
+; Shift post-process — handler transforms k result
+(⟪⊸⟫ (⊸ (λ (k) (⊗ (k #42) #2))))            ; → #84
+
+; Multiple shifts in sequence
+(⟪⊸⟫ (⊕ (⊸ (λ (k) (k #10)))
+          (⊸ (λ (k) (k #20)))))               ; → #30
+
+; Nested resets
+(⟪⊸⟫ (⊕ (⟪⊸⟫ (⊸ (λ (k) (k #3)))) #7))      ; → #10
+
+; One-shot: calling k twice returns error
+(⚠? (⟪⊸⟫ (⊸ (λ (k) (⊎ (k #1) (k #2))))))   ; → #t
+```
+
 **Dynamic handler stack:** Inner handlers shadow outer for the same effect.
 Non-resumable (`⟪⟫`) handlers receive perform arguments directly.
 Resumable (`⟪↺⟫`) handlers receive continuation `k` as first argument; calling `(k value)` resumes body.
-Implementation: replay-based re-evaluation with O(n²) cost for n performs.
+Implementation: fiber-based coroutines using `ucontext` — O(n) cost for n performs.
+Delimited continuations (`⟪⊸⟫`/`⊸`) provide standalone shift/reset for general-purpose control flow.
+Continuations are one-shot (linear) — calling `k` twice returns `⚠:one-shot-continuation-already-used`.
 Unhandled effects return `⚠:unhandled-effect` errors.
 
 ### Actors (3) - PLACEHOLDERS ONLY
@@ -1486,8 +1515,10 @@ All I/O operations return errors on failure:
 | `⟪?` | Query effect | Check if effect is declared | ✅ DONE |
 | `⟪→` | Effect operations | Get operations list for effect | ✅ DONE |
 | `⟪⟫` | Handle effects | Install non-resumable handlers, evaluate body | ✅ DONE |
-| `⟪↺⟫` | Resumable handle | Install handlers with continuation `k` | ✅ DONE |
+| `⟪↺⟫` | Resumable handle | Install handlers with continuation `k` (fiber-based) | ✅ DONE |
 | `↯` | Perform effect | Trigger effect operation | ✅ DONE |
+| `⟪⊸⟫` | Reset/prompt | Install delimited continuation delimiter | ✅ DONE |
+| `⊸` | Shift/control | Capture one-shot delimited continuation | ✅ DONE |
 | `⤴` | Pure lift | Identity (value unchanged) | ✅ DONE |
 | `≫` | Effect bind | Apply function to value | ✅ DONE |
 

@@ -927,20 +927,7 @@ static Cell* eval_list(EvalContext* ctx, Cell* env, Cell* expr) {
 
     Cell* first_eval = eval_internal(ctx, env, first);
 
-    /* Propagate perform-request errors (control flow, not user errors) */
-    if (cell_is_error(first_eval) &&
-        strcmp(cell_error_message(first_eval), "perform-request") == 0) {
-        return first_eval;
-    }
-
     Cell* rest_eval = eval_list(ctx, env, rest);
-
-    /* Propagate perform-request from rest */
-    if (cell_is_error(rest_eval) &&
-        strcmp(cell_error_message(rest_eval), "perform-request") == 0) {
-        cell_release(first_eval);
-        return rest_eval;
-    }
 
     Cell* result = cell_cons(first_eval, rest_eval);
 
@@ -1622,12 +1609,6 @@ tail_call:  /* TCO: loop back here instead of recursive call */
 
                 Cell* cond_val = eval_internal(ctx, env, cond_expr);
 
-                /* Propagate perform-request errors */
-                if (cell_is_error(cond_val) &&
-                    strcmp(cell_error_message(cond_val), "perform-request") == 0) {
-                    return cond_val;
-                }
-
                 /* TCO: Branch evaluation is in tail position */
                 if (cell_is_bool(cond_val) && cell_get_bool(cond_val)) {
                     cell_release(cond_val);
@@ -1792,7 +1773,7 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                     frames[frame_count].handlers = handlers_alist;
                     frames[frame_count].parent = NULL;
                     frames[frame_count].resumable = false;
-                    frames[frame_count].resume_ctx = NULL;
+                    frames[frame_count].owner_fiber = NULL;
                     frame_count++;
 
                     spec_iter = cell_cdr(spec_iter);
@@ -1819,12 +1800,12 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                 return result;
             }
 
-            /* ⟪↺⟫ - resumable handle effects
+            /* ⟪↺⟫ - resumable handle effects (fiber-based)
              * Syntax: (⟪↺⟫ body (:Effect (:op1 handler1) ...) ...)
              * Like ⟪⟫ but handlers receive continuation k as first arg.
              * Calling (k value) resumes body at the perform point.
              * Not calling k aborts — handler result replaces ⟪↺⟫.
-             * Implementation: replay-based re-evaluation.
+             * Implementation: fiber/coroutine-based delimited continuations.
              */
             if (strcmp(sym, "⟪↺⟫") == 0) {
                 Cell* body = cell_car(rest);
@@ -1888,53 +1869,211 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                     frames[frame_count].handlers = handlers_alist;
                     frames[frame_count].parent = NULL;
                     frames[frame_count].resumable = true;
-                    frames[frame_count].resume_ctx = NULL; /* Set below */
+                    frames[frame_count].owner_fiber = NULL; /* Set below */
                     frame_count++;
 
                     spec_iter = cell_cdr(spec_iter);
                 }
 
-                /* Build resume context */
-                ResumeCtx my_ctx;
-                memset(&my_ctx, 0, sizeof(ResumeCtx));
-                my_ctx.body = body;
-                my_ctx.body_env = env;
-                my_ctx.eval_ctx = ctx;
-                my_ctx.frame_count = frame_count;
-                my_ctx.frames = frames;
+                /* Create fiber for body evaluation */
+                Fiber* fiber = fiber_create(ctx, body, env, FIBER_DEFAULT_STACK_SIZE);
 
-                /* Point all frames to this resume context */
+                /* Point all frames to this fiber */
                 for (int i = 0; i < frame_count; i++) {
-                    frames[i].resume_ctx = &my_ctx;
+                    frames[i].owner_fiber = fiber;
                 }
 
-                /* Push onto global resume stack */
-                extern ResumeCtx* g_resume_stack[];
-                extern int g_resume_depth;
-                if (g_resume_depth >= 7) {
-                    for (int i = 0; i < frame_count; i++) {
-                        cell_release(frames[i].handlers);
+                /* Push handler frames onto global handler stack */
+                for (int i = 0; i < frame_count; i++) {
+                    effect_push_handler(&frames[i]);
+                }
+
+                /* Save/set current fiber */
+                Fiber* prev_fiber = fiber_current();
+                fiber_set_current(fiber);
+
+                /* Start body evaluation in fiber */
+                fiber_start(fiber);
+
+                /* Handler dispatch loop */
+                Cell* result = NULL;
+                while (fiber->state == FIBER_SUSPENDED) {
+                    if (fiber->is_shift_yield) {
+                        /* Shift yield — not expected in ⟪↺⟫ context */
+                        result = cell_error("shift-in-effect-handler", cell_nil());
+                        break;
                     }
-                    return cell_error("resume-stack-overflow", cell_number(8));
+
+                    /* Perform yield — find handler */
+                    const char* perf_eff = fiber->perform_eff;
+                    const char* perf_op = fiber->perform_op;
+                    Cell* perf_args = fiber->perform_args;
+
+                    Cell* handler_fn = NULL;
+                    for (int i = 0; i < frame_count; i++) {
+                        if (strcmp(frames[i].effect_name, perf_eff) == 0) {
+                            Cell* h_iter = frames[i].handlers;
+                            while (cell_is_pair(h_iter)) {
+                                Cell* binding = cell_car(h_iter);
+                                if (cell_is_pair(binding)) {
+                                    Cell* key = cell_car(binding);
+                                    if (cell_is_symbol(key) &&
+                                        strcmp(cell_get_symbol(key), perf_op) == 0) {
+                                        handler_fn = cell_cdr(binding);
+                                        break;
+                                    }
+                                }
+                                h_iter = cell_cdr(h_iter);
+                            }
+                            if (handler_fn) break;
+                        }
+                    }
+
+                    if (!handler_fn) {
+                        /* Not handled by our frames — propagate to outer handler.
+                         * If we're running inside an outer fiber, yield our fiber's
+                         * perform info to the outer fiber's ⟪↺⟫ dispatch loop. */
+                        if (prev_fiber != NULL) {
+                            /* Copy perform info to our fiber and let it look like
+                             * we performed the effect. The outer dispatch loop
+                             * will see the perform and handle it. */
+                            /* We need to yield our inner fiber first, then yield
+                             * the outer fiber. Since we ARE on the outer fiber's
+                             * stack, we can set up perform info on the outer fiber. */
+
+                            /* The inner fiber already yielded to us. We need to
+                             * forward this to the outer handler. Pop our frames,
+                             * yield the outer (prev) fiber with the same perform info. */
+                            for (int pi = 0; pi < frame_count; pi++) {
+                                effect_pop_handler();
+                            }
+
+                            /* Set perform info on the outer fiber context */
+                            Fiber* outer = prev_fiber;
+                            outer->perform_eff = perf_eff;
+                            outer->perform_op = perf_op;
+                            if (outer->perform_args) cell_release(outer->perform_args);
+                            outer->perform_args = perf_args;
+                            if (perf_args) cell_retain(perf_args);
+                            outer->is_shift_yield = false;
+
+                            /* Yield outer fiber to outer ⟪↺⟫ dispatch loop */
+                            fiber_yield(outer);
+
+                            /* Outer handler resumed us with a value — forward to inner fiber */
+                            Cell* outer_value = outer->resume_value;
+
+                            /* Re-push our frames */
+                            for (int pi = 0; pi < frame_count; pi++) {
+                                effect_push_handler(&frames[pi]);
+                            }
+
+                            /* Resume inner fiber with the value from outer handler */
+                            fiber_resume(fiber, outer_value);
+                            continue;
+                        }
+
+                        result = cell_error("unhandled-resumable-op", cell_symbol(perf_op));
+                        break;
+                    }
+
+                    /* Build continuation k */
+                    extern Fiber* g_handling_fiber;
+                    extern EffectFrame* g_handling_frames;
+                    extern int g_handling_frame_count;
+
+                    Fiber* prev_handling = g_handling_fiber;
+                    EffectFrame* prev_hframes = g_handling_frames;
+                    int prev_hcount = g_handling_frame_count;
+
+                    g_handling_fiber = fiber;
+                    g_handling_frames = frames;
+                    g_handling_frame_count = frame_count;
+
+                    extern Cell* prim_fiber_resume_k(Cell* args);
+                    Cell* k = cell_builtin((void*)prim_fiber_resume_k);
+
+                    /* Build call args: (k arg1 arg2 ...) */
+                    if (perf_args) {
+                        cell_retain(perf_args);
+                    }
+                    Cell* call_args = cell_cons(k, perf_args ? perf_args : cell_nil());
+
+                    /* Call handler function */
+                    cell_retain(handler_fn);
+
+                    Cell* handler_result;
+                    if (handler_fn->type == CELL_BUILTIN) {
+                        Cell* (*builtin_fn)(Cell*) = (Cell* (*)(Cell*))handler_fn->data.atom.builtin;
+                        handler_result = builtin_fn(call_args);
+                    } else if (handler_fn->type == CELL_LAMBDA) {
+                        Cell* lambda_env = handler_fn->data.lambda.env;
+                        Cell* lambda_body = handler_fn->data.lambda.body;
+                        Cell* new_env = extend_env(lambda_env, call_args);
+                        handler_result = eval_internal(ctx, new_env, lambda_body);
+                        cell_release(new_env);
+                    } else {
+                        handler_result = cell_error("handler-not-callable", handler_fn);
+                    }
+
+                    cell_release(handler_fn);
+                    cell_release(call_args);
+
+                    /* Restore previous handling context */
+                    g_handling_fiber = prev_handling;
+                    g_handling_frames = prev_hframes;
+                    g_handling_frame_count = prev_hcount;
+
+                    /* If fiber is still suspended and handler didn't call k,
+                     * the handler aborted — return handler result */
+                    if (fiber->state == FIBER_SUSPENDED && !fiber->k_used) {
+                        result = handler_result;
+                        break;
+                    }
+
+                    /* Handler called k. Two sub-cases:
+                     * (a) Fiber finished — handler_result is the final ⟪↺⟫ result
+                     *     (handler may have post-processed k's return value)
+                     * (b) Fiber re-suspended — another perform, loop continues */
+                    if (fiber->state == FIBER_FINISHED) {
+                        result = handler_result;
+                        break;
+                    }
+
+                    if (fiber->state == FIBER_SUSPENDED) {
+                        /* Another perform — reset k_used for next handler call,
+                         * discard handler_result (it was nil from prim_fiber_resume_k) */
+                        fiber->k_used = false;
+                        cell_release(handler_result);
+                        continue;
+                    }
+
+                    /* Shouldn't reach here */
+                    result = handler_result;
+                    break;
                 }
-                g_resume_stack[++g_resume_depth] = &my_ctx;
 
-                /* Evaluate via resume loop */
-                Cell* result = resume_eval_loop(&my_ctx);
+                /* If fiber finished normally (no performs) */
+                if (result == NULL && fiber->state == FIBER_FINISHED) {
+                    result = fiber->result;
+                    cell_retain(result);
+                }
 
-                /* Pop resume stack */
-                g_resume_depth--;
+                /* Pop handler frames */
+                for (int i = 0; i < frame_count; i++) {
+                    effect_pop_handler();
+                }
 
-                /* Release handler alists and replay buffer */
+                /* Restore previous fiber */
+                fiber_set_current(prev_fiber);
+
+                /* Cleanup */
+                fiber_destroy(fiber);
                 for (int i = 0; i < frame_count; i++) {
                     cell_release(frames[i].handlers);
                 }
-                for (int i = 0; i < my_ctx.count; i++) {
-                    cell_release(my_ctx.answers[i]);
-                }
-                free(my_ctx.answers);
 
-                return result;
+                return result ? result : cell_error("fiber-error", cell_nil());
             }
 
             /* ↯ - perform effect operation
@@ -1964,18 +2103,11 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                     return cell_error("unhandled-effect", effect_name_cell);
                 }
 
-                /* ===== RESUMABLE PATH ===== */
-                if (frame->resumable && frame->resume_ctx) {
-                    ResumeCtx* rc = frame->resume_ctx;
+                /* ===== RESUMABLE PATH (fiber-based) ===== */
+                if (frame->resumable && fiber_current() != NULL) {
+                    Fiber* fiber = fiber_current();
 
-                    /* Check replay buffer first */
-                    if (rc->cursor < rc->count) {
-                        Cell* answer = rc->answers[rc->cursor++];
-                        cell_retain(answer);
-                        return answer;
-                    }
-
-                    /* Not in replay — evaluate args and signal perform-request */
+                    /* Evaluate argument expressions */
                     Cell* args = cell_nil();
                     Cell* args_tail = cell_nil();
                     Cell* arg_iter = arg_exprs;
@@ -1999,21 +2131,24 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                         arg_iter = cell_cdr(arg_iter);
                     }
 
-                    /* Store perform info in global signal */
-                    extern bool g_perform_pending;
-                    extern const char* g_perform_eff_name;
-                    extern const char* g_perform_op_name;
-                    extern Cell* g_perform_args;
-                    extern ResumeCtx* g_perform_ctx;
+                    /* Store perform info on fiber */
+                    fiber->perform_eff = eff_name;
+                    fiber->perform_op = op_name;
+                    if (fiber->perform_args) {
+                        cell_release(fiber->perform_args);
+                    }
+                    fiber->perform_args = args;
+                    cell_retain(args);
+                    fiber->is_shift_yield = false;
 
-                    g_perform_pending = true;
-                    g_perform_eff_name = eff_name;
-                    g_perform_op_name = op_name;
-                    g_perform_args = args;
-                    g_perform_ctx = rc;
+                    /* Yield to handler — context switches to ⟪↺⟫ dispatch loop */
+                    fiber_yield(fiber);
 
-                    /* Return perform-request error (propagates up to ⟪↺⟫) */
-                    return cell_error("perform-request", cell_nil());
+                    /* When we return here, fiber was resumed with a value */
+                    Cell* resumed = fiber->resume_value;
+                    cell_retain(resumed);
+                    cell_release(args);
+                    return resumed;
                 }
 
                 /* ===== NON-RESUMABLE PATH (original behavior) ===== */
@@ -2114,6 +2249,136 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                 cell_release(args);
                 return cell_error("handler-not-a-function", handler_fn);
             }
+
+            /* ⟪⊸⟫ - reset/prompt (delimited continuation delimiter)
+             * Syntax: (⟪⊸⟫ body)
+             * Evaluates body in a new fiber. If body calls (⊸ handler-fn),
+             * handler-fn receives one-shot continuation k.
+             */
+            if (strcmp(sym, "⟪⊸⟫") == 0) {
+                Cell* body = cell_car(rest);
+
+                /* Create fiber for body evaluation */
+                Fiber* fiber = fiber_create(ctx, body, env, FIBER_DEFAULT_STACK_SIZE);
+
+                /* Save/set current fiber */
+                Fiber* prev_fiber = fiber_current();
+                fiber_set_current(fiber);
+
+                /* Start body evaluation in fiber */
+                fiber_start(fiber);
+
+                Cell* result = NULL;
+
+                while (fiber->state == FIBER_SUSPENDED && fiber->is_shift_yield) {
+                    /* Shift yield — call shift handler with k */
+                    Cell* shift_handler = fiber->shift_handler;
+                    if (!shift_handler) {
+                        result = cell_error("shift-no-handler", cell_nil());
+                        break;
+                    }
+
+                    /* Build one-shot k */
+                    extern Fiber* g_handling_fiber;
+                    Fiber* prev_handling = g_handling_fiber;
+                    g_handling_fiber = fiber;
+
+                    extern Cell* prim_fiber_resume_k(Cell* args);
+                    Cell* k = cell_builtin((void*)prim_fiber_resume_k);
+
+                    /* Call shift_handler(k) */
+                    Cell* call_args = cell_cons(k, cell_nil());
+                    cell_retain(shift_handler);
+
+                    Cell* handler_result;
+                    if (shift_handler->type == CELL_BUILTIN) {
+                        Cell* (*builtin_fn)(Cell*) = (Cell* (*)(Cell*))shift_handler->data.atom.builtin;
+                        handler_result = builtin_fn(call_args);
+                    } else if (shift_handler->type == CELL_LAMBDA) {
+                        Cell* lambda_env = shift_handler->data.lambda.env;
+                        Cell* lambda_body = shift_handler->data.lambda.body;
+                        Cell* new_env = extend_env(lambda_env, call_args);
+                        handler_result = eval_internal(ctx, new_env, lambda_body);
+                        cell_release(new_env);
+                    } else {
+                        handler_result = cell_error("shift-handler-not-callable", shift_handler);
+                    }
+
+                    cell_release(shift_handler);
+                    cell_release(call_args);
+                    g_handling_fiber = prev_handling;
+
+                    /* If handler didn't call k (abort), return handler result */
+                    if (fiber->state == FIBER_SUSPENDED && !fiber->k_used) {
+                        result = handler_result;
+                        break;
+                    }
+
+                    /* If fiber finished via k, return handler result (not fiber->result)
+                     * because handler may post-process k's return value */
+                    if (fiber->state == FIBER_FINISHED) {
+                        result = handler_result;
+                        break;
+                    }
+
+                    /* If fiber suspended again (another shift), reset k_used and loop */
+                    if (fiber->state == FIBER_SUSPENDED && fiber->is_shift_yield) {
+                        cell_release(handler_result);
+                        fiber->k_used = false;
+                        continue;
+                    }
+
+                    result = handler_result;
+                    break;
+                }
+
+                /* If fiber finished normally (no shift) */
+                if (result == NULL && fiber->state == FIBER_FINISHED) {
+                    result = fiber->result;
+                    cell_retain(result);
+                }
+
+                /* Restore previous fiber */
+                fiber_set_current(prev_fiber);
+                fiber_destroy(fiber);
+
+                return result ? result : cell_error("reset-error", cell_nil());
+            }
+
+            /* ⊸ - shift/control (capture delimited continuation)
+             * Syntax: (⊸ handler-fn)
+             * Must be called inside a ⟪⊸⟫ reset block.
+             * handler-fn receives one-shot continuation k.
+             */
+            if (strcmp(sym, "⊸") == 0) {
+                Fiber* fiber = fiber_current();
+                if (!fiber) {
+                    return cell_error("shift-outside-reset", cell_nil());
+                }
+
+                /* Evaluate handler function */
+                Cell* handler_fn = eval_internal(ctx, env, cell_car(rest));
+                if (cell_is_error(handler_fn)) {
+                    return handler_fn;
+                }
+
+                /* Store handler on fiber */
+                if (fiber->shift_handler) {
+                    cell_release(fiber->shift_handler);
+                }
+                fiber->shift_handler = handler_fn;
+                cell_retain(handler_fn);
+                fiber->is_shift_yield = true;
+
+                /* Yield to reset block */
+                fiber_yield(fiber);
+
+                /* Resumed with value from k */
+                Cell* resumed = fiber->resume_value;
+                cell_retain(resumed);
+                cell_release(handler_fn);
+                return resumed;
+            }
         }
 
         /* Function application */
@@ -2140,18 +2405,6 @@ tail_call:  /* TCO: loop back here instead of recursive call */
         }
 
         Cell* args = eval_list(ctx, env, rest);
-
-        /* Propagate perform-request errors before calling function */
-        if (cell_is_error(args) &&
-            strcmp(cell_error_message(args), "perform-request") == 0) {
-            cell_release(fn);
-            return args;
-        }
-        if (cell_is_error(fn) &&
-            strcmp(cell_error_message(fn), "perform-request") == 0) {
-            cell_release(args);
-            return fn;
-        }
 
         /* Inline apply() for TCO */
         if (fn->type == CELL_BUILTIN) {
@@ -2389,200 +2642,65 @@ EffectFrame* effect_find_handler(const char* effect_name) {
     return NULL;
 }
 
-/* ============ Resumable Effect Infrastructure ============ */
+/* ============ Fiber-based Resumable Effect Infrastructure ============ */
 
-/* Global resume stack (for nested ⟪↺⟫) */
-ResumeCtx* g_resume_stack[8];
-int g_resume_depth = -1;
+/* Globals for handler dispatch context (saved/restored around handler calls) */
+Fiber* g_handling_fiber = NULL;
+EffectFrame* g_handling_frames = NULL;
+int g_handling_frame_count = 0;
 
-/* Global perform-request signal (set by ↯, read by resume_eval_loop) */
-bool g_perform_pending = false;
-const char* g_perform_eff_name = NULL;
-const char* g_perform_op_name = NULL;
-Cell* g_perform_args = NULL;
-ResumeCtx* g_perform_ctx = NULL;
-
-/* resume_eval_loop - Core of replay-based resumable effects.
+/* prim_fiber_resume_k - One-shot continuation for fiber-based resumable effects.
  *
- * Evaluates body. If body performs an effect (returns perform-request error),
- * looks up the handler, builds continuation k, calls handler with (k args...).
- * If handler calls k, the body is re-evaluated from scratch with the replay
- * buffer providing answers for previously-handled performs.
- *
- * Performance: O(n²) for n performs — acceptable for bootstrap interpreter.
- * Native compilation will use direct CPS dispatch for O(n).
- */
-Cell* resume_eval_loop(ResumeCtx* rc) {
-    /* Initial capacity for replay buffer */
-    rc->capacity = 8;
-    rc->count = 0;
-    rc->answers = (Cell**)malloc(sizeof(Cell*) * rc->capacity);
-    rc->cursor = 0;
-
-    /* Push handler frames onto global handler stack */
-    for (int i = 0; i < rc->frame_count; i++) {
-        effect_push_handler(&rc->frames[i]);
-    }
-
-    /* Evaluate body */
-    Cell* result = eval_internal(rc->eval_ctx, rc->body_env, rc->body);
-
-    /* Pop handler frames */
-    for (int i = 0; i < rc->frame_count; i++) {
-        effect_pop_handler();
-    }
-
-    /* If not a perform-request, body completed — return result */
-    if (!cell_is_error(result) ||
-        strcmp(cell_error_message(result), "perform-request") != 0) {
-        return result;
-    }
-
-    /* Perform-request: check it's for our context */
-    if (!g_perform_pending || g_perform_ctx != rc) {
-        /* Not ours — propagate up */
-        return result;
-    }
-
-    /* Consume the signal */
-    g_perform_pending = false;
-    const char* eff_name = g_perform_eff_name;
-    const char* op_name = g_perform_op_name;
-    Cell* args = g_perform_args;
-    g_perform_eff_name = NULL;
-    g_perform_op_name = NULL;
-    g_perform_args = NULL;
-    g_perform_ctx = NULL;
-
-    cell_release(result); /* Release the perform-request error */
-
-    /* Find handler function in our frames */
-    Cell* handler_fn = NULL;
-    for (int i = 0; i < rc->frame_count; i++) {
-        if (strcmp(rc->frames[i].effect_name, eff_name) == 0) {
-            Cell* h_iter = rc->frames[i].handlers;
-            while (cell_is_pair(h_iter)) {
-                Cell* binding = cell_car(h_iter);
-                if (cell_is_pair(binding)) {
-                    Cell* key = cell_car(binding);
-                    if (cell_is_symbol(key) && strcmp(cell_get_symbol(key), op_name) == 0) {
-                        handler_fn = cell_cdr(binding);
-                        break;
-                    }
-                }
-                h_iter = cell_cdr(h_iter);
-            }
-            if (handler_fn) break;
-        }
-    }
-
-    if (!handler_fn) {
-        cell_release(args);
-        return cell_error("unhandled-resumable-op", cell_symbol(op_name));
-    }
-
-    /* Build continuation k as a builtin */
-    Cell* k = cell_builtin((void*)prim_resume_k);
-
-    /* Build call args: (k arg1 arg2 ...) */
-    Cell* call_args = cell_cons(k, args);
-
-    /* Call handler function */
-    cell_retain(handler_fn);
-
-    Cell* handler_result;
-    if (handler_fn->type == CELL_BUILTIN) {
-        Cell* (*builtin_fn)(Cell*) = (Cell* (*)(Cell*))handler_fn->data.atom.builtin;
-        handler_result = builtin_fn(call_args);
-    } else if (handler_fn->type == CELL_LAMBDA) {
-        Cell* lambda_env = handler_fn->data.lambda.env;
-        Cell* lambda_body = handler_fn->data.lambda.body;
-
-        Cell* new_env = extend_env(lambda_env, call_args);
-
-        handler_result = eval_internal(rc->eval_ctx, new_env, lambda_body);
-        cell_release(new_env);
-    } else {
-        handler_result = cell_error("handler-not-callable", handler_fn);
-    }
-
-    cell_release(handler_fn);
-    cell_release(call_args);
-
-    return handler_result;
-}
-
-/* prim_resume_k - Continuation function passed to resumable handlers.
- *
- * When handler calls (k value), this stores the value in the replay buffer
- * and re-evaluates the body. Previous performs get their answers from the
- * replay buffer; the current perform slot now returns `value`.
+ * When handler calls (k value), this resumes the suspended fiber with the value.
+ * The fiber continues from where it yielded (inside ↯).
+ * If the fiber performs again, this function dispatches the new perform
+ * recursively, so the calling handler sees the final body result.
+ * One-shot: calling k a second time returns an error.
  *
  * Args: (value)
  */
-Cell* prim_resume_k(Cell* args) {
-    /* Get the current resume context from global stack */
-    if (g_resume_depth < 0) {
-        return cell_error("resume-k-no-context", cell_nil());
+Cell* prim_fiber_resume_k(Cell* args) {
+    Fiber* fiber = g_handling_fiber;
+    EffectFrame* frames = g_handling_frames;
+    int frame_count = g_handling_frame_count;
+
+    if (!fiber) {
+        return cell_error("resume-k-no-fiber", cell_nil());
     }
-    ResumeCtx* rc = g_resume_stack[g_resume_depth];
+
+    /* One-shot enforcement */
+    if (fiber->k_used) {
+        return cell_error("one-shot-continuation-already-used", cell_nil());
+    }
+    fiber->k_used = true;
+
+    if (fiber->state != FIBER_SUSPENDED) {
+        return cell_error("resume-k-fiber-not-suspended", cell_nil());
+    }
 
     /* Get the resume value */
     Cell* value = cell_car(args);
-    cell_retain(value);
 
-    /* Grow replay buffer if needed */
-    if (rc->count >= rc->capacity) {
-        rc->capacity *= 2;
-        rc->answers = (Cell**)realloc(rc->answers, sizeof(Cell*) * rc->capacity);
-    }
+    /* Resume the fiber with the value */
+    fiber_resume(fiber, value);
 
-    /* Store answer in replay buffer */
-    rc->answers[rc->count++] = value;
+    /* Handle any subsequent performs until fiber finishes or aborts */
+    while (fiber->state == FIBER_SUSPENDED && !fiber->is_shift_yield) {
+        const char* perf_eff = fiber->perform_eff;
+        const char* perf_op = fiber->perform_op;
+        Cell* perf_args = fiber->perform_args;
 
-    /* Reset cursor for replay */
-    rc->cursor = 0;
-
-    /* Push handler frames back onto global stack */
-    for (int i = 0; i < rc->frame_count; i++) {
-        effect_push_handler(&rc->frames[i]);
-    }
-
-    /* Re-evaluate body (previous performs will replay from buffer) */
-    Cell* result = eval_internal(rc->eval_ctx, rc->body_env, rc->body);
-
-    /* Pop handler frames */
-    for (int i = 0; i < rc->frame_count; i++) {
-        effect_pop_handler();
-    }
-
-    /* Check if another perform-request occurred */
-    if (cell_is_error(result) &&
-        strcmp(cell_error_message(result), "perform-request") == 0 &&
-        g_perform_pending && g_perform_ctx == rc) {
-
-        /* Another perform in the same body — handle it recursively */
-        g_perform_pending = false;
-        const char* eff_name = g_perform_eff_name;
-        const char* op_name = g_perform_op_name;
-        Cell* perf_args = g_perform_args;
-        g_perform_eff_name = NULL;
-        g_perform_op_name = NULL;
-        g_perform_args = NULL;
-        g_perform_ctx = NULL;
-
-        cell_release(result);
-
-        /* Find handler function */
+        /* Find handler */
         Cell* handler_fn = NULL;
-        for (int i = 0; i < rc->frame_count; i++) {
-            if (strcmp(rc->frames[i].effect_name, eff_name) == 0) {
-                Cell* h_iter = rc->frames[i].handlers;
+        for (int i = 0; i < frame_count; i++) {
+            if (strcmp(frames[i].effect_name, perf_eff) == 0) {
+                Cell* h_iter = frames[i].handlers;
                 while (cell_is_pair(h_iter)) {
                     Cell* binding = cell_car(h_iter);
                     if (cell_is_pair(binding)) {
                         Cell* key = cell_car(binding);
-                        if (cell_is_symbol(key) && strcmp(cell_get_symbol(key), op_name) == 0) {
+                        if (cell_is_symbol(key) &&
+                            strcmp(cell_get_symbol(key), perf_op) == 0) {
                             handler_fn = cell_cdr(binding);
                             break;
                         }
@@ -2594,27 +2712,37 @@ Cell* prim_resume_k(Cell* args) {
         }
 
         if (!handler_fn) {
-            cell_release(perf_args);
-            return cell_error("unhandled-resumable-op", cell_symbol(op_name));
+            return cell_error("unhandled-resumable-op", cell_symbol(perf_op));
         }
 
-        /* Build k and call handler again */
-        Cell* k = cell_builtin((void*)prim_resume_k);
-        Cell* call_args = cell_cons(k, perf_args);
+        /* Reset k_used for new perform, build new k */
+        fiber->k_used = false;
+
+        /* Set up handling context for recursive k calls */
+        Fiber* prev_handling = g_handling_fiber;
+        EffectFrame* prev_hframes = g_handling_frames;
+        int prev_hcount = g_handling_frame_count;
+        g_handling_fiber = fiber;
+        g_handling_frames = frames;
+        g_handling_frame_count = frame_count;
+
+        Cell* new_k = cell_builtin((void*)prim_fiber_resume_k);
+
+        if (perf_args) cell_retain(perf_args);
+        Cell* call_args = cell_cons(new_k, perf_args ? perf_args : cell_nil());
 
         cell_retain(handler_fn);
 
         Cell* handler_result;
+        EvalContext* eval_ctx = fiber->eval_ctx;
         if (handler_fn->type == CELL_BUILTIN) {
             Cell* (*builtin_fn)(Cell*) = (Cell* (*)(Cell*))handler_fn->data.atom.builtin;
             handler_result = builtin_fn(call_args);
         } else if (handler_fn->type == CELL_LAMBDA) {
             Cell* lambda_env = handler_fn->data.lambda.env;
             Cell* lambda_body = handler_fn->data.lambda.body;
-
             Cell* new_env = extend_env(lambda_env, call_args);
-
-            handler_result = eval_internal(rc->eval_ctx, new_env, lambda_body);
+            handler_result = eval_internal(eval_ctx, new_env, lambda_body);
             cell_release(new_env);
         } else {
             handler_result = cell_error("handler-not-callable", handler_fn);
@@ -2623,8 +2751,41 @@ Cell* prim_resume_k(Cell* args) {
         cell_release(handler_fn);
         cell_release(call_args);
 
-        return handler_result;
+        g_handling_fiber = prev_handling;
+        g_handling_frames = prev_hframes;
+        g_handling_frame_count = prev_hcount;
+
+        /* If handler didn't call k (abort), return handler's result */
+        if (fiber->state == FIBER_SUSPENDED && !fiber->k_used) {
+            return handler_result;
+        }
+
+        /* If fiber finished (handler called k, which recursively handled everything),
+         * return handler_result (which wraps the final result via post-processing) */
+        if (fiber->state == FIBER_FINISHED) {
+            return handler_result;
+        }
+
+        /* If fiber re-suspended again: this shouldn't happen because
+         * the recursive prim_fiber_resume_k call handles inner performs.
+         * But just in case, loop. */
+        cell_release(handler_result);
     }
 
-    return result;
+    /* Fiber finished without further performs */
+    if (fiber->state == FIBER_FINISHED) {
+        Cell* result = fiber->result;
+        cell_retain(result);
+        return result;
+    }
+
+    /* Fiber suspended for a shift yield — return control to ⟪⊸⟫ dispatch loop.
+     * The dispatch loop will see the fiber is suspended with is_shift_yield
+     * and handle the new shift. Return nil as the k result since the
+     * handler's return value will be discarded by the dispatch loop anyway. */
+    if (fiber->state == FIBER_SUSPENDED && fiber->is_shift_yield) {
+        return cell_nil();
+    }
+
+    return cell_error("resume-k-unexpected-state", cell_nil());
 }
