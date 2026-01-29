@@ -344,3 +344,48 @@
                    (? (:≤ :n #1) :n
                       (:⊕ (:fib (:⊖ :n #1)) (:fib (:⊖ :n #2)))))))
               (:fib #6)))) env-full))
+
+;;; ===================================================================
+;;; Test 21: Mutual Recursion in Letrec
+;;; ===================================================================
+
+;; Environment with ⟨⟩, ◁, ▷ for mutual recursion (required by transformation)
+(≔ env-mutual
+  (((env-extend
+    (((env-extend
+      (((env-extend env-full) :⟨⟩) ⟨⟩))
+     :◁) ◁))
+   :▷) ▷))
+
+;; even?/odd? mutual recursion - even numbers
+(⊨ :eval-mutual-even-0
+   #t
+   ((eval (⌜ (⊛ ((:even? (λ (:n) (? (:≡ :n #0) #t (:odd? (:⊖ :n #1)))))
+                 (:odd? (λ (:n) (? (:≡ :n #0) #f (:even? (:⊖ :n #1))))))
+              (:even? #0)))) env-mutual))
+
+(⊨ :eval-mutual-even-4
+   #t
+   ((eval (⌜ (⊛ ((:even? (λ (:n) (? (:≡ :n #0) #t (:odd? (:⊖ :n #1)))))
+                 (:odd? (λ (:n) (? (:≡ :n #0) #f (:even? (:⊖ :n #1))))))
+              (:even? #4)))) env-mutual))
+
+;; even?/odd? mutual recursion - odd numbers
+(⊨ :eval-mutual-odd-3
+   #t
+   ((eval (⌜ (⊛ ((:even? (λ (:n) (? (:≡ :n #0) #t (:odd? (:⊖ :n #1)))))
+                 (:odd? (λ (:n) (? (:≡ :n #0) #f (:even? (:⊖ :n #1))))))
+              (:odd? #3)))) env-mutual))
+
+(⊨ :eval-mutual-even-5
+   #f
+   ((eval (⌜ (⊛ ((:even? (λ (:n) (? (:≡ :n #0) #t (:odd? (:⊖ :n #1)))))
+                 (:odd? (λ (:n) (? (:≡ :n #0) #f (:even? (:⊖ :n #1))))))
+              (:even? #5)))) env-mutual))
+
+;; Test calling odd? directly
+(⊨ :eval-mutual-odd-0
+   #f
+   ((eval (⌜ (⊛ ((:even? (λ (:n) (? (:≡ :n #0) #t (:odd? (:⊖ :n #1)))))
+                 (:odd? (λ (:n) (? (:≡ :n #0) #f (:even? (:⊖ :n #1))))))
+              (:odd? #0)))) env-mutual))

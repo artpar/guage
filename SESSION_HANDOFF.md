@@ -1,27 +1,28 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-01-29 (Day 73 COMPLETE)
+Updated: 2026-01-29 (Day 74 COMPLETE)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 73 - Recursive Letrec Complete (2026-01-29)
+# Session Handoff: Day 74 - Mutual Recursion Complete (2026-01-29)
 
-## 🎉 Day 73 Progress - Recursive Letrec via Y-Combinator!
+## 🎉 Day 74 Progress - Mutual Recursion in Letrec!
 
-**RESULT:** 71/71 test files passing (100%), 47 eval tests
+**RESULT:** 71/71 test files passing (100%), 52 eval tests
 
-**New Feature: Recursive Letrec**
-- Automatic Y-combinator transformation for recursive bindings
-- `is-recursive-binding?` detects when name appears in body
-- `transform-recursive-ast` applies self-application pattern
-- Clean recursive definitions now work in meta-evaluator!
+**New Feature: Mutual Recursion**
+- `is-mutual-recursion?` detects cross-referencing bindings
+- `transform-mutual-ast` applies Y-combinator with pair structure
+- Even?/odd? mutual recursion patterns now work!
+- Uses `:⟨⟩`, `:◁`, `:▷` for pair construction/access
 
 **Example:**
 ```scheme
-(⊛ ((:fact (λ (:n)
-       (? (:≤ :n #1) #1 (:⊗ :n (:fact (:⊖ :n #1)))))))
-   (:fact #5))  ; → #120
+;; Mutual recursion - even?/odd?
+(⊛ ((:even? (λ (:n) (? (:≡ :n #0) #t (:odd? (:⊖ :n #1)))))
+    (:odd? (λ (:n) (? (:≡ :n #0) #f (:even? (:⊖ :n #1))))))
+   (:even? #4))  ; → #t
 ```
 
 **Evaluator now supports:**
@@ -34,10 +35,11 @@ Purpose: Current project status and progress
 - Quote (⌜)
 - Define (≔) - local bindings in lambda bodies
 - Sequences with define (eval-body)
-- Letrec (⊛) - **with recursive bindings via Y-combinator!**
+- Letrec (⊛) - **with single recursive AND mutual recursion!**
 - Meta-eval (⌞) - evaluate code as data
 - Primitives through ⊡
 - Recursion via Y-combinator
+- **Mutual recursion via pair-based Y-combinator**
 - Higher-order functions
 - Pure lambda calculus
 
@@ -48,7 +50,7 @@ Purpose: Current project status and progress
 **System State:**
 - **Primitives:** 125 total
 - **Tests:** 71/71 test files passing (100%)
-- **Self-Hosting Eval Tests:** 47/47 passing (100%)
+- **Self-Hosting Eval Tests:** 52/52 passing (100%)
 - **Pattern Matching:** World-class (guards, as-patterns, or-patterns, view patterns)
 - **Build:** Clean, O2 optimized, 32MB stack
 
@@ -66,26 +68,26 @@ Purpose: Current project status and progress
 
 ---
 
-## 🎯 What to Do Next (Day 74+)
+## 🎯 What to Do Next (Day 75+)
 
 **RECOMMENDED OPTIONS:**
 
-1. **Mutual Recursion in Letrec** (2-3 hours) - MEDIUM VALUE
-   - Enable even/odd mutual recursion patterns
-   - Requires simultaneous binding transformation
-
-2. **Data Flow Analysis** (3-4 hours) - MEDIUM VALUE
+1. **Data Flow Analysis** (3-4 hours) - MEDIUM VALUE
    - Build on graph algorithms for liveness analysis, reaching definitions
 
-3. **Pattern-Based Macros** (3-4 hours) - HIGH VALUE
+2. **Pattern-Based Macros** (3-4 hours) - HIGH VALUE
    - Add syntax-rules style pattern matching for macros
 
-4. **More Stdlib Macros** (2-3 hours) - MEDIUM VALUE
+3. **More Stdlib Macros** (2-3 hours) - MEDIUM VALUE
    - Add cond (⇒*), let* (≔⇊), case, and other common constructs
 
-5. **Self-Hosting Parser** (6-8 hours) - MILESTONE
+4. **Self-Hosting Parser** (6-8 hours) - MILESTONE
    - Parser written in Guage that can parse Guage
    - Requires string operations, character handling
+
+5. **3+ Function Mutual Recursion** (1-2 hours) - LOW VALUE
+   - Extend mutual recursion to handle more than 2 functions
+   - Currently limited to exactly 2 mutually recursive functions
 
 ---
 
@@ -93,6 +95,7 @@ Purpose: Current project status and progress
 
 | Day | Feature | Tests |
 |-----|---------|-------|
+| 74 | Mutual Recursion in Letrec | 71/71 (100%), 52 eval tests |
 | 73 | Recursive Letrec via Y-Combinator | 71/71 (100%), 47 eval tests |
 | 72 | Self-Hosting Evaluator Complete (≔, ⊛, ⌞) | 71/71 (100%), 42 eval tests |
 | 71 | Self-Hosting Evaluator Enhanced | 71/71 (100%), 32 eval tests |
@@ -103,7 +106,6 @@ Purpose: Current project status and progress
 | 65 | Self-Hosting Primitives | 66/67 |
 | 64 | Mutation Testing | 66/67 |
 | 63 | Doc Generation + Auto-Execute Tests | 65/66 |
-| 62 | Property-Based Testing | 61/62 |
 
 **Full historical details:** See `docs/archive/2026-01/sessions/DAYS_43_68_HISTORY.md`
 
@@ -146,6 +148,15 @@ make rebuild      # Clean + rebuild
 
 ## Session End Checklist ✅
 
+**Day 74 Complete (2026-01-29):**
+- ✅ Implemented mutual recursion via pair-based Y-combinator
+- ✅ Added `is-mutual-recursion?` to detect cross-referencing bindings
+- ✅ Added `transform-mutual-ast` for pair-based Y-combinator transformation
+- ✅ Added `eval-mutual-letrec` for mutually recursive binding evaluation
+- ✅ Added helper functions: `collect-binding-names`, `build-accessor`, `build-mutual-pair`, etc.
+- ✅ Eval tests increased from 47 to 52 (5 new mutual recursion tests)
+- ✅ All 71/71 test files passing (100%)
+
 **Day 73 Complete (2026-01-29):**
 - ✅ Implemented recursive letrec via Y-combinator transformation
 - ✅ Added `contains-symbol?` and `contains-symbol-list?` for recursion detection
@@ -176,38 +187,11 @@ git log --oneline -3         # See recent commits
 ```
 
 ### Self-Hosting Status
-- **Core evaluator:** COMPLETE with recursive letrec (47 tests)
-- **What's next:** Mutual recursion OR self-hosting parser
+- **Core evaluator:** COMPLETE with recursive AND mutual letrec (52 tests)
+- **What's next:** Self-hosting parser OR stdlib macros
 - **Detailed roadmap:** `docs/planning/SELF_HOSTING_COMPLETION.md`
 
-### Option A: Mutual Recursion (2-3 hours, MEDIUM VALUE)
-
-**Goal:** Make `(⊛ ((:even? ...) (:odd? ...)) (:even? #4))` work
-
-**Why it matters:** Enables mutually recursive functions like even?/odd?
-
-**Current state:** Single recursive bindings work via Y-combinator transform
-
-**Implementation approach:**
-1. Detect if multiple bindings reference each other (cross-references)
-2. Transform all names simultaneously using tuple pattern
-3. Each function receives tuple of all functions, extracts its own
-
-**Example transformation:**
-```scheme
-; Input:
-(⊛ ((:even? (λ (:n) (? (:≡ :n #0) #t (:odd? (:⊖ :n #1)))))
-     (:odd? (λ (:n) (? (:≡ :n #0) #f (:even? (:⊖ :n #1))))))
-   (:even? #4))
-
-; Transform to (conceptually):
-; Create single recursive function that returns tuple
-; Extract even?/odd? from tuple
-```
-
-**Key insight:** Existing `subst-all` can substitute multiple names at once
-
-### Option B: Self-Hosting Parser (6-9 hours, MILESTONE)
+### Option A: Self-Hosting Parser (6-9 hours, MILESTONE)
 
 **Goal:** Parser written in Guage that parses Guage source
 
@@ -232,33 +216,36 @@ git log --oneline -3         # See recent commits
 
 ### Key Files
 ```
-bootstrap/stdlib/eval.scm      # Main evaluator (~320 lines)
+bootstrap/stdlib/eval.scm      # Main evaluator (~400 lines)
   - Lines 111-145: Recursive letrec support functions
   - Lines 147-169: transform-recursive-ast (Y-combinator pattern)
-  - Lines 207-222: eval-letrec (detects and transforms recursive bindings)
+  - Lines 171-280: Mutual recursion support functions
+  - Lines 282-310: eval-letrec (detects recursive and mutual recursion)
 
 bootstrap/stdlib/eval-env.scm  # Environment module (37 lines)
-bootstrap/tests/test_eval.test # Test suite (47 tests)
+bootstrap/tests/test_eval.test # Test suite (52 tests)
 docs/planning/SELF_HOSTING_COMPLETION.md  # Detailed roadmap
 ```
 
-### What We Built Today (Day 73)
+### What We Built Today (Day 74)
 
-**New functions in eval.scm:**
-- `contains-symbol?` - Check if symbol appears in expression (respects shadowing)
-- `contains-symbol-list?` - Check symbol in list of expressions
-- `is-recursive-binding?` - Detect if binding name appears in its body
-- `transform-recursive-ast` - Transform `(λ (p) body)` → Y-combinator form
+**New functions in eval.scm for mutual recursion:**
+- `is-mutual-recursion?` - Detect if bindings cross-reference each other
+- `transform-mutual-ast` - Transform mutually recursive bindings via pair-based Y-combinator
+- `build-accessor` - Create `:◁`/`:▷` accessor expressions
+- `build-mutual-pair` - Build `(:⟨⟩ λ1 λ2)` pair structure
+- `eval-mutual-letrec` - Evaluate and bind mutually recursive functions
 
-**The Y-combinator transformation:**
+**The mutual recursion transformation:**
 ```scheme
-; (λ (params) body-with-name)
+; (⊛ ((:even? (λ ...)) (:odd? (λ ...))) body)
 ; becomes:
-; ((λ (:self) (λ (params) body-with-(:self :self)))
-;  (λ (:self) (λ (params) body-with-(:self :self))))
+; ((λ (:self) (:⟨⟩ λ1' λ2')) (λ (:self) (:⟨⟩ λ1' λ2')))
+; where λ1' and λ2' substitute :even?/:odd? with (:◁ (:self :self))/(:▷ (:self :self))
+; Results bound: :even? → (◁ pair), :odd? → (▷ pair)
 ```
 
 ---
 
-**Last Updated:** 2026-01-29 (Day 73 complete)
-**Next Session:** Day 74 - Continue self-hosting (mutual recursion OR parser)
+**Last Updated:** 2026-01-29 (Day 74 complete)
+**Next Session:** Day 75 - Self-hosting parser OR stdlib macros

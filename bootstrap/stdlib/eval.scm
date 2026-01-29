@@ -169,6 +169,174 @@
      lambda-expr))))
 
 ;; ===================================================================
+;; Mutual Recursion Support
+;; ===================================================================
+
+;; Extract all binding names from a list of bindings
+;; bindings = ((name1 val1) (name2 val2) ...)
+(≔ collect-binding-names (λ (bindings)
+  (? (∅? bindings)
+     ∅
+     (⟨⟩ (◁ (◁ bindings))
+         (collect-binding-names (▷ bindings))))))
+
+;; Check if any symbol in a list appears in expression
+(≔ contains-any-symbol? (λ (syms) (λ (expr)
+  (? (∅? syms)
+     #f
+     (? ((contains-symbol? (◁ syms)) expr)
+        #t
+        ((contains-any-symbol? (▷ syms)) expr))))))
+
+;; Check if binding references any name from a list of names
+(≔ binding-references-names? (λ (binding) (λ (names)
+  (? (⟨⟩? binding)
+     (? (⟨⟩? (▷ binding))
+        ((contains-any-symbol? names) (◁ (▷ binding)))
+        #f)
+     #f))))
+
+;; Check if bindings form a mutual recursion group
+;; Returns #t if any binding references another binding's name
+(≔ is-mutual-recursion? (λ (bindings)
+  (? (∅? bindings)
+     #f
+     (? (∅? (▷ bindings))
+        #f  ; Only one binding - not mutual
+        ; Check if first binding references any other binding's name
+        ((is-mutual-recursion-helper? bindings) (collect-binding-names bindings))))))
+
+;; Helper: check if any binding references a name other than its own
+(≔ is-mutual-recursion-helper? (λ (bindings) (λ (all-names)
+  (? (∅? bindings)
+     #f
+     ; For each binding, check if it references any OTHER name
+     (? ((binding-references-other-name? (◁ bindings)) all-names)
+        #t
+        ((is-mutual-recursion-helper? (▷ bindings)) all-names))))))
+
+;; Check if binding references any name other than its own
+(≔ binding-references-other-name? (λ (binding) (λ (all-names)
+  (? (⟨⟩? binding)
+     (? (⟨⟩? (▷ binding))
+        ((contains-any-symbol? ((remove-name (◁ binding)) all-names))
+         (◁ (▷ binding)))
+        #f)
+     #f))))
+
+;; Remove a name from a list of names
+(≔ remove-name (λ (name) (λ (names)
+  (? (∅? names)
+     ∅
+     (? (≡ name (◁ names))
+        (▷ names)
+        (⟨⟩ (◁ names) ((remove-name name) (▷ names))))))))
+
+;; Build accessor expression for nth element of pair structure
+;; 0 → (:◁ (:self :self))
+;; 1 → (:▷ (:self :self))
+;; For 2-function mutual recursion only
+;; Note: Use (⌜ :◁) to get ::◁ (the keyword symbol that matches env bindings)
+(≔ build-accessor (λ (index)
+  (? (≡ index #0)
+     (⟨⟩ (⌜ :◁) (⟨⟩ (⟨⟩ :self (⟨⟩ :self ∅)) ∅))     ; (:◁ (:self :self))
+     (⟨⟩ (⌜ :▷) (⟨⟩ (⟨⟩ :self (⟨⟩ :self ∅)) ∅))))) ; (:▷ (:self :self))
+
+;; Build substitution pairs for mutual recursion
+;; Returns list of (name . accessor) where accessor is (◁ (:self :self)) or (▷ (:self :self))
+(≔ build-mutual-substitutions (λ (names) (λ (index)
+  (? (∅? names)
+     ∅
+     (⟨⟩ (⟨⟩ (◁ names) (build-accessor index))
+         ((build-mutual-substitutions (▷ names)) (⊕ index #1)))))))
+
+;; Apply multiple substitutions to expression
+;; subs = ((name1 . replacement1) (name2 . replacement2) ...)
+(≔ apply-substitutions (λ (subs) (λ (expr)
+  (? (∅? subs)
+     expr
+     ((apply-substitutions (▷ subs))
+      (((subst (◁ (◁ subs))) (▷ (◁ subs))) expr))))))
+
+;; Transform a lambda body with mutual recursion substitutions
+(≔ transform-mutual-lambda (λ (lambda-expr) (λ (subs)
+  (? (≡ (◁ lambda-expr) (⌜ λ))
+     (? (⟨⟩? (▷ lambda-expr))
+        (⟨⟩ (⌜ λ)
+            (⟨⟩ (◁ (▷ lambda-expr))  ; params
+                ((apply-substitutions-list subs) (▷ (▷ lambda-expr)))))  ; body
+        lambda-expr)
+     lambda-expr))))
+
+;; Apply substitutions to list of expressions
+(≔ apply-substitutions-list (λ (subs) (λ (exprs)
+  (? (∅? exprs)
+     ∅
+     (⟨⟩ ((apply-substitutions subs) (◁ exprs))
+         ((apply-substitutions-list subs) (▷ exprs)))))))
+
+;; Build the pair structure for mutual recursion
+;; For 2 bindings: (:⟨⟩ transformed-lambda1 transformed-lambda2)
+;; Note: Use (⌜ :⟨⟩) to get ::⟨⟩ (the keyword symbol that matches env bindings)
+(≔ build-mutual-pair (λ (bindings) (λ (subs)
+  (? (∅? bindings)
+     ∅
+     (? (∅? (▷ bindings))
+        ; Last binding - just the transformed lambda
+        ((transform-mutual-lambda (◁ (▷ (◁ bindings)))) subs)
+        ; More bindings - cons together
+        (⟨⟩ (⌜ :⟨⟩)
+            (⟨⟩ ((transform-mutual-lambda (◁ (▷ (◁ bindings)))) subs)
+                (⟨⟩ ((build-mutual-pair (▷ bindings)) subs)
+                    ∅))))))))
+
+;; Transform mutually recursive bindings using Y-combinator pattern
+;; Returns the transformed expression that produces a pair of closures
+(≔ transform-mutual-ast (λ (bindings)
+  (? (∅? bindings)
+     ∅
+     (? (∅? (▷ bindings))
+        ; Single binding - shouldn't happen but handle it
+        (◁ (▷ (◁ bindings)))
+        ; Multiple bindings - build mutual recursion structure
+        (⟨⟩ (⟨⟩ (⌜ λ)
+                (⟨⟩ (⟨⟩ :self ∅)
+                    (⟨⟩ ((build-mutual-pair bindings)
+                         ((build-mutual-substitutions (collect-binding-names bindings)) #0))
+                        ∅)))
+            (⟨⟩ (⟨⟩ (⌜ λ)
+                    (⟨⟩ (⟨⟩ :self ∅)
+                        (⟨⟩ ((build-mutual-pair bindings)
+                             ((build-mutual-substitutions (collect-binding-names bindings)) #0))
+                            ∅)))
+                ∅))))))
+
+;; Bind mutual recursion results to names
+;; pair-result is the evaluated pair, bindings are the original bindings
+;; Returns extended environment
+(≔ bind-mutual-results (λ (pair-result) (λ (bindings) (λ (env)
+  (? (∅? bindings)
+     env
+     (? (∅? (▷ bindings))
+        ; Last binding - bind to the result (not pair, just the function)
+        (((env-extend env) (◁ (◁ bindings))) pair-result)
+        ; First binding - bind to (◁ pair-result), recurse with (▷ pair-result)
+        (((bind-mutual-results (▷ pair-result))
+          (▷ bindings))
+         (((env-extend env) (◁ (◁ bindings))) (◁ pair-result)))))))))
+
+;; Evaluate mutually recursive bindings
+(≔ eval-mutual-letrec (λ (bindings) (λ (body) (λ (env)
+  (? (∅? bindings)
+     ((eval body) env)
+     ; Transform and evaluate the mutual recursion structure
+     ((eval body)
+      (((bind-mutual-results
+         ((eval (transform-mutual-ast bindings)) env))
+        bindings)
+       env)))))))
+
+;; ===================================================================
 ;; Evaluation helpers
 ;; ===================================================================
 
@@ -198,28 +366,32 @@
            ((eval-body (▷ exprs)) env)))))))
 
 ;; ===================================================================
-;; Letrec Evaluation (⊛) - Simple let-style (no mutual recursion yet)
+;; Letrec Evaluation (⊛) - With mutual recursion support
 ;; ===================================================================
 
-;; Evaluate letrec as sequential let bindings
-;; For recursive single functions, this won't work correctly
-;; Full letrec requires Y-combinator transformation
+;; Evaluate letrec bindings
+;; Handles: non-recursive, single recursive, and mutually recursive bindings
 (≔ eval-letrec (λ (bindings) (λ (body) (λ (env)
   (? (∅? bindings)
      ((eval body) env)
-     (? (is-recursive-binding? (◁ bindings))
-        ; Recursive - transform using Y-combinator pattern
-        (((eval-letrec (▷ bindings)) body)
-         (((env-extend env)
-           (◁ (◁ bindings)))
-          ((eval ((transform-recursive-ast (◁ (◁ bindings)))
-                  (◁ (▷ (◁ bindings)))))
-           env)))
-        ; Non-recursive - simple binding
-        (((eval-letrec (▷ bindings)) body)
-         (((env-extend env)
-           (◁ (◁ bindings)))
-          ((eval (◁ (▷ (◁ bindings)))) env)))))))))
+     ; Check for mutual recursion first (multiple bindings referencing each other)
+     (? (is-mutual-recursion? bindings)
+        ; Mutual recursion - transform all bindings together
+        (((eval-mutual-letrec bindings) body) env)
+        ; Not mutual - check for single recursive binding
+        (? (is-recursive-binding? (◁ bindings))
+           ; Recursive - transform using Y-combinator pattern
+           (((eval-letrec (▷ bindings)) body)
+            (((env-extend env)
+              (◁ (◁ bindings)))
+             ((eval ((transform-recursive-ast (◁ (◁ bindings)))
+                     (◁ (▷ (◁ bindings)))))
+              env)))
+           ; Non-recursive - simple binding
+           (((eval-letrec (▷ bindings)) body)
+            (((env-extend env)
+              (◁ (◁ bindings)))
+             ((eval (◁ (▷ (◁ bindings)))) env))))))))))
 
 ;; ===================================================================
 ;; Function Application
