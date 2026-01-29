@@ -161,6 +161,57 @@ static void extract_as_pattern(Cell* pattern, Cell** name_out, Cell** subpattern
     *subpattern_out = cell_car(rest2);
 }
 
+/* Helper: Check if pattern is a view pattern: (→ transform pattern)
+ * View pattern syntax: (→ transform pattern) - a list with 3 elements
+ * Where:
+ * - → is the transform operator symbol
+ * - transform is a function or expression to apply
+ * - pattern is any valid pattern to match the result against
+ */
+static bool is_view_pattern(Cell* pattern) {
+    /* Must be a list with at least 3 elements */
+    if (!pattern || pattern->type != CELL_PAIR) {
+        return false;
+    }
+
+    /* First element should be the → symbol */
+    Cell* first = cell_car(pattern);
+    if (!first || first->type != CELL_ATOM_SYMBOL) {
+        return false;
+    }
+    if (strcmp(first->data.atom.symbol, "→") != 0) {
+        return false;
+    }
+
+    /* Need at least 2 more elements: transform and pattern */
+    Cell* rest = cell_cdr(pattern);
+    if (!rest || rest->type != CELL_PAIR) {
+        return false;
+    }
+
+    /* Need the subpattern */
+    Cell* rest2 = cell_cdr(rest);
+    if (!rest2 || rest2->type != CELL_PAIR) {
+        return false;
+    }
+
+    return true;
+}
+
+/* Helper: Extract transform and subpattern from view pattern syntax
+ * Input: (→ transform pattern)
+ * Output: transform_out = transform expression, subpattern_out = subpattern
+ */
+static void extract_view_pattern(Cell* pattern, Cell** transform_out, Cell** subpattern_out) {
+    /* View pattern syntax: (→ transform pattern) */
+    Cell* rest = cell_cdr(pattern);
+    *transform_out = cell_car(rest);
+
+    /* Get the subpattern */
+    Cell* rest2 = cell_cdr(rest);
+    *subpattern_out = cell_car(rest2);
+}
+
 /* Helper: Check if pattern is an or-pattern: (∨ pattern₁ pattern₂ ...)
  * Or-pattern syntax: (∨ pat1 pat2 ...) - list with ∨ as first element
  * Must have at least 2 alternatives (3+ total elements)
@@ -571,6 +622,35 @@ static Cell* extend_env_with_bindings(Cell* bindings, Cell* env) {
     return new_env;
 }
 
+/* Helper: Evaluate transform expression on value
+ * Returns transformed value, or error on failure
+ */
+static Cell* eval_transform(Cell* transform, Cell* value, Cell* env) {
+    EvalContext* ctx = eval_get_current_context();
+    if (!ctx) {
+        /* No context - return error */
+        return cell_error("eval-context-missing", cell_nil());
+    }
+
+    /* Build application: (transform (⌜ value))
+     * We need to quote the value because it's already evaluated,
+     * but eval_internal expects unevaluated expressions */
+    Cell* quote_symbol = cell_symbol("⌜");
+    Cell* quoted_value = cell_cons(quote_symbol, cell_cons(value, cell_nil()));
+    Cell* args = cell_cons(quoted_value, cell_nil());
+    Cell* app_expr = cell_cons(transform, args);
+
+    /* Evaluate in current environment */
+    Cell* result = eval_internal(ctx, env, app_expr);
+
+    /* Clean up application expression */
+    cell_release(app_expr);
+    cell_release(quoted_value);
+    cell_release(quote_symbol);
+
+    return result;
+}
+
 /* Try to match a value against a pattern */
 MatchResult pattern_try_match(Cell* value, Cell* pattern) {
     MatchResult failure = {.success = false, .bindings = NULL};
@@ -642,6 +722,47 @@ MatchResult pattern_try_match(Cell* value, Cell* pattern) {
 
         /* No alternative matched */
         return failure;
+    }
+
+    /* View pattern: (→ transform pattern) (Day 66)
+     * Apply transform to value, then match result against subpattern
+     * Example: (→ # #3) transforms value with # (length), then matches against #3
+     */
+    if (is_view_pattern(pattern)) {
+        /* Extract transform and subpattern */
+        Cell* transform;
+        Cell* subpattern;
+        extract_view_pattern(pattern, &transform, &subpattern);
+
+        /* Get current environment from context
+         * We need the environment that was passed to pattern_eval_match */
+        EvalContext* ctx = eval_get_current_context();
+        if (!ctx) {
+            /* No context - pattern fails */
+            return failure;
+        }
+
+        /* Evaluate transform(value) */
+        Cell* transformed = eval_transform(transform, value, ctx->env);
+
+        /* Check if transform returned error */
+        if (transformed && transformed->type == CELL_ERROR) {
+            /* Transform failed - pattern doesn't match */
+            cell_release(transformed);
+            return failure;
+        }
+
+        /* Recursively match subpattern against transformed value */
+        MatchResult submatch = pattern_try_match(transformed, subpattern);
+
+        /* Clean up transformed value
+         * If match succeeded, bindings may reference transformed value, so they own it.
+         * If match failed, we need to release it here. */
+        if (!submatch.success && transformed) {
+            cell_release(transformed);
+        }
+
+        return submatch;
     }
 
     /* Nil pattern */
@@ -970,8 +1091,18 @@ Cell* pattern_eval_match(Cell* expr, Cell* clauses, Cell* env, EvalContext* ctx)
             pattern = pattern_expr;
         }
 
-        /* Try to match the pattern against the value */
+        /* Try to match the pattern against the value
+         * Temporarily set ctx->env to local environment for view patterns
+         * View patterns need to evaluate transforms in the correct environment */
+        Cell* old_ctx_env = ctx->env;
+        cell_retain(env);
+        ctx->env = env;
+
         MatchResult match = pattern_try_match(value, pattern);
+
+        /* Restore original environment */
+        cell_release(ctx->env);
+        ctx->env = old_ctx_env;
 
         if (match.success) {
             /* If guard exists, evaluate it in extended environment */

@@ -58,7 +58,7 @@ Everything is a **Cell**:
 |--------|------|---------|--------|
 | `∇` | `α → [[⌜pattern⌝ result]] → β` | Pattern match expression | ✅ DONE (Day 16) |
 
-**Note:** As of Day 60, supports:
+**Note:** As of Day 66, supports:
 - **Wildcard** (_) - matches anything
 - **Literals** - numbers, booleans, symbols, keywords
 - **Variables** - bind matched value to name (Day 16 ✅)
@@ -69,6 +69,7 @@ Everything is a **Cell**:
 - **Guard conditions** - conditional matching with boolean expressions (Day 58 ✅)
 - **As-patterns** - bind both whole value and parts (Day 59 ✅)
 - **Or-patterns** - match multiple alternatives (Day 60 ✅)
+- **View patterns** - transform before matching (Day 66 ✅)
 
 **Syntax:**
 ```scheme
@@ -88,6 +89,7 @@ Everything is a **Cell**:
 - `(pattern | guard-expr)` - Guard condition (Day 58)
 - `(name @ pattern)` - As-pattern, binds both whole and parts (Day 59)
 - `(∨ pat1 pat2 ...)` - Or-pattern, match alternatives (Day 60)
+- `(→ transform pattern)` - View pattern, transform before matching (Day 66)
 
 **Examples:**
 ```scheme
@@ -192,6 +194,43 @@ Everything is a **Cell**:
 ; Or-patterns combined with as-patterns
 (∇ #1 (⌜ (((whole @ (∨ #0 #1 #2)) (⟨⟩ whole whole))
            (_ :other))))  ; → ⟨#1 #1⟩
+
+; View patterns (Day 66) - transform value before matching
+; Syntax: (→ transform pattern)
+; Applies transform to value, then matches result against pattern
+; If transform returns error, pattern doesn't match
+
+; Match on list length
+(⋘ "bootstrap/stdlib/list.scm")  ; Loads # (length) function
+(∇ (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅))) (⌜ (((→ # #3) :length-three) (_ :other))))  ; → :length-three
+
+; Match on absolute value
+(≔ abs (λ (x) (? (< x #0) (⊖ #0 x) x)))
+(∇ #-5 (⌜ (((→ abs #5) :matched) (_ :failed))))  ; → :matched
+
+; Bind transformed value to variable
+(∇ (⟨⟩ #1 (⟨⟩ #2 ∅)) (⌜ (((→ # len) len) (_ #0))))  ; → #2
+
+; Combined with as-patterns - bind both original and transformed
+(∇ (⟨⟩ #1 (⟨⟩ #2 ∅)) (⌜ (((original @ (→ # #2)) (⟨⟩ original #2))
+                         (_ :failed))))  ; → ⟨⟨#1 ⟨#2 ∅⟩⟩ #2⟩
+
+; Combined with guards - transform then guard
+(∇ #-15 (⌜ ((((→ abs n) | (> n #10)) :large) (_ :small))))  ; → :large
+
+; Multiple view patterns in same match
+(∇ (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅))) (⌜ (((→ # #5) :length-five)
+                                 ((→ # #3) :length-three)
+                                 (_ :other))))  ; → :length-three
+
+; Nested view patterns (transforms composed)
+(≔ double (λ (n) (⊗ n #2)))
+(≔ inc (λ (n) (⊕ n #1)))
+(∇ #5 (⌜ (((→ double (→ inc #11)) :nested) (_ :failed))))  ; → :nested
+
+; Error handling - if transform returns error, pattern fails
+(≔ failing (λ (x) (⚠ :error x)))
+(∇ #-5 (⌜ (((→ failing #5) :matched) (_ :failed))))  ; → :failed
 
 ; Quasiquote and Unquote (Day 32 Part 2)
 (≔ x #42)
