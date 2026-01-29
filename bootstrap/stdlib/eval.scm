@@ -233,22 +233,42 @@
         (⟨⟩ (◁ names) ((remove-name name) (▷ names))))))))
 
 ;; Build accessor expression for nth element of pair structure
-;; 0 → (:◁ (:self :self))
-;; 1 → (:▷ (:self :self))
-;; For 2-function mutual recursion only
+;; Supports N-function mutual recursion (Day 80)
+;; Structure: (⟨⟩ f0 (⟨⟩ f1 (⟨⟩ f2 ... fN-1)))
+;; index 0, total N → (:◁ (:self :self))
+;; index 1, total N → (:◁ (:▷ (:self :self)))
+;; index N-1, total N → (:▷ (:▷ ... (:self :self)))  (N-1 tails, no head)
 ;; Note: Use (⌜ :◁) to get ::◁ (the keyword symbol that matches env bindings)
-(≔ build-accessor (λ (index)
-  (? (≡ index #0)
-     (⟨⟩ (⌜ :◁) (⟨⟩ (⟨⟩ :self (⟨⟩ :self ∅)) ∅))     ; (:◁ (:self :self))
-     (⟨⟩ (⌜ :▷) (⟨⟩ (⟨⟩ :self (⟨⟩ :self ∅)) ∅))))) ; (:▷ (:self :self))
+(≔ build-accessor (λ (index) (λ (total)
+  (? (≡ (⊕ index #1) total)
+     ; Last function - just tails, no head
+     (build-accessor-tails index)
+     ; Not last - tails then head
+     (⟨⟩ (⌜ :◁) (⟨⟩ (build-accessor-tails index) ∅))))))
+
+;; Build nested tail expressions: (:▷ (:▷ ... (:self :self)))
+;; n = 0 → (:self :self)
+;; n = 1 → (:▷ (:self :self))
+;; n = 2 → (:▷ (:▷ (:self :self)))
+(≔ build-accessor-tails (λ (n)
+  (? (≡ n #0)
+     (⟨⟩ :self (⟨⟩ :self ∅))  ; (:self :self)
+     (⟨⟩ (⌜ :▷) (⟨⟩ (build-accessor-tails (⊖ n #1)) ∅)))))
+
+;; Count list length
+(≔ list-length (λ (lst)
+  (? (∅? lst)
+     #0
+     (⊕ #1 (list-length (▷ lst))))))
 
 ;; Build substitution pairs for mutual recursion
-;; Returns list of (name . accessor) where accessor is (◁ (:self :self)) or (▷ (:self :self))
-(≔ build-mutual-substitutions (λ (names) (λ (index)
+;; Returns list of (name . accessor) for N-function mutual recursion
+;; names = list of binding names, index = current position, total = length of names
+(≔ build-mutual-substitutions (λ (names) (λ (index) (λ (total)
   (? (∅? names)
      ∅
-     (⟨⟩ (⟨⟩ (◁ names) (build-accessor index))
-         ((build-mutual-substitutions (▷ names)) (⊕ index #1)))))))
+     (⟨⟩ (⟨⟩ (◁ names) ((build-accessor index) total))
+         (((build-mutual-substitutions (▷ names)) (⊕ index #1)) total)))))))
 
 ;; Apply multiple substitutions to expression
 ;; subs = ((name1 . replacement1) (name2 . replacement2) ...)
@@ -291,7 +311,8 @@
                     ∅))))))))
 
 ;; Transform mutually recursive bindings using Y-combinator pattern
-;; Returns the transformed expression that produces a pair of closures
+;; Returns the transformed expression that produces nested pairs of closures
+;; Supports N-function mutual recursion (Day 80)
 (≔ transform-mutual-ast (λ (bindings)
   (? (∅? bindings)
      ∅
@@ -299,17 +320,23 @@
         ; Single binding - shouldn't happen but handle it
         (◁ (▷ (◁ bindings)))
         ; Multiple bindings - build mutual recursion structure
-        (⟨⟩ (⟨⟩ (⌜ λ)
-                (⟨⟩ (⟨⟩ :self ∅)
-                    (⟨⟩ ((build-mutual-pair bindings)
-                         ((build-mutual-substitutions (collect-binding-names bindings)) #0))
-                        ∅)))
-            (⟨⟩ (⟨⟩ (⌜ λ)
-                    (⟨⟩ (⟨⟩ :self ∅)
-                        (⟨⟩ ((build-mutual-pair bindings)
-                             ((build-mutual-substitutions (collect-binding-names bindings)) #0))
-                            ∅)))
-                ∅))))))
+        ; Extract names and total once for efficiency
+        ((transform-mutual-ast-helper bindings)
+         (collect-binding-names bindings))))))
+
+;; Helper that takes bindings and precomputed names
+(≔ transform-mutual-ast-helper (λ (bindings) (λ (names)
+  ((λ (subs)
+     (⟨⟩ (⟨⟩ (⌜ λ)
+             (⟨⟩ (⟨⟩ :self ∅)
+                 (⟨⟩ ((build-mutual-pair bindings) subs)
+                     ∅)))
+         (⟨⟩ (⟨⟩ (⌜ λ)
+                 (⟨⟩ (⟨⟩ :self ∅)
+                     (⟨⟩ ((build-mutual-pair bindings) subs)
+                         ∅)))
+             ∅)))
+   (((build-mutual-substitutions names) #0) (list-length names))))))
 
 ;; Bind mutual recursion results to names
 ;; pair-result is the evaluated pair, bindings are the original bindings

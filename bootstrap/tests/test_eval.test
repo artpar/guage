@@ -389,3 +389,134 @@
    ((eval (⌜ (⊛ ((:even? (λ (:n) (? (:≡ :n #0) #t (:odd? (:⊖ :n #1)))))
                  (:odd? (λ (:n) (? (:≡ :n #0) #f (:even? (:⊖ :n #1))))))
               (:odd? #0)))) env-mutual))
+
+;;; ===================================================================
+;;; 3-Function Mutual Recursion Tests (Day 80)
+;;; ===================================================================
+;;; mod3-0? returns #t if n ≡ 0 (mod 3)
+;;; mod3-1? returns #t if n ≡ 1 (mod 3)
+;;; mod3-2? returns #t if n ≡ 2 (mod 3)
+
+;; mod3-0? 0 → #t
+(⊨ :eval-mutual3-mod0-of-0
+   #t
+   ((eval (⌜ (⊛ ((:mod3-0? (λ (:n) (? (:≡ :n #0) #t (:mod3-2? (:⊖ :n #1)))))
+                 (:mod3-1? (λ (:n) (? (:≡ :n #0) #f (:mod3-0? (:⊖ :n #1)))))
+                 (:mod3-2? (λ (:n) (? (:≡ :n #0) #f (:mod3-1? (:⊖ :n #1))))))
+              (:mod3-0? #0)))) env-mutual))
+
+;; mod3-0? 3 → #t (3 ≡ 0 mod 3)
+(⊨ :eval-mutual3-mod0-of-3
+   #t
+   ((eval (⌜ (⊛ ((:mod3-0? (λ (:n) (? (:≡ :n #0) #t (:mod3-2? (:⊖ :n #1)))))
+                 (:mod3-1? (λ (:n) (? (:≡ :n #0) #f (:mod3-0? (:⊖ :n #1)))))
+                 (:mod3-2? (λ (:n) (? (:≡ :n #0) #f (:mod3-1? (:⊖ :n #1))))))
+              (:mod3-0? #3)))) env-mutual))
+
+;; mod3-0? 6 → #t (6 ≡ 0 mod 3)
+(⊨ :eval-mutual3-mod0-of-6
+   #t
+   ((eval (⌜ (⊛ ((:mod3-0? (λ (:n) (? (:≡ :n #0) #t (:mod3-2? (:⊖ :n #1)))))
+                 (:mod3-1? (λ (:n) (? (:≡ :n #0) #f (:mod3-0? (:⊖ :n #1)))))
+                 (:mod3-2? (λ (:n) (? (:≡ :n #0) #f (:mod3-1? (:⊖ :n #1))))))
+              (:mod3-0? #6)))) env-mutual))
+
+;; mod3-1? 1 → #t (1 ≡ 1 mod 3)
+(⊨ :eval-mutual3-mod1-of-1
+   #t
+   ((eval (⌜ (⊛ ((:mod3-0? (λ (:n) (? (:≡ :n #0) #t (:mod3-2? (:⊖ :n #1)))))
+                 (:mod3-1? (λ (:n) (? (:≡ :n #0) #f (:mod3-0? (:⊖ :n #1)))))
+                 (:mod3-2? (λ (:n) (? (:≡ :n #0) #f (:mod3-1? (:⊖ :n #1))))))
+              (:mod3-1? #1)))) env-mutual))
+
+;; mod3-1? 4 → #t (4 ≡ 1 mod 3)
+(⊨ :eval-mutual3-mod1-of-4
+   #t
+   ((eval (⌜ (⊛ ((:mod3-0? (λ (:n) (? (:≡ :n #0) #t (:mod3-2? (:⊖ :n #1)))))
+                 (:mod3-1? (λ (:n) (? (:≡ :n #0) #f (:mod3-0? (:⊖ :n #1)))))
+                 (:mod3-2? (λ (:n) (? (:≡ :n #0) #f (:mod3-1? (:⊖ :n #1))))))
+              (:mod3-1? #4)))) env-mutual))
+
+;; mod3-2? 2 → #t (2 ≡ 2 mod 3)
+(⊨ :eval-mutual3-mod2-of-2
+   #t
+   ((eval (⌜ (⊛ ((:mod3-0? (λ (:n) (? (:≡ :n #0) #t (:mod3-2? (:⊖ :n #1)))))
+                 (:mod3-1? (λ (:n) (? (:≡ :n #0) #f (:mod3-0? (:⊖ :n #1)))))
+                 (:mod3-2? (λ (:n) (? (:≡ :n #0) #f (:mod3-1? (:⊖ :n #1))))))
+              (:mod3-2? #2)))) env-mutual))
+
+;; mod3-2? 5 → #t (5 ≡ 2 mod 3)
+(⊨ :eval-mutual3-mod2-of-5
+   #t
+   ((eval (⌜ (⊛ ((:mod3-0? (λ (:n) (? (:≡ :n #0) #t (:mod3-2? (:⊖ :n #1)))))
+                 (:mod3-1? (λ (:n) (? (:≡ :n #0) #f (:mod3-0? (:⊖ :n #1)))))
+                 (:mod3-2? (λ (:n) (? (:≡ :n #0) #f (:mod3-1? (:⊖ :n #1))))))
+              (:mod3-2? #5)))) env-mutual))
+
+;; Negative tests: mod3-0? 1 → #f
+(⊨ :eval-mutual3-mod0-of-1
+   #f
+   ((eval (⌜ (⊛ ((:mod3-0? (λ (:n) (? (:≡ :n #0) #t (:mod3-2? (:⊖ :n #1)))))
+                 (:mod3-1? (λ (:n) (? (:≡ :n #0) #f (:mod3-0? (:⊖ :n #1)))))
+                 (:mod3-2? (λ (:n) (? (:≡ :n #0) #f (:mod3-1? (:⊖ :n #1))))))
+              (:mod3-0? #1)))) env-mutual))
+
+;;; ===================================================================
+;;; 4-Function Mutual Recursion Tests (Day 80)
+;;; ===================================================================
+;;; State machine: A → B → C → D → A
+;;; state-a? returns #t if after n steps we're in state A
+
+;; state-a? 0 → #t (start in A)
+(⊨ :eval-mutual4-stateA-0
+   #t
+   ((eval (⌜ (⊛ ((:state-a? (λ (:n) (? (:≡ :n #0) #t (:state-d? (:⊖ :n #1)))))
+                 (:state-b? (λ (:n) (? (:≡ :n #0) #f (:state-a? (:⊖ :n #1)))))
+                 (:state-c? (λ (:n) (? (:≡ :n #0) #f (:state-b? (:⊖ :n #1)))))
+                 (:state-d? (λ (:n) (? (:≡ :n #0) #f (:state-c? (:⊖ :n #1))))))
+              (:state-a? #0)))) env-mutual))
+
+;; state-a? 4 → #t (4 steps cycles back to A)
+(⊨ :eval-mutual4-stateA-4
+   #t
+   ((eval (⌜ (⊛ ((:state-a? (λ (:n) (? (:≡ :n #0) #t (:state-d? (:⊖ :n #1)))))
+                 (:state-b? (λ (:n) (? (:≡ :n #0) #f (:state-a? (:⊖ :n #1)))))
+                 (:state-c? (λ (:n) (? (:≡ :n #0) #f (:state-b? (:⊖ :n #1)))))
+                 (:state-d? (λ (:n) (? (:≡ :n #0) #f (:state-c? (:⊖ :n #1))))))
+              (:state-a? #4)))) env-mutual))
+
+;; state-b? 1 → #t (1 step from A to B)
+(⊨ :eval-mutual4-stateB-1
+   #t
+   ((eval (⌜ (⊛ ((:state-a? (λ (:n) (? (:≡ :n #0) #t (:state-d? (:⊖ :n #1)))))
+                 (:state-b? (λ (:n) (? (:≡ :n #0) #f (:state-a? (:⊖ :n #1)))))
+                 (:state-c? (λ (:n) (? (:≡ :n #0) #f (:state-b? (:⊖ :n #1)))))
+                 (:state-d? (λ (:n) (? (:≡ :n #0) #f (:state-c? (:⊖ :n #1))))))
+              (:state-b? #1)))) env-mutual))
+
+;; state-c? 2 → #t (2 steps: A → B → C)
+(⊨ :eval-mutual4-stateC-2
+   #t
+   ((eval (⌜ (⊛ ((:state-a? (λ (:n) (? (:≡ :n #0) #t (:state-d? (:⊖ :n #1)))))
+                 (:state-b? (λ (:n) (? (:≡ :n #0) #f (:state-a? (:⊖ :n #1)))))
+                 (:state-c? (λ (:n) (? (:≡ :n #0) #f (:state-b? (:⊖ :n #1)))))
+                 (:state-d? (λ (:n) (? (:≡ :n #0) #f (:state-c? (:⊖ :n #1))))))
+              (:state-c? #2)))) env-mutual))
+
+;; state-d? 3 → #t (3 steps: A → B → C → D)
+(⊨ :eval-mutual4-stateD-3
+   #t
+   ((eval (⌜ (⊛ ((:state-a? (λ (:n) (? (:≡ :n #0) #t (:state-d? (:⊖ :n #1)))))
+                 (:state-b? (λ (:n) (? (:≡ :n #0) #f (:state-a? (:⊖ :n #1)))))
+                 (:state-c? (λ (:n) (? (:≡ :n #0) #f (:state-b? (:⊖ :n #1)))))
+                 (:state-d? (λ (:n) (? (:≡ :n #0) #f (:state-c? (:⊖ :n #1))))))
+              (:state-d? #3)))) env-mutual))
+
+;; state-a? 8 → #t (8 = 2*4, full cycles)
+(⊨ :eval-mutual4-stateA-8
+   #t
+   ((eval (⌜ (⊛ ((:state-a? (λ (:n) (? (:≡ :n #0) #t (:state-d? (:⊖ :n #1)))))
+                 (:state-b? (λ (:n) (? (:≡ :n #0) #f (:state-a? (:⊖ :n #1)))))
+                 (:state-c? (λ (:n) (? (:≡ :n #0) #f (:state-b? (:⊖ :n #1)))))
+                 (:state-d? (λ (:n) (? (:≡ :n #0) #f (:state-c? (:⊖ :n #1))))))
+              (:state-a? #8)))) env-mutual))
