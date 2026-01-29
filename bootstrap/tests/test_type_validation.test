@@ -1,0 +1,280 @@
+#!/usr/bin/env guage
+; Test suite for type validation (Day 84)
+; Compiler-level type checking for declared types
+
+(≋ "Testing Type Validation...")
+
+; ============================================================================
+; Test: ∈✓ (Validate single binding)
+; ============================================================================
+
+(≋ "\nTesting ∈✓ (validate binding)...")
+
+; Declare and validate - correct type
+(≔ val-ok #42)
+(∈ val-ok (ℤ))
+
+(⊨ :validate-int-ok
+   #t
+   (∈✓ val-ok))
+
+; Declare string with correct type
+(≔ str-ok "hello")
+(∈ str-ok (𝕊))
+
+(⊨ :validate-string-ok
+   #t
+   (∈✓ str-ok))
+
+; Declare bool with correct type
+(≔ bool-ok #t)
+(∈ bool-ok (𝔹))
+
+(⊨ :validate-bool-ok
+   #t
+   (∈✓ bool-ok))
+
+; Declare nil with correct type
+(≔ nil-ok ∅)
+(∈ nil-ok (∅ₜ))
+
+(⊨ :validate-nil-ok
+   #t
+   (∈✓ nil-ok))
+
+; Undeclared binding - no type to validate, returns #t (vacuously true)
+(≔ undeclared #99)
+
+(⊨ :validate-undeclared
+   #t
+   (∈✓ undeclared))
+
+; ============================================================================
+; Test: ∈✓ with type mismatches (returns error)
+; ============================================================================
+
+(≋ "Testing ∈✓ with type mismatches...")
+
+; Declare int but value is string - should error
+(≔ bad-int "not-an-int")
+(∈ bad-int (ℤ))
+
+(⊨ :validate-bad-int
+   #t
+   (⚠? (∈✓ bad-int)))
+
+; Declare string but value is int - should error
+(≔ bad-string #123)
+(∈ bad-string (𝕊))
+
+(⊨ :validate-bad-string
+   #t
+   (⚠? (∈✓ bad-string)))
+
+; Declare bool but value is int - should error
+(≔ bad-bool #0)
+(∈ bad-bool (𝔹))
+
+(⊨ :validate-bad-bool
+   #t
+   (⚠? (∈✓ bad-bool)))
+
+; ============================================================================
+; Test: ∈✓ with function types
+; ============================================================================
+
+(≋ "Testing ∈✓ with function types...")
+
+; Correct function type
+(≔ fn-ok (λ (x) (⊕ x #1)))
+(∈ fn-ok (→ (ℤ) (ℤ)))
+
+(⊨ :validate-fn-ok
+   #t
+   (∈✓ fn-ok))
+
+; Non-function declared as function - should error
+(≔ fn-bad #42)
+(∈ fn-bad (→ (ℤ) (ℤ)))
+
+(⊨ :validate-fn-bad
+   #t
+   (⚠? (∈✓ fn-bad)))
+
+; ============================================================================
+; Test: ∈✓ with list types
+; ============================================================================
+
+(≋ "Testing ∈✓ with list types...")
+
+; Correct list type
+(≔ list-ok (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅))))
+(∈ list-ok ([]ₜ (ℤ)))
+
+(⊨ :validate-list-ok
+   #t
+   (∈✓ list-ok))
+
+; Empty list - valid for any list type
+(≔ list-empty ∅)
+(∈ list-empty ([]ₜ (ℤ)))
+
+(⊨ :validate-list-empty
+   #t
+   (∈✓ list-empty))
+
+; Non-list declared as list - should error
+(≔ list-bad #42)
+(∈ list-bad ([]ₜ (ℤ)))
+
+(⊨ :validate-list-bad
+   #t
+   (⚠? (∈✓ list-bad)))
+
+; ============================================================================
+; Test: ∈✓ with union types
+; ============================================================================
+
+(≋ "Testing ∈✓ with union types...")
+
+; Union type - int matches int|string
+(≔ union-int #42)
+(∈ union-int (∪ₜ (ℤ) (𝕊)))
+
+(⊨ :validate-union-int
+   #t
+   (∈✓ union-int))
+
+; Union type - string matches int|string
+(≔ union-str "hello")
+(∈ union-str (∪ₜ (ℤ) (𝕊)))
+
+(⊨ :validate-union-str
+   #t
+   (∈✓ union-str))
+
+; Union type - bool doesn't match int|string
+(≔ union-bad #t)
+(∈ union-bad (∪ₜ (ℤ) (𝕊)))
+
+(⊨ :validate-union-bad
+   #t
+   (⚠? (∈✓ union-bad)))
+
+; ============================================================================
+; Test: ∈✓ with any type (⊤)
+; ============================================================================
+
+(≋ "Testing ∈✓ with any type...")
+
+; Any type always validates
+(≔ any-int #42)
+(∈ any-int (⊤))
+
+(⊨ :validate-any-int
+   #t
+   (∈✓ any-int))
+
+(≔ any-str "hello")
+(∈ any-str (⊤))
+
+(⊨ :validate-any-str
+   #t
+   (∈✓ any-str))
+
+(≔ any-fn (λ (x) x))
+(∈ any-fn (⊤))
+
+(⊨ :validate-any-fn
+   #t
+   (∈✓ any-fn))
+
+; ============================================================================
+; Test: ∈✓* (Validate ALL declared types)
+; ============================================================================
+
+(≋ "Testing ∈✓* (validate all)...")
+
+; Note: Previous tests intentionally created mismatched types (bad-int, etc.)
+; So ∈✓* will correctly return errors for those
+
+; ∈✓* returns error if ANY declared type doesn't match
+; Since we have bad-int, bad-string, bad-bool, etc. from earlier tests,
+; this will return an error (which is the correct behavior)
+(⊨ :validate-all-has-errors
+   #t
+   (⚠? (∈✓*)))
+
+; ============================================================================
+; Test: ∈⊢ (Type-check function application)
+; ============================================================================
+
+(≋ "Testing ∈⊢ (type-check application)...")
+
+; Setup function with declared type
+(≔ add-fn (λ (x y) (⊕ x y)))
+(∈ add-fn (→ (ℤ) (ℤ) (ℤ)))
+
+; Check if application is type-safe
+(⊨ :typecheck-app-ok
+   #t
+   (∈⊢ add-fn #1 #2))
+
+; Check with wrong argument type - should error
+(⊨ :typecheck-app-bad
+   #t
+   (⚠? (∈⊢ add-fn "not-int" #2)))
+
+; Function without declared type - vacuously passes
+(≔ untyped-fn (λ (x) x))
+
+(⊨ :typecheck-untyped
+   #t
+   (∈⊢ untyped-fn "anything"))
+
+; ============================================================================
+; Test: ∈⊢ with curried functions
+; ============================================================================
+
+(≋ "Testing ∈⊢ with curried functions...")
+
+; Curried add
+(≔ curry-add (λ (x) (λ (y) (⊕ x y))))
+(∈ curry-add (→ (ℤ) (→ (ℤ) (ℤ))))
+
+; Check first application
+(⊨ :typecheck-curry-first
+   #t
+   (∈⊢ curry-add #5))
+
+; Check with wrong type
+(⊨ :typecheck-curry-bad
+   #t
+   (⚠? (∈⊢ curry-add "bad")))
+
+; ============================================================================
+; Integration: Type validation workflow
+; ============================================================================
+
+(≋ "Testing integration workflows...")
+
+; Define module with types (use simple int return type)
+(≔ double-it (λ (x) (⊗ x #2)))
+(∈ double-it (→ (ℤ) (ℤ)))
+
+; Validate before use
+(⊨ :workflow-validate
+   #t
+   (∈✓ double-it))
+
+; Type-check application
+(⊨ :workflow-typecheck
+   #t
+   (∈⊢ double-it #10))
+
+; Actual usage
+(⊨ :workflow-use
+   #20
+   (double-it #10))
+
+(≋ "\n✅ All type validation tests passed!")

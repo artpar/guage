@@ -508,9 +508,15 @@ Warnings are non-fatal and do not stop execution.
 | `∈▷` | `Type → Type` | Get codomain (output) of function type | ✅ DONE (Day 83) |
 | `∈⊙ₜ` | `Type → Type` | Get element type of list type | ✅ DONE (Day 83) |
 
-**Note:** Type annotations are optional and don't affect runtime behavior.
-Types are stored in a global registry and can be queried for documentation,
-tooling, and future static analysis. See `test_type_annotations.test` for examples.
+### Type Validation (3) ✅
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `∈✓` | `:symbol → 𝔹 \| ⚠` | Validate binding against declared type | ✅ DONE (Day 84) |
+| `∈✓*` | `() → 𝔹 \| ⚠` | Validate ALL declared types | ✅ DONE (Day 84) |
+| `∈⊢` | `:symbol → α... → 𝔹 \| ⚠` | Type-check function application | ✅ DONE (Day 84) |
+
+**Note:** Type annotations are optional. Type validation (`∈✓`, `∈✓*`, `∈⊢`) provides
+runtime checking of values against their declared types. See `test_type_validation.test`.
 
 ### Debug & Error Handling (6) ✅
 | Symbol | Type | Meaning | Status |

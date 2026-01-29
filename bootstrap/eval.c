@@ -1197,6 +1197,67 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                 return result;
             }
 
+            /* ∈✓ - type validation (special form: arg is NOT evaluated) */
+            if (strcmp(sym, "∈✓") == 0) {
+                /* Parse: (∈✓ name) */
+                Cell* name = cell_car(rest);
+
+                if (!cell_is_symbol(name)) {
+                    return cell_error("∈✓ requires symbol", name);
+                }
+
+                /* Validate binding against declared type */
+                extern Cell* prim_type_validate(Cell*);
+                Cell* args = cell_cons(name, cell_nil());
+                cell_retain(name);
+                Cell* result = prim_type_validate(args);
+                cell_release(args);
+                return result;
+            }
+
+            /* ∈⊢ - type-check function application (special form: first arg NOT evaluated) */
+            if (strcmp(sym, "∈⊢") == 0) {
+                /* Parse: (∈⊢ fn-name arg1 arg2 ...) */
+                Cell* fn_name = cell_car(rest);
+                Cell* arg_exprs = cell_cdr(rest);
+
+                if (!cell_is_symbol(fn_name)) {
+                    return cell_error("∈⊢ requires symbol as first argument", fn_name);
+                }
+
+                /* Evaluate the arguments (build list in reverse, then reverse) */
+                Cell* eval_args_rev = cell_nil();
+                Cell* current = arg_exprs;
+                while (cell_is_pair(current)) {
+                    Cell* arg = eval_internal(ctx, env, cell_car(current));
+                    if (cell_is_error(arg)) {
+                        cell_release(eval_args_rev);
+                        return arg;
+                    }
+                    eval_args_rev = cell_cons(arg, eval_args_rev);
+                    current = cell_cdr(current);
+                }
+
+                /* Reverse the list to get correct order */
+                Cell* eval_args = cell_nil();
+                current = eval_args_rev;
+                while (cell_is_pair(current)) {
+                    Cell* elem = cell_car(current);
+                    cell_retain(elem);
+                    eval_args = cell_cons(elem, eval_args);
+                    current = cell_cdr(current);
+                }
+                cell_release(eval_args_rev);
+
+                /* Call the primitive with fn_name and evaluated args */
+                extern Cell* prim_type_check_apply(Cell*);
+                Cell* call_args = cell_cons(fn_name, eval_args);
+                cell_retain(fn_name);
+                Cell* result = prim_type_check_apply(call_args);
+                cell_release(call_args);
+                return result;
+            }
+
             /* :λ-converted - already converted nested lambda */
             if (strcmp(sym, ":λ-converted") == 0) {
                 /* Parse: (:λ-converted (param1 param2 ...) converted_body) */

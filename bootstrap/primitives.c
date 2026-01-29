@@ -1060,6 +1060,224 @@ Cell* prim_type_element(Cell* args) {
     return cell_nil();
 }
 
+/* Helper: Check if value matches declared type */
+static bool value_matches_type(Cell* val, Cell* type) {
+    if (!is_type_struct(type)) {
+        return true;  /* Non-type values vacuously match */
+    }
+
+    const char* kind = get_type_kind(type);
+    if (!kind) return true;
+
+    /* Any type (⊤) matches everything */
+    if (strcmp(kind, ":any") == 0) {
+        return true;
+    }
+
+    /* Int type */
+    if (strcmp(kind, ":int") == 0) {
+        return cell_is_number(val);
+    }
+
+    /* Bool type */
+    if (strcmp(kind, ":bool") == 0) {
+        return cell_is_bool(val);
+    }
+
+    /* String type */
+    if (strcmp(kind, ":string") == 0) {
+        return cell_is_string(val);
+    }
+
+    /* Nil type */
+    if (strcmp(kind, ":nil") == 0) {
+        return cell_is_nil(val);
+    }
+
+    /* Function type - check if value is a lambda */
+    if (strcmp(kind, ":func") == 0) {
+        return cell_is_lambda(val);
+    }
+
+    /* List type - check if value is nil or pair */
+    if (strcmp(kind, ":list") == 0) {
+        if (cell_is_nil(val)) return true;  /* Empty list is valid */
+        if (!cell_is_pair(val)) return false;
+        /* For non-empty lists, we'd need to check all elements
+         * For now, just check it's a list structure */
+        return true;
+    }
+
+    /* Pair type */
+    if (strcmp(kind, ":pair") == 0) {
+        return cell_is_pair(val);
+    }
+
+    /* Union type - check if value matches either side */
+    if (strcmp(kind, ":union") == 0) {
+        Cell* left = cell_struct_get_field(type, cell_symbol(":left"));
+        Cell* right = cell_struct_get_field(type, cell_symbol(":right"));
+        bool matches = (left && value_matches_type(val, left)) ||
+                      (right && value_matches_type(val, right));
+        return matches;
+    }
+
+    /* Error type */
+    if (strcmp(kind, ":error") == 0) {
+        return cell_is_error(val);
+    }
+
+    return true;  /* Unknown types pass */
+}
+
+/* ∈✓ - Validate binding against declared type */
+Cell* prim_type_validate(Cell* args) {
+    Cell* name = arg1(args);
+
+    if (!cell_is_symbol(name)) {
+        return cell_error("∈✓ requires symbol", name);
+    }
+
+    /* Query declared type */
+    Cell* query_args = cell_cons(name, cell_nil());
+    cell_retain(name);
+    Cell* declared_type = prim_type_query(query_args);
+    cell_release(query_args);
+
+    /* No declared type - vacuously valid */
+    if (cell_is_nil(declared_type)) {
+        cell_release(declared_type);
+        return cell_bool(true);
+    }
+
+    /* Look up the actual value */
+    EvalContext* ctx = eval_get_current_context();
+    if (!ctx) {
+        cell_release(declared_type);
+        return cell_error("no-eval-context", name);
+    }
+
+    const char* sym_name = cell_get_symbol(name);
+    Cell* value = eval_lookup(ctx, sym_name);
+
+    if (!value) {
+        cell_release(declared_type);
+        return cell_error("unbound-symbol", name);
+    }
+
+    /* Check if value matches type */
+    bool matches = value_matches_type(value, declared_type);
+    cell_release(declared_type);
+
+    if (matches) {
+        return cell_bool(true);
+    } else {
+        return cell_error(":type-error", name);
+    }
+}
+
+/* ∈✓* - Validate ALL declared types */
+Cell* prim_type_validate_all(Cell* args) {
+    (void)args;
+
+    if (type_annotation_registry == NULL || cell_is_nil(type_annotation_registry)) {
+        return cell_bool(true);  /* No declarations - all valid */
+    }
+
+    EvalContext* ctx = eval_get_current_context();
+    if (!ctx) {
+        return cell_error("no-eval-context", cell_nil());
+    }
+
+    Cell* errors = cell_nil();
+    Cell* current = type_annotation_registry;
+
+    while (cell_is_pair(current)) {
+        Cell* binding = cell_car(current);
+        Cell* name = cell_car(binding);
+        Cell* declared_type = cell_cdr(binding);
+
+        const char* sym_name = cell_get_symbol(name);
+        Cell* value = eval_lookup(ctx, sym_name);
+
+        if (value && !value_matches_type(value, declared_type)) {
+            /* Add to error list */
+            Cell* err_entry = cell_cons(name, declared_type);
+            cell_retain(name);
+            cell_retain(declared_type);
+            errors = cell_cons(err_entry, errors);
+        }
+
+        current = cell_cdr(current);
+    }
+
+    if (cell_is_nil(errors)) {
+        return cell_bool(true);
+    } else {
+        return cell_error(":type-errors", errors);
+    }
+}
+
+/* ∈⊢ - Type-check function application */
+Cell* prim_type_check_apply(Cell* args) {
+    Cell* fn = arg1(args);
+
+    if (!cell_is_symbol(fn)) {
+        return cell_error("∈⊢ requires symbol as first argument", fn);
+    }
+
+    /* Query declared type for the function */
+    Cell* query_args = cell_cons(fn, cell_nil());
+    cell_retain(fn);
+    Cell* fn_type = prim_type_query(query_args);
+    cell_release(query_args);
+
+    /* No declared type - vacuously passes */
+    if (cell_is_nil(fn_type)) {
+        cell_release(fn_type);
+        return cell_bool(true);
+    }
+
+    /* Check if it's a function type */
+    if (!is_type_struct(fn_type)) {
+        cell_release(fn_type);
+        return cell_bool(true);
+    }
+
+    const char* kind = get_type_kind(fn_type);
+    if (!kind || strcmp(kind, ":func") != 0) {
+        cell_release(fn_type);
+        return cell_bool(true);  /* Not a function type - pass */
+    }
+
+    /* Get domain type */
+    Cell* domain = cell_struct_get_field(fn_type, cell_symbol(":domain"));
+
+    /* Check each argument */
+    Cell* arg_list = cell_cdr(args);  /* Skip function symbol */
+    Cell* current_type = fn_type;
+
+    while (cell_is_pair(arg_list) && current_type && is_type_struct(current_type)) {
+        kind = get_type_kind(current_type);
+        if (!kind || strcmp(kind, ":func") != 0) break;
+
+        Cell* arg_val = cell_car(arg_list);
+        domain = cell_struct_get_field(current_type, cell_symbol(":domain"));
+
+        if (domain && !value_matches_type(arg_val, domain)) {
+            cell_release(fn_type);
+            return cell_error(":type-error", arg_val);
+        }
+
+        /* Move to codomain (next argument type) */
+        current_type = cell_struct_get_field(current_type, cell_symbol(":codomain"));
+        arg_list = cell_cdr(arg_list);
+    }
+
+    cell_release(fn_type);
+    return cell_bool(true);
+}
+
 /* Debug & Error Handling Primitives */
 
 /* ⚠ - create error */
@@ -5222,6 +5440,9 @@ static Primitive primitives[] = {
     {"∈◁", prim_type_domain, 1, {"Get domain (input type) of function type", "Type → Type"}},
     {"∈▷", prim_type_codomain, 1, {"Get codomain (output type) of function type", "Type → Type"}},
     {"∈⊙ₜ", prim_type_element, 1, {"Get element type of list type", "Type → Type"}},
+    {"∈✓", prim_type_validate, 1, {"Validate binding against declared type", ":symbol → 𝔹 | ⚠"}},
+    {"∈✓*", prim_type_validate_all, 0, {"Validate ALL declared types", "() → 𝔹 | ⚠"}},
+    {"∈⊢", prim_type_check_apply, -1, {"Type-check function application", ":symbol → α... → 𝔹 | ⚠"}},
 
     /* Debug & Error Handling */
     {"⚠", prim_error_create, 2, {"Create error value", ":symbol → α → ⚠"}},

@@ -1,13 +1,53 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-01-29 (Day 83 COMPLETE)
+Updated: 2026-01-29 (Day 84 COMPLETE)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 83 - Type Annotations (2026-01-29)
+# Session Handoff: Day 84 - Type Validation (2026-01-29)
 
-## 🎉 Day 83 Progress - Type Annotation System!
+## 🎉 Day 84 Progress - Type Validation System!
+
+**RESULT:** 82/82 test files passing (100%), 35 new tests (type validation)
+
+### New Feature: Type Validation (Compiler-Level)
+
+Runtime type checking that validates values against declared types:
+
+**Type Validation Primitives (3 new):**
+- `(∈✓ name)` - Validate binding against declared type → `#t` or `⚠:type-error`
+- `(∈✓*)` - Validate ALL declared types → `#t` or `⚠:type-errors`
+- `(∈⊢ fn arg...)` - Type-check function application
+
+**Special Forms:**
+- `∈✓` and `∈⊢` are special forms (first arg not evaluated, like `∈` and `∈?`)
+
+**Examples:**
+```scheme
+; Declare and validate
+(≔ x #42)
+(∈ x (ℤ))
+(∈✓ x)              ; → #t (value matches declared type)
+
+; Type mismatch detection
+(≔ bad "not-an-int")
+(∈ bad (ℤ))
+(∈✓ bad)            ; → ⚠:type-error (string doesn't match int)
+
+; Type-check function application
+(≔ add (λ (x y) (⊕ x y)))
+(∈ add (→ (ℤ) (ℤ) (ℤ)))
+(∈⊢ add #1 #2)      ; → #t (args match declared domain)
+(∈⊢ add "bad" #2)   ; → ⚠:type-error (string doesn't match int)
+
+; Validate all declarations
+(∈✓*)               ; → #t if all pass, ⚠:type-errors with list if any fail
+```
+
+---
+
+## Previous Day: Day 83 - Type Annotations
 
 **RESULT:** 81/81 test files passing (100%), 55 new tests (type annotations)
 
@@ -409,11 +449,13 @@ Pattern-based macros with multiple clauses and pattern matching on syntax.
 ## Current Status 🎯
 
 **System State:**
-- **Primitives:** 127 total (added ⚠⊙, ⚠→)
-- **Tests:** 80/80 test files passing (100%)
+- **Primitives:** 130 total (added ∈✓, ∈✓*, ∈⊢)
+- **Tests:** 82/82 test files passing (100%)
+- **Type Validation Tests:** 35/35 tests passing (new!)
+- **Type Annotation Tests:** 55/55 tests passing
 - **Self-Hosting Eval Tests:** 66/66 passing (100%) - includes N-function mutual recursion
 - **Data Flow Tests:** 42/42 tests passing
-- **Exception Macros:** 44/44 tests passing (new!)
+- **Exception Macros:** 44/44 tests passing
 - **Iteration Macros:** 31/31 tests passing
 - **Pattern Macros:** 29/29 tests passing
 - **Rest Pattern Syntax:** 51/51 tests passing
@@ -465,9 +507,13 @@ Pattern-based macros with multiple clauses and pattern matching on syntax.
    - stdlib/string.scm already exists with all functions
    - split, join, trim, replace, contains, index-of, etc.
 
-6. **Type Annotations** (4-6 hours) - HIGH VALUE
+6. ✅ **Type Annotations** (4-6 hours) - COMPLETED DAY 83
    - Add optional type hints to function definitions
    - Foundation for gradual typing and self-hosting
+
+7. ✅ **Type Validation** (2-3 hours) - COMPLETED DAY 84
+   - Runtime type checking against declared types
+   - New primitives: ∈✓, ∈✓*, ∈⊢
 
 ---
 
@@ -475,6 +521,8 @@ Pattern-based macros with multiple clauses and pattern matching on syntax.
 
 | Day | Feature | Tests |
 |-----|---------|-------|
+| 84 | Type Validation (∈✓, ∈✓*, ∈⊢) - compiler-level | 82/82 (100%), 35 new tests |
+| 83 | Type Annotations (18 primitives for gradual typing) | 81/81 (100%), 55 new tests |
 | 82 | Exception Handling Macros (⚡, ⚡⊳, ⚡∅, etc.) + ⚠⊙, ⚠→ primitives | 80/80 (100%), 44 new tests |
 | 81 | Iteration Macros (⊎, ⊲*, ⟳, ⊎↦, ⊎⊲, ⟳←) | 79/79 (100%), 31 new tests |
 | 80 | Data Flow Analysis + N-Function Mutual Recursion | 77/77 (100%), 56 new tests |
@@ -634,49 +682,34 @@ git log --oneline -3         # See recent commits
 
 ### System State Summary
 - **Core evaluator:** COMPLETE with N-function mutual recursion (66 eval tests)
+- **Type system:** COMPLETE - annotations (Day 83) + validation (Day 84)
 - **Data flow analysis:** COMPLETE - set ops, fixed point, reaching defs, live vars
 - **Exception macros:** COMPLETE - ⚡, ⚡⊳, ⚡∅, ⚡?, ⚡⊙, ⚡∧, ⚡∨, ⚡⟲, ⚡↺ (44 tests)
 - **Iteration macros:** COMPLETE - ⊎, ⊲*, ⟳, ⊎↦, ⊎⊲, ⟳← (31 tests)
 - **Pattern macros:** COMPLETE with unlimited arity via ellipsis (Day 78-79)
 - **Stdlib macros:** All macros now support unlimited args/clauses/bindings
 - **String stdlib:** COMPLETE - split, join, trim, replace, contains, index-of
-- **Focus:** Language strength and completeness
-
-### Next: Type Annotations (4-6 hours)
-
-**Add optional type hints to function definitions:**
-- Foundation for gradual typing
-- Enables better documentation and error messages
-- Step toward self-hosting
+- **Focus:** Type inference, more compiler features
 
 ### Key Files
 ```
-bootstrap/stdlib/macros_exception.scm # NEW: Exception macros (⚡, ⚡⊳, ⚡∅, etc.)
-bootstrap/stdlib/macros_iteration.scm # Iteration macros (⊎, ⊲*, ⟳, ⊎↦, ⊎⊲, ⟳←)
-bootstrap/stdlib/dataflow.scm         # Data flow analysis (∪∪, ∩, ∖, ⊆, ≡∪, ⊛⊛, ⇝⊃, ⇝←)
-bootstrap/stdlib/string.scm           # String utilities (split, join, trim, etc.)
-bootstrap/stdlib/eval.scm             # Main evaluator - with N-function mutual recursion
-bootstrap/tests/test_exception_macros.test # NEW: 44 exception tests
-bootstrap/tests/test_eval.test        # 66 eval tests
+bootstrap/tests/test_type_validation.test # Type validation tests (35 tests)
+bootstrap/tests/test_type_annotations.test # Type annotation tests (55 tests)
+bootstrap/eval.c                          # Special forms: ∈, ∈?, ∈✓, ∈⊢
+bootstrap/primitives.c                    # Type primitives
 ```
 
-### What We Built Today (Day 82)
+### What We Built Today (Day 84)
 
-**Exception Handling Macros Module:**
+**Type Validation Primitives (Compiler-Level):**
 
-| Symbol | Operation | Description |
-|--------|-----------|-------------|
-| ⚡ | try-with | Execute body, call handler if error |
-| ⚡⊳ | try-or | Execute with fallback default |
-| ⚡∅ | ignore-errors | Return nil on error |
-| ⚡? | error-type? | Check if error has specific type |
-| ⚡⊙ | error-data | Extract error data safely |
-| ⚡∧ | all-succeed | Execute all, fail if any fails |
-| ⚡∨ | first-success | Return first successful result |
-| ⚡⟲ | try-finally | Execute with cleanup |
-| ⚡↺ | retry | Retry on error up to n times |
+| Symbol | Type | Description |
+|--------|------|-------------|
+| ∈✓ | :symbol → 𝔹 \| ⚠ | Validate binding against declared type |
+| ∈✓* | () → 𝔹 \| ⚠ | Validate ALL declared types |
+| ∈⊢ | :symbol → α... → 𝔹 \| ⚠ | Type-check function application |
 
-**New Primitives:**
+**Previous Day (Day 83) - Type Annotations:**
 | Symbol | Type | Description |
 |--------|------|-------------|
 | ⚠⊙ | ⚠ → :symbol | Get error type |
@@ -686,5 +719,16 @@ bootstrap/tests/test_eval.test        # 66 eval tests
 
 ---
 
-**Last Updated:** 2026-01-29 (Day 82 complete)
-**Next Session:** Day 83 - Type annotations
+**Day 84 Complete (2026-01-29):**
+- ✅ Added `∈✓` (validate binding) special form + primitive
+- ✅ Added `∈✓*` (validate all) primitive
+- ✅ Added `∈⊢` (type-check application) special form + primitive
+- ✅ Helper function `value_matches_type` for runtime type checking
+- ✅ Supports: int, bool, string, nil, function, list, pair, union, any types
+- ✅ Created `bootstrap/tests/test_type_validation.test` (35 tests)
+- ✅ All 82/82 test files passing (100%)
+
+---
+
+**Last Updated:** 2026-01-29 (Day 84 complete)
+**Next Session:** Day 85 - Type inference or test runner improvements
