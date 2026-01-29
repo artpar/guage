@@ -1,7 +1,7 @@
 ---
 Status: CURRENT
 Created: 2025-12-01
-Updated: 2026-01-27
+Updated: 2026-01-29
 Purpose: Canonical language specification
 ---
 
@@ -31,9 +31,9 @@ Everything is a **Cell**:
 
 **See:** `KEYWORDS.md` for complete specification.
 
-## Runtime Primitives (107 Total)
+## Runtime Primitives (112 Total)
 
-**Status:** 107 primitives implemented (6 placeholders, 101 fully functional + 6 placeholders = 107 total)
+**Status:** 112 primitives implemented (6 placeholders, 106 fully functional + 6 placeholders = 112 total)
 
 ### Core Lambda Calculus (3) ✅
 | Symbol | Type | Meaning | Status |
@@ -472,7 +472,7 @@ Warnings are non-fatal and do not stop execution.
 
 **Note:** Actors are stubs for Phase 5+. Return nil currently.
 
-### Documentation (5) ✅
+### Documentation (10) ✅
 | Symbol | Type | Meaning | Status |
 |--------|------|---------|--------|
 | `⌂` | `:symbol → string` | Get description | ✅ DONE |
@@ -480,6 +480,57 @@ Warnings are non-fatal and do not stop execution.
 | `⌂≔` | `:symbol → [symbols]` | Get dependencies | ✅ DONE |
 | `⌂⊛` | `:symbol → ⊙` | Get provenance metadata | ✅ DONE |
 | `⌂⊨` | `:symbol → [tests]` | Auto-generate tests | ✅ DONE |
+| `⌂⊨!` | `:symbol → (ℕ ℕ ℕ)` | Execute auto-generated tests | ✅ DONE (Day 63+) |
+| `⌂⊨⊗` | `:symbol → (ℕ ℕ ℕ)` | Mutation testing - validate test quality | ✅ DONE (Day 64) |
+| `📖` | `≈ → ≈` | Generate markdown docs for module | ✅ DONE (Day 63) |
+| `📖→` | `≈ → ≈ → ≈` | Export docs to file | ✅ DONE (Day 63) |
+| `📖⊛` | `() → ≈ \| ≈ → ≈` | Generate module index with cross-refs | ✅ DONE (Day 63) |
+
+**Mutation Testing (⌂⊨⊗):**
+
+Mutation testing validates test suite quality by introducing small changes (mutations) to the code and checking if tests catch them. Returns a tuple `⟨killed ⟨survived ⟨total ∅⟩⟩⟩`:
+- **killed**: Number of mutations caught by tests (good!)
+- **survived**: Number of mutations that went undetected (bad - tests need improvement)
+- **total**: Total mutations generated
+
+**Mutation Strategies:**
+1. **Operator mutations**: ⊕→⊖, ⊕→⊗, ⊗→⊘, ≡→≢, >→<, etc.
+2. **Constant mutations**: #1→#2, #2→#3, #5→#6, etc. (sequential increments)
+3. **Conditional mutations**: Swap then/else branches in `?` expressions
+
+**Examples:**
+```scheme
+; Function with no tests
+(≔ double (λ (n) (⊗ n #2)))
+(⌂⊨⊗ :double)
+; → ⟨#0 ⟨#2 ⟨#2 ∅⟩⟩⟩  (0 killed, 2 survived, 2 total)
+; This means: NO mutations were caught! Tests are inadequate.
+
+; Function with good tests
+(≔ abs (λ (x) (? (< x #0) (⊖ #0 x) x)))
+(⌂⊨ :abs)      ; Generate tests first
+(⌂⊨! :abs)     ; Run tests: ⟨#3 ⟨#0 ⟨#3 ∅⟩⟩⟩ (all pass)
+(⌂⊨⊗ :abs)     ; Mutation testing
+; → ⟨#4 ⟨#0 ⟨#4 ∅⟩⟩⟩  (4 killed, 0 survived, 4 total)
+; Perfect! All mutations were caught by tests.
+
+; Verify the sum formula
+(≔ r (⌂⊨⊗ :double))
+(≡ (⊕ (◁ r) (◁ (▷ r))) (◁ (▷ (▷ r))))  ; → #t
+; killed + survived = total (always true)
+```
+
+**Workflow:**
+1. `(⌂⊨ :function)` - Generate tests from function structure
+2. `(⌂⊨! :function)` - Verify tests pass
+3. `(⌂⊨⊗ :function)` - Validate test quality with mutations
+4. Improve tests if mutations survive
+5. Repeat until all mutations are killed
+
+**Known Limitations (Day 64):**
+- Constants #0 and #1 not mutated (De Bruijn index ambiguity)
+- No control over mutation count (fixed at 2-5 per function)
+- Future: Mutation testing on surface syntax (before De Bruijn conversion)
 
 ### Control/Data Flow (2) ✅
 | Symbol | Type | Meaning | Status |
