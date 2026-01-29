@@ -22,13 +22,13 @@ static bool is_keyword(const char* sym) {
     return sym && sym[0] == ':';
 }
 
-/* Helper: Check if pattern is a variable (non-keyword symbol, not wildcard) */
+/* Helper: Check if pattern is a variable (non-keyword symbol, not wildcard, not ∅) */
 static bool is_variable_pattern(Cell* pattern) {
     if (!pattern || pattern->type != CELL_ATOM_SYMBOL) {
         return false;
     }
     const char* sym = pattern->data.atom.symbol;
-    return !is_keyword(sym) && strcmp(sym, "_") != 0;
+    return !is_keyword(sym) && strcmp(sym, "_") != 0 && strcmp(sym, "∅") != 0;
 }
 
 /* Helper: Check if two numbers are equal */
@@ -765,6 +765,15 @@ MatchResult pattern_try_match(Cell* value, Cell* pattern) {
         return submatch;
     }
 
+    /* Symbol ∅ pattern - matches only nil values (Day 67 fix) */
+    if (pattern && pattern->type == CELL_ATOM_SYMBOL &&
+        strcmp(pattern->data.atom.symbol, "∅") == 0) {
+        if (value && (value->type == CELL_ATOM_NIL || value == NULL)) {
+            return success;
+        }
+        return failure;
+    }
+
     /* Nil pattern */
     if (both_nil(value, pattern)) {
         return success;
@@ -1107,7 +1116,7 @@ Cell* pattern_eval_match(Cell* expr, Cell* clauses, Cell* env, EvalContext* ctx)
         if (match.success) {
             /* If guard exists, evaluate it in extended environment */
             if (guard_expr) {
-                Cell* extended_env = extend_env_with_bindings(match.bindings, env);
+                Cell* extended_env = extend_env_with_bindings(match.bindings, ctx->env);
 
                 /* Temporarily set ctx->env for symbol lookup */
                 Cell* old_ctx_env = ctx->env;
@@ -1143,17 +1152,18 @@ Cell* pattern_eval_match(Cell* expr, Cell* clauses, Cell* env, EvalContext* ctx)
             Cell* result;
 
             if (match.bindings) {
-                /* Extend the LOCAL environment with pattern bindings
-                 * This creates: ((v . value) . [closure_params...]) */
-                Cell* extended_env = extend_env_with_bindings(match.bindings, env);
+                /* Extend the CONTEXT environment with pattern bindings
+                 * Use ctx->env (global + closure) instead of env (just closure)
+                 * This ensures recursive function names are accessible */
+                Cell* extended_env = extend_env_with_bindings(match.bindings, ctx->env);
 
                 /* Temporarily set ctx->env to the extended environment
-                 * This allows symbol lookup to find both pattern bindings (v) and closure params (converted to De Bruijn) */
+                 * This allows symbol lookup to find both pattern bindings and global names */
                 Cell* old_ctx_env = ctx->env;
                 cell_retain(extended_env);
                 ctx->env = extended_env;
 
-                /* Evaluate result - symbol lookup uses ctx->env, De Bruijn uses closure environment */
+                /* Evaluate result - symbol lookup uses ctx->env */
                 result = eval(ctx, result_expr);
 
                 /* Restore original ctx->env */

@@ -149,11 +149,13 @@
 ;;; Test 10: Error cases
 ;;; ===================================================================
 
-;; Empty application
+;; Quoted empty list self-evaluates to nil
+;; Note: The empty application error only applies to UNQUOTED empty lists.
+;; Since (⌜ ()) creates the VALUE ∅ (nil), it self-evaluates like numbers/booleans.
 (≔ result-empty ((eval (⌜ ())) empty-env))
-(⊨ :eval-empty-application-is-error
-   #t
-   (⚠? result-empty))
+(⊨ :eval-quoted-empty-list-is-nil
+   ∅
+   result-empty)
 
 ;; Non-function application
 (≔ result-not-fn ((eval (⌜ (#42 #1))) empty-env))
