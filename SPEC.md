@@ -1,7 +1,7 @@
 ---
 Status: CURRENT
 Created: 2025-12-01
-Updated: 2026-01-29
+Updated: 2026-01-30
 Purpose: Canonical language specification
 ---
 
@@ -31,10 +31,10 @@ Everything is a **Cell**:
 
 **See:** `KEYWORDS.md` for complete specification.
 
-## Runtime Primitives (137 Total)
+## Runtime Primitives (156 Total)
 
-**Status:** 137 primitives implemented and stable
-**Note:** Graph algorithm primitives (⊝↦, ⊝⊃, ⊝⊚, ⊝⊙, ⊝⇝, ⊝∘) fully working - 35/35 tests passing
+**Status:** 156 primitives implemented and stable (91/91 test files passing)
+**Note:** All primitives fully working including graph algorithms, actors, channels, supervision, and supervisors
 
 ### Core Lambda Calculus (3) ✅
 | Symbol | Type | Meaning | Status |
@@ -658,6 +658,26 @@ Actors yield at `←?` when mailbox is empty. Use `≫` (bind) to sequence multi
 Channels are first-class bounded ring buffers. Any actor can send/recv on any channel.
 Scheduler polls channel state via `SuspendReason` on the fiber (SUSPEND_CHAN_RECV/SUSPEND_CHAN_SEND/SUSPEND_SELECT).
 
+### Supervision (5) ✅
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `⟳⊗` | `⟳ → ∅` | Bidirectional link to actor | ✅ |
+| `⟳⊘` | `⟳ → ∅` | Remove bidirectional link | ✅ |
+| `⟳⊙` | `⟳ → ∅` | One-way monitor (receive `:DOWN` on death) | ✅ |
+| `⟳⊜` | `𝔹 → ∅` | Enable/disable exit trapping | ✅ |
+| `⟳✕` | `⟳ → α → ∅` | Send exit signal with reason | ✅ |
+
+Erlang-style supervision primitives. Bidirectional links propagate failure (error exit kills linked actors unless trapping). Monitors provide one-way `:DOWN` notifications. Trap-exit converts exit signals to `⟨:EXIT sender-id reason⟩` messages. Normal exits do NOT propagate.
+
+### Supervisor Strategies (3) ✅
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `⟳⊛` | `:strategy → [λ] → ℕ` | Create supervisor with strategy and child specs | ✅ |
+| `⟳⊛?` | `ℕ → [⟳]` | Get list of current child actor cells | ✅ |
+| `⟳⊛!` | `ℕ → ℕ` | Get supervisor restart count | ✅ |
+
+Supervisors manage groups of child actors and automatically restart them on failure. Strategies: `:one-for-one` (restart only failed child), `:one-for-all` (kill all siblings then restart all). Max 5 restarts per supervisor prevents infinite restart loops. Normal exits do NOT trigger restarts.
+
 ### Documentation (10) ✅
 | Symbol | Type | Meaning | Status |
 |--------|------|---------|--------|
@@ -741,7 +761,7 @@ Mutation testing validates test suite quality by introducing small changes (muta
 | `⊚→` | `⊚ → :symbol → α` | Get node field | ✅ DONE |
 | `⊚?` | `α → :symbol → :symbol → 𝔹` | Check node type/variant | ✅ DONE |
 
-### Graph Primitives (12) - 6 stable + 6 in testing
+### Graph Primitives (12) ✅
 | Symbol | Type | Meaning | Status |
 |--------|------|---------|--------|
 | `⊝≔` | `:symbol → :symbol → [:symbol] → :symbol` | Define graph type | ✅ DONE |
@@ -751,15 +771,15 @@ Mutation testing validates test suite quality by introducing small changes (muta
 | `⊝→` | `⊝ → :symbol → α` | Query graph property | ✅ DONE |
 | `⊝?` | `α → :symbol → 𝔹` | Check graph type | ✅ DONE |
 
-### Graph Algorithms (6) ⚠️ IN TESTING
+### Graph Algorithms (6) ✅
 | Symbol | Type | Meaning | Status |
 |--------|------|---------|--------|
-| `⊝↦` | `⊝ → :symbol → α → (α → β) → [β]` | Traverse graph (BFS/DFS) | ⚠️ TESTING (20/35 tests) |
-| `⊝⊃` | `⊝ → α → α → 𝔹` | Check node reachability | ⚠️ TESTING |
-| `⊝⊚` | `⊝ → α → [α]` | Get node successors | ⚠️ TESTING |
-| `⊝⊙` | `⊝ → α → [α]` | Get node predecessors | ⚠️ TESTING |
-| `⊝⇝` | `⊝ → α → α → [α] \| ∅` | Find shortest path | ⚠️ TESTING |
-| `⊝∘` | `⊝ → [[α]] \| ∅` | Detect cycles | ⚠️ TESTING |
+| `⊝↦` | `⊝ → :symbol → α → (α → β) → [β]` | Traverse graph (BFS/DFS) | ✅ DONE |
+| `⊝⊃` | `⊝ → α → α → 𝔹` | Check node reachability | ✅ DONE |
+| `⊝⊚` | `⊝ → α → [α]` | Get node successors | ✅ DONE |
+| `⊝⊙` | `⊝ → α → [α]` | Get node predecessors | ✅ DONE |
+| `⊝⇝` | `⊝ → α → α → [α] \| ∅` | Find shortest path | ✅ DONE |
+| `⊝∘` | `⊝ → [[α]] \| ∅` | Detect cycles | ✅ DONE |
 
 **Graph Algorithm Usage:**
 ```scheme
@@ -783,11 +803,6 @@ Mutation testing validates test suite quality by introducing small changes (muta
 ; Detect recursion
 (⊝∘ cfg)  ; → List of cycles (or ∅ if acyclic)
 ```
-
-**Known Issues (Day 69):**
-- Memory corruption bug when multiple graphs created in sequence
-- Tests pass in isolation but fail in full suite
-- Being debugged - see `docs/planning/DAY_69_PROGRESS.md`
 
 **Graph Type Restrictions:**
 Graph types are currently restricted to 5 predefined types for metaprogramming:
@@ -1231,46 +1246,25 @@ All I/O operations return errors on failure:
 
 ---
 
-## Planned Primitives (Not Yet Implemented)
+## Additional Implemented Features
 
-### Pattern Matching (3) - CRITICAL FOR METAPROGRAMMING
-| Symbol | Type | Meaning | Status |
-|--------|------|---------|--------|
-| `∇` | Pattern match | Destructure with patterns | 🎯 NEXT |
-| `≗` | `α → β → 𝔹` | Structural equality | 🎯 NEXT |
-| `_` | Pattern | Wildcard (match anything) | 🎯 NEXT |
+### Pattern Matching (∇) ✅
 
-### Pattern Matching (3) - CRITICAL FOR METAPROGRAMMING
-| Symbol | Type | Meaning | Status |
-|--------|------|---------|--------|
-| `∇` | Pattern match | Destructure with patterns | 🎯 NEXT |
-| `≗` | `α → β → 𝔹` | Structural equality | 🎯 NEXT |
-| `_` | Pattern | Wildcard (match anything) | 🎯 NEXT |
+Full pattern matching with guards, as-patterns, or-patterns, and view patterns. Implemented as a special form in the evaluator.
 
-**Pattern Syntax:**
 ```scheme
-(∇ expr
-  [pattern₁ expr₁]
-  [pattern₂ expr₂]
-  ...)
+(∇ expr (⌜ ((pattern₁ result₁)
+             (pattern₂ result₂)
+             ...)))
 
-; Patterns:
-; - Numbers: #42
-; - Symbols: :foo
-; - Nil: ∅
-; - Pairs: (⟨⟩ a b)
-; - Wildcard: _
+; Patterns: numbers, symbols, nil, pairs, wildcards (_), guards (|), as (@)
+(≔ classify (λ (n)
+  (∇ n (⌜ (((x | (> x #100)) :large)
+            ((x | (> x #0)) :positive)
+            (_ :non-positive))))))
 ```
 
-**Example:**
-```scheme
-(≔ length (λ (lst)
-  (∇ lst
-    [∅ #0]
-    [(⟨⟩ _ tail) (⊕ #1 (length tail))])))
-```
-
-### Macro System (6) - CODE TRANSFORMATION ✅
+### Macro System (6) ✅
 | Symbol | Type | Meaning | Status |
 |--------|------|---------|--------|
 | `⧉` | Special form | Define simple macro | ✅ DONE |
@@ -1571,7 +1565,7 @@ All I/O operations return errors on failure:
 | `⟿⊞` | `[⟿] → ⟨⟿ α⟩` | Select (blocking) | ✅ |
 | `⟿⊞?` | `[⟿] → ⟨⟿ α⟩ \| ∅` | Try select (non-blocking) | ✅ |
 
-### Data Structures (15) - CRITICAL FOR METAPROGRAMMING
+### Data Structures (15) ✅
 | Symbol | Type | Meaning | Status |
 |--------|------|---------|--------|
 | `⊙≔` | Define leaf | Define simple structure | ✅ DONE |
@@ -1579,16 +1573,16 @@ All I/O operations return errors on failure:
 | `⊙→` | Get field | Access structure field | ✅ DONE |
 | `⊙←` | Set field | Update structure field | ✅ DONE |
 | `⊙?` | Type check | Check structure type | ✅ DONE |
-| `⊚≔` | Define node | Define recursive structure (ADT) | 🎯 NEXT |
-| `⊚` | Create node | Create node instance | 🎯 NEXT |
-| `⊚→` | Get field | Access node field | 🎯 NEXT |
-| `⊚?` | Variant check | Check type and variant | 🎯 NEXT |
-| `⊝≔` | Define graph | Define graph structure | ⏳ PLANNED |
-| `⊝` | Create graph | Create graph instance | ⏳ PLANNED |
-| `⊝⊕` | Add node | Add node to graph | ⏳ PLANNED |
-| `⊝⊗` | Add edge | Add edge to graph | ⏳ PLANNED |
-| `⊝→` | Query graph | Query graph structure | ⏳ PLANNED |
-| `⊝?` | Graph check | Check graph type | ⏳ PLANNED |
+| `⊚≔` | Define node | Define recursive structure (ADT) | ✅ DONE |
+| `⊚` | Create node | Create node instance | ✅ DONE |
+| `⊚→` | Get field | Access node field | ✅ DONE |
+| `⊚?` | Variant check | Check type and variant | ✅ DONE |
+| `⊝≔` | Define graph | Define graph structure | ✅ DONE |
+| `⊝` | Create graph | Create graph instance | ✅ DONE |
+| `⊝⊕` | Add node | Add node to graph | ✅ DONE |
+| `⊝⊗` | Add edge | Add edge to graph | ✅ DONE |
+| `⊝→` | Query graph | Query graph structure | ✅ DONE |
+| `⊝?` | Graph check | Check graph type | ✅ DONE |
 
 **Structure Syntax:**
 ```scheme
@@ -1628,13 +1622,11 @@ See `DATA_STRUCTURES.md` for complete specification.
 | `⌂∈` | `:symbol → string` | Get type signature | ✅ DONE |
 | `⌂≔` | `:symbol → list` | Get dependencies | ✅ DONE |
 
-### Control/Data Flow (4) - Auto-generated first-class graphs
+### Control/Data Flow (2) ✅
 | Symbol | Type | Meaning | Status |
 |--------|------|---------|--------|
-| `⌂⟿` | `:symbol → CFG` | Get control flow graph | 🎯 NEXT |
-| `⌂⇝` | `:symbol → DFG` | Get data flow graph | 🎯 NEXT |
-| `⌂⊚` | `:symbol → CallGraph` | Get call graph | 🎯 NEXT |
-| `⌂⊙` | `:symbol → DepGraph` | Get dependency graph | 🎯 NEXT |
+| `⌂⟿` | `:symbol → CFG` | Get control flow graph | ✅ DONE |
+| `⌂⇝` | `:symbol → DFG` | Get data flow graph | ✅ DONE |
 
 **Auto-Documentation System:**
 - Every user function gets automatic documentation via **recursive composition**
@@ -2031,11 +2023,10 @@ Unlike Coq/Agda (separate proof languages) or traditional metaprogramming (text 
 This enables assisted development where the compiler helps you write, prove, test, optimize, and deploy code.
 
 **Implementation Timeline:**
-- Phase 2C: Data structures (CURRENT)
-- Phase 3: Pattern matching, macros, generics (18 weeks)
-- Phase 4: Self-hosting, type system (12 weeks)
-- Phase 5: Advanced metaprogramming (36 weeks)
-- Phase 6: Distribution and analysis (24 weeks)
-- **Total:** ~21 months to full vision
+- Phases 1-2E: Complete (lambda calculus through actors/channels/supervision/supervisors)
+- Phase 3: Dynamic supervisor management, rest-for-one strategy, optimizer
+- Phase 4: Self-hosting (parser/compiler in Guage)
+- Phase 5: Advanced metaprogramming (synthesis, time-travel debugging)
+- Phase 6: Distribution, native compilation
 
 See `METAPROGRAMMING_VISION.md` for detailed specifications and implementation strategy.
