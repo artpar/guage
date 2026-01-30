@@ -1,0 +1,31 @@
+; Test: HashMap (⊞) — Swiss Table with SIMD
+; Day 109
+
+(⊨ (⌜ :hm-create-empty) #0 (⊞# (⊞)))
+
+(≔ m1 (⊞ (⟨⟩ :a #1) (⟨⟩ :b #2) (⟨⟩ :c #3)))
+(⊨ (⌜ :hm-create-pairs) #3 (⊞# m1))
+
+(⊨ (⌜ :hm-get-exists) #2 (⊞→ m1 :b))
+
+(⊨ (⌜ :hm-get-missing) #t (∅? (⊞→ m1 :z)))
+
+(≔ m2 (⊞))
+(⊞← m2 :x #99)
+(⊨ (⌜ :hm-put-new) #99 (⊞→ m2 :x))
+
+(≔ m3 (⊞ (⟨⟩ :k #10)))
+(⊨ (⌜ :hm-put-overwrite) #10 (⊞← m3 :k #20))
+
+(≔ m4 (⊞ (⟨⟩ :del #42)))
+(⊨ (⌜ :hm-delete-old) #42 (⊞⊖ m4 :del))
+
+(≔ m5 (⊞ (⟨⟩ :yes #1)))
+(⊨ (⌜ :hm-has-key) #t (∧ (⊞∋ m5 :yes) (¬ (⊞∋ m5 :no))))
+
+(≔ ma (⊞ (⟨⟩ :a #1) (⟨⟩ :b #2)))
+(≔ mb (⊞ (⟨⟩ :b #9) (⟨⟩ :c #3)))
+(≔ mc (⊞⊕ ma mb))
+(⊨ (⌜ :hm-merge) #t (∧ (≡ (⊞# mc) #3) (≡ (⊞→ mc :b) #9)))
+
+(⊨ (⌜ :hm-type-pred) #t (∧ (⊞? (⊞)) (¬ (⊞? #42))))

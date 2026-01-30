@@ -28,7 +28,8 @@ typedef enum {
     CELL_ACTOR,          /* ⟳ - actor (fiber + mailbox) */
     CELL_CHANNEL,        /* ⟿ - channel (typed buffer) */
     CELL_BOX,            /* □ - mutable reference */
-    CELL_WEAK_REF        /* ◇ - weak reference */
+    CELL_WEAK_REF,       /* ◇ - weak reference */
+    CELL_HASHMAP         /* ⊞ - hash map (Swiss Table) */
 } CellType;
 
 /* Linear Type Flags */
@@ -67,6 +68,12 @@ typedef enum {
 
 /* Forward declaration */
 typedef struct Cell Cell;
+
+/* Hash map slot (key-value pair) */
+typedef struct {
+    Cell* key;
+    Cell* value;
+} HashSlot;
 
 /* Atom data (stored inline in Cell) */
 typedef union {
@@ -140,6 +147,13 @@ struct Cell {
         struct {
             Cell* target;         /* Weak reference target (direct pointer) */
         } weak_ref;
+        struct {
+            uint8_t* ctrl;        /* Control byte array [capacity + GROUP_WIDTH] (mirrored) */
+            HashSlot* slots;      /* Parallel slot array [capacity] */
+            uint32_t size;        /* Live entries */
+            uint32_t capacity;    /* Total slots (power of 2, min GROUP_WIDTH) */
+            uint32_t growth_left; /* Slots remaining before resize */
+        } hashmap;
     } data;
 };
 
@@ -204,6 +218,20 @@ bool cell_is_weak_ref(Cell* c);
 Cell* cell_get_weak_target(Cell* c);
 void cell_weak_retain(Cell* c);
 void cell_weak_release(Cell* c);
+
+/* HashMap operations */
+Cell* cell_hashmap_new(uint32_t initial_capacity);
+bool cell_is_hashmap(Cell* c);
+uint64_t cell_hash(Cell* c);
+Cell* cell_hashmap_get(Cell* map, Cell* key);
+Cell* cell_hashmap_put(Cell* map, Cell* key, Cell* value);
+Cell* cell_hashmap_delete(Cell* map, Cell* key);
+bool cell_hashmap_has(Cell* map, Cell* key);
+uint32_t cell_hashmap_size(Cell* map);
+Cell* cell_hashmap_keys(Cell* map);
+Cell* cell_hashmap_values(Cell* map);
+Cell* cell_hashmap_entries(Cell* map);
+Cell* cell_hashmap_merge(Cell* m1, Cell* m2);
 
 /* Error accessors */
 const char* cell_error_message(Cell* c);

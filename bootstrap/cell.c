@@ -1,4 +1,6 @@
 #include "cell.h"
+#include "siphash.h"
+#include "swisstable.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -234,6 +236,20 @@ void cell_release(Cell* c) {
             case CELL_WEAK_REF:
                 cell_weak_release(c->data.weak_ref.target);
                 break;
+            case CELL_HASHMAP: {
+                uint32_t cap = c->data.hashmap.capacity;
+                uint8_t* ctrl = c->data.hashmap.ctrl;
+                HashSlot* slots = c->data.hashmap.slots;
+                for (uint32_t i = 0; i < cap; i++) {
+                    if ((ctrl[i] & 0x80) == 0) {  /* FULL slot */
+                        cell_release(slots[i].key);
+                        cell_release(slots[i].value);
+                    }
+                }
+                free(ctrl);
+                free(slots);
+                break;
+            }
             default:
                 break;
         }
@@ -624,6 +640,7 @@ bool cell_equal(Cell* a, Cell* b) {
             return a->data.channel.channel_id == b->data.channel.channel_id;
         case CELL_BOX:
         case CELL_WEAK_REF:
+        case CELL_HASHMAP:
             /* Identity only — handled by a == b at top */
             return false;
         case CELL_LAMBDA:
@@ -743,10 +760,336 @@ void cell_print(Cell* c) {
                 printf("◇[dead]");
             }
             break;
+        case CELL_HASHMAP:
+            printf("⊞[%u]", c->data.hashmap.size);
+            break;
     }
 }
 
 void cell_println(Cell* c) {
     cell_print(c);
     printf("\n");
+}
+
+/* ===== HashMap (Swiss Table) Implementation ===== */
+
+/* Hash a cell value using SipHash-2-4 */
+uint64_t cell_hash(Cell* c) {
+    if (!c) return 0;
+    switch (c->type) {
+        case CELL_ATOM_NUMBER: {
+            double n = c->data.atom.number;
+            return guage_siphash(&n, sizeof(n));
+        }
+        case CELL_ATOM_SYMBOL:
+            return guage_siphash(c->data.atom.symbol, strlen(c->data.atom.symbol));
+        case CELL_ATOM_STRING:
+            return guage_siphash(c->data.atom.string, strlen(c->data.atom.string));
+        case CELL_ATOM_BOOL:
+            return c->data.atom.boolean ? 0x0001ULL : 0x0002ULL;
+        case CELL_ATOM_NIL:
+            return 0x0003ULL;
+        case CELL_PAIR: {
+            uint64_t h = cell_hash(c->data.pair.car);
+            h ^= cell_hash(c->data.pair.cdr) * 0x9E3779B97F4A7C15ULL + (h << 12) + (h >> 4);
+            return h;
+        }
+        default: {
+            /* Lambda, error, actor, box, etc. — hash pointer */
+            uintptr_t ptr = (uintptr_t)c;
+            return guage_siphash(&ptr, sizeof(ptr));
+        }
+    }
+}
+
+bool cell_is_hashmap(Cell* c) {
+    return c && c->type == CELL_HASHMAP;
+}
+
+Cell* cell_hashmap_new(uint32_t initial_capacity) {
+    /* Ensure minimum capacity and power of 2 */
+    if (initial_capacity < (uint32_t)GROUP_WIDTH)
+        initial_capacity = GROUP_WIDTH;
+    /* Round up to power of 2 */
+    uint32_t cap = 1;
+    while (cap < initial_capacity) cap <<= 1;
+
+    Cell* c = cell_alloc(CELL_HASHMAP);
+    c->data.hashmap.capacity = cap;
+    c->data.hashmap.size = 0;
+    c->data.hashmap.growth_left = cap * 7 / 8;
+
+    /* Allocate control bytes: capacity + GROUP_WIDTH for mirroring */
+    c->data.hashmap.ctrl = (uint8_t*)malloc(cap + GROUP_WIDTH);
+    memset(c->data.hashmap.ctrl, CTRL_EMPTY, cap + GROUP_WIDTH);
+
+    /* Allocate slots */
+    c->data.hashmap.slots = (HashSlot*)calloc(cap, sizeof(HashSlot));
+
+    return c;
+}
+
+/* Internal: find slot for key. Returns slot index or -1. */
+static int hashmap_find(Cell* map, Cell* key, uint64_t hash) {
+    uint32_t cap = map->data.hashmap.capacity;
+    uint8_t* ctrl = map->data.hashmap.ctrl;
+    HashSlot* slots = map->data.hashmap.slots;
+    uint8_t h2 = H2(hash);
+    uint32_t group_mask = (cap / GROUP_WIDTH) - 1;
+    uint32_t group_idx = (uint32_t)(H1(hash) / GROUP_WIDTH) & group_mask;
+    uint32_t probe_offset = 0;
+    uint32_t probe_step = 0;
+
+    while (1) {
+        uint32_t ctrl_offset = ((group_idx + probe_offset) & group_mask) * GROUP_WIDTH;
+        const uint8_t* ctrl_ptr = ctrl + ctrl_offset;
+
+        GroupMask match = guage_group_match(ctrl_ptr, h2);
+        while (match) {
+            int bit = guage_bitmask_next(&match);
+            uint32_t slot_idx = ctrl_offset + (uint32_t)bit;
+            if (slot_idx < cap && cell_equal(slots[slot_idx].key, key)) {
+                return (int)slot_idx;
+            }
+        }
+
+        GroupMask empty = guage_group_match_empty(ctrl_ptr);
+        if (empty) return -1;  /* Key not present */
+
+        probe_step++;
+        probe_offset += probe_step;
+    }
+}
+
+/* Internal: find an empty or deleted slot for insertion */
+static uint32_t hashmap_find_insert_slot(Cell* map, uint64_t hash) {
+    uint32_t cap = map->data.hashmap.capacity;
+    uint8_t* ctrl = map->data.hashmap.ctrl;
+    uint32_t group_mask = (cap / GROUP_WIDTH) - 1;
+    uint32_t group_idx = (uint32_t)(H1(hash) / GROUP_WIDTH) & group_mask;
+    uint32_t probe_offset = 0;
+    uint32_t probe_step = 0;
+
+    while (1) {
+        uint32_t ctrl_offset = ((group_idx + probe_offset) & group_mask) * GROUP_WIDTH;
+        const uint8_t* ctrl_ptr = ctrl + ctrl_offset;
+
+        GroupMask avail = guage_group_match_empty_or_deleted(ctrl_ptr);
+        if (avail) {
+            int bit = guage_bitmask_next(&avail);
+            return ctrl_offset + (uint32_t)bit;
+        }
+
+        probe_step++;
+        probe_offset += probe_step;
+    }
+}
+
+/* Internal: resize the hashmap */
+static void hashmap_resize(Cell* map, uint32_t new_cap) {
+    uint32_t old_cap = map->data.hashmap.capacity;
+    uint8_t* old_ctrl = map->data.hashmap.ctrl;
+    HashSlot* old_slots = map->data.hashmap.slots;
+
+    /* Allocate new arrays */
+    uint8_t* new_ctrl = (uint8_t*)malloc(new_cap + GROUP_WIDTH);
+    memset(new_ctrl, CTRL_EMPTY, new_cap + GROUP_WIDTH);
+    HashSlot* new_slots = (HashSlot*)calloc(new_cap, sizeof(HashSlot));
+
+    /* Temporarily swap in new arrays */
+    map->data.hashmap.ctrl = new_ctrl;
+    map->data.hashmap.slots = new_slots;
+    map->data.hashmap.capacity = new_cap;
+    map->data.hashmap.growth_left = new_cap * 7 / 8 - map->data.hashmap.size;
+
+    /* Reinsert all entries */
+    for (uint32_t i = 0; i < old_cap; i++) {
+        if ((old_ctrl[i] & 0x80) == 0) {  /* FULL slot */
+            uint64_t hash = cell_hash(old_slots[i].key);
+            uint32_t slot = hashmap_find_insert_slot(map, hash);
+            uint8_t h2 = H2(hash);
+            new_ctrl[slot] = h2;
+            if (slot < (uint32_t)GROUP_WIDTH) {
+                new_ctrl[new_cap + slot] = h2;  /* Mirror */
+            }
+            new_slots[slot] = old_slots[i];  /* Move pointer, no retain/release */
+        }
+    }
+
+    free(old_ctrl);
+    free(old_slots);
+}
+
+Cell* cell_hashmap_get(Cell* map, Cell* key) {
+    assert(map->type == CELL_HASHMAP);
+    if (map->data.hashmap.size == 0) return cell_nil();
+
+    uint64_t hash = cell_hash(key);
+    int idx = hashmap_find(map, key, hash);
+    if (idx < 0) return cell_nil();
+
+    Cell* val = map->data.hashmap.slots[idx].value;
+    cell_retain(val);
+    return val;
+}
+
+Cell* cell_hashmap_put(Cell* map, Cell* key, Cell* value) {
+    assert(map->type == CELL_HASHMAP);
+    uint64_t hash = cell_hash(key);
+
+    /* Check for existing key */
+    int idx = hashmap_find(map, key, hash);
+    if (idx >= 0) {
+        /* Overwrite — return old value (caller owns ref) */
+        Cell* old = map->data.hashmap.slots[idx].value;
+        map->data.hashmap.slots[idx].value = value;
+        cell_retain(value);
+        return old;  /* Old value returned without release */
+    }
+
+    /* Need to insert — check if resize needed first */
+    if (map->data.hashmap.growth_left == 0) {
+        hashmap_resize(map, map->data.hashmap.capacity * 2);
+    }
+
+    /* Find insertion slot */
+    uint32_t slot = hashmap_find_insert_slot(map, hash);
+    uint8_t h2 = H2(hash);
+    bool was_empty = (map->data.hashmap.ctrl[slot] == CTRL_EMPTY);
+
+    map->data.hashmap.ctrl[slot] = h2;
+    if (slot < (uint32_t)GROUP_WIDTH) {
+        map->data.hashmap.ctrl[map->data.hashmap.capacity + slot] = h2;
+    }
+
+    map->data.hashmap.slots[slot].key = key;
+    map->data.hashmap.slots[slot].value = value;
+    cell_retain(key);
+    cell_retain(value);
+
+    map->data.hashmap.size++;
+    if (was_empty) map->data.hashmap.growth_left--;
+
+    return cell_nil();  /* No old value */
+}
+
+Cell* cell_hashmap_delete(Cell* map, Cell* key) {
+    assert(map->type == CELL_HASHMAP);
+    uint64_t hash = cell_hash(key);
+    int idx = hashmap_find(map, key, hash);
+    if (idx < 0) return cell_nil();
+
+    Cell* old_value = map->data.hashmap.slots[idx].value;
+    cell_release(map->data.hashmap.slots[idx].key);
+    map->data.hashmap.slots[idx].key = NULL;
+    map->data.hashmap.slots[idx].value = NULL;
+
+    /* Determine tombstone strategy */
+    uint32_t cap = map->data.hashmap.capacity;
+    uint32_t group_mask = (cap / GROUP_WIDTH) - 1;
+    uint32_t next_group = (((uint32_t)idx / GROUP_WIDTH + 1) & group_mask) * GROUP_WIDTH;
+    GroupMask next_empty = guage_group_match_empty(map->data.hashmap.ctrl + next_group);
+
+    if (next_empty) {
+        map->data.hashmap.ctrl[idx] = CTRL_EMPTY;
+        map->data.hashmap.growth_left++;
+    } else {
+        map->data.hashmap.ctrl[idx] = CTRL_DELETED;
+    }
+    if ((uint32_t)idx < (uint32_t)GROUP_WIDTH) {
+        map->data.hashmap.ctrl[cap + (uint32_t)idx] = map->data.hashmap.ctrl[idx];
+    }
+
+    map->data.hashmap.size--;
+    return old_value;  /* Caller owns ref */
+}
+
+bool cell_hashmap_has(Cell* map, Cell* key) {
+    assert(map->type == CELL_HASHMAP);
+    if (map->data.hashmap.size == 0) return false;
+    uint64_t hash = cell_hash(key);
+    return hashmap_find(map, key, hash) >= 0;
+}
+
+uint32_t cell_hashmap_size(Cell* map) {
+    assert(map->type == CELL_HASHMAP);
+    return map->data.hashmap.size;
+}
+
+Cell* cell_hashmap_keys(Cell* map) {
+    assert(map->type == CELL_HASHMAP);
+    Cell* result = cell_nil();
+    uint32_t cap = map->data.hashmap.capacity;
+    uint8_t* ctrl = map->data.hashmap.ctrl;
+    HashSlot* slots = map->data.hashmap.slots;
+
+    for (uint32_t i = 0; i < cap; i++) {
+        if ((ctrl[i] & 0x80) == 0) {
+            Cell* pair = cell_cons(slots[i].key, result);
+            cell_release(result);
+            result = pair;
+        }
+    }
+    return result;
+}
+
+Cell* cell_hashmap_values(Cell* map) {
+    assert(map->type == CELL_HASHMAP);
+    Cell* result = cell_nil();
+    uint32_t cap = map->data.hashmap.capacity;
+    uint8_t* ctrl = map->data.hashmap.ctrl;
+    HashSlot* slots = map->data.hashmap.slots;
+
+    for (uint32_t i = 0; i < cap; i++) {
+        if ((ctrl[i] & 0x80) == 0) {
+            Cell* pair = cell_cons(slots[i].value, result);
+            cell_release(result);
+            result = pair;
+        }
+    }
+    return result;
+}
+
+Cell* cell_hashmap_entries(Cell* map) {
+    assert(map->type == CELL_HASHMAP);
+    Cell* result = cell_nil();
+    uint32_t cap = map->data.hashmap.capacity;
+    uint8_t* ctrl = map->data.hashmap.ctrl;
+    HashSlot* slots = map->data.hashmap.slots;
+
+    for (uint32_t i = 0; i < cap; i++) {
+        if ((ctrl[i] & 0x80) == 0) {
+            Cell* entry = cell_cons(slots[i].key, slots[i].value);
+            Cell* node = cell_cons(entry, result);
+            cell_release(entry);
+            cell_release(result);
+            result = node;
+        }
+    }
+    return result;
+}
+
+Cell* cell_hashmap_merge(Cell* m1, Cell* m2) {
+    assert(m1->type == CELL_HASHMAP);
+    assert(m2->type == CELL_HASHMAP);
+
+    /* Estimate capacity */
+    uint32_t est = m1->data.hashmap.size + m2->data.hashmap.size;
+    Cell* result = cell_hashmap_new(est < (uint32_t)GROUP_WIDTH ? GROUP_WIDTH : est * 2);
+
+    /* Insert all from m1 */
+    for (uint32_t i = 0; i < m1->data.hashmap.capacity; i++) {
+        if ((m1->data.hashmap.ctrl[i] & 0x80) == 0) {
+            Cell* old = cell_hashmap_put(result, m1->data.hashmap.slots[i].key, m1->data.hashmap.slots[i].value);
+            cell_release(old);
+        }
+    }
+    /* Insert all from m2 (overwrites m1 on conflict) */
+    for (uint32_t i = 0; i < m2->data.hashmap.capacity; i++) {
+        if ((m2->data.hashmap.ctrl[i] & 0x80) == 0) {
+            Cell* old = cell_hashmap_put(result, m2->data.hashmap.slots[i].key, m2->data.hashmap.slots[i].value);
+            cell_release(old);
+        }
+    }
+    return result;
 }

@@ -134,6 +134,19 @@ Cell* prim_weak_deref(Cell* args);     /* ◇→ - deref weak ref */
 Cell* prim_weak_alive(Cell* args);     /* ◇? - check if alive */
 Cell* prim_weak_is(Cell* args);        /* ◇⊙ - type predicate */
 
+/* HashMap primitives (Day 109) */
+Cell* prim_hashmap_new(Cell* args);       /* ⊞ - create hashmap */
+Cell* prim_hashmap_get(Cell* args);       /* ⊞→ - get value */
+Cell* prim_hashmap_put(Cell* args);       /* ⊞← - put key-value */
+Cell* prim_hashmap_del(Cell* args);       /* ⊞⊖ - delete key */
+Cell* prim_hashmap_is(Cell* args);        /* ⊞? - type predicate */
+Cell* prim_hashmap_has(Cell* args);       /* ⊞∋ - has key */
+Cell* prim_hashmap_size(Cell* args);      /* ⊞# - size */
+Cell* prim_hashmap_keys(Cell* args);      /* ⊞⊙ - keys list */
+Cell* prim_hashmap_vals(Cell* args);      /* ⊞⊗ - values list */
+Cell* prim_hashmap_entries(Cell* args);   /* ⊞* - entries list */
+Cell* prim_hashmap_merge(Cell* args);     /* ⊞⊕ - merge two maps */
+
 /* Primitive documentation structure */
 typedef struct {
     const char* description;     /* What this primitive does */

@@ -1,11 +1,54 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-01-30 (Day 108 COMPLETE)
+Updated: 2026-01-30 (Day 109 COMPLETE)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 108 - Weak References (2026-01-30)
+# Session Handoff: Day 109 - First-Class HashMap (2026-01-30)
+
+## Day 109 Progress - HashMap (`⊞`) — Swiss Table with Portable SIMD + SipHash-2-4
+
+**RESULT:** 107/107 test files passing (100%), 10 new tests (HashMap)
+
+### New Feature: First-Class HashMap (⊞) — Swiss Table with SIMD
+
+Production-grade hash table using Swiss Table (Google Abseil design) with SipHash-2-4 keyed PRF for HashDoS resistance. Three-tier portable SIMD: SSE2 (x86) → NEON (ARM64) → SWAR (fallback).
+
+**New Cell Type:** `CELL_HASHMAP` (enum 16) — printed as `⊞[N]`
+
+**New Primitives (11):**
+- `⊞` (hashmap-new, variadic) — `(⊞)` → empty map, `(⊞ (⟨⟩ :a #1) ...)` → map from pairs
+- `⊞→` (hashmap-get) — `(⊞→ m key)` → value or `∅`
+- `⊞←` (hashmap-put) — `(⊞← m key value)` → old value or `∅` (mutates in place)
+- `⊞⊖` (hashmap-del) — `(⊞⊖ m key)` → old value or `∅`
+- `⊞?` (hashmap-is) — Type predicate
+- `⊞∋` (hashmap-has) — `(⊞∋ m key)` → `#t`/`#f`
+- `⊞#` (hashmap-size) — O(1) size query
+- `⊞⊙` (hashmap-keys) — List of keys
+- `⊞⊗` (hashmap-vals) — List of values
+- `⊞*` (hashmap-entries) — List of `⟨key value⟩` pairs
+- `⊞⊕` (hashmap-merge) — New map from m1 + m2 (m2 wins conflicts)
+
+**Architecture:**
+- **SipHash-2-4**: 128-bit random key initialized at startup via `arc4random_buf` (macOS) / `/dev/urandom` (Linux)
+- **Swiss Table**: Separate control byte metadata array + slot array, group-based probing (16 slots per SIMD op)
+- **Control bytes**: 0xFF=EMPTY, 0x80=DELETED, 0b0xxxxxxx=FULL (H2 hash fragment)
+- **Probing**: Triangular sequence covers all groups when capacity is power of 2
+- **Growth**: 2x at 87.5% load factor, power-of-2 capacity
+- **Mirrored control bytes**: First GROUP_WIDTH bytes duplicated at end for unaligned SIMD loads
+
+**Files Modified (5) + 3 New:**
+- `bootstrap/siphash.h` (NEW) — Header-only SipHash-2-4 (~110 lines)
+- `bootstrap/swisstable.h` (NEW) — Portable SIMD abstraction: SSE2/NEON/SWAR (~180 lines)
+- `bootstrap/cell.h` — `CELL_HASHMAP` in enum, `HashSlot` typedef, hashmap struct in union, 12 function declarations
+- `bootstrap/cell.c` — `cell_hash()`, constructor, Swiss Table core (find/insert/resize/delete), iteration, merge, lifecycle (~300 lines)
+- `bootstrap/primitives.h` — 11 hashmap primitive declarations
+- `bootstrap/primitives.c` — 11 primitive implementations + table entries + typeof update (~120 lines)
+- `bootstrap/main.c` — `guage_siphash_init()` call at startup
+- `bootstrap/tests/test_hashmap.test` (NEW) — 10 tests
+
+---
 
 ## Day 108 Progress - Weak References (`◇`, `◇→`, `◇?`, `◇⊙`)
 

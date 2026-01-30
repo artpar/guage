@@ -3,6 +3,7 @@
 #include <string.h>
 #include <unistd.h>
 #include "cell.h"
+#include "siphash.h"
 #include "primitives.h"
 #include "eval.h"
 #include "module.h"
@@ -711,6 +712,8 @@ void repl(void) {
 }
 
 int main(int argc, char** argv) {
+    (void)argc; (void)argv;
+    guage_siphash_init();
     repl();
     return 0;
 }

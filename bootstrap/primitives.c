@@ -1,4 +1,5 @@
 #include "primitives.h"
+#include "swisstable.h"
 #include "eval.h"
 #include "cfg.h"
 #include "dfg.h"
@@ -1702,6 +1703,7 @@ Cell* prim_type_of(Cell* args) {
     else if (cell_is_channel(value)) type_name = "channel";
     else if (cell_is_box(value)) type_name = "box";
     else if (cell_is_weak_ref(value)) type_name = "weak-ref";
+    else if (cell_is_hashmap(value)) type_name = "hashmap";
 
     return cell_symbol(type_name);
 }
@@ -8215,6 +8217,113 @@ Cell* prim_weak_is(Cell* args) {
     return cell_bool(cell_is_weak_ref(val));
 }
 
+/* ===== HashMap Primitives (Day 109) ===== */
+
+/* ⊞ - create hashmap (variadic) */
+Cell* prim_hashmap_new(Cell* args) {
+    Cell* map = cell_hashmap_new(GROUP_WIDTH);
+    /* If args provided, each should be a pair ⟨key value⟩ */
+    Cell* cur = args;
+    while (cur && !cell_is_nil(cur)) {
+        if (!cell_is_pair(cur)) break;
+        Cell* pair = cell_car(cur);
+        if (cell_is_pair(pair)) {
+            Cell* key = cell_car(pair);
+            Cell* value = cell_cdr(pair);
+            Cell* old = cell_hashmap_put(map, key, value);
+            cell_release(old);
+        }
+        cur = cell_cdr(cur);
+    }
+    return map;
+}
+
+/* ⊞→ - get value by key */
+Cell* prim_hashmap_get(Cell* args) {
+    Cell* map = arg1(args);
+    if (!cell_is_hashmap(map))
+        return cell_error("⊞→ requires hashmap", map);
+    Cell* key = arg2(args);
+    return cell_hashmap_get(map, key);
+}
+
+/* ⊞← - put key-value, return old value or ∅ */
+Cell* prim_hashmap_put(Cell* args) {
+    Cell* map = arg1(args);
+    if (!cell_is_hashmap(map))
+        return cell_error("⊞← requires hashmap", map);
+    Cell* key = arg2(args);
+    Cell* value = arg3(args);
+    return cell_hashmap_put(map, key, value);
+}
+
+/* ⊞⊖ - delete key, return old value or ∅ */
+Cell* prim_hashmap_del(Cell* args) {
+    Cell* map = arg1(args);
+    if (!cell_is_hashmap(map))
+        return cell_error("⊞⊖ requires hashmap", map);
+    Cell* key = arg2(args);
+    return cell_hashmap_delete(map, key);
+}
+
+/* ⊞? - type predicate */
+Cell* prim_hashmap_is(Cell* args) {
+    Cell* val = arg1(args);
+    return cell_bool(cell_is_hashmap(val));
+}
+
+/* ⊞∋ - has key */
+Cell* prim_hashmap_has(Cell* args) {
+    Cell* map = arg1(args);
+    if (!cell_is_hashmap(map))
+        return cell_error("⊞∋ requires hashmap", map);
+    Cell* key = arg2(args);
+    return cell_bool(cell_hashmap_has(map, key));
+}
+
+/* ⊞# - size */
+Cell* prim_hashmap_size(Cell* args) {
+    Cell* map = arg1(args);
+    if (!cell_is_hashmap(map))
+        return cell_error("⊞# requires hashmap", map);
+    return cell_number((double)cell_hashmap_size(map));
+}
+
+/* ⊞⊙ - keys list */
+Cell* prim_hashmap_keys(Cell* args) {
+    Cell* map = arg1(args);
+    if (!cell_is_hashmap(map))
+        return cell_error("⊞⊙ requires hashmap", map);
+    return cell_hashmap_keys(map);
+}
+
+/* ⊞⊗ - values list */
+Cell* prim_hashmap_vals(Cell* args) {
+    Cell* map = arg1(args);
+    if (!cell_is_hashmap(map))
+        return cell_error("⊞⊗ requires hashmap", map);
+    return cell_hashmap_values(map);
+}
+
+/* ⊞* - entries list */
+Cell* prim_hashmap_entries(Cell* args) {
+    Cell* map = arg1(args);
+    if (!cell_is_hashmap(map))
+        return cell_error("⊞* requires hashmap", map);
+    return cell_hashmap_entries(map);
+}
+
+/* ⊞⊕ - merge two maps */
+Cell* prim_hashmap_merge(Cell* args) {
+    Cell* m1 = arg1(args);
+    Cell* m2 = arg2(args);
+    if (!cell_is_hashmap(m1))
+        return cell_error("⊞⊕ requires hashmap as first arg", m1);
+    if (!cell_is_hashmap(m2))
+        return cell_error("⊞⊕ requires hashmap as second arg", m2);
+    return cell_hashmap_merge(m1, m2);
+}
+
 /* Primitive table - PURE SYMBOLS ONLY
  * EVERY primitive MUST have documentation */
 static Primitive primitives[] = {
@@ -8541,6 +8650,19 @@ static Primitive primitives[] = {
     {"◇→", prim_weak_deref, 1, {"Dereference weak ref", "◇α → α|∅"}},
     {"◇?", prim_weak_alive, 1, {"Check weak ref alive", "◇α → 𝔹"}},
     {"◇⊙", prim_weak_is, 1, {"Test if weak-ref", "α → 𝔹"}},
+
+    /* HashMap (Day 109) */
+    {"⊞", prim_hashmap_new, -1, {"Create hashmap from pairs", "⟨k v⟩... → ⊞"}},
+    {"⊞→", prim_hashmap_get, 2, {"Get value by key", "⊞ → α → β|∅"}},
+    {"⊞←", prim_hashmap_put, 3, {"Put key-value, return old", "⊞ → α → β → β|∅"}},
+    {"⊞⊖", prim_hashmap_del, 2, {"Delete key, return old", "⊞ → α → β|∅"}},
+    {"⊞?", prim_hashmap_is, 1, {"Test if hashmap", "α → 𝔹"}},
+    {"⊞∋", prim_hashmap_has, 2, {"Check if key exists", "⊞ → α → 𝔹"}},
+    {"⊞#", prim_hashmap_size, 1, {"Get entry count", "⊞ → ℕ"}},
+    {"⊞⊙", prim_hashmap_keys, 1, {"Get list of keys", "⊞ → [α]"}},
+    {"⊞⊗", prim_hashmap_vals, 1, {"Get list of values", "⊞ → [β]"}},
+    {"⊞*", prim_hashmap_entries, 1, {"Get list of ⟨k v⟩ pairs", "⊞ → [⟨α β⟩]"}},
+    {"⊞⊕", prim_hashmap_merge, 2, {"Merge two maps (m2 wins)", "⊞ → ⊞ → ⊞"}},
 
     {NULL, NULL, 0, {NULL, NULL}}
 };

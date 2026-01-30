@@ -1325,6 +1325,23 @@ Mutable references (boxes) are first-class mutable containers. `□←` returns 
 
 Weak references use an intrusive dual-count zombie approach (Swift pre-4 style). When a cell's strong refcount hits 0 but weak_refcount > 0, children are released but the cell shell persists as a "zombie" for O(1) liveness checks. `◇→` retains the returned target (caller gets a strong ref). `◇?` is pure observation (no retain). Cell type: `CELL_WEAK_REF`. Print format: `◇[alive]` or `◇[dead]`.
 
+### HashMap (11 primitives) ✅
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `⊞` | `⟨k v⟩... → ⊞` | Create hashmap (variadic, from pairs) | ✅ DONE (Day 109) |
+| `⊞→` | `⊞ → α → β\|∅` | Get value by key | ✅ DONE (Day 109) |
+| `⊞←` | `⊞ → α → β → β\|∅` | Put key-value, return old (mutates) | ✅ DONE (Day 109) |
+| `⊞⊖` | `⊞ → α → β\|∅` | Delete key, return old value | ✅ DONE (Day 109) |
+| `⊞?` | `α → 𝔹` | Type predicate | ✅ DONE (Day 109) |
+| `⊞∋` | `⊞ → α → 𝔹` | Check if key exists | ✅ DONE (Day 109) |
+| `⊞#` | `⊞ → ℕ` | Get entry count (O(1)) | ✅ DONE (Day 109) |
+| `⊞⊙` | `⊞ → [α]` | Get list of keys | ✅ DONE (Day 109) |
+| `⊞⊗` | `⊞ → [β]` | Get list of values | ✅ DONE (Day 109) |
+| `⊞*` | `⊞ → [⟨α β⟩]` | Get list of key-value pairs | ✅ DONE (Day 109) |
+| `⊞⊕` | `⊞ → ⊞ → ⊞` | Merge two maps (m2 wins conflicts) | ✅ DONE (Day 109) |
+
+Swiss Table (Google Abseil design) with SipHash-2-4 keyed PRF. Three-tier portable SIMD: SSE2 (x86/x86_64), NEON (ARM64), SWAR (portable fallback). Separate control byte metadata array scanned 16 slots per SIMD operation. Control bytes: 0xFF=EMPTY, 0x80=DELETED, 0b0xxxxxxx=FULL (H2 hash fragment). Triangular probing, 87.5% load factor, power-of-2 capacity. Cell type: `CELL_HASHMAP`. Print format: `⊞[N]`. Mutable in place (like `□`).
+
 ### Sequencing (1 special form) ✅
 | Symbol | Type | Meaning | Status |
 |--------|------|---------|--------|
