@@ -1,0 +1,104 @@
+; Test: Channel Select — ⟿⊞ and ⟿⊞?
+; Day 91 - Select/Alt on multiple channels
+
+; ============ Reset ============
+(⟳∅)
+(⟿∅)
+
+; ============ Test 1: select-basic ============
+; Single channel with data, returns ⟨chan value⟩
+
+(≔ ch-s1 (⟿⊚))
+(⟿→ ch-s1 :hello)
+(≔ sel1 (⟿⊞? ch-s1))
+(⊨ (⌜ :select-basic) :hello (▷ sel1))
+
+; ============ Reset ============
+(⟳∅)
+(⟿∅)
+
+; ============ Test 2: select-correct-chan ============
+; Two channels, only second has data, returns correct pair
+
+(≔ ch-a (⟿⊚))
+(≔ ch-b (⟿⊚))
+(⟿→ ch-b :from-b)
+(≔ sel2 (⟿⊞? ch-a ch-b))
+(⊨ (⌜ :select-correct-chan) :from-b (▷ sel2))
+
+; ============ Reset ============
+(⟳∅)
+(⟿∅)
+
+; ============ Test 3: select-try-empty ============
+; Non-blocking on empty channel returns ∅
+
+(≔ ch-e (⟿⊚))
+(⊨ (⌜ :select-try-empty) ∅ (⟿⊞? ch-e))
+
+; ============ Reset ============
+(⟳∅)
+(⟿∅)
+
+; ============ Test 4: select-try-data ============
+; Non-blocking with data returns ⟨chan value⟩
+
+(≔ ch-d (⟿⊚))
+(⟿→ ch-d #42)
+(≔ sel4 (⟿⊞? ch-d))
+(⊨ (⌜ :select-try-data) #42 (▷ sel4))
+
+; ============ Reset ============
+(⟳∅)
+(⟿∅)
+
+; ============ Test 5: select-blocking ============
+; Actor blocks on select, wakes when producer sends
+
+(≔ ch-w (⟿⊚))
+(≔ waiter (⟳ (λ (self) (⟿⊞ ch-w))))
+(≔ sender-w (⟳ (λ (self) (⟿→ ch-w :woke))))
+(⟳! #100)
+(≔ sel5 (⟳→ waiter))
+(⊨ (⌜ :select-blocking) :woke (▷ sel5))
+
+; ============ Reset ============
+(⟳∅)
+(⟿∅)
+
+; ============ Test 6: select-all-closed ============
+; All channels closed returns error
+
+(≔ ch-c1 (⟿⊚))
+(≔ ch-c2 (⟿⊚))
+(⟿× ch-c1)
+(⟿× ch-c2)
+(⊨ (⌜ :select-all-closed) #t (⚠? (⟿⊞? ch-c1 ch-c2)))
+
+; ============ Reset ============
+(⟳∅)
+(⟿∅)
+
+; ============ Test 7: select-some-closed ============
+; Mix of closed/open — data on open channel works
+
+(≔ ch-cl (⟿⊚))
+(≔ ch-op (⟿⊚))
+(⟿× ch-cl)
+(⟿→ ch-op :open-val)
+(≔ sel7 (⟿⊞? ch-cl ch-op))
+(⊨ (⌜ :select-some-closed) :open-val (▷ sel7))
+
+; ============ Reset ============
+(⟳∅)
+(⟿∅)
+
+; ============ Test 8: select-three ============
+; Three channels, third has data
+
+(≔ ch-t1 (⟿⊚))
+(≔ ch-t2 (⟿⊚))
+(≔ ch-t3 (⟿⊚))
+(⟿→ ch-t3 :third)
+(≔ sel8 (⟿⊞? ch-t1 ch-t2 ch-t3))
+(⊨ (⌜ :select-three) :third (▷ sel8))

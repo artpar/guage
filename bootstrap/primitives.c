@@ -2346,6 +2346,122 @@ Cell* prim_chan_reset(Cell* args) {
     return cell_nil();
 }
 
+/* ⟿⊞ - select from multiple channels (blocking)
+ * (⟿⊞ ch1 ch2 ...) — wait for first channel with data
+ * Returns ⟨channel value⟩ pair */
+Cell* prim_chan_select(Cell* args) {
+    if (!args || cell_is_nil(args)) {
+        return cell_error("select-no-args", cell_nil());
+    }
+
+    /* Collect channel IDs */
+    int ids[MAX_SELECT_CHANNELS];
+    int count = 0;
+    Cell* cur = args;
+    while (cur && !cell_is_nil(cur) && count < MAX_SELECT_CHANNELS) {
+        Cell* ch = cell_car(cur);
+        if (!cell_is_channel(ch)) {
+            return cell_error("select-not-channel", ch);
+        }
+        ids[count++] = cell_get_channel_id(ch);
+        cur = cell_cdr(cur);
+    }
+
+    /* First pass: try_recv with round-robin fairness */
+    static int rr_counter = 0;
+    int start = rr_counter % count;
+    rr_counter++;
+    int closed_empty = 0;
+    for (int j = 0; j < count; j++) {
+        int idx = (start + j) % count;
+        Channel* chan = channel_lookup(ids[idx]);
+        if (!chan || (chan->closed && chan->count == 0)) {
+            closed_empty++;
+            continue;
+        }
+        Cell* val = channel_try_recv(chan);
+        if (val) {
+            Cell* result = cell_cons(cell_channel(ids[idx]), val);
+            cell_release(val);
+            return result;
+        }
+    }
+
+    /* All closed+empty → error */
+    if (closed_empty == count) {
+        return cell_error("select-all-closed", cell_nil());
+    }
+
+    /* No data — yield fiber to scheduler */
+    Actor* actor = actor_current();
+    if (actor && actor->fiber) {
+        Fiber* fiber = actor->fiber;
+        fiber->suspend_reason = SUSPEND_SELECT;
+        fiber->suspend_select_count = count;
+        for (int i = 0; i < count; i++) {
+            fiber->suspend_select_ids[i] = ids[i];
+        }
+        fiber_yield(fiber);
+        /* Resumed by scheduler with ⟨channel value⟩ pair */
+        Cell* resumed = fiber->resume_value;
+        if (resumed) {
+            cell_retain(resumed);
+            return resumed;
+        }
+    }
+
+    return cell_error("select-no-actor", cell_nil());
+}
+
+/* ⟿⊞? - try select from multiple channels (non-blocking)
+ * (⟿⊞? ch1 ch2 ...) — return first ready or ∅
+ * Returns ⟨channel value⟩ pair or ∅ */
+Cell* prim_chan_select_try(Cell* args) {
+    if (!args || cell_is_nil(args)) {
+        return cell_error("select-no-args", cell_nil());
+    }
+
+    /* Collect channel IDs */
+    int ids[MAX_SELECT_CHANNELS];
+    int count = 0;
+    Cell* cur = args;
+    while (cur && !cell_is_nil(cur) && count < MAX_SELECT_CHANNELS) {
+        Cell* ch = cell_car(cur);
+        if (!cell_is_channel(ch)) {
+            return cell_error("select-not-channel", ch);
+        }
+        ids[count++] = cell_get_channel_id(ch);
+        cur = cell_cdr(cur);
+    }
+
+    /* Try recv with round-robin fairness */
+    static int rr_counter = 0;
+    int start = rr_counter % count;
+    rr_counter++;
+    int closed_empty = 0;
+    for (int j = 0; j < count; j++) {
+        int idx = (start + j) % count;
+        Channel* chan = channel_lookup(ids[idx]);
+        if (!chan || (chan->closed && chan->count == 0)) {
+            closed_empty++;
+            continue;
+        }
+        Cell* val = channel_try_recv(chan);
+        if (val) {
+            Cell* result = cell_cons(cell_channel(ids[idx]), val);
+            cell_release(val);
+            return result;
+        }
+    }
+
+    /* All closed → error; otherwise just nothing ready */
+    if (closed_empty == count) {
+        return cell_error("select-all-closed", cell_nil());
+    }
+
+    return cell_nil();
+}
+
 /* ============ Structure Primitives ============ */
 
 /* Need access to eval context for type registry */
@@ -6127,6 +6243,8 @@ static Primitive primitives[] = {
     {"⟿←", prim_chan_recv, 1, {"Receive from channel (yields if empty)", "⟿ → α"}},
     {"⟿×", prim_chan_close, 1, {"Close channel", "⟿ → ∅"}},
     {"⟿∅", prim_chan_reset, 0, {"Reset all channels (testing)", "() → ∅"}},
+    {"⟿⊞",  prim_chan_select,     -1, {"Select from multiple channels (blocking)", "[⟿] → ⟨⟿ α⟩"}},
+    {"⟿⊞?", prim_chan_select_try, -1, {"Try select (non-blocking)", "[⟿] → ⟨⟿ α⟩ | ∅"}},
 
     /* Documentation primitives */
     {"⌂", prim_doc_get, 1, {"Get documentation for symbol", ":symbol → string"}},

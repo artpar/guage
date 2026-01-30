@@ -171,6 +171,18 @@ int actor_run_all(int max_ticks) {
                         if (chan && chan->count >= chan->capacity) continue;
                         break;
                     }
+                    case SUSPEND_SELECT: {
+                        bool any_ready = false;
+                        for (int j = 0; j < fiber->suspend_select_count; j++) {
+                            Channel* chan = channel_lookup(fiber->suspend_select_ids[j]);
+                            if (chan && (chan->count > 0 || chan->closed)) {
+                                any_ready = true;
+                                break;
+                            }
+                        }
+                        if (!any_ready) continue;
+                        break;
+                    }
                     case SUSPEND_GENERAL:
                         continue; /* Wait for explicit resume */
                 }
@@ -219,6 +231,34 @@ int actor_run_all(int max_ticks) {
                             fiber->suspend_send_value = NULL;
                         }
                         resume_val = cell_nil();
+                        break;
+                    }
+                    case SUSPEND_SELECT: {
+                        int total = fiber->suspend_select_count;
+                        int closed_empty = 0;
+                        static int sel_round = 0;
+                        int start = sel_round % total;
+                        sel_round++;
+                        for (int j = 0; j < total; j++) {
+                            int idx = (start + j) % total;
+                            int ch_id = fiber->suspend_select_ids[idx];
+                            Channel* chan = channel_lookup(ch_id);
+                            if (!chan || (chan->closed && chan->count == 0)) {
+                                closed_empty++;
+                                continue;
+                            }
+                            Cell* val = channel_try_recv(chan);
+                            if (val) {
+                                resume_val = cell_cons(cell_channel(ch_id), val);
+                                cell_release(val);
+                                break;
+                            }
+                        }
+                        if (!resume_val) {
+                            resume_val = (closed_empty == total)
+                                ? cell_error("select-all-closed", cell_nil())
+                                : cell_nil();
+                        }
                         break;
                     }
                     case SUSPEND_GENERAL:

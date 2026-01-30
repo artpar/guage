@@ -644,7 +644,7 @@ Unhandled effects return `⚠:unhandled-effect` errors.
 Cooperative actor model built on fibers. Single-threaded round-robin scheduling.
 Actors yield at `←?` when mailbox is empty. Use `≫` (bind) to sequence multiple receives.
 
-### Channels (5) ✅
+### Channels (7) ✅
 | Symbol | Type | Meaning | Status |
 |--------|------|---------|--------|
 | `⟿⊚` | `() → ⟿` or `ℕ → ⟿` | Create channel (optional capacity, default 64) | ✅ |
@@ -652,9 +652,11 @@ Actors yield at `←?` when mailbox is empty. Use `≫` (bind) to sequence multi
 | `⟿←` | `⟿ → α` | Receive from channel (yields if empty) | ✅ |
 | `⟿×` | `⟿ → ∅` | Close channel | ✅ |
 | `⟿∅` | `() → ∅` | Reset all channels (testing) | ✅ |
+| `⟿⊞` | `[⟿] → ⟨⟿ α⟩` | Select from multiple channels (blocking) | ✅ |
+| `⟿⊞?` | `[⟿] → ⟨⟿ α⟩ \| ∅` | Try select (non-blocking) | ✅ |
 
 Channels are first-class bounded ring buffers. Any actor can send/recv on any channel.
-Scheduler polls channel state via `SuspendReason` on the fiber (SUSPEND_CHAN_RECV/SUSPEND_CHAN_SEND).
+Scheduler polls channel state via `SuspendReason` on the fiber (SUSPEND_CHAN_RECV/SUSPEND_CHAN_SEND/SUSPEND_SELECT).
 
 ### Documentation (10) ✅
 | Symbol | Type | Meaning | Status |
@@ -1558,7 +1560,7 @@ All I/O operations return errors on failure:
 | `⟳→` | `⟳ → α` | Actor result | ✅ |
 | `⟳∅` | `() → ∅` | Reset actors | ✅ |
 
-### Channels (5) ✅
+### Channels (7) ✅
 | Symbol | Type | Meaning | Status |
 |--------|------|---------|--------|
 | `⟿⊚` | `() → ⟿` | Create channel | ✅ |
@@ -1566,6 +1568,8 @@ All I/O operations return errors on failure:
 | `⟿←` | `⟿ → α` | Receive from channel | ✅ |
 | `⟿×` | `⟿ → ∅` | Close channel | ✅ |
 | `⟿∅` | `() → ∅` | Reset channels | ✅ |
+| `⟿⊞` | `[⟿] → ⟨⟿ α⟩` | Select (blocking) | ✅ |
+| `⟿⊞?` | `[⟿] → ⟨⟿ α⟩ \| ∅` | Try select (non-blocking) | ✅ |
 
 ### Data Structures (15) - CRITICAL FOR METAPROGRAMMING
 | Symbol | Type | Meaning | Status |

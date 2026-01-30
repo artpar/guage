@@ -1,11 +1,39 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-01-30 (Day 90 COMPLETE)
+Updated: 2026-01-30 (Day 91 COMPLETE)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 90 - Channels with Typed Communication (2026-01-30)
+# Session Handoff: Day 91 - Channel Select/Alt (2026-01-30)
+
+## Day 91 Progress - Channel Select (`⟿⊞`, `⟿⊞?`)
+
+**RESULT:** 89/89 test files passing (100%), 8 new tests (select)
+
+### New Feature: Channel Select — Wait on Multiple Channels
+
+Select allows waiting on multiple channels simultaneously, returning a `⟨channel value⟩` pair indicating which channel fired. Round-robin fairness prevents starvation.
+
+**New Primitives (2):**
+- `⟿⊞` (select, blocking) — Wait on multiple channels, yields if none ready
+- `⟿⊞?` (select-try, non-blocking) — Return first ready channel or `∅`
+
+**Scheduler Extension:**
+- Added `SUSPEND_SELECT` to `SuspendReason` enum
+- Added `suspend_select_ids[]` and `suspend_select_count` to `Fiber` struct
+- Both scheduler switch blocks in `actor_run_all()` handle multi-channel polling
+- Round-robin start index for fairness across scheduling ticks
+
+**Files Modified (3):**
+- `bootstrap/fiber.h` — New enum value + select tracking fields
+- `bootstrap/actor.c` — SUSPEND_SELECT handling in both scheduler switches
+- `bootstrap/primitives.c` — `prim_chan_select`, `prim_chan_select_try`, registration
+
+**New Test File (1):**
+- `bootstrap/tests/test_select.test` — 8 tests covering basic, correct-channel, try-empty, try-data, blocking, all-closed, some-closed, three-channel
+
+---
 
 ## Day 90 Progress - Channel Primitives
 

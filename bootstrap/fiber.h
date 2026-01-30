@@ -24,6 +24,7 @@ typedef enum {
     SUSPEND_MAILBOX,     /* ←? on empty mailbox */
     SUSPEND_CHAN_RECV,   /* ⟿← on empty channel */
     SUSPEND_CHAN_SEND,   /* ⟿→ on full channel */
+    SUSPEND_SELECT,      /* ⟿⊞ waiting on multiple channels */
 } SuspendReason;
 
 /* Fiber - lightweight coroutine for delimited continuations */
@@ -54,6 +55,11 @@ typedef struct Fiber {
     SuspendReason suspend_reason;
     int suspend_channel_id;        /* channel ID for CHAN_RECV/CHAN_SEND */
     Cell* suspend_send_value;      /* pending value for CHAN_SEND */
+
+    /* Multi-channel select */
+    #define MAX_SELECT_CHANNELS 16
+    int suspend_select_ids[MAX_SELECT_CHANNELS];
+    int suspend_select_count;
 
     /* Evaluation context */
     EvalContext* eval_ctx;
