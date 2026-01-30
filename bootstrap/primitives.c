@@ -920,6 +920,9 @@ Cell* prim_typeof(Cell* args) {
     if (cell_is_vector(val)) {
         return cell_symbol(":vector");
     }
+    if (cell_is_heap(val)) {
+        return cell_symbol(":heap");
+    }
 
     return cell_symbol(":unknown");
 }
@@ -1723,6 +1726,7 @@ Cell* prim_type_of(Cell* args) {
     else if (cell_is_deque(value)) type_name = "deque";
     else if (cell_is_buffer(value)) type_name = "buffer";
     else if (cell_is_vector(value)) type_name = "vector";
+    else if (cell_is_heap(value)) type_name = "heap";
 
     return cell_symbol(type_name);
 }
@@ -8846,6 +8850,90 @@ Cell* prim_vector_map(Cell* args) {
     return result;
 }
 
+/* =========================================================================
+ * Heap (△) — 4-ary min-heap priority queue (Day 115)
+ * ========================================================================= */
+
+/* △ - create empty heap */
+Cell* prim_heap_new(Cell* args) {
+    (void)args;
+    return cell_heap_new();
+}
+
+/* △⊕ - push (heap, priority, value) → #t */
+Cell* prim_heap_push(Cell* args) {
+    Cell* h = arg1(args);
+    if (!cell_is_heap(h))
+        return cell_error("△⊕ requires heap", h);
+    Cell* prio = arg2(args);
+    if (!cell_is_number(prio))
+        return cell_error("△⊕ priority must be number", prio);
+    Cell* val = arg3(args);
+    cell_heap_push(h, cell_get_number(prio), val);
+    return cell_bool(true);
+}
+
+/* △⊖ - pop → ⟨priority value⟩ or ⚠ */
+Cell* prim_heap_pop(Cell* args) {
+    Cell* h = arg1(args);
+    if (!cell_is_heap(h))
+        return cell_error("△⊖ requires heap", h);
+    Cell* result = cell_heap_pop(h);
+    if (!result) return cell_error("heap-empty", h);
+    return result;
+}
+
+/* △◁ - peek → ⟨priority value⟩ or ∅ */
+Cell* prim_heap_peek(Cell* args) {
+    Cell* h = arg1(args);
+    if (!cell_is_heap(h))
+        return cell_error("△◁ requires heap", h);
+    Cell* result = cell_heap_peek(h);
+    if (!result) return cell_nil();
+    return result;
+}
+
+/* △# - size */
+Cell* prim_heap_size(Cell* args) {
+    Cell* h = arg1(args);
+    if (!cell_is_heap(h))
+        return cell_error("△# requires heap", h);
+    return cell_number((double)cell_heap_size(h));
+}
+
+/* △? - type predicate */
+Cell* prim_heap_is(Cell* args) {
+    Cell* val = arg1(args);
+    return cell_bool(cell_is_heap(val));
+}
+
+/* △∅? - empty predicate */
+Cell* prim_heap_empty(Cell* args) {
+    Cell* h = arg1(args);
+    if (!cell_is_heap(h))
+        return cell_error("△∅? requires heap", h);
+    return cell_bool(cell_heap_size(h) == 0);
+}
+
+/* △⊙ - to sorted list of ⟨k v⟩ pairs */
+Cell* prim_heap_to_list(Cell* args) {
+    Cell* h = arg1(args);
+    if (!cell_is_heap(h))
+        return cell_error("△⊙ requires heap", h);
+    return cell_heap_to_list(h);
+}
+
+/* △⊕* - merge two heaps into new heap */
+Cell* prim_heap_merge(Cell* args) {
+    Cell* h1 = arg1(args);
+    Cell* h2 = arg2(args);
+    if (!cell_is_heap(h1))
+        return cell_error("△⊕* first arg must be heap", h1);
+    if (!cell_is_heap(h2))
+        return cell_error("△⊕* second arg must be heap", h2);
+    return cell_heap_merge(h1, h2);
+}
+
 /* Primitive table - PURE SYMBOLS ONLY
  * EVERY primitive MUST have documentation */
 static Primitive primitives[] = {
@@ -9237,6 +9325,17 @@ static Primitive primitives[] = {
     {"⟦∅?", prim_vector_empty, 1, {"Test if vector is empty", "⟦⟧ → 𝔹"}},
     {"⟦⊞", prim_vector_slice, 3, {"Slice [start,end) → new vector", "⟦⟧ → ℕ → ℕ → ⟦⟧"}},
     {"⟦↦", prim_vector_map, 2, {"Map function over vector → new", "⟦⟧ → (α → β) → ⟦⟧"}},
+
+    /* Heap (Day 115 — 4-ary min-heap priority queue) */
+    {"△", prim_heap_new, 0, {"Create empty min-heap", "→ △"}},
+    {"△⊕", prim_heap_push, 3, {"Push value with priority (mutates)", "△ → ℕ → α → #t"}},
+    {"△⊖", prim_heap_pop, 1, {"Pop min element → ⟨priority value⟩", "△ → ⟨ℕ α⟩"}},
+    {"△◁", prim_heap_peek, 1, {"Peek min element → ⟨priority value⟩ or ∅", "△ → ⟨ℕ α⟩"}},
+    {"△#", prim_heap_size, 1, {"Get heap size", "△ → ℕ"}},
+    {"△?", prim_heap_is, 1, {"Test if value is heap", "α → 𝔹"}},
+    {"△∅?", prim_heap_empty, 1, {"Test if heap is empty", "△ → 𝔹"}},
+    {"△⊙", prim_heap_to_list, 1, {"All elements as sorted ⟨k v⟩ list", "△ → [⟨ℕ α⟩]"}},
+    {"△⊕*", prim_heap_merge, 2, {"Merge two heaps → new heap", "△ → △ → △"}},
 
     {NULL, NULL, 0, {NULL, NULL}}
 };

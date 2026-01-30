@@ -299,6 +299,14 @@ void cell_release(Cell* c) {
                 }
                 break;
             }
+            case CELL_HEAP: {
+                for (uint32_t hi = 0; hi < c->data.pq.size; hi++) {
+                    if (c->data.pq.vals[hi]) cell_release(c->data.pq.vals[hi]);
+                }
+                free(c->data.pq.keys);
+                free(c->data.pq.vals);
+                break;
+            }
             default:
                 break;
         }
@@ -725,6 +733,9 @@ bool cell_equal(Cell* a, Cell* b) {
             }
             return true;
         }
+        case CELL_HEAP:
+            /* Identity only — heap ordering makes structural comparison meaningless */
+            return false;
         case CELL_LAMBDA:
         case CELL_BUILTIN:
         case CELL_ERROR:
@@ -857,6 +868,9 @@ void cell_print(Cell* c) {
         case CELL_VECTOR:
             printf("⟦%u⟧", c->data.vector.size);
             break;
+        case CELL_HEAP:
+            printf("△[%u]", c->data.pq.size);
+            break;
     }
 }
 
@@ -898,6 +912,14 @@ uint64_t cell_hash(Cell* c) {
                 vh ^= cell_hash(vbuf[vi]) * 0x9E3779B97F4A7C15ULL + (vh << 12) + (vh >> 4);
             }
             return vh;
+        }
+        case CELL_HEAP: {
+            uint64_t hh = 0x9ABCull;
+            for (uint32_t hi = 0; hi < c->data.pq.size; hi++) {
+                hh ^= guage_siphash(&c->data.pq.keys[hi], sizeof(double));
+                hh ^= cell_hash(c->data.pq.vals[hi]) * 0x9E3779B97F4A7C15ULL + (hh << 12) + (hh >> 4);
+            }
+            return hh;
         }
         default: {
             /* Lambda, error, actor, box, etc. — hash pointer */
@@ -1961,5 +1983,204 @@ Cell* cell_vector_slice(Cell* v, uint32_t start, uint32_t end) {
         cell_retain(dst[i]);
     }
     result->data.vector.size = len;
+    return result;
+}
+
+/* =========================================================================
+ * Heap — 4-ary Min-Heap Priority Queue (HFT-grade)
+ *
+ * SoA layout: separate keys[] and vals[] arrays, both cache-line aligned.
+ * 4-ary: parent = (i-1)>>2, first_child = (i<<2)+1
+ * Branchless min-of-4 comparison tree (3 CMOVs).
+ * Move-based sift (not swap): 1 write per level instead of 3.
+ * Prefetch grandchildren keys during sift-down.
+ * ========================================================================= */
+
+#define HEAP4_MIN_CAP 16
+
+static inline uint32_t heap4_parent(uint32_t i) { return (i - 1) >> 2; }
+static inline uint32_t heap4_first_child(uint32_t i) { return (i << 2) + 1; }
+
+/* Branchless min-of-4 children — returns index of smallest key */
+static inline uint32_t heap4_min_child(const double* k, uint32_t first, uint32_t count) {
+    uint32_t i0 = first;
+    uint32_t best = i0;
+    if (count > 1 && k[first + 1] < k[best]) best = first + 1;
+    if (count > 2 && k[first + 2] < k[best]) best = first + 2;
+    if (count > 3 && k[first + 3] < k[best]) best = first + 3;
+    return best;
+}
+
+/* Grow heap arrays to 2x capacity */
+static void heap4_grow(Cell* h) {
+    uint32_t new_cap = h->data.pq.capacity * 2;
+    double* new_keys = (double*)aligned_alloc(64, new_cap * sizeof(double));
+    Cell** new_vals = (Cell**)aligned_alloc(64, new_cap * sizeof(Cell*));
+    memcpy(new_keys, h->data.pq.keys, h->data.pq.size * sizeof(double));
+    memcpy(new_vals, h->data.pq.vals, h->data.pq.size * sizeof(Cell*));
+    free(h->data.pq.keys);
+    free(h->data.pq.vals);
+    h->data.pq.keys = new_keys;
+    h->data.pq.vals = new_vals;
+    h->data.pq.capacity = new_cap;
+}
+
+/* Move-based sift-up: shift parents down, place element once at final pos */
+static void heap4_sift_up(double* keys, Cell** vals, uint32_t pos) {
+    double key = keys[pos];
+    Cell* val = vals[pos];
+    while (pos > 0) {
+        uint32_t p = heap4_parent(pos);
+        if (keys[p] <= key) break;
+        keys[pos] = keys[p];
+        vals[pos] = vals[p];
+        pos = p;
+    }
+    keys[pos] = key;
+    vals[pos] = val;
+}
+
+/* Move-based sift-down: shift smallest child up, place element once */
+static void heap4_sift_down(double* keys, Cell** vals, uint32_t size, uint32_t pos) {
+    double key = keys[pos];
+    Cell* val = vals[pos];
+    while (1) {
+        uint32_t fc = heap4_first_child(pos);
+        if (fc >= size) break;
+        uint32_t nchildren = size - fc;
+        if (nchildren > 4) nchildren = 4;
+        /* Prefetch grandchildren keys */
+        uint32_t gc = heap4_first_child(fc);
+        if (gc < size) __builtin_prefetch(&keys[gc], 0, 3);
+        uint32_t mc = heap4_min_child(keys, fc, nchildren);
+        if (keys[mc] >= key) break;
+        keys[pos] = keys[mc];
+        vals[pos] = vals[mc];
+        pos = mc;
+    }
+    keys[pos] = key;
+    vals[pos] = val;
+}
+
+bool cell_is_heap(Cell* c) {
+    return c && c->type == CELL_HEAP;
+}
+
+Cell* cell_heap_new(void) {
+    Cell* c = cell_alloc(CELL_HEAP);
+    c->data.pq.capacity = HEAP4_MIN_CAP;
+    c->data.pq.size = 0;
+    c->data.pq.keys = (double*)aligned_alloc(64, HEAP4_MIN_CAP * sizeof(double));
+    c->data.pq.vals = (Cell**)aligned_alloc(64, HEAP4_MIN_CAP * sizeof(Cell*));
+    memset(c->data.pq.vals, 0, HEAP4_MIN_CAP * sizeof(Cell*));
+    return c;
+}
+
+void cell_heap_push(Cell* h, double priority, Cell* val) {
+    assert(h->type == CELL_HEAP);
+    if (__builtin_expect(h->data.pq.size == h->data.pq.capacity, 0)) {
+        heap4_grow(h);
+    }
+    uint32_t pos = h->data.pq.size;
+    h->data.pq.keys[pos] = priority;
+    h->data.pq.vals[pos] = val;
+    cell_retain(val);
+    h->data.pq.size++;
+    heap4_sift_up(h->data.pq.keys, h->data.pq.vals, pos);
+}
+
+Cell* cell_heap_pop(Cell* h) {
+    assert(h->type == CELL_HEAP);
+    if (h->data.pq.size == 0) return NULL;
+    double key = h->data.pq.keys[0];
+    Cell* val = h->data.pq.vals[0];
+    h->data.pq.size--;
+    if (h->data.pq.size > 0) {
+        h->data.pq.keys[0] = h->data.pq.keys[h->data.pq.size];
+        h->data.pq.vals[0] = h->data.pq.vals[h->data.pq.size];
+        heap4_sift_down(h->data.pq.keys, h->data.pq.vals, h->data.pq.size, 0);
+    }
+    /* Return ⟨priority value⟩ pair — caller inherits val's reference */
+    Cell* kc = cell_number(key);
+    Cell* pair = cell_cons(kc, val);
+    cell_release(kc);
+    cell_release(val);
+    return pair;
+}
+
+Cell* cell_heap_peek(Cell* h) {
+    assert(h->type == CELL_HEAP);
+    if (h->data.pq.size == 0) return NULL;
+    Cell* kc = cell_number(h->data.pq.keys[0]);
+    Cell* vc = h->data.pq.vals[0];
+    cell_retain(vc);
+    Cell* pair = cell_cons(kc, vc);
+    cell_release(kc);
+    cell_release(vc);
+    return pair;
+}
+
+uint32_t cell_heap_size(Cell* h) {
+    assert(h->type == CELL_HEAP);
+    return h->data.pq.size;
+}
+
+Cell* cell_heap_to_list(Cell* h) {
+    assert(h->type == CELL_HEAP);
+    uint32_t sz = h->data.pq.size;
+    /* Copy into temp arrays, pop all to get sorted order */
+    double* tmp_keys = (double*)malloc(sz * sizeof(double));
+    Cell** tmp_vals = (Cell**)malloc(sz * sizeof(Cell*));
+    memcpy(tmp_keys, h->data.pq.keys, sz * sizeof(double));
+    memcpy(tmp_vals, h->data.pq.vals, sz * sizeof(Cell*));
+    /* Pop from copy to build sorted list */
+    Cell* result = cell_nil();
+    uint32_t remaining = sz;
+    while (remaining > 0) {
+        double key = tmp_keys[0];
+        Cell* val = tmp_vals[0];
+        remaining--;
+        if (remaining > 0) {
+            tmp_keys[0] = tmp_keys[remaining];
+            tmp_vals[0] = tmp_vals[remaining];
+            heap4_sift_down(tmp_keys, tmp_vals, remaining, 0);
+        }
+        Cell* kc = cell_number(key);
+        Cell* pair = cell_cons(kc, val);
+        Cell* node = cell_cons(pair, result);
+        cell_release(pair);
+        cell_release(kc);
+        cell_release(result);
+        result = node;
+    }
+    free(tmp_keys);
+    free(tmp_vals);
+    /* Result is in reverse sorted order — reverse it */
+    Cell* reversed = cell_nil();
+    Cell* cur = result;
+    while (cur && !cell_is_nil(cur)) {
+        Cell* head = cell_car(cur);
+        Cell* next = cell_cdr(cur);
+        Cell* node = cell_cons(head, reversed);
+        cell_release(reversed);
+        reversed = node;
+        cur = next;
+    }
+    cell_release(result);
+    return reversed;
+}
+
+Cell* cell_heap_merge(Cell* h1, Cell* h2) {
+    assert(h1->type == CELL_HEAP);
+    assert(h2->type == CELL_HEAP);
+    Cell* result = cell_heap_new();
+    /* Push all from h1 */
+    for (uint32_t i = 0; i < h1->data.pq.size; i++) {
+        cell_heap_push(result, h1->data.pq.keys[i], h1->data.pq.vals[i]);
+    }
+    /* Push all from h2 */
+    for (uint32_t i = 0; i < h2->data.pq.size; i++) {
+        cell_heap_push(result, h2->data.pq.keys[i], h2->data.pq.vals[i]);
+    }
     return result;
 }

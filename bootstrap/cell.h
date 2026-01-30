@@ -33,7 +33,8 @@ typedef enum {
     CELL_SET,            /* ⊡ - hash set (Boost-style groups-of-15 + overflow Bloom byte) */
     CELL_DEQUE,          /* ⊟ - deque (DPDK-grade cache-optimized circular buffer) */
     CELL_BUFFER,         /* ◈ - byte buffer (cache-line aligned raw bytes) */
-    CELL_VECTOR          /* ⟦⟧ - dynamic array (SBO + 1.5x growth + cache-line aligned) */
+    CELL_VECTOR,         /* ⟦⟧ - dynamic array (SBO + 1.5x growth + cache-line aligned) */
+    CELL_HEAP            /* △ - priority queue (4-ary min-heap, SoA, cache-line aligned) */
 } CellType;
 
 /* Linear Type Flags */
@@ -187,6 +188,12 @@ struct Cell {
             uint32_t size;        /* Element count */
             uint32_t capacity;    /* ≤4 = SBO mode, >4 = heap mode */
         } vector;
+        struct {
+            double*  keys;        /* Cache-line aligned priority array */
+            Cell**   vals;        /* Cache-line aligned value array */
+            uint32_t size;        /* Element count */
+            uint32_t capacity;    /* Power-of-2 capacity (min 16) */
+        } pq;
     } data;
 };
 
@@ -315,6 +322,16 @@ Cell* cell_vector_pop(Cell* v);
 uint32_t cell_vector_size(Cell* v);
 Cell* cell_vector_to_list(Cell* v);
 Cell* cell_vector_slice(Cell* v, uint32_t start, uint32_t end);
+
+/* Heap operations (4-ary min-heap priority queue) */
+Cell* cell_heap_new(void);
+bool cell_is_heap(Cell* c);
+void cell_heap_push(Cell* h, double priority, Cell* val);
+Cell* cell_heap_pop(Cell* h);
+Cell* cell_heap_peek(Cell* h);
+uint32_t cell_heap_size(Cell* h);
+Cell* cell_heap_to_list(Cell* h);
+Cell* cell_heap_merge(Cell* h1, Cell* h2);
 
 /* Error accessors */
 const char* cell_error_message(Cell* c);
