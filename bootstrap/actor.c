@@ -935,6 +935,9 @@ void actor_reset_all(void) {
 
     /* Reset applications */
     app_reset_all();
+
+    /* Reset agents */
+    agent_reset_all();
 }
 
 /* ============ Application ============ */
@@ -1061,4 +1064,72 @@ void app_reset_all(void) {
         memset(app, 0, sizeof(Application));
     }
     g_app_count = 0;
+}
+
+/* ============ Agent (functional state wrapper) ============ */
+
+static AgentState g_agents[MAX_AGENTS];
+static int g_agent_count = 0;
+static int g_next_agent_id = 0;
+
+int agent_start(Cell* initial_state) {
+    if (g_agent_count >= MAX_AGENTS) return -1;
+    for (int i = 0; i < MAX_AGENTS; i++) {
+        if (!g_agents[i].active) {
+            g_agents[i].id = g_next_agent_id++;
+            g_agents[i].state = initial_state;
+            cell_retain(initial_state);
+            g_agents[i].active = true;
+            g_agent_count++;
+            return g_agents[i].id;
+        }
+    }
+    return -1;
+}
+
+static AgentState* agent_lookup(int id) {
+    for (int i = 0; i < MAX_AGENTS; i++) {
+        if (g_agents[i].active && g_agents[i].id == id) {
+            return &g_agents[i];
+        }
+    }
+    return NULL;
+}
+
+Cell* agent_get_state(int id) {
+    AgentState* ag = agent_lookup(id);
+    if (!ag) return NULL;
+    return ag->state;
+}
+
+int agent_set_state(int id, Cell* st) {
+    AgentState* ag = agent_lookup(id);
+    if (!ag) return -1;
+    cell_retain(st);
+    cell_release(ag->state);
+    ag->state = st;
+    return 0;
+}
+
+int agent_stop(int id) {
+    AgentState* ag = agent_lookup(id);
+    if (!ag) return -1;
+    cell_release(ag->state);
+    ag->state = NULL;
+    ag->active = false;
+    g_agent_count--;
+    return 0;
+}
+
+void agent_reset_all(void) {
+    for (int i = 0; i < MAX_AGENTS; i++) {
+        if (g_agents[i].active) {
+            if (g_agents[i].state) cell_release(g_agents[i].state);
+        }
+        g_agents[i].active = false;
+        g_agents[i].state = NULL;
+        g_agents[i].id = 0;
+    }
+    g_agent_count = 0;
+    g_next_agent_id = 0;
 }

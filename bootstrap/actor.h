@@ -149,4 +149,19 @@ Cell* app_get_env(const char* name, Cell* key);                        /* value 
 int   app_set_env(const char* name, Cell* key, Cell* value);           /* 0=ok, -1=not found, -2=full */
 void  app_reset_all(void);
 
+/* Agent - functional state wrapper */
+#define MAX_AGENTS 64
+
+typedef struct AgentState {
+    int id;
+    Cell* state;
+    bool active;
+} AgentState;
+
+int   agent_start(Cell* initial_state);   /* returns agent id, or -1 if full */
+Cell* agent_get_state(int id);            /* state or NULL if not found */
+int   agent_set_state(int id, Cell* st);  /* 0=ok, -1=not found */
+int   agent_stop(int id);                 /* 0=ok, -1=not found */
+void  agent_reset_all(void);
+
 #endif /* GUAGE_ACTOR_H */

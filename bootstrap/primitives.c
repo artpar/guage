@@ -3258,6 +3258,178 @@ Cell* prim_task_yield(Cell* args) {
     return cell_nil();
 }
 
+/* ============ Agent Primitives ============ */
+
+/* Helper: call a lambda fn with one argument using temp define + eval */
+static Cell* agent_call_fn(EvalContext* ctx, Cell* fn, Cell* arg) {
+    /* Define fn temporarily, build (fn_name arg_name), eval, clean up */
+    static int agent_call_counter = 0;
+    char fn_name[64], arg_name[64];
+    snprintf(fn_name, sizeof(fn_name), "__agent_fn_%d", agent_call_counter);
+    snprintf(arg_name, sizeof(arg_name), "__agent_arg_%d", agent_call_counter);
+    agent_call_counter++;
+
+    eval_define(ctx, fn_name, fn);
+    eval_define(ctx, arg_name, arg);
+
+    Cell* fn_sym = cell_symbol(fn_name);
+    Cell* arg_sym = cell_symbol(arg_name);
+    Cell* call_expr = cell_cons(fn_sym, cell_cons(arg_sym, cell_nil()));
+    cell_release(fn_sym);
+    cell_release(arg_sym);
+
+    Cell* result = eval(ctx, call_expr);
+    cell_release(call_expr);
+    return result;
+}
+
+/* Helper: call a zero-arg lambda fn using temp define + eval */
+static Cell* agent_call_fn0(EvalContext* ctx, Cell* fn) {
+    static int agent_call0_counter = 0;
+    char fn_name[64];
+    snprintf(fn_name, sizeof(fn_name), "__agent_fn0_%d", agent_call0_counter);
+    agent_call0_counter++;
+
+    eval_define(ctx, fn_name, fn);
+
+    Cell* fn_sym = cell_symbol(fn_name);
+    Cell* call_expr = cell_cons(fn_sym, cell_nil());
+    cell_release(fn_sym);
+
+    Cell* result = eval(ctx, call_expr);
+    cell_release(call_expr);
+    return result;
+}
+
+/* ⟳⊶ - agent-start
+ * (⟳⊶ init-fn) — call init-fn() to get initial state, return agent ID */
+Cell* prim_agent_start(Cell* args) {
+    Cell* init_fn = arg1(args);
+    if (!cell_is_lambda(init_fn)) {
+        return cell_error("agent-not-lambda", init_fn);
+    }
+
+    EvalContext* ctx = eval_get_current_context();
+    Cell* initial_state = agent_call_fn0(ctx, init_fn);
+
+    int id = agent_start(initial_state);
+    cell_release(initial_state);
+
+    if (id < 0) {
+        return cell_error("agent-limit", cell_nil());
+    }
+    return cell_number(id);
+}
+
+/* ⟳⊶? - agent-get
+ * (⟳⊶? agent-id fn) — return (fn state) */
+Cell* prim_agent_get(Cell* args) {
+    Cell* id_cell = arg1(args);
+    Cell* fn = arg2(args);
+
+    if (!cell_is_number(id_cell)) {
+        return cell_error("agent-id-not-number", id_cell);
+    }
+    if (!cell_is_lambda(fn)) {
+        return cell_error("agent-get-not-lambda", fn);
+    }
+
+    int id = (int)cell_get_number(id_cell);
+    Cell* state = agent_get_state(id);
+    if (!state) {
+        return cell_error("agent-not-found", id_cell);
+    }
+
+    EvalContext* ctx = eval_get_current_context();
+    return agent_call_fn(ctx, fn, state);
+}
+
+/* ⟳⊶! - agent-update
+ * (⟳⊶! agent-id fn) — state = (fn state), return #t */
+Cell* prim_agent_update(Cell* args) {
+    Cell* id_cell = arg1(args);
+    Cell* fn = arg2(args);
+
+    if (!cell_is_number(id_cell)) {
+        return cell_error("agent-id-not-number", id_cell);
+    }
+    if (!cell_is_lambda(fn)) {
+        return cell_error("agent-update-not-lambda", fn);
+    }
+
+    int id = (int)cell_get_number(id_cell);
+    Cell* state = agent_get_state(id);
+    if (!state) {
+        return cell_error("agent-not-found", id_cell);
+    }
+
+    EvalContext* ctx = eval_get_current_context();
+    Cell* new_state = agent_call_fn(ctx, fn, state);
+
+    agent_set_state(id, new_state);
+    cell_release(new_state);
+    return cell_bool(true);
+}
+
+/* ⟳⊶⊕ - agent-get-and-update
+ * (⟳⊶⊕ agent-id fn) — fn returns ⟨reply new-state⟩, updates state, returns reply */
+Cell* prim_agent_get_and_update(Cell* args) {
+    Cell* id_cell = arg1(args);
+    Cell* fn = arg2(args);
+
+    if (!cell_is_number(id_cell)) {
+        return cell_error("agent-id-not-number", id_cell);
+    }
+    if (!cell_is_lambda(fn)) {
+        return cell_error("agent-gau-not-lambda", fn);
+    }
+
+    int id = (int)cell_get_number(id_cell);
+    Cell* state = agent_get_state(id);
+    if (!state) {
+        return cell_error("agent-not-found", id_cell);
+    }
+
+    EvalContext* ctx = eval_get_current_context();
+    Cell* result = agent_call_fn(ctx, fn, state);
+
+    if (!cell_is_pair(result)) {
+        cell_release(result);
+        return cell_error("agent-gau-not-pair", cell_nil());
+    }
+
+    Cell* reply = cell_car(result);
+    Cell* new_state = cell_cdr(result);
+    cell_retain(reply);
+    cell_retain(new_state);
+
+    agent_set_state(id, new_state);
+    cell_release(new_state);
+    cell_release(result);
+
+    return reply;
+}
+
+/* ⟳⊶× - agent-stop
+ * (⟳⊶× agent-id) — stop agent, return final state */
+Cell* prim_agent_stop(Cell* args) {
+    Cell* id_cell = arg1(args);
+
+    if (!cell_is_number(id_cell)) {
+        return cell_error("agent-id-not-number", id_cell);
+    }
+
+    int id = (int)cell_get_number(id_cell);
+    Cell* state = agent_get_state(id);
+    if (!state) {
+        return cell_error("agent-not-found", id_cell);
+    }
+
+    cell_retain(state);
+    agent_stop(id);
+    return state;
+}
+
 /* ============ Channel Primitives ============ */
 
 /* ⟿⊚ - create channel
@@ -7343,6 +7515,13 @@ static Primitive primitives[] = {
     {"⟳⊳", prim_task_async, 1, {"Spawn task from zero-arg function", "λ → ⟳[id]"}},
     {"⟳⊲", prim_task_await, 1, {"Await task result (blocking)", "⟳ → α"}},
     {"⟳⊲?", prim_task_yield, 1, {"Check task result (non-blocking)", "⟳ → α | ∅"}},
+
+    /* Agent primitives */
+    {"⟳⊶", prim_agent_start, 1, {"Start agent with initial state", "λ → ℕ"}},
+    {"⟳⊶?", prim_agent_get, 2, {"Get agent state via function", "ℕ → λ → α"}},
+    {"⟳⊶!", prim_agent_update, 2, {"Update agent state via function", "ℕ → λ → #t"}},
+    {"⟳⊶⊕", prim_agent_get_and_update, 2, {"Get and update agent state", "ℕ → λ → α"}},
+    {"⟳⊶×", prim_agent_stop, 1, {"Stop agent, return final state", "ℕ → α"}},
 
     /* Channel primitives */
     {"⟿⊚", prim_chan_create, -1, {"Create channel (optional capacity)", "() → ⟿ | ℕ → ⟿"}},

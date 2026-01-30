@@ -1,11 +1,47 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-01-30 (Day 101 COMPLETE)
+Updated: 2026-01-30 (Day 102 COMPLETE)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 101 - Task Async/Await (2026-01-30)
+# Session Handoff: Day 102 - Agent State Wrapper (2026-01-30)
+
+## Day 102 Progress - Agent (`⟳⊶`, `⟳⊶?`, `⟳⊶!`, `⟳⊶⊕`, `⟳⊶×`)
+
+**RESULT:** 100/100 test files passing (100%), 10 new tests (Agent)
+
+### New Feature: Agent — Functional State Wrapper
+
+Agents are simple state containers with a functional interface for get/update operations. Inspired by Elixir's Agent module. An agent holds a single state value, initialized from a zero-arg function. State is read via getter functions and modified via updater functions, providing clean functional state management without needing a full GenServer actor loop.
+
+**New Primitives (5):**
+- `⟳⊶` (agent-start) — Create agent with initial state: `(⟳⊶ (λ () init))` → agent-id (number)
+- `⟳⊶?` (agent-get) — Read state via function: `(⟳⊶? id (λ (s) s))` → `(fn state)`
+- `⟳⊶!` (agent-update) — Update state via function: `(⟳⊶! id (λ (s) (⊕ s #1)))` → `#t`
+- `⟳⊶⊕` (agent-get-and-update) — Atomic get+update: `(⟳⊶⊕ id (λ (s) (⟨⟩ s new)))` → reply
+- `⟳⊶×` (agent-stop) — Stop agent, return final state: `(⟳⊶× id)` → state
+
+**Semantics:**
+- Agent ID is a number (not an actor cell — agents are pure C-side state)
+- Init function is zero-arg, called immediately to produce initial state
+- Get applies getter to current state, returns result without modifying state
+- Update applies updater to current state, stores result as new state
+- Get-and-update: fn returns `⟨reply new-state⟩` pair — reply returned, state updated
+- Stop deactivates agent, releases state, returns final state value
+- Operations on stopped/invalid agent return error
+- `⟳∅` (reset) clears all agents for test isolation
+- Max 64 concurrent agents
+
+**Files Modified (3):**
+- `bootstrap/actor.h` — AgentState struct, MAX_AGENTS, agent API declarations
+- `bootstrap/actor.c` — Agent implementation (global array), reset integration with `actor_reset_all`
+- `bootstrap/primitives.c` — 5 new primitive functions + helper for calling lambdas via temp defines + registration
+
+**New Test File (1):**
+- `bootstrap/tests/test_agent.test` — 10 tests: agent-start-basic, agent-get-basic, agent-get-transform, agent-update-basic, agent-get-after-update, agent-get-and-update, agent-get-and-update-verify, agent-stop, agent-stop-get-error, agent-multiple
+
+---
 
 ## Day 101 Progress - Task Async/Await (`⟳⊳`, `⟳⊲`, `⟳⊲?`)
 
@@ -460,8 +496,8 @@ Replaced replay-based resumable effects with real delimited continuations using 
 ## Current Status
 
 **System State:**
-- **Primitives:** 183 total (180 + 3 task)
-- **Tests:** 99/99 test files passing (100%)
+- **Primitives:** 188 total (183 + 5 agent)
+- **Tests:** 100/100 test files passing (100%)
 - **Build:** Clean, O2 optimized, 32MB stack
 
 **Core Capabilities:**
@@ -482,6 +518,7 @@ Replaced replay-based resumable effects with real delimited continuations using 
 - ETS (⟳⊞⊕, ⟳⊞⊙, ⟳⊞?, ⟳⊞⊖, ⟳⊞!, ⟳⊞#, ⟳⊞*) — shared named tables
 - Application (⟳⊚⊕, ⟳⊚⊖, ⟳⊚?, ⟳⊚*, ⟳⊚⊙, ⟳⊚←) — OTP top-level container
 - Task async/await (⟳⊳, ⟳⊲, ⟳⊲?) — spawn computation and await result
+- Agent (⟳⊶, ⟳⊶?, ⟳⊶!, ⟳⊶⊕, ⟳⊶×) — functional state wrapper
 - Module system (⋘ load, ⌂⊚ info)
 - Structures (⊙ leaf, ⊚ node/ADT)
 - Pattern matching (∇) with guards, as-patterns, or-patterns, view patterns
@@ -498,6 +535,7 @@ Replaced replay-based resumable effects with real delimited continuations using 
 
 | Day | Feature | Tests |
 |-----|---------|-------|
+| 102 | Agent (⟳⊶, ⟳⊶?, ⟳⊶!, ⟳⊶⊕, ⟳⊶×) — functional state wrapper | 100/100 (100%), 10 new tests |
 | 101 | Task async/await (⟳⊳, ⟳⊲, ⟳⊲?) — spawn and await computations | 99/99 (100%), 10 new tests |
 | 100 | Application (⟳⊚⊕, ⟳⊚⊖, ⟳⊚?, ⟳⊚*, ⟳⊚⊙, ⟳⊚←) — OTP top-level container | 98/98 (100%), 10 new tests |
 | 99 | ETS (⟳⊞⊕, ⟳⊞⊙, ⟳⊞?, ⟳⊞⊖, ⟳⊞!, ⟳⊞#, ⟳⊞*) — shared named tables | 97/97 (100%), 10 new tests |
@@ -577,5 +615,5 @@ bootstrap/tests/             # Test suite (88 test files)
 
 ---
 
-**Last Updated:** 2026-01-30 (Day 101 complete)
-**Next Session:** Day 102 - Agent (state wrapper), or new domain
+**Last Updated:** 2026-01-30 (Day 102 complete)
+**Next Session:** Day 103 - GenStage (producer-consumer), or new domain
