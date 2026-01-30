@@ -2326,6 +2326,88 @@ Cell* prim_actor_exit(Cell* args) {
     return cell_nil();
 }
 
+/* ============ Supervisor Primitives ============ */
+
+/* ⟳⊛ - create supervisor
+ * (⟳⊛ strategy child-specs) — create supervisor with restart strategy
+ * strategy: :one-for-one | :one-for-all
+ * child-specs: list of behavior functions */
+Cell* prim_sup_start(Cell* args) {
+    Cell* strategy_sym = arg1(args);
+    Cell* specs = arg2(args);
+
+    if (!cell_is_symbol(strategy_sym)) {
+        return cell_error("sup-strategy-not-symbol", strategy_sym);
+    }
+
+    const char* strat_name = cell_get_symbol(strategy_sym);
+    SupervisorStrategy strategy;
+    if (strcmp(strat_name, ":one-for-one") == 0) {
+        strategy = SUP_ONE_FOR_ONE;
+    } else if (strcmp(strat_name, ":one-for-all") == 0) {
+        strategy = SUP_ONE_FOR_ALL;
+    } else {
+        return cell_error("sup-unknown-strategy", strategy_sym);
+    }
+
+    EvalContext* ctx = eval_get_current_context();
+    Supervisor* sup = supervisor_create(ctx, strategy, specs);
+    if (!sup) {
+        return cell_error("sup-max-exceeded", cell_nil());
+    }
+
+    /* Spawn all children */
+    for (int i = 0; i < sup->child_count; i++) {
+        int child_id = supervisor_spawn_child(sup, i);
+        if (child_id == 0) {
+            return cell_error("sup-spawn-failed", cell_number(i));
+        }
+    }
+
+    /* Return supervisor ID as a number (simple, queryable) */
+    return cell_number(sup->id);
+}
+
+/* ⟳⊛? - get supervisor children
+ * (⟳⊛? sup-id) → list of actor cells */
+Cell* prim_sup_children(Cell* args) {
+    Cell* sup_id_cell = arg1(args);
+    if (!cell_is_number(sup_id_cell)) {
+        return cell_error("sup-children-not-number", sup_id_cell);
+    }
+    int sup_id = (int)cell_get_number(sup_id_cell);
+    Supervisor* sup = supervisor_lookup(sup_id);
+    if (!sup) {
+        return cell_error("sup-not-found", sup_id_cell);
+    }
+
+    /* Build list of actor cells */
+    Cell* result = cell_nil();
+    for (int i = sup->child_count - 1; i >= 0; i--) {
+        Cell* actor_cell = cell_actor(sup->child_ids[i]);
+        Cell* new_result = cell_cons(actor_cell, result);
+        cell_release(actor_cell);
+        cell_release(result);
+        result = new_result;
+    }
+    return result;
+}
+
+/* ⟳⊛! - get supervisor restart count
+ * (⟳⊛! sup-id) → number */
+Cell* prim_sup_restart_count(Cell* args) {
+    Cell* sup_id_cell = arg1(args);
+    if (!cell_is_number(sup_id_cell)) {
+        return cell_error("sup-count-not-number", sup_id_cell);
+    }
+    int sup_id = (int)cell_get_number(sup_id_cell);
+    Supervisor* sup = supervisor_lookup(sup_id);
+    if (!sup) {
+        return cell_error("sup-not-found", sup_id_cell);
+    }
+    return cell_number(sup->restart_count);
+}
+
 /* ============ Channel Primitives ============ */
 
 /* ⟿⊚ - create channel
@@ -6365,6 +6447,11 @@ static Primitive primitives[] = {
     {"⟳⊙", prim_actor_monitor, 1, {"Monitor actor (receive :DOWN on death)", "⟳ → ∅"}},
     {"⟳⊜", prim_actor_trap_exit, 1, {"Enable/disable exit trapping", "𝔹 → ∅"}},
     {"⟳✕", prim_actor_exit, 2, {"Send exit signal to actor", "⟳ → α → ∅"}},
+
+    /* Supervisor primitives */
+    {"⟳⊛", prim_sup_start, 2, {"Create supervisor with strategy and children", ":strategy → [λ] → ℕ"}},
+    {"⟳⊛?", prim_sup_children, 1, {"Get supervisor children", "ℕ → [⟳]"}},
+    {"⟳⊛!", prim_sup_restart_count, 1, {"Get supervisor restart count", "ℕ → ℕ"}},
 
     /* Channel primitives */
     {"⟿⊚", prim_chan_create, -1, {"Create channel (optional capacity)", "() → ⟿ | ℕ → ⟿"}},

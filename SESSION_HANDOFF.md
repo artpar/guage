@@ -1,31 +1,51 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-01-30 (Day 92 COMPLETE)
+Updated: 2026-01-30 (Day 93 COMPLETE)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 92 - Supervision + Refcount Bugfix (2026-01-30)
+# Session Handoff: Day 93 - Supervisor Strategies (2026-01-30)
 
-## Critical Bugfix: Refcount Use-After-Free in Macro Expansion
+## Day 93 Progress - Supervisor Strategies (`⟳⊛`, `⟳⊛?`, `⟳⊛!`)
 
-**FIXED:** Intermittent SIGABRT crash caused by use-after-free in refcount system.
+**RESULT:** 91/91 test files passing (100%), 8 new tests (supervisor strategies)
 
-**Root Cause:** `macro_expand()` returns input pointer without retaining when no macros need expansion. When the lambda evaluator called `macro_expand(body_expr, ctx)` on a sub-cell of an already-expanded macro tree, the returned pointer shared ownership with the parent tree. Releasing `expanded_body` (eval.c:1586) freed a cell still referenced by the parent `owned_expr`, causing a double-free in the TCO loop (eval.c:2453).
+### New Feature: Supervisors — Automatic Child Restart on Failure
 
-**Fix:** Added `cell_retain(expanded_body)` after the `macro_expand` call at eval.c:1572, ensuring the expanded body has its own reference before the parent tree is released.
+Supervisors manage groups of child actors and automatically restart them when they crash. Two strategies are supported: one-for-one (restart only the failed child) and one-for-all (restart all children when one fails). Built-in restart limit of 5 prevents infinite restart loops.
 
-**Impact:** This was an intermittent crash (~5-10% of runs) affecting any test file using macros inside lambda bodies. Found via AddressSanitizer, verified with 100-run stress tests showing zero failures.
+**New Primitives (3):**
+- `⟳⊛` (sup-start) — Create supervisor with strategy and child spec list: `(⟳⊛ :one-for-one specs)`
+- `⟳⊛?` (sup-children) — Get list of current child actor cells: `(⟳⊛? sup-id)`
+- `⟳⊛!` (sup-restart-count) — Get number of restarts performed: `(⟳⊛! sup-id)`
 
-**File Changed:** `bootstrap/eval.c` (1 line)
+**Strategies:**
+- `:one-for-one` — Only restart the crashed child; other children unchanged
+- `:one-for-all` — Kill all siblings, then restart all children from specs
+
+**Semantics:**
+- Supervisor hooks into `actor_notify_exit` — when a supervised child dies with error, restart strategy fires
+- Normal exits do NOT trigger restarts
+- One-for-all kills siblings with `:shutdown` reason before respawning
+- Max 5 restarts per supervisor (SUP_MAX_RESTARTS); exceeding limit stops restarts
+- `⟳∅` (reset) cleans up all supervisors
+
+**Files Modified (3):**
+- `bootstrap/actor.h` — Supervisor struct, strategy enum, supervisor API declarations
+- `bootstrap/actor.c` — `supervisor_create`, `supervisor_spawn_child`, `supervisor_handle_exit`, `supervisor_find_for_child`, `supervisor_lookup`; `actor_notify_exit` checks for supervisor; `actor_reset_all` cleans up supervisors
+- `bootstrap/primitives.c` — 3 new primitive functions + registration
+
+**New Test File (1):**
+- `bootstrap/tests/test_supervisor.test` — 8 tests covering creation, one-for-one restart, stable-child-unchanged, one-for-all restart, new-ids, restart counts, max-restarts-exceeded
 
 ---
 
-## Day 92 Progress - Actor Supervision (`⟳⊗`, `⟳⊘`, `⟳⊙`, `⟳⊜`, `⟳✕`)
+## Previous Day: Day 92 - Supervision + Refcount Bugfix (2026-01-30)
 
 **RESULT:** 90/90 test files passing (100%), 8 new tests (supervision)
 
-### New Feature: Actor Supervision — Linking, Monitoring, Exit Signals
+### Actor Supervision — Linking, Monitoring, Exit Signals
 
 Actors can now monitor and react to other actors' termination. Bidirectional links propagate failure (Erlang-style), monitors provide one-way death notifications, and exit trapping converts signals to messages.
 
@@ -177,8 +197,8 @@ Replaced replay-based resumable effects with real delimited continuations using 
 ## Current Status
 
 **System State:**
-- **Primitives:** 153 total (146 + 5 supervision + 2 select)
-- **Tests:** 90/90 test files passing (100%)
+- **Primitives:** 156 total (146 + 5 supervision + 2 select + 3 supervisor)
+- **Tests:** 91/91 test files passing (100%)
 - **Build:** Clean, O2 optimized, 32MB stack
 
 **Core Capabilities:**
@@ -190,6 +210,7 @@ Replaced replay-based resumable effects with real delimited continuations using 
 - Channels (⟿⊚, ⟿→, ⟿←, ⟿×) — bounded ring buffers with blocking
 - Channel select (⟿⊞, ⟿⊞?) — multiplexed channel waiting
 - Supervision (⟳⊗, ⟳⊘, ⟳⊙, ⟳⊜, ⟳✕) — linking, monitoring, exit signals
+- Supervisor strategies (⟳⊛, ⟳⊛?, ⟳⊛!) — one-for-one, one-for-all
 - Module system (⋘ load, ⌂⊚ info)
 - Structures (⊙ leaf, ⊚ node/ADT)
 - Pattern matching (∇) with guards, as-patterns, or-patterns, view patterns
@@ -206,6 +227,7 @@ Replaced replay-based resumable effects with real delimited continuations using 
 
 | Day | Feature | Tests |
 |-----|---------|-------|
+| 93 | Supervisor Strategies (⟳⊛, ⟳⊛?, ⟳⊛!) — one-for-one, one-for-all | 91/91 (100%), 8 new tests |
 | 92 | Supervision (⟳⊗, ⟳⊘, ⟳⊙, ⟳⊜, ⟳✕) + refcount bugfix | 90/90 (100%), 8 new tests |
 | 91 | Channel Select (⟿⊞, ⟿⊞?) — multiplexed waiting | 89/89 (100%), 8 new tests |
 | 90 | Channels (⟿⊚, ⟿→, ⟿←, ⟿×, ⟿∅) — bounded ring buffers | 88/88 (100%), 12 new tests |
@@ -234,7 +256,7 @@ Replaced replay-based resumable effects with real delimited continuations using 
 ### Build & Test
 ```bash
 make              # Build (O2 optimized, 32MB stack)
-make test         # Run full test suite (88 test files)
+make test         # Run full test suite (91 test files)
 make repl         # Start interactive REPL
 make clean        # Clean build artifacts
 make rebuild      # Clean + rebuild
@@ -276,5 +298,5 @@ bootstrap/tests/             # Test suite (88 test files)
 
 ---
 
-**Last Updated:** 2026-01-30 (Day 92 complete)
-**Next Session:** Day 93 - Supervisor strategies (one-for-one, one-for-all), or optimizer
+**Last Updated:** 2026-01-30 (Day 93 complete)
+**Next Session:** Day 94 - Dynamic child management (sup-add/sup-remove), rest-for-one strategy, or optimizer

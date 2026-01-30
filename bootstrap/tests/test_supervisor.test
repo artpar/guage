@@ -1,0 +1,98 @@
+; Day 93: Supervisor Strategies — one-for-one, one-for-all
+; Tests: supervisor creation, restart strategies, restart limits
+
+;;; Test 1: Supervisor creates and starts children
+(⟳∅)
+(≔ w1 (λ (self) (←?)))
+(≔ w2 (λ (self) (←?)))
+(≔ sup (⟳⊛ :one-for-one (⟨⟩ w1 (⟨⟩ w2 ∅))))
+(⟳! #100)
+(≔ kids (⟳⊛? sup))
+(⊨ (⌜ :sup-creates-children)
+  #2
+  (⊕ (? (⟳? (◁ kids)) #1 #0)
+     (? (⟳? (◁ (▷ kids))) #1 #0)))
+
+;;; Test 2: one-for-one restarts only crashed child
+(⟳∅)
+(≔ ch (⟿⊚))
+(≔ crasher (λ (self)
+  (≫ (⟿→ ch :started) (λ (_)
+    (≫ (←?) (λ (msg)
+      (? (≡ msg :crash)
+         (⚠ :crashed :boom)
+         msg)))))))
+(≔ stable (λ (self) (←?)))
+(≔ sup2 (⟳⊛ :one-for-one (⟨⟩ crasher (⟨⟩ stable ∅))))
+(⟳! #100)
+; Both children alive, crasher sent :started to channel
+(≔ kids2 (⟳⊛? sup2))
+(≔ crasher-id (◁ kids2))
+(≔ stable-id (◁ (▷ kids2)))
+; Tell crasher to crash
+(→! crasher-id :crash)
+(⟳! #200)
+; Crasher should have been restarted — new actor, sent :started again
+(≔ kids2b (⟳⊛? sup2))
+(≔ new-crasher (◁ kids2b))
+(≔ same-stable (◁ (▷ kids2b)))
+(⊨ (⌜ :one-for-one-restarts-crashed)
+  #t
+  (∧ (⟳? new-crasher)
+      (⟳? same-stable)))
+
+;;; Test 3: one-for-one stable child unchanged after restart
+(⊨ (⌜ :one-for-one-stable-unchanged)
+  #t
+  (≡ stable-id same-stable))
+
+;;; Test 4: one-for-all restarts all children on crash
+(⟳∅)
+(≔ ch4 (⟿⊚))
+(≔ worker-a (λ (self)
+  (≫ (⟿→ ch4 :a-started) (λ (_)
+    (≫ (←?) (λ (msg)
+      (? (≡ msg :crash) (⚠ :crash :a) msg)))))))
+(≔ worker-b (λ (self)
+  (≫ (⟿→ ch4 :b-started) (λ (_)
+    (←?)))))
+(≔ sup4 (⟳⊛ :one-for-all (⟨⟩ worker-a (⟨⟩ worker-b ∅))))
+(⟳! #100)
+(≔ kids4 (⟳⊛? sup4))
+(≔ old-a (◁ kids4))
+(≔ old-b (◁ (▷ kids4)))
+; Crash worker-a
+(→! old-a :crash)
+(⟳! #200)
+; Both should be restarted with NEW actor IDs
+(≔ kids4b (⟳⊛? sup4))
+(≔ new-a (◁ kids4b))
+(≔ new-b (◁ (▷ kids4b)))
+(⊨ (⌜ :one-for-all-both-restarted)
+  #t
+  (∧ (⟳? new-a) (⟳? new-b)))
+
+;;; Test 5: one-for-all replaces old children (different IDs)
+(⊨ (⌜ :one-for-all-new-ids)
+  #f
+  (∨ (≡ old-b new-b) (≡ old-a new-a)))
+
+;;; Test 6: Restart count tracks restarts
+(⊨ (⌜ :restart-count-one-for-one)
+  #1
+  (⟳⊛! sup2))
+
+;;; Test 7: Restart count for one-for-all
+(⊨ (⌜ :restart-count-one-for-all)
+  #1
+  (⟳⊛! sup4))
+
+;;; Test 8: Max restarts exceeded returns error
+(⟳∅)
+(≔ always-crash (λ (self) (⚠ :crash :always)))
+(≔ sup8 (⟳⊛ :one-for-one (⟨⟩ always-crash ∅)))
+; Run enough ticks for 5+ restart attempts
+(⟳! #2000)
+(⊨ (⌜ :max-restarts-exceeded)
+  #t
+  (> (⟳⊛! sup8) #4))

@@ -204,6 +204,12 @@ void actor_notify_exit(Actor* exiting, Cell* reason) {
 
     bool is_error = reason && reason->type == CELL_ERROR;
 
+    /* Check if this actor belongs to a supervisor */
+    Supervisor* sup = supervisor_find_for_child(exiting->id);
+    if (sup && is_error) {
+        supervisor_handle_exit(sup, exiting->id, reason);
+    }
+
     /* Notify monitors: send ⟨:DOWN id reason⟩ message */
     for (int i = 0; i < exiting->monitor_count; i++) {
         Actor* watcher = actor_lookup(exiting->monitors[i]);
@@ -242,6 +248,132 @@ void actor_notify_exit(Actor* exiting, Cell* reason) {
             }
         }
     }
+}
+
+/* ─── Supervisor ─── */
+
+static Supervisor* g_supervisors[MAX_SUPERVISORS];
+static int g_supervisor_count = 0;
+static int g_next_supervisor_id = 1;
+
+Supervisor* supervisor_create(EvalContext* ctx, SupervisorStrategy strategy, Cell* specs) {
+    if (g_supervisor_count >= MAX_SUPERVISORS) return NULL;
+
+    Supervisor* sup = (Supervisor*)calloc(1, sizeof(Supervisor));
+    sup->id = g_next_supervisor_id++;
+    sup->strategy = strategy;
+    sup->ctx = ctx;
+    sup->restart_count = 0;
+    sup->child_count = 0;
+
+    /* Parse child specs from list */
+    Cell* cur = specs;
+    while (cur && cur->type == CELL_PAIR && sup->child_count < MAX_SUP_CHILDREN) {
+        Cell* spec = cell_car(cur);
+        cell_retain(spec);
+        sup->child_specs[sup->child_count] = spec;
+        sup->child_ids[sup->child_count] = 0; /* not yet spawned */
+        sup->child_count++;
+        cur = cell_cdr(cur);
+    }
+
+    g_supervisors[g_supervisor_count++] = sup;
+    return sup;
+}
+
+/* Spawn a single child at given index, returns actor ID */
+int supervisor_spawn_child(Supervisor* sup, int index) {
+    if (index < 0 || index >= sup->child_count) return 0;
+
+    Cell* behavior = sup->child_specs[index];
+    EvalContext* ctx = sup->ctx;
+
+    /* Replicate prim_spawn logic: create actor, define bindings, build body */
+    Cell* placeholder = cell_nil();
+    Actor* actor = actor_create(ctx, placeholder, ctx->env);
+    cell_release(placeholder);
+    if (!actor) return 0;
+
+    char fn_name[64], self_name[64];
+    snprintf(fn_name, sizeof(fn_name), "__actor_fn_%d", actor->id);
+    snprintf(self_name, sizeof(self_name), "__actor_self_%d", actor->id);
+
+    Cell* self_cell = cell_actor(actor->id);
+    eval_define(ctx, fn_name, behavior);
+    eval_define(ctx, self_name, self_cell);
+    cell_release(self_cell);
+
+    Cell* fn_sym = cell_symbol(fn_name);
+    Cell* self_sym = cell_symbol(self_name);
+    Cell* body = cell_cons(fn_sym, cell_cons(self_sym, cell_nil()));
+    cell_release(fn_sym);
+    cell_release(self_sym);
+
+    cell_release(actor->fiber->body);
+    actor->fiber->body = body;
+    cell_retain(body);
+    cell_release(body);
+
+    sup->child_ids[index] = actor->id;
+    return actor->id;
+}
+
+/* Handle a child's exit — apply restart strategy */
+void supervisor_handle_exit(Supervisor* sup, int dead_id, Cell* reason) {
+    if (!sup) return;
+    if (sup->restart_count >= SUP_MAX_RESTARTS) return;
+
+    /* Find which child index died */
+    int dead_index = -1;
+    for (int i = 0; i < sup->child_count; i++) {
+        if (sup->child_ids[i] == dead_id) {
+            dead_index = i;
+            break;
+        }
+    }
+    if (dead_index < 0) return;
+
+    sup->restart_count++;
+
+    if (sup->strategy == SUP_ONE_FOR_ONE) {
+        /* Restart only the failed child */
+        supervisor_spawn_child(sup, dead_index);
+    } else if (sup->strategy == SUP_ONE_FOR_ALL) {
+        /* Kill all other children, then restart all */
+        for (int i = 0; i < sup->child_count; i++) {
+            if (i == dead_index) continue;
+            Actor* child = actor_lookup(sup->child_ids[i]);
+            if (child && child->alive) {
+                child->alive = false;
+                child->result = cell_symbol(":shutdown");
+                cell_retain(child->result);
+            }
+        }
+        /* Respawn all children */
+        for (int i = 0; i < sup->child_count; i++) {
+            supervisor_spawn_child(sup, i);
+        }
+    }
+}
+
+Supervisor* supervisor_lookup(int id) {
+    for (int i = 0; i < g_supervisor_count; i++) {
+        if (g_supervisors[i] && g_supervisors[i]->id == id) {
+            return g_supervisors[i];
+        }
+    }
+    return NULL;
+}
+
+Supervisor* supervisor_find_for_child(int child_id) {
+    for (int i = 0; i < g_supervisor_count; i++) {
+        Supervisor* sup = g_supervisors[i];
+        if (!sup) continue;
+        for (int j = 0; j < sup->child_count; j++) {
+            if (sup->child_ids[j] == child_id) return sup;
+        }
+    }
+    return NULL;
 }
 
 /* Lookup actor by ID */
@@ -414,6 +546,22 @@ int actor_run_all(int max_ticks) {
 
 /* Reset all actors (for testing) */
 void actor_reset_all(void) {
+    /* Reset supervisors first */
+    for (int i = 0; i < g_supervisor_count; i++) {
+        if (g_supervisors[i]) {
+            Supervisor* sup = g_supervisors[i];
+            for (int j = 0; j < sup->child_count; j++) {
+                if (sup->child_specs[j]) {
+                    cell_release(sup->child_specs[j]);
+                }
+            }
+            free(sup);
+            g_supervisors[i] = NULL;
+        }
+    }
+    g_supervisor_count = 0;
+    g_next_supervisor_id = 1;
+
     for (int i = 0; i < g_actor_count; i++) {
         if (g_actors[i]) {
             actor_destroy(g_actors[i]);
