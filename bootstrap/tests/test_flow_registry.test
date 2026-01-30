@@ -1,0 +1,83 @@
+; Day 106: Flow Registry — Named Flow Pipelines
+; Primitives: ⟳⊸⊜⊕, ⟳⊸⊜?, ⟳⊸⊜⊖, ⟳⊸⊜*
+
+;;; Test 1: flow-register-basic — register and whereis returns flow-id
+(⟳∅)
+(≔ fr1 (⟳⊸ (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅)))))
+(⟳⊸⊜⊕ :my-pipeline fr1)
+(⊨ (⌜ :flow-register-basic)
+  fr1
+  (⟳⊸⊜? :my-pipeline))
+
+;;; Test 2: flow-whereis-unregistered — returns ∅
+(⟳∅)
+(⊨ (⌜ :flow-whereis-unregistered)
+  ∅
+  (⟳⊸⊜? :nonexistent))
+
+;;; Test 3: flow-unregister-basic — unregister then whereis returns ∅
+(⟳∅)
+(≔ fr3 (⟳⊸ (⟨⟩ #1 ∅)))
+(⟳⊸⊜⊕ :temp-flow fr3)
+(⟳⊸⊜⊖ :temp-flow)
+(⊨ (⌜ :flow-unregister-basic)
+  ∅
+  (⟳⊸⊜? :temp-flow))
+
+;;; Test 4: flow-register-duplicate-name — error on same name twice
+(⟳∅)
+(≔ fr4a (⟳⊸ (⟨⟩ #1 ∅)))
+(≔ fr4b (⟳⊸ (⟨⟩ #2 ∅)))
+(⟳⊸⊜⊕ :dup-name fr4a)
+(⊨ (⌜ :flow-register-duplicate-name)
+  #t
+  (⚠? (⟳⊸⊜⊕ :dup-name fr4b)))
+
+;;; Test 5: flow-register-duplicate-flow — error if flow already registered
+(⟳∅)
+(≔ fr5 (⟳⊸ (⟨⟩ #1 ∅)))
+(⟳⊸⊜⊕ :name1 fr5)
+(⊨ (⌜ :flow-register-duplicate-flow)
+  #t
+  (⚠? (⟳⊸⊜⊕ :name2 fr5)))
+
+;;; Test 6: flow-registered-list — returns list of all flow names
+(⟳∅)
+(≔ fr6a (⟳⊸ (⟨⟩ #1 ∅)))
+(≔ fr6b (⟳⊸ (⟨⟩ #2 ∅)))
+(⟳⊸⊜⊕ :svc-a fr6a)
+(⟳⊸⊜⊕ :svc-b fr6b)
+(≔ names (⟳⊸⊜*))
+; List should have 2 elements
+(⊨ (⌜ :flow-registered-list-count)
+  #t
+  (∧ (¬ (≡ names ∅))
+      (¬ (≡ (▷ names) ∅))))
+
+;;; Test 7: flow-register-not-symbol — error if name isn't a symbol
+(⟳∅)
+(≔ fr7 (⟳⊸ (⟨⟩ #1 ∅)))
+(⊨ (⌜ :flow-register-not-symbol)
+  #t
+  (⚠? (⟳⊸⊜⊕ #42 fr7)))
+
+;;; Test 8: flow-register-not-number — error if flow-id isn't a number
+(⟳∅)
+(⊨ (⌜ :flow-register-not-number)
+  #t
+  (⚠? (⟳⊸⊜⊕ :bad :not-a-flow-id)))
+
+;;; Test 9: flow-run-by-name — create, register, run by looking up name
+(⟳∅)
+(≔ fr9 (⟳⊸ (⟨⟩ #10 (⟨⟩ #20 (⟨⟩ #30 ∅)))))
+(⟳⊸↦ fr9 (λ (x) (⊗ x #2)))
+(⟳⊸⊜⊕ :doubler fr9)
+(⊨ (⌜ :flow-run-by-name)
+  (⟨⟩ #20 (⟨⟩ #40 (⟨⟩ #60 ∅)))
+  (⟳⊸! (⟳⊸⊜? :doubler)))
+
+;;; Test 10: flow-unregister-not-found — error on unregistering unknown name
+(⟳∅)
+(⊨ (⌜ :flow-unregister-not-found)
+  #t
+  (⚠? (⟳⊸⊜⊖ :nonexistent)))

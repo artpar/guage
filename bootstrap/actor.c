@@ -994,6 +994,9 @@ void actor_reset_all(void) {
 
     /* Reset flows */
     flow_reset_all();
+
+    /* Reset flow registry */
+    flow_registry_reset();
 }
 
 /* ============ Application ============ */
@@ -1322,4 +1325,69 @@ void flow_reset_all(void) {
     }
     g_flow_count = 0;
     g_next_flow_id = 0;
+}
+
+/* ============ Named Flow Registry ============ */
+
+static char* g_flow_registry_names[MAX_FLOW_REGISTRY];
+static int   g_flow_registry_ids[MAX_FLOW_REGISTRY];
+static int   g_flow_registry_count = 0;
+
+int flow_registry_register(const char* name, int flow_id) {
+    if (g_flow_registry_count >= MAX_FLOW_REGISTRY) return -3;
+
+    /* Check flow exists */
+    Flow* f = flow_lookup(flow_id);
+    if (!f) return -4;
+
+    for (int i = 0; i < g_flow_registry_count; i++) {
+        if (strcmp(g_flow_registry_names[i], name) == 0) return -1; /* dup name */
+        if (g_flow_registry_ids[i] == flow_id) return -2;           /* dup flow */
+    }
+
+    g_flow_registry_names[g_flow_registry_count] = strdup(name);
+    g_flow_registry_ids[g_flow_registry_count] = flow_id;
+    g_flow_registry_count++;
+    return 0;
+}
+
+int flow_registry_lookup(const char* name) {
+    for (int i = 0; i < g_flow_registry_count; i++) {
+        if (strcmp(g_flow_registry_names[i], name) == 0) {
+            return g_flow_registry_ids[i];
+        }
+    }
+    return -1;
+}
+
+int flow_registry_unregister_name(const char* name) {
+    for (int i = 0; i < g_flow_registry_count; i++) {
+        if (strcmp(g_flow_registry_names[i], name) == 0) {
+            free(g_flow_registry_names[i]);
+            g_flow_registry_names[i] = g_flow_registry_names[--g_flow_registry_count];
+            g_flow_registry_ids[i] = g_flow_registry_ids[g_flow_registry_count];
+            return 0;
+        }
+    }
+    return -1;
+}
+
+Cell* flow_registry_list(void) {
+    Cell* list = cell_nil();
+    for (int i = g_flow_registry_count - 1; i >= 0; i--) {
+        Cell* sym = cell_symbol(g_flow_registry_names[i]);
+        Cell* new_list = cell_cons(sym, list);
+        cell_release(sym);
+        cell_release(list);
+        list = new_list;
+    }
+    return list;
+}
+
+void flow_registry_reset(void) {
+    for (int i = 0; i < g_flow_registry_count; i++) {
+        free(g_flow_registry_names[i]);
+        g_flow_registry_names[i] = NULL;
+    }
+    g_flow_registry_count = 0;
 }

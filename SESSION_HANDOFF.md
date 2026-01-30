@@ -1,11 +1,44 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-01-30 (Day 105 COMPLETE)
+Updated: 2026-01-30 (Day 106 COMPLETE)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 105 - Flow (2026-01-30)
+# Session Handoff: Day 106 - Flow Registry (2026-01-30)
+
+## Day 106 Progress - Flow Registry (`⟳⊸⊜⊕`, `⟳⊸⊜?`, `⟳⊸⊜⊖`, `⟳⊸⊜*`)
+
+**RESULT:** 104/104 test files passing (100%), 10 new tests (Flow Registry)
+
+### New Feature: Flow Registry — Named Flow Pipelines
+
+Flow Registry allows naming flow pipelines for later lookup, mirroring the process registry pattern. Flows can be registered under symbol names, looked up by name, unregistered, and listed.
+
+**New Primitives (4):**
+- `⟳⊸⊜⊕` (flow-register) — Register flow under name: `(⟳⊸⊜⊕ :name flow-id)` → `#t` or `⚠`
+- `⟳⊸⊜?` (flow-whereis) — Look up flow by name: `(⟳⊸⊜? :name)` → flow-id or `∅`
+- `⟳⊸⊜⊖` (flow-unregister) — Remove name: `(⟳⊸⊜⊖ :name)` → `#t` or `⚠`
+- `⟳⊸⊜*` (flow-registered) — List all names: `(⟳⊸⊜*)` → `[:symbol]`
+
+**Semantics:**
+- Names are symbols (`:my-pipeline`, `:doubler`, etc.)
+- One name → one flow, one flow → one name (no duplicates)
+- Whereis on unregistered name returns `∅` (not error)
+- Unregister on unknown name returns error
+- Register validates both name (must be symbol) and flow-id (must be number pointing to active flow)
+- `⟳∅` (reset) clears flow registry for test isolation
+- Max 256 registered flow names
+
+**Files Modified (3):**
+- `bootstrap/actor.h` — Flow registry API declarations, `MAX_FLOW_REGISTRY`
+- `bootstrap/actor.c` — Flow registry implementation (parallel arrays), `flow_registry_register/lookup/unregister_name/list/reset`; `actor_reset_all` calls `flow_registry_reset`
+- `bootstrap/primitives.c` — 4 new primitive functions + registration in table
+
+**New Test File (1):**
+- `bootstrap/tests/test_flow_registry.test` — 10 tests: flow-register-basic, flow-whereis-unregistered, flow-unregister-basic, flow-register-duplicate-name, flow-register-duplicate-flow, flow-registered-list-count, flow-register-not-symbol, flow-register-not-number, flow-run-by-name, flow-unregister-not-found
+
+---
 
 ## Day 105 Progress - Flow (`⟳⊸`, `⟳⊸↦`, `⟳⊸⊲`, `⟳⊸⊕`, `⟳⊸⊙`, `⟳⊸!`)
 
@@ -611,8 +644,8 @@ Replaced replay-based resumable effects with real delimited continuations using 
 ## Current Status
 
 **System State:**
-- **Primitives:** 205 total (199 + 6 Flow)
-- **Tests:** 103/103 test files passing (100%)
+- **Primitives:** 209 total (205 + 4 Flow Registry)
+- **Tests:** 104/104 test files passing (100%)
 - **Build:** Clean, O2 optimized, 32MB stack
 
 **Core Capabilities:**
@@ -637,6 +670,7 @@ Replaced replay-based resumable effects with real delimited continuations using 
 - GenStage (⟳⊵, ⟳⊵⊕, ⟳⊵→, ⟳⊵⊙, ⟳⊵?, ⟳⊵×) — producer-consumer pipelines
 - DynamicSupervisor (⟳⊛⊹, ⟳⊛⊹⊕, ⟳⊛⊹⊖, ⟳⊛⊹?, ⟳⊛⊹#) — on-demand child spawning with restart types
 - Flow (⟳⊸, ⟳⊸↦, ⟳⊸⊲, ⟳⊸⊕, ⟳⊸⊙, ⟳⊸!) — lazy computation pipelines
+- Flow Registry (⟳⊸⊜⊕, ⟳⊸⊜?, ⟳⊸⊜⊖, ⟳⊸⊜*) — named flow pipelines
 - Module system (⋘ load, ⌂⊚ info)
 - Structures (⊙ leaf, ⊚ node/ADT)
 - Pattern matching (∇) with guards, as-patterns, or-patterns, view patterns
@@ -653,6 +687,7 @@ Replaced replay-based resumable effects with real delimited continuations using 
 
 | Day | Feature | Tests |
 |-----|---------|-------|
+| 106 | Flow Registry (⟳⊸⊜⊕, ⟳⊸⊜?, ⟳⊸⊜⊖, ⟳⊸⊜*) — named flow pipelines | 104/104 (100%), 10 new tests |
 | 105 | Flow (⟳⊸, ⟳⊸↦, ⟳⊸⊲, ⟳⊸⊕, ⟳⊸⊙, ⟳⊸!) — lazy computation pipelines | 103/103 (100%), 10 new tests |
 | 104 | DynamicSupervisor (⟳⊛⊹, ⟳⊛⊹⊕, ⟳⊛⊹⊖, ⟳⊛⊹?, ⟳⊛⊹#) — on-demand child spawning | 102/102 (100%), 10 new tests |
 | 103 | GenStage (⟳⊵, ⟳⊵⊕, ⟳⊵→, ⟳⊵⊙, ⟳⊵?, ⟳⊵×) — producer-consumer pipelines | 101/101 (100%), 10 new tests |
@@ -736,5 +771,5 @@ bootstrap/tests/             # Test suite (88 test files)
 
 ---
 
-**Last Updated:** 2026-01-30 (Day 105 complete)
-**Next Session:** Day 106 - Registry (named flow pipelines), or new domain
+**Last Updated:** 2026-01-30 (Day 106 complete)
+**Next Session:** Day 107 - New domain (OTP complete; consider stdlib, IO, or module enhancements)

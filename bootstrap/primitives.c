@@ -4099,6 +4099,68 @@ Cell* prim_flow_run(Cell* args) {
     return data ? data : cell_nil();
 }
 
+/* ============ Flow Registry Primitives ============ */
+
+/* ⟳⊸⊜⊕ - register flow under a name
+ * (⟳⊸⊜⊕ :name flow-id) → #t | ⚠ */
+Cell* prim_flow_registry_register(Cell* args) {
+    Cell* name_cell = arg1(args);
+    Cell* id_cell = arg2(args);
+
+    if (!cell_is_symbol(name_cell)) {
+        return cell_error("flow-register-not-symbol", name_cell);
+    }
+    if (!cell_is_number(id_cell)) {
+        return cell_error("flow-register-not-number", id_cell);
+    }
+
+    const char* name = cell_get_symbol(name_cell);
+    int flow_id = (int)cell_get_number(id_cell);
+
+    int rc = flow_registry_register(name, flow_id);
+    switch (rc) {
+        case 0:  return cell_bool(true);
+        case -1: return cell_error("flow-register-name-taken", name_cell);
+        case -2: return cell_error("flow-register-flow-already-registered", id_cell);
+        case -3: return cell_error("flow-register-registry-full", cell_nil());
+        case -4: return cell_error("flow-register-flow-not-found", id_cell);
+        default: return cell_error("flow-register-unknown", cell_nil());
+    }
+}
+
+/* ⟳⊸⊜⊖ - unregister a flow name
+ * (⟳⊸⊜⊖ :name) → #t | ⚠ */
+Cell* prim_flow_registry_unregister(Cell* args) {
+    Cell* name_cell = arg1(args);
+    if (!cell_is_symbol(name_cell)) {
+        return cell_error("flow-unregister-not-symbol", name_cell);
+    }
+    const char* name = cell_get_symbol(name_cell);
+    int rc = flow_registry_unregister_name(name);
+    if (rc == 0) return cell_bool(true);
+    return cell_error("flow-unregister-not-found", name_cell);
+}
+
+/* ⟳⊸⊜? - look up flow by name
+ * (⟳⊸⊜? :name) → flow-id | ∅ */
+Cell* prim_flow_registry_whereis(Cell* args) {
+    Cell* name_cell = arg1(args);
+    if (!cell_is_symbol(name_cell)) {
+        return cell_error("flow-whereis-not-symbol", name_cell);
+    }
+    const char* name = cell_get_symbol(name_cell);
+    int id = flow_registry_lookup(name);
+    if (id < 0) return cell_nil();
+    return cell_number(id);
+}
+
+/* ⟳⊸⊜* - list all registered flow names
+ * (⟳⊸⊜*) → list of symbols */
+Cell* prim_flow_registry_list(Cell* args) {
+    (void)args;
+    return flow_registry_list();
+}
+
 /* ============ Channel Primitives ============ */
 
 /* ⟿⊚ - create channel
@@ -8214,6 +8276,12 @@ static Primitive primitives[] = {
     {"⟳⊸⊕", prim_flow_reduce, 3, {"Add reduce step to flow", "ℕ → α → λ → ℕ"}},
     {"⟳⊸⊙", prim_flow_each, 2, {"Add each step to flow", "ℕ → λ → ℕ"}},
     {"⟳⊸!", prim_flow_run, 1, {"Execute flow pipeline", "ℕ → α"}},
+
+    /* Flow registry primitives (named flow pipelines) */
+    {"⟳⊸⊜⊕", prim_flow_registry_register, 2, {"Register flow under a name", ":symbol → ℕ → #t | ⚠"}},
+    {"⟳⊸⊜⊖", prim_flow_registry_unregister, 1, {"Unregister a flow name", ":symbol → #t | ⚠"}},
+    {"⟳⊸⊜?", prim_flow_registry_whereis, 1, {"Look up flow by name", ":symbol → ℕ | ∅"}},
+    {"⟳⊸⊜*", prim_flow_registry_list, 0, {"List all registered flow names", "() → [:symbol]"}},
 
     /* Channel primitives */
     {"⟿⊚", prim_chan_create, -1, {"Create channel (optional capacity)", "() → ⟿ | ℕ → ⟿"}},

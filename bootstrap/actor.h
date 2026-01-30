@@ -229,4 +229,12 @@ Flow*  flow_lookup(int id);
 int    flow_add_step(int id, FlowStepType type, Cell* fn, Cell* init);  /* 0=ok, -1=not found, -2=full */
 void   flow_reset_all(void);
 
+/* Named Flow Registry */
+#define MAX_FLOW_REGISTRY 256
+int   flow_registry_register(const char* name, int flow_id);   /* 0=ok, -1=dup name, -2=dup flow, -3=full, -4=not found */
+int   flow_registry_lookup(const char* name);                    /* flow_id or -1 */
+int   flow_registry_unregister_name(const char* name);           /* 0=ok, -1=not found */
+Cell* flow_registry_list(void);                                  /* list of name symbols */
+void  flow_registry_reset(void);
+
 #endif /* GUAGE_ACTOR_H */
