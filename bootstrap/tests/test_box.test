@@ -1,0 +1,52 @@
+; Test: Mutable References (□) and Sequencing (⪢)
+; Day 107 - Box create/deref/set/update/swap + sequencing
+
+; ============ Box Create and Deref ============
+
+(≔ b1 (□ #42))
+(⊨ (⌜ :box-create-deref) #42 (□→ b1))
+
+; ============ Box Type Check ============
+
+(⊨ (⌜ :box-type-check) #t (□? (□ #1)))
+
+; ============ Not a Box ============
+
+(⊨ (⌜ :box-not-box) #f (□? #7))
+
+; ============ Set Returns Old ============
+
+(≔ b2 (□ #10))
+(⊨ (⌜ :box-set-returns-old) #10 (□← b2 #20))
+
+; ============ Set Updates Value ============
+
+(≔ b3 (□ #100))
+(□← b3 #200)
+(⊨ (⌜ :box-set-updates) #200 (□→ b3))
+
+; ============ Update with Function ============
+
+(≔ b4 (□ #5))
+(⊨ (⌜ :box-update-fn) #5 (□⊕ b4 (λ (x) (⊗ x #2))))
+
+; ============ Update Verify New Value ============
+
+(⊨ (⌜ :box-update-fn-verify) #10 (□→ b4))
+
+; ============ Swap Two Boxes ============
+
+(≔ bx (□ :alpha))
+(≔ by (□ :beta))
+(□⇌ bx by)
+(⊨ (⌜ :box-swap) #t (∧ (≡ (□→ bx) :beta) (≡ (□→ by) :alpha)))
+
+; ============ Sequencing Basic ============
+
+(⊨ (⌜ :seq-basic) #3 (⪢ #1 #2 #3))
+
+; ============ Sequencing with Mutation ============
+
+(≔ b5 (□ #0))
+(⊨ (⌜ :seq-with-mutation) #2
+  (⪢ (□← b5 #1) (□← b5 #2) (□→ b5)))

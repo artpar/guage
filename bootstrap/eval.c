@@ -1624,6 +1624,30 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                 }
             }
 
+            /* ⪢ - sequencing: evaluate all, return last (Day 107) */
+            if (strcmp(sym, "⪢") == 0) {
+                if (!cell_is_pair(rest)) {
+                    return cell_error("⪢ requires at least one expression", expr);
+                }
+                Cell* current = rest;
+                while (cell_is_pair(current)) {
+                    Cell* next = cell_cdr(current);
+                    if (!cell_is_pair(next)) {
+                        /* Last expression: tail call */
+                        expr = cell_car(current);
+                        goto tail_call;
+                    }
+                    /* Intermediate expression: eval and discard */
+                    Cell* intermediate = eval_internal(ctx, env, cell_car(current));
+                    if (cell_is_error(intermediate)) {
+                        return intermediate;
+                    }
+                    cell_release(intermediate);
+                    current = next;
+                }
+                return cell_error("⪢ unexpected end", expr);
+            }
+
             /* ∇ - pattern match (special form) */
             if (strcmp(sym, "∇") == 0) {
                 Cell* expr_unevaled = cell_car(rest);

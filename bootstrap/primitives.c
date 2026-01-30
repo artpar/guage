@@ -898,6 +898,9 @@ Cell* prim_typeof(Cell* args) {
     if (cell_is_actor(val)) {
         return cell_symbol(":actor");
     }
+    if (cell_is_box(val)) {
+        return cell_symbol(":box");
+    }
 
     return cell_symbol(":unknown");
 }
@@ -1694,6 +1697,7 @@ Cell* prim_type_of(Cell* args) {
     else if (cell_is_error(value)) type_name = "error";
     else if (cell_is_actor(value)) type_name = "actor";
     else if (cell_is_channel(value)) type_name = "channel";
+    else if (cell_is_box(value)) type_name = "box";
 
     return cell_symbol(type_name);
 }
@@ -8057,7 +8061,120 @@ Cell* prim_query_dfg(Cell* args) {
     return dfg;
 }
 
-/* Primitive table - PURE SYMBOLS ONLY */
+/* ============ Mutable References (□) - Day 107 ============ */
+
+/* Helper: call a 1-arg function (same pattern as agent_call_fn) */
+static Cell* box_call_fn(EvalContext* ctx, Cell* fn, Cell* arg) {
+    static int box_call_counter = 0;
+    char fn_name[64], arg_name[64];
+    snprintf(fn_name, sizeof(fn_name), "__box_fn_%d", box_call_counter);
+    snprintf(arg_name, sizeof(arg_name), "__box_arg_%d", box_call_counter);
+    box_call_counter++;
+
+    eval_define(ctx, fn_name, fn);
+    eval_define(ctx, arg_name, arg);
+
+    Cell* fn_sym = cell_symbol(fn_name);
+    Cell* arg_sym = cell_symbol(arg_name);
+    Cell* call_expr = cell_cons(fn_sym, cell_cons(arg_sym, cell_nil()));
+    cell_release(fn_sym);
+    cell_release(arg_sym);
+
+    Cell* result = eval(ctx, call_expr);
+    cell_release(call_expr);
+    return result;
+}
+
+/* □ - create mutable box */
+Cell* prim_box_create(Cell* args) {
+    Cell* value = arg1(args);
+    return cell_box(value);
+}
+
+/* □→ - deref box */
+Cell* prim_box_deref(Cell* args) {
+    Cell* box = arg1(args);
+    if (!cell_is_box(box)) {
+        return cell_error("□→ requires box", box);
+    }
+    Cell* val = cell_box_get(box);
+    cell_retain(val);
+    return val;
+}
+
+/* □← - set box, return old value */
+Cell* prim_box_set(Cell* args) {
+    Cell* box = arg1(args);
+    Cell* new_val = arg2(args);
+    if (!cell_is_box(box)) {
+        return cell_error("□← requires box", box);
+    }
+    /* cell_box_set returns old value with caller-owned ref */
+    return cell_box_set(box, new_val);
+}
+
+/* □? - box type predicate */
+Cell* prim_box_is(Cell* args) {
+    Cell* val = arg1(args);
+    return cell_bool(cell_is_box(val));
+}
+
+/* □⊕ - update box: apply fn to current value, store result, return old */
+Cell* prim_box_update(Cell* args) {
+    Cell* box = arg1(args);
+    Cell* fn = arg2(args);
+    if (!cell_is_box(box)) {
+        return cell_error("□⊕ requires box", box);
+    }
+    if (!cell_is_lambda(fn) && fn->type != CELL_BUILTIN) {
+        return cell_error("□⊕ requires function", fn);
+    }
+
+    Cell* old_val = cell_box_get(box);
+    cell_retain(old_val);
+
+    EvalContext* ctx = eval_get_current_context();
+    Cell* new_val = box_call_fn(ctx, fn, old_val);
+
+    if (cell_is_error(new_val)) {
+        cell_release(old_val);
+        return new_val;
+    }
+
+    /* Set box to new value, discard the returned old ref */
+    Cell* discarded = cell_box_set(box, new_val);
+    cell_release(discarded);
+    cell_release(new_val);
+
+    return old_val;
+}
+
+/* □⇌ - swap two boxes' contents */
+Cell* prim_box_swap(Cell* args) {
+    Cell* box1 = arg1(args);
+    Cell* box2 = arg2(args);
+    if (!cell_is_box(box1)) {
+        return cell_error("□⇌ first arg requires box", box1);
+    }
+    if (!cell_is_box(box2)) {
+        return cell_error("□⇌ second arg requires box", box2);
+    }
+
+    Cell* val1 = cell_box_get(box1);
+    Cell* val2 = cell_box_get(box2);
+    cell_retain(val1);
+    cell_retain(val2);
+
+    Cell* old1 = cell_box_set(box1, val2);
+    Cell* old2 = cell_box_set(box2, val1);
+    cell_release(old1);
+    cell_release(old2);
+    cell_release(val1);
+    cell_release(val2);
+
+    return cell_bool(true);
+}
+
 /* Primitive table - PURE SYMBOLS ONLY
  * EVERY primitive MUST have documentation */
 static Primitive primitives[] = {
@@ -8370,6 +8487,14 @@ static Primitive primitives[] = {
     {"⌂⊚#", prim_module_version, -1, {"Get/set module version", "≈ → ≈ | ≈ → ≈ → :ok"}},
     {"⌂⊚↑", prim_module_exports, -1, {"Get/set module exports", "≈ → [:symbol] | ≈ → [:symbol] → :ok"}},
     {"⌂⊚⊛", prim_module_cycles, -1, {"Detect circular dependencies", "() → [[≈]] | ≈ → [[≈]]"}},
+
+    /* Mutable References (Day 107) */
+    {"□", prim_box_create, 1, {"Create mutable box", "α → □α"}},
+    {"□→", prim_box_deref, 1, {"Dereference box", "□α → α"}},
+    {"□←", prim_box_set, 2, {"Set box value, return old", "□α → β → α"}},
+    {"□?", prim_box_is, 1, {"Test if value is box", "α → 𝔹"}},
+    {"□⊕", prim_box_update, 2, {"Update box with function, return old", "□α → (α→β) → α"}},
+    {"□⇌", prim_box_swap, 2, {"Swap two boxes' contents", "□α → □β → 𝔹"}},
 
     {NULL, NULL, 0, {NULL, NULL}}
 };

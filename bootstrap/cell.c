@@ -133,6 +133,13 @@ Cell* cell_channel(int channel_id) {
     return c;
 }
 
+Cell* cell_box(Cell* value) {
+    Cell* c = cell_alloc(CELL_BOX);
+    c->data.box.value = value;
+    if (value) cell_retain(value);
+    return c;
+}
+
 /* Cell accessors */
 double cell_get_number(Cell* c) {
     assert(c->type == CELL_ATOM_NUMBER);
@@ -219,6 +226,9 @@ void cell_release(Cell* c) {
                 break;
             case CELL_CHANNEL:
                 /* Channel ID is just an int, no children to release */
+                break;
+            case CELL_BOX:
+                cell_release(c->data.box.value);
                 break;
             default:
                 break;
@@ -327,6 +337,25 @@ bool cell_is_channel(Cell* c) {
 int cell_get_channel_id(Cell* c) {
     assert(c->type == CELL_CHANNEL);
     return c->data.channel.channel_id;
+}
+
+bool cell_is_box(Cell* c) {
+    return c && c->type == CELL_BOX;
+}
+
+Cell* cell_box_get(Cell* c) {
+    assert(c->type == CELL_BOX);
+    return c->data.box.value;
+}
+
+Cell* cell_box_set(Cell* c, Cell* new_value) {
+    assert(c->type == CELL_BOX);
+    /* Retain new first (handles self-assignment) */
+    if (new_value) cell_retain(new_value);
+    Cell* old = c->data.box.value;
+    c->data.box.value = new_value;
+    /* Return old WITHOUT releasing — caller inherits the box's old reference */
+    return old;
 }
 
 /* Error accessors */
@@ -556,6 +585,9 @@ bool cell_equal(Cell* a, Cell* b) {
             return a->data.actor.actor_id == b->data.actor.actor_id;
         case CELL_CHANNEL:
             return a->data.channel.channel_id == b->data.channel.channel_id;
+        case CELL_BOX:
+            /* Identity only — handled by a == b at top */
+            return false;
         case CELL_LAMBDA:
         case CELL_BUILTIN:
         case CELL_ERROR:
@@ -660,6 +692,11 @@ void cell_print(Cell* c) {
             break;
         case CELL_CHANNEL:
             printf("⟿[%d]", c->data.channel.channel_id);
+            break;
+        case CELL_BOX:
+            printf("□[");
+            cell_print(c->data.box.value);
+            printf("]");
             break;
     }
 }
