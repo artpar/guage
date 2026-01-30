@@ -1641,6 +1641,36 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                 return cell_error("⪢ unexpected end", expr);
             }
 
+            /* ∧ - short-circuit AND (special form) */
+            if (id == SYM_ID_AND) {
+                Cell* a_expr = cell_car(rest);
+                Cell* b_expr = cell_car(cell_cdr(rest));
+                Cell* a_val = eval_internal(ctx, env, a_expr);
+                if (cell_is_error(a_val)) return a_val;
+                if (cell_is_bool(a_val) && !cell_get_bool(a_val)) {
+                    return a_val;  /* #f — short circuit, don't eval b */
+                }
+                cell_release(a_val);
+                /* a was truthy, result is b (tail position) */
+                expr = b_expr;
+                goto tail_call;
+            }
+
+            /* ∨ - short-circuit OR (special form) */
+            if (id == SYM_ID_OR) {
+                Cell* a_expr = cell_car(rest);
+                Cell* b_expr = cell_car(cell_cdr(rest));
+                Cell* a_val = eval_internal(ctx, env, a_expr);
+                if (cell_is_error(a_val)) return a_val;
+                if (cell_is_bool(a_val) && cell_get_bool(a_val)) {
+                    return a_val;  /* #t — short circuit, don't eval b */
+                }
+                cell_release(a_val);
+                /* a was falsy, result is b (tail position) */
+                expr = b_expr;
+                goto tail_call;
+            }
+
             /* ∇ - pattern match (special form) */
             if (id == SYM_ID_RECUR) {
                 Cell* expr_unevaled = cell_car(rest);

@@ -33,8 +33,7 @@ Cell* prim_prim_apply(Cell* args); /* ⊡ - prim-apply (apply primitive to args)
 /* Comparison & Logic */
 Cell* prim_equal(Cell* args);     /* ≡ - equality */
 Cell* prim_not_equal(Cell* args); /* ≢ - inequality */
-Cell* prim_and(Cell* args);       /* ∧ - logical AND */
-Cell* prim_or(Cell* args);        /* ∨ - logical OR */
+/* ∧ and ∨ are now special forms in eval.c (short-circuit + TCO) */
 Cell* prim_not(Cell* args);       /* ¬ - logical NOT */
 
 /* Arithmetic (derived, not primitive, but needed) */
@@ -244,6 +243,12 @@ Cell* prim_trie_entries(Cell* args);
 Cell* prim_trie_keys(Cell* args);
 Cell* prim_trie_vals(Cell* args);
 
+/* Char/Case primitives (Day 119) */
+Cell* prim_str_char_code(Cell* args);    /* ≈→# - char code at index */
+Cell* prim_code_to_char(Cell* args);     /* #→≈ - code to single-char string */
+Cell* prim_str_upcase(Cell* args);       /* ≈↑ - string to uppercase */
+Cell* prim_str_downcase(Cell* args);     /* ≈↓ - string to lowercase */
+
 /* Iterator primitives (Day 118 — morsel-driven batch iteration) */
 Cell* prim_iter(Cell* args);             /* ⊣ - create iterator */
 Cell* prim_iter_next(Cell* args);        /* ⊣→ - next element */
@@ -261,6 +266,80 @@ Cell* prim_iter_reduce(Cell* args);      /* ⊣Σ - fold/reduce */
 Cell* prim_iter_any(Cell* args);         /* ⊣∃ - any match */
 Cell* prim_iter_all(Cell* args);         /* ⊣∀ - all match */
 Cell* prim_iter_find(Cell* args);        /* ⊣⊙ - find first */
+
+/* POSIX Port I/O primitives (§3.2) */
+Cell* prim_port_open(Cell* args);         /* ⊞⊳ - open file as port */
+Cell* prim_fd_to_port(Cell* args);        /* ⊞⊳# - fd to port */
+Cell* prim_port_read_line(Cell* args);    /* ⊞← - read line from port */
+Cell* prim_port_read_bytes(Cell* args);   /* ⊞←◈ - read N bytes */
+Cell* prim_port_read_all(Cell* args);     /* ⊞←* - read all remaining */
+Cell* prim_port_write(Cell* args);        /* ⊞→ - write string to port */
+Cell* prim_port_write_bytes(Cell* args);  /* ⊞→◈ - write bytes to port */
+Cell* prim_port_close(Cell* args);        /* ⊞× - close port */
+Cell* prim_port_eof(Cell* args);          /* ⊞∅? - at eof? */
+Cell* prim_port_flush(Cell* args);        /* ⊞⊙ - flush port */
+Cell* prim_port_stdin(Cell* args);        /* ⊞⊳₀ - stdin port */
+Cell* prim_port_stdout(Cell* args);       /* ⊞⊲₀ - stdout port */
+Cell* prim_port_stderr(Cell* args);       /* ⊞⊲₁ - stderr port */
+
+/* POSIX File System primitives (§3.3) */
+Cell* prim_mkdir(Cell* args);             /* ≋⊙⊕ - create directory */
+Cell* prim_rmdir(Cell* args);             /* ≋⊙⊘ - delete directory */
+Cell* prim_rename(Cell* args);            /* ≋⇔ - rename file */
+Cell* prim_chmod(Cell* args);             /* ≋⊙≔ - set file mode */
+Cell* prim_chown(Cell* args);             /* ≋⊙⊕≔ - set file owner */
+Cell* prim_utimes(Cell* args);            /* ≋⏱≔ - set file times */
+Cell* prim_truncate(Cell* args);          /* ≋⊂ - truncate file */
+Cell* prim_link(Cell* args);              /* ≋⊕ - create hard link */
+Cell* prim_symlink(Cell* args);           /* ≋⊕→ - create symlink */
+Cell* prim_readlink(Cell* args);          /* ≋→ - read symlink */
+Cell* prim_mkfifo(Cell* args);            /* ≋⊙⊕⊞ - create FIFO */
+Cell* prim_file_info(Cell* args);         /* ≋⊙ - stat file */
+Cell* prim_directory_files(Cell* args);   /* ≋⊙* - list directory */
+Cell* prim_opendir(Cell* args);           /* ≋⊙⊳ - open directory */
+Cell* prim_readdir(Cell* args);           /* ≋⊙← - read directory entry */
+Cell* prim_closedir_prim(Cell* args);     /* ≋⊙× - close directory */
+Cell* prim_directory_generator(Cell* args); /* ≋⊙⊣ - directory generator */
+Cell* prim_realpath(Cell* args);          /* ≋⊙⊕→ - resolve path */
+Cell* prim_file_space(Cell* args);        /* ≋⊙# - filesystem space */
+Cell* prim_create_temp_file(Cell* args);  /* ≋⊙⏱ - create temp file */
+Cell* prim_delete_file(Cell* args);       /* ≋⊖ - delete/unlink file */
+
+/* POSIX Process State primitives (§3.5) */
+Cell* prim_umask_get(Cell* args);         /* ⊙⌂⊙ - get umask */
+Cell* prim_umask_set(Cell* args);         /* ⊙⌂⊙≔ - set umask */
+Cell* prim_cwd(Cell* args);              /* ⊙⌂⊘ - current directory */
+Cell* prim_chdir(Cell* args);            /* ⊙⌂⊘≔ - change directory */
+Cell* prim_pid(Cell* args);              /* ⊙⌂# - process id */
+Cell* prim_nice(Cell* args);             /* ⊙⌂△ - adjust priority */
+Cell* prim_uid(Cell* args);              /* ⊙⌂⊕ - user id */
+Cell* prim_gid(Cell* args);              /* ⊙⌂⊕⊕ - group id */
+Cell* prim_euid(Cell* args);             /* ⊙⌂⊕* - effective uid */
+Cell* prim_egid(Cell* args);             /* ⊙⌂⊕⊕* - effective gid */
+Cell* prim_groups(Cell* args);           /* ⊙⌂⊕⊕*⊕ - supplementary gids */
+
+/* POSIX User/Group Database primitives (§3.6) */
+Cell* prim_user_info(Cell* args);        /* ⊙⌂⊕⊙ - user info */
+Cell* prim_group_info(Cell* args);       /* ⊙⌂⊕⊕⊙ - group info */
+
+/* POSIX Time primitives (§3.10) */
+Cell* prim_posix_time(Cell* args);       /* ⊙⏱ - posix time */
+Cell* prim_monotonic_time(Cell* args);   /* ⊙⏱⊕ - monotonic time */
+
+/* POSIX Environment primitives (§3.11) */
+Cell* prim_getenv(Cell* args);           /* ⊙⌂≋ - get env var */
+Cell* prim_setenv(Cell* args);           /* ⊙⌂≋≔ - set env var */
+Cell* prim_unsetenv(Cell* args);         /* ⊙⌂≋⊘ - delete env var */
+
+/* POSIX Terminal primitive (§3.12) */
+Cell* prim_is_terminal(Cell* args);      /* ⊞⊙? - is port a terminal? */
+
+/* R7RS System Extras */
+Cell* prim_argv(Cell* args);             /* ⊙⌂ - command line args */
+Cell* prim_exit_process(Cell* args);     /* ⊙⊘ - exit */
+Cell* prim_current_second(Cell* args);   /* ⊙⏱≈ - seconds since epoch */
+Cell* prim_jiffy(Cell* args);            /* ⊙⏱⊕# - high-res counter */
+Cell* prim_jps(Cell* args);              /* ⊙⏱⊕≈ - jiffies per second */
 
 /* Primitive documentation structure */
 typedef struct {

@@ -1,6 +1,7 @@
 #include "cell.h"
 #include "iter_batch.h"
 #include "intern.h"
+#include <dirent.h>
 #include "siphash.h"
 #include "swisstable.h"
 #include "btree_simd.h"
@@ -180,6 +181,26 @@ Cell* cell_box(Cell* value) {
     if (value) cell_retain(value);
     return c;
 }
+
+Cell* cell_port(void* file, int fd, PortTypeFlags flags, PortBufferMode buf_mode) {
+    Cell* c = cell_alloc(CELL_PORT);
+    c->data.port.file = file;
+    c->data.port.fd = fd;
+    c->data.port.flags = flags;
+    c->data.port.buf_mode = buf_mode;
+    c->data.port.is_open = true;
+    return c;
+}
+
+Cell* cell_dirstream(void* dir) {
+    Cell* c = cell_alloc(CELL_DIR);
+    c->data.dirstream.dir = dir;
+    c->data.dirstream.is_open = true;
+    return c;
+}
+
+bool cell_is_port(Cell* c) { return c && c->type == CELL_PORT; }
+bool cell_is_dir(Cell* c) { return c && c->type == CELL_DIR; }
 
 /* Cell accessors */
 double cell_get_number(Cell* c) {
@@ -412,6 +433,20 @@ void cell_release(Cell* c) {
                 }
                 break;
             }
+            case CELL_PORT:
+                if (c->data.port.is_open && c->data.port.file) {
+                    /* Don't close stdin/stdout/stderr */
+                    FILE* f = (FILE*)c->data.port.file;
+                    if (f != stdin && f != stdout && f != stderr) {
+                        fclose(f);
+                    }
+                }
+                break;
+            case CELL_DIR:
+                if (c->data.dirstream.is_open && c->data.dirstream.dir) {
+                    closedir((DIR*)c->data.dirstream.dir);
+                }
+                break;
             default:
                 break;
         }
@@ -998,6 +1033,15 @@ void cell_print(Cell* c) {
             printf("⊣[%s%s]", kn, (id && id->exhausted) ? ":done" : "");
             break;
         }
+        case CELL_PORT:
+            printf("⊞⊳[fd:%d%s%s]",
+                   c->data.port.fd,
+                   (c->data.port.flags & PORT_INPUT) ? " in" : "",
+                   (c->data.port.flags & PORT_OUTPUT) ? " out" : "");
+            break;
+        case CELL_DIR:
+            printf("≋⊙[dir%s]", c->data.dirstream.is_open ? "" : ":closed");
+            break;
     }
 }
 
@@ -2425,6 +2469,8 @@ int cell_compare(Cell* a, Cell* b) {
         [CELL_SORTED_MAP] = 21,
         [CELL_TRIE] = 22,
         [CELL_ITERATOR] = 23,
+        [CELL_PORT] = 24,
+        [CELL_DIR] = 25,
     };
 
     int ta = type_order[a->type];

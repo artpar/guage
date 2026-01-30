@@ -63,7 +63,7 @@ void eval_define(EvalContext* ctx, const char* name, Cell* value);
 /* Lookup variable in context */
 Cell* eval_lookup(EvalContext* ctx, const char* name);
 
-/* Lookup variable in local environment (for trampoline) */
+/* Lookup variable in local environment */
 Cell* eval_lookup_env(Cell* env, const char* name);
 
 /* Find user function documentation by name (for primitives to use) */
@@ -90,7 +90,7 @@ void effect_push_handler(EffectFrame* frame);
 void effect_pop_handler(void);
 EffectFrame* effect_find_handler(const char* effect_name);
 
-/* Helper functions for trampoline evaluator */
+/* Helper functions for evaluator */
 Cell* extend_env(Cell* env, Cell* args);
 int list_length(Cell* list);
 Cell* env_lookup_index(Cell* env, int index);

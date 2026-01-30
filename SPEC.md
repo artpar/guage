@@ -31,7 +31,7 @@ Everything is a **Cell**:
 
 **See:** `KEYWORDS.md` for complete specification.
 
-## Runtime Primitives (177 Total)
+## Runtime Primitives (407 Total)
 
 **Status:** 177 primitives implemented and stable (105/105 test files passing)
 **Note:** All primitives fully working including graph algorithms, actors, channels, supervision, supervisors, registry, timers, GenServer, process dictionary, task async/await, mutable references, and sequencing
@@ -382,8 +382,8 @@ Warnings are non-fatal and do not stop execution.
 |--------|------|---------|--------|
 | `≡` | `α → α → 𝔹` | Equality | ✅ DONE |
 | `≢` | `α → α → 𝔹` | Inequality | ✅ DONE |
-| `∧` | `𝔹 → 𝔹 → 𝔹` | Logical AND | ✅ DONE |
-| `∨` | `𝔹 → 𝔹 → 𝔹` | Logical OR | ✅ DONE |
+| `∧` | `α → β → α∣β` | Short-circuit AND (special form) | ✅ DONE |
+| `∨` | `α → β → α∣β` | Short-circuit OR (special form) | ✅ DONE |
 | `¬` | `𝔹 → 𝔹` | Logical NOT | ✅ DONE |
 
 ### Arithmetic (10) ✅
@@ -885,6 +885,10 @@ Use `:generic` for custom graph types. This restriction enables specialized grap
 | `≈∅?` | `≈ → 𝔹` | Is empty string? | ✅ DONE |
 | `≈≡` | `≈ → ≈ → 𝔹` | String equality | ✅ DONE |
 | `≈<` | `≈ → ≈ → 𝔹` | String ordering (lexicographic) | ✅ DONE |
+| `≈→#` | `≈ → ℕ → ℕ` | Character code at index | ✅ DONE |
+| `#→≈` | `ℕ → ≈` | Code to single-char string | ✅ DONE |
+| `≈↑` | `≈ → ≈` | String to uppercase | ✅ DONE |
+| `≈↓` | `≈ → ≈` | String to lowercase | ✅ DONE |
 
 **String Literals:**
 Strings are enclosed in double quotes with escape sequences:
@@ -1025,6 +1029,128 @@ All I/O operations return errors on failure:
 - File paths must be strings
 - No file locking or concurrent access control
 - UTF-8 encoding assumed
+
+---
+
+### POSIX System Interface — SRFI-170 (59 primitives) ✅
+
+Full SRFI-170 coverage plus R7RS system extras. Two new cell types: `CELL_PORT` (FILE* wrapper) and `CELL_DIR` (DIR* wrapper).
+
+#### §3.2 I/O Ports (13 primitives)
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `⊞⊳` | `≈ → :sym → ⊞` | Open file as port | ✅ DONE (Day 121) |
+| `⊞⊳#` | `ℕ → :sym → ⊞` | Wrap fd as port | ✅ DONE (Day 121) |
+| `⊞←` | `⊞ → ≈` | Read line from port | ✅ DONE (Day 121) |
+| `⊞←◈` | `⊞ → ℕ → ≈` | Read N bytes from port | ✅ DONE (Day 121) |
+| `⊞←*` | `⊞ → ≈` | Read all remaining | ✅ DONE (Day 121) |
+| `⊞→` | `⊞ → ≈ → ℕ` | Write string to port | ✅ DONE (Day 121) |
+| `⊞→◈` | `⊞ → ≈ → ℕ` | Write bytes to port | ✅ DONE (Day 121) |
+| `⊞×` | `⊞ → 𝔹` | Close port | ✅ DONE (Day 121) |
+| `⊞∅?` | `⊞ → 𝔹` | Test if at EOF | ✅ DONE (Day 121) |
+| `⊞⊙` | `⊞ → 𝔹` | Flush port output | ✅ DONE (Day 121) |
+| `⊞⊳₀` | `→ ⊞` | Get stdin port | ✅ DONE (Day 121) |
+| `⊞⊲₀` | `→ ⊞` | Get stdout port | ✅ DONE (Day 121) |
+| `⊞⊲₁` | `→ ⊞` | Get stderr port | ✅ DONE (Day 121) |
+
+Port type flags: `:textual-input`, `:textual-output`, `:binary-input`, `:binary-output`, `:textual-input/output`
+
+```scheme
+; Write and read a file via ports
+(≔ wp (⊞⊳ "out.txt" :textual-output))
+(⊞→ wp "hello\n")
+(⊞⊙ wp)   ; flush
+(⊞× wp)   ; close
+
+(≔ rp (⊞⊳ "out.txt" :textual-input))
+(⊞← rp)   ; → "hello"
+(⊞× rp)
+```
+
+#### §3.3 File System (22 primitives)
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `≋⊙⊕` | `≈ → ℕ → 𝔹` | Create directory | ✅ DONE (Day 121) |
+| `≋⊙⊘` | `≈ → 𝔹` | Delete directory | ✅ DONE (Day 121) |
+| `≋⇔` | `≈ → ≈ → 𝔹` | Rename file | ✅ DONE (Day 121) |
+| `≋⊙≔` | `≈ → ℕ → 𝔹` | Set file mode (chmod) | ✅ DONE (Day 121) |
+| `≋⊙⊕≔` | `≈ → ℕ → ℕ → 𝔹` | Set file owner (chown) | ✅ DONE (Day 121) |
+| `≋⏱≔` | `≈ → ℕ → ℕ → 𝔹` | Set file times | ✅ DONE (Day 121) |
+| `≋⊂` | `≈ → ℕ → 𝔹` | Truncate file | ✅ DONE (Day 121) |
+| `≋⊕` | `≈ → ≈ → 𝔹` | Create hard link | ✅ DONE (Day 121) |
+| `≋⊕→` | `≈ → ≈ → 𝔹` | Create symbolic link | ✅ DONE (Day 121) |
+| `≋→` | `≈ → ≈` | Read symbolic link target | ✅ DONE (Day 121) |
+| `≋⊙⊕⊞` | `≈ → ℕ → 𝔹` | Create FIFO | ✅ DONE (Day 121) |
+| `≋⊙` | `≈ → ⊚` | Get file info (stat) | ✅ DONE (Day 121) |
+| `≋⊙*` | `≈ → [≈]` | List directory contents | ✅ DONE (Day 121) |
+| `≋⊙⊳` | `≈ → ⊙dir` | Open directory stream | ✅ DONE (Day 121) |
+| `≋⊙←` | `⊙dir → ≈\|∅` | Read next directory entry | ✅ DONE (Day 121) |
+| `≋⊙×` | `⊙dir → 𝔹` | Close directory stream | ✅ DONE (Day 121) |
+| `≋⊙⊣` | `≈ → ⊙dir` | Directory generator | ✅ DONE (Day 121) |
+| `≋⊙⊕→` | `≈ → ≈` | Resolve real path | ✅ DONE (Day 121) |
+| `≋⊙#` | `≈ → ⊚` | Get filesystem space info | ✅ DONE (Day 121) |
+| `≋⊙⏱` | `≈ → ⟨⊞ ≈⟩` | Create temp file | ✅ DONE (Day 121) |
+
+`≋⊙` returns a `:file-info` struct with fields: `:device`, `:inode`, `:mode`, `:nlinks`, `:uid`, `:gid`, `:rdev`, `:size`, `:blksize`, `:blocks`, `:atime`, `:mtime`, `:ctime`
+
+#### §3.5 Process State (11 primitives)
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `⊙⌂⊙` | `→ ℕ` | Get current umask | ✅ DONE (Day 121) |
+| `⊙⌂⊙≔` | `ℕ → ℕ` | Set umask | ✅ DONE (Day 121) |
+| `⊙⌂⊘` | `→ ≈` | Get current directory | ✅ DONE (Day 121) |
+| `⊙⌂⊘≔` | `≈ → 𝔹` | Change directory | ✅ DONE (Day 121) |
+| `⊙⌂#` | `→ ℕ` | Get process ID | ✅ DONE (Day 121) |
+| `⊙⌂△` | `ℕ → ℕ` | Adjust priority (nice) | ✅ DONE (Day 121) |
+| `⊙⌂⊕` | `→ ℕ` | Get user ID | ✅ DONE (Day 121) |
+| `⊙⌂⊕⊕` | `→ ℕ` | Get group ID | ✅ DONE (Day 121) |
+| `⊙⌂⊕*` | `→ ℕ` | Get effective user ID | ✅ DONE (Day 121) |
+| `⊙⌂⊕⊕*` | `→ ℕ` | Get effective group ID | ✅ DONE (Day 121) |
+| `⊙⌂⊕⊕*⊕` | `→ [ℕ]` | Get supplementary group IDs | ✅ DONE (Day 121) |
+
+#### §3.6 User/Group Database (2 primitives + stdlib accessors)
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `⊙⌂⊕⊙` | `ℕ\|≈ → ⊚` | Get user info by uid or name | ✅ DONE (Day 121) |
+| `⊙⌂⊕⊕⊙` | `ℕ\|≈ → ⊚` | Get group info by gid or name | ✅ DONE (Day 121) |
+
+Returns `:user-info` struct (`:name`, `:uid`, `:gid`, `:home`, `:shell`) or `:group-info` struct (`:name`, `:gid`, `:members`).
+
+#### §3.10 Time (2 primitives)
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `⊙⏱` | `→ ⊚` | Get POSIX realtime clock | ✅ DONE (Day 121) |
+| `⊙⏱⊕` | `→ ⊚` | Get monotonic clock | ✅ DONE (Day 121) |
+
+Both return a struct with `:seconds` and `:nanoseconds` fields.
+
+#### §3.11 Environment Variables (3 primitives)
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `⊙⌂≋` | `≈ → ≈\|∅` | Get environment variable | ✅ DONE (Day 121) |
+| `⊙⌂≋≔` | `≈ → ≈ → 𝔹` | Set environment variable | ✅ DONE (Day 121) |
+| `⊙⌂≋⊘` | `≈ → 𝔹` | Unset environment variable | ✅ DONE (Day 121) |
+
+#### §3.12 Terminal (1 primitive)
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `⊞⊙?` | `⊞ → 𝔹` | Test if port is a terminal | ✅ DONE (Day 121) |
+
+#### R7RS System Extras (5 primitives)
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `⊙⌂` | `→ [≈]` | Get command line arguments | ✅ DONE (Day 121) |
+| `⊙⊘` | `ℕ → ⊥` | Exit process | ✅ DONE (Day 121) |
+| `⊙⏱≈` | `→ ℕ` | Current second (epoch float) | ✅ DONE (Day 121) |
+| `⊙⏱⊕#` | `→ ℕ` | High-res monotonic counter (jiffy) | ✅ DONE (Day 121) |
+| `⊙⏱⊕≈` | `→ ℕ` | Jiffies per second (1e9) | ✅ DONE (Day 121) |
+
+#### Stdlib Wrappers (32 — in `stdlib/posix.scm`)
+File-info predicates (7): `≋⊙?`, `≋⊙⊙?` (dir?), `≋⊙≋?` (regular?), `≋⊙→?` (symlink?), `≋⊙⊞?` (fifo?), `≋⊙⊟?` (socket?), `≋⊙◈?` (device?)
+File-info accessors (13): `:device`, `:inode`, `:mode`, `:nlinks`, `:uid`, `:gid`, `:rdev`, `:size`, `:blksize`, `:blocks`, `:atime`, `:mtime`, `:ctime`
+User-info accessors (5): `:name`, `:uid`, `:gid`, `:home`, `:shell`
+Group-info accessors (3): `:name`, `:gid`, `:members`
+Time accessors (2): `:seconds`, `:nanoseconds`
 
 ---
 
@@ -1298,7 +1424,7 @@ All I/O operations return errors on failure:
 
 **Future Enhancements:**
 - `⊞◇` (module-define) - Define module with explicit exports
-- `⊞⊳` (module-import) - Import specific symbols
+- `⋘⊳` (module-import) - Import specific symbols
 - Module registry to prevent double-loading
 - Namespace isolation
 - Dependency resolution
@@ -1356,6 +1482,26 @@ Sequencing evaluates multiple expressions left-to-right, releasing intermediate 
 ; Sequencing with mutation
 (≔ b (□ #0))
 (⪢ (□← b #1) (□← b #2) (□→ b))  ; → #2
+```
+
+### Short-Circuit Logic (2 special forms) ✅
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `∧` | `α → β → α∣β` | Short-circuit AND | ✅ DONE (Day 120) |
+| `∨` | `α → β → α∣β` | Short-circuit OR | ✅ DONE (Day 120) |
+
+`∧` and `∨` are **special forms** (not primitives). They evaluate left-to-right with short-circuit semantics. The second argument is in tail position (TCO via `goto tail_call`).
+
+- `(∧ a b)` — If `a` evaluates to `#f`, returns `#f` without evaluating `b`. Otherwise evaluates and returns `b`.
+- `(∨ a b)` — If `a` evaluates to `#t`, returns `#t` without evaluating `b`. Otherwise evaluates and returns `b`.
+- Errors in `a` propagate immediately.
+- Non-boolean first args are treated as truthy (for `∧`, falls through to `b`; for `∨`, returns the value).
+
+```scheme
+(∧ #f (⚠ :boom))          ; → #f (no error — short-circuited)
+(∨ #t (⚠ :boom))          ; → #t (no error — short-circuited)
+(∧ #t #42)                 ; → #42 (second arg in tail position)
+(∨ #f #42)                 ; → #42 (second arg in tail position)
 ```
 
 ---
@@ -1858,8 +2004,8 @@ Query graphs:
 |--------|------|---------|--------|
 | `≡` | Equality | Equal | ✅ DONE |
 | `≢` | Inequality | Not equal | ✅ DONE |
-| `∧` | AND | Logical AND | ✅ DONE |
-| `∨` | OR | Logical OR | ✅ DONE |
+| `∧` | AND | Short-circuit AND (special form) | ✅ DONE |
+| `∨` | OR | Short-circuit OR (special form) | ✅ DONE |
 
 ## Derived Operations (Not Primitives)
 

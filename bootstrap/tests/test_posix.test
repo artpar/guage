@@ -1,0 +1,126 @@
+; POSIX primitives test suite (SRFI-170)
+; Tests: Port I/O, File System, Process State, User/Group, Time, Environment, Terminal, R7RS extras
+
+; --- §3.2 I/O Ports ---
+
+; Test stdout/stderr port creation (skip stdin - blocks on read)
+(⊨ "stdout port" #t (≢ (⊞⊲₀) ∅))
+(⊨ "stderr port" #t (≢ (⊞⊲₁) ∅))
+
+; Test file port write and read
+(≔ test-path "/tmp/guage-posix-test.txt")
+(≔ wp (⊞⊳ test-path :textual-output))
+(⊨ "port write" #17 (⊞→ wp "hello from guage\n"))
+(⊨ "port flush" #t (⊞⊙ wp))
+(⊨ "port close" #t (⊞× wp))
+
+(≔ rp (⊞⊳ test-path :textual-input))
+(⊨ "port read line" "hello from guage" (⊞← rp))
+; After reading the only line, do one more read to trigger EOF
+(⊞← rp)
+(⊨ "port eof after read" #t (⊞∅? rp))
+(⊨ "port close read" #t (⊞× rp))
+
+; Test read-all
+(≔ rp2 (⊞⊳ test-path :textual-input))
+(⊨ "port read all" "hello from guage\n" (⊞←* rp2))
+(⊞× rp2)
+
+; --- §3.3 File System ---
+
+; Test file-info (stat)
+(≔ fi (≋⊙ "Makefile"))
+(⊨ "file-info returns struct" #t (≢ fi ∅))
+
+; Test directory listing
+(≔ files (≋⊙* "bootstrap/stdlib"))
+(⊨ "directory listing" #t (≢ files ∅))
+
+; Test mkdir/rmdir round-trip
+(≋⊙⊕ "/tmp/guage-test-dir" #493)  ; 0755
+(⊨ "mkdir" #t (≢ (≋⊙ "/tmp/guage-test-dir") ∅))
+(⊨ "rmdir" #t (≋⊙⊘ "/tmp/guage-test-dir"))
+
+; Test rename
+(≔ wp2 (⊞⊳ "/tmp/guage-rename-src.txt" :textual-output))
+(⊞→ wp2 "rename test")
+(⊞× wp2)
+(⊨ "rename" #t (≋⇔ "/tmp/guage-rename-src.txt" "/tmp/guage-rename-dst.txt"))
+(≋⊖ "/tmp/guage-rename-dst.txt")
+
+; Test symlink + readlink
+(≔ wp3 (⊞⊳ "/tmp/guage-link-target.txt" :textual-output))
+(⊞→ wp3 "target")
+(⊞× wp3)
+(⊨ "symlink" #t (≋⊕→ "/tmp/guage-link-target.txt" "/tmp/guage-test-link"))
+(⊨ "readlink" "/tmp/guage-link-target.txt" (≋→ "/tmp/guage-test-link"))
+(≋⊖ "/tmp/guage-test-link")
+(≋⊖ "/tmp/guage-link-target.txt")
+
+; Test realpath
+(⊨ "realpath" #t (≢ (≋⊙⊕→ ".") ∅))
+
+; Test file-space
+(⊨ "file-space" #t (≢ (≋⊙# "/") ∅))
+
+; Test opendir/readdir/closedir
+(≔ d (≋⊙⊳ "bootstrap"))
+(⊨ "opendir" #t (≢ d ∅))
+(≔ entry (≋⊙← d))
+(⊨ "readdir" #t (≢ entry ∅))
+(⊨ "closedir" #t (≋⊙× d))
+
+; Test temp file
+(≔ tmp (≋⊙⏱ "/tmp/guage-tmptest-"))
+(⊨ "temp file returns pair" #t (≢ tmp ∅))
+(⊞× (◁ tmp))
+(≋⊖ (▷ tmp))
+
+; Test delete file (cleanup)
+(≋⊖ test-path)
+
+; --- §3.5 Process State ---
+
+(⊨ "pid" #t (> (⊙⌂#) #0))
+(⊨ "cwd" #t (≢ (⊙⌂⊘) ∅))
+(⊨ "uid" #t (≥ (⊙⌂⊕) #0))
+(⊨ "gid" #t (≥ (⊙⌂⊕⊕) #0))
+(⊨ "euid" #t (≥ (⊙⌂⊕*) #0))
+(⊨ "egid" #t (≥ (⊙⌂⊕⊕*) #0))
+(⊨ "groups" #t (≢ (⊙⌂⊕⊕*⊕) ∅))
+(⊨ "umask get" #t (≥ (⊙⌂⊙) #0))
+
+; --- §3.6 User/Group Database ---
+
+(≔ ui (⊙⌂⊕⊙ "root"))
+(⊨ "user-info by name" #t (≢ ui ∅))
+
+(≔ gi (⊙⌂⊕⊕⊙ #0))
+(⊨ "group-info by gid" #t (≢ gi ∅))
+
+; --- §3.10 Time ---
+
+(≔ t (⊙⏱))
+(⊨ "posix-time" #t (≢ t ∅))
+
+(≔ mt (⊙⏱⊕))
+(⊨ "monotonic-time" #t (≢ mt ∅))
+
+; --- §3.11 Environment Variables ---
+
+(⊨ "getenv HOME" #t (≢ (⊙⌂≋ "HOME") ∅))
+(⊨ "setenv" #t (⊙⌂≋≔ "GUAGE_TEST" "42"))
+(⊨ "getenv after set" "42" (⊙⌂≋ "GUAGE_TEST"))
+(⊨ "unsetenv" #t (⊙⌂≋⊘ "GUAGE_TEST"))
+(⊨ "getenv after unset" ∅ (⊙⌂≋ "GUAGE_TEST"))
+
+; --- §3.12 Terminal ---
+
+(⊨ "is-terminal stdin" #t (≢ (⊞⊙? (⊞⊳₀)) ∅))
+
+; --- R7RS System Extras ---
+
+(⊨ "argv" #t (≢ (⊙⌂) ∅))
+(⊨ "current-second" #t (> (⊙⏱≈) #0))
+(⊨ "jiffy" #t (> (⊙⏱⊕#) #0))
+(⊨ "jiffies-per-second" #1000000000 (⊙⏱⊕≈))

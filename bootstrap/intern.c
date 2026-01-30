@@ -193,6 +193,8 @@ void intern_preload(void) {
         "~",                                /* SYM_ID_UNQUOTE = 25 */
         "quasiquote",                       /* SYM_ID_QUASIQUOTE_ALT = 26 */
         "unquote",                          /* SYM_ID_UNQUOTE_ALT = 27 */
+        "\xe2\x88\xa7",                     /* SYM_ID_AND = 28: ∧ */
+        "\xe2\x88\xa8",                     /* SYM_ID_OR = 29: ∨ */
     };
 
     for (int i = 0; i <= MAX_SPECIAL_FORM_ID; i++) {

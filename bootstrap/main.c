@@ -15,7 +15,7 @@
 #include "module.h"
 #include "linenoise.h"
 
-/* Evaluator uses proper tail call optimization (TCO) - no trampoline needed */
+/* Evaluator uses goto-based tail call optimization (TCO) */
 
 #define MAX_INPUT 4096
 
@@ -666,11 +666,7 @@ void repl(void) {
             }
 
             /* Evaluate */
-#if USE_TRAMPOLINE
-            Cell* result = trampoline_eval(ctx, expr);
-#else
             Cell* result = eval(ctx, expr);
-#endif
 
             /* Print result */
             cell_print(result);
@@ -717,8 +713,16 @@ void repl(void) {
     eval_context_free(ctx);
 }
 
+/* Global argc/argv storage for ⊙⌂ primitive */
+static int g_argc = 0;
+static char** g_argv = NULL;
+
+int guage_get_argc(void) { return g_argc; }
+char** guage_get_argv(void) { return g_argv; }
+
 int main(int argc, char** argv) {
-    (void)argc; (void)argv;
+    g_argc = argc;
+    g_argv = argv;
     guage_siphash_init();
     intern_init();
     intern_preload();

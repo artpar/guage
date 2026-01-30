@@ -15,6 +15,18 @@
 #include <assert.h>
 #include <math.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/statvfs.h>
+#include <dirent.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <time.h>
+#include <errno.h>
+#include <pwd.h>
+#include <grp.h>
+#include <sys/time.h>
+#include <limits.h>
 
 /* Helper: get first argument */
 static Cell* arg1(Cell* args) {
@@ -157,21 +169,7 @@ Cell* prim_not_equal(Cell* args) {
     return cell_bool(val);
 }
 
-/* ∧ - logical AND */
-Cell* prim_and(Cell* args) {
-    Cell* a = arg1(args);
-    Cell* b = arg2(args);
-    assert(cell_is_bool(a) && cell_is_bool(b));
-    return cell_bool(cell_get_bool(a) && cell_get_bool(b));
-}
-
-/* ∨ - logical OR */
-Cell* prim_or(Cell* args) {
-    Cell* a = arg1(args);
-    Cell* b = arg2(args);
-    assert(cell_is_bool(a) && cell_is_bool(b));
-    return cell_bool(cell_get_bool(a) || cell_get_bool(b));
-}
+/* ∧ and ∨ are now special forms in eval.c (short-circuit + TCO) */
 
 /* ¬ - logical NOT */
 Cell* prim_not(Cell* args) {
@@ -6156,6 +6154,87 @@ Cell* prim_str_less(Cell* args) {
     return cell_bool(strcmp(cell_get_string(str1), cell_get_string(str2)) < 0);
 }
 
+/* ≈→# - Character code at index */
+Cell* prim_str_char_code(Cell* args) {
+    Cell* str = arg1(args);
+    Cell* idx = arg2(args);
+
+    if (!cell_is_string(str) || !cell_is_number(idx)) {
+        return cell_error("≈→# requires string and number", str);
+    }
+
+    const char* s = cell_get_string(str);
+    int i = (int)cell_get_number(idx);
+    int len = strlen(s);
+
+    if (i < 0 || i >= len) {
+        return cell_error("≈→# index out of bounds", idx);
+    }
+
+    return cell_number((double)(unsigned char)s[i]);
+}
+
+/* #→≈ - Code to single-char string */
+Cell* prim_code_to_char(Cell* args) {
+    Cell* code = arg1(args);
+
+    if (!cell_is_number(code)) {
+        return cell_error("#→≈ requires a number", code);
+    }
+
+    int c = (int)cell_get_number(code);
+    if (c < 0 || c > 127) {
+        return cell_error("#→≈ code must be 0-127", code);
+    }
+
+    char buf[2] = {(char)c, '\0'};
+    return cell_string(buf);
+}
+
+/* ≈↑ - String to uppercase */
+Cell* prim_str_upcase(Cell* args) {
+    Cell* str = arg1(args);
+
+    if (!cell_is_string(str)) {
+        return cell_error("≈↑ requires a string", str);
+    }
+
+    const char* s = cell_get_string(str);
+    size_t len = strlen(s);
+    char* copy = (char*)malloc(len + 1);
+    for (size_t i = 0; i < len; i++) {
+        unsigned char ch = (unsigned char)s[i];
+        copy[i] = (ch >= 'a' && ch <= 'z') ? (char)(ch - 32) : (char)ch;
+    }
+    copy[len] = '\0';
+
+    Cell* ret = cell_string(copy);
+    free(copy);
+    return ret;
+}
+
+/* ≈↓ - String to lowercase */
+Cell* prim_str_downcase(Cell* args) {
+    Cell* str = arg1(args);
+
+    if (!cell_is_string(str)) {
+        return cell_error("≈↓ requires a string", str);
+    }
+
+    const char* s = cell_get_string(str);
+    size_t len = strlen(s);
+    char* copy = (char*)malloc(len + 1);
+    for (size_t i = 0; i < len; i++) {
+        unsigned char ch = (unsigned char)s[i];
+        copy[i] = (ch >= 'A' && ch <= 'Z') ? (char)(ch + 32) : (char)ch;
+    }
+    copy[len] = '\0';
+
+    Cell* ret = cell_string(copy);
+    free(copy);
+    return ret;
+}
+
 /* ============ I/O Primitives ============ */
 
 /* ≋ - Print value to stdout with newline */
@@ -9523,6 +9602,751 @@ Cell* prim_iter_find(Cell* args) {
     return cell_nil();
 }
 
+/* ====== POSIX / SRFI-170 Primitives ====== */
+
+/* --- §3.2 I/O Ports --- */
+
+/* Forward declarations for argc/argv from main.c */
+extern int guage_get_argc(void);
+extern char** guage_get_argv(void);
+
+/* ⊞⊳ - open file as port */
+Cell* prim_port_open(Cell* args) {
+    Cell* path_cell = arg1(args);
+    Cell* flags_cell = arg2(args);
+    if (!cell_is_string(path_cell)) return cell_error("type-error", path_cell);
+    if (!cell_is_symbol(flags_cell)) return cell_error("type-error", flags_cell);
+
+    const char* path = cell_get_string(path_cell);
+    const char* flag_str = cell_get_symbol(flags_cell);
+
+    const char* mode = "r";
+    PortTypeFlags pt = PORT_INPUT | PORT_TEXTUAL;
+
+    /* Symbols include colon prefix (e.g. ":textual-output") — skip it */
+    const char* fs = (flag_str[0] == ':') ? flag_str + 1 : flag_str;
+
+    if (strcmp(fs, "binary-input") == 0) { mode = "rb"; pt = PORT_INPUT | PORT_BINARY; }
+    else if (strcmp(fs, "textual-input") == 0) { mode = "r"; pt = PORT_INPUT | PORT_TEXTUAL; }
+    else if (strcmp(fs, "binary-output") == 0) { mode = "wb"; pt = PORT_OUTPUT | PORT_BINARY; }
+    else if (strcmp(fs, "textual-output") == 0) { mode = "w"; pt = PORT_OUTPUT | PORT_TEXTUAL; }
+    else if (strcmp(fs, "binary-input/output") == 0) { mode = "r+b"; pt = PORT_INPUT | PORT_OUTPUT | PORT_BINARY; }
+    else if (strcmp(fs, "textual-input/output") == 0) { mode = "r+"; pt = PORT_INPUT | PORT_OUTPUT | PORT_TEXTUAL; }
+    else if (strcmp(fs, "textual-output-append") == 0) { mode = "a"; pt = PORT_OUTPUT | PORT_TEXTUAL; }
+    else if (strcmp(fs, "textual-output-create") == 0) { mode = "w"; pt = PORT_OUTPUT | PORT_TEXTUAL; }
+
+    FILE* f = fopen(path, mode);
+    if (!f) return cell_error("io-error", cell_string(strerror(errno)));
+
+    return cell_port(f, fileno(f), pt, PORT_BUF_BLOCK);
+}
+
+/* ⊞⊳# - wrap fd as port */
+Cell* prim_fd_to_port(Cell* args) {
+    Cell* fd_cell = arg1(args);
+    Cell* flags_cell = arg2(args);
+    if (!cell_is_number(fd_cell)) return cell_error("type-error", fd_cell);
+    if (!cell_is_symbol(flags_cell)) return cell_error("type-error", flags_cell);
+
+    int fd = (int)cell_get_number(fd_cell);
+    const char* flag_str = cell_get_symbol(flags_cell);
+
+    const char* mode = "r";
+    PortTypeFlags pt = PORT_INPUT | PORT_TEXTUAL;
+    const char* fs = (flag_str[0] == ':') ? flag_str + 1 : flag_str;
+    if (strcmp(fs, "output") == 0 || strcmp(fs, "textual-output") == 0) {
+        mode = "w"; pt = PORT_OUTPUT | PORT_TEXTUAL;
+    }
+
+    FILE* f = fdopen(fd, mode);
+    if (!f) return cell_error("io-error", cell_string(strerror(errno)));
+
+    return cell_port(f, fd, pt, PORT_BUF_BLOCK);
+}
+
+/* ⊞← - read line from port */
+Cell* prim_port_read_line(Cell* args) {
+    Cell* port_cell = arg1(args);
+    if (!cell_is_port(port_cell)) return cell_error("type-error", port_cell);
+    if (!port_cell->data.port.is_open) return cell_error("port-closed", port_cell);
+
+    FILE* f = (FILE*)port_cell->data.port.file;
+    char buf[4096];
+    if (fgets(buf, sizeof(buf), f) == NULL) {
+        if (feof(f)) return cell_string("");
+        return cell_error("io-error", cell_string(strerror(errno)));
+    }
+    /* Strip trailing newline */
+    size_t len = strlen(buf);
+    if (len > 0 && buf[len-1] == '\n') buf[len-1] = '\0';
+    return cell_string(buf);
+}
+
+/* ⊞←◈ - read N bytes from port */
+Cell* prim_port_read_bytes(Cell* args) {
+    Cell* port_cell = arg1(args);
+    Cell* n_cell = arg2(args);
+    if (!cell_is_port(port_cell)) return cell_error("type-error", port_cell);
+    if (!cell_is_number(n_cell)) return cell_error("type-error", n_cell);
+    if (!port_cell->data.port.is_open) return cell_error("port-closed", port_cell);
+
+    size_t n = (size_t)cell_get_number(n_cell);
+    FILE* f = (FILE*)port_cell->data.port.file;
+
+    Cell* buf = cell_buffer_new((uint32_t)n);
+    size_t got = fread(buf->data.buffer.bytes, 1, n, f);
+    buf->data.buffer.size = (uint32_t)got;
+    return buf;
+}
+
+/* ⊞←* - read all remaining from port */
+Cell* prim_port_read_all(Cell* args) {
+    Cell* port_cell = arg1(args);
+    if (!cell_is_port(port_cell)) return cell_error("type-error", port_cell);
+    if (!port_cell->data.port.is_open) return cell_error("port-closed", port_cell);
+
+    FILE* f = (FILE*)port_cell->data.port.file;
+    size_t cap = 4096, len = 0;
+    char* buf = malloc(cap);
+
+    while (1) {
+        size_t got = fread(buf + len, 1, cap - len, f);
+        len += got;
+        if (got == 0) break;
+        if (len >= cap) { cap *= 2; buf = realloc(buf, cap); }
+    }
+    buf[len] = '\0';
+    Cell* result = cell_string(buf);
+    free(buf);
+    return result;
+}
+
+/* ⊞→ - write string to port */
+Cell* prim_port_write(Cell* args) {
+    Cell* port_cell = arg1(args);
+    Cell* str_cell = arg2(args);
+    if (!cell_is_port(port_cell)) return cell_error("type-error", port_cell);
+    if (!cell_is_string(str_cell)) return cell_error("type-error", str_cell);
+    if (!port_cell->data.port.is_open) return cell_error("port-closed", port_cell);
+
+    FILE* f = (FILE*)port_cell->data.port.file;
+    const char* str = cell_get_string(str_cell);
+    size_t written = fwrite(str, 1, strlen(str), f);
+    return cell_number((double)written);
+}
+
+/* ⊞→◈ - write bytes to port */
+Cell* prim_port_write_bytes(Cell* args) {
+    Cell* port_cell = arg1(args);
+    Cell* buf_cell = arg2(args);
+    if (!cell_is_port(port_cell)) return cell_error("type-error", port_cell);
+    if (!cell_is_buffer(buf_cell)) return cell_error("type-error", buf_cell);
+    if (!port_cell->data.port.is_open) return cell_error("port-closed", port_cell);
+
+    FILE* f = (FILE*)port_cell->data.port.file;
+    size_t written = fwrite(buf_cell->data.buffer.bytes, 1, buf_cell->data.buffer.size, f);
+    return cell_number((double)written);
+}
+
+/* ⊞× - close port */
+Cell* prim_port_close(Cell* args) {
+    Cell* port_cell = arg1(args);
+    if (!cell_is_port(port_cell)) return cell_error("type-error", port_cell);
+    if (!port_cell->data.port.is_open) return cell_bool(true);
+
+    FILE* f = (FILE*)port_cell->data.port.file;
+    if (f != stdin && f != stdout && f != stderr) {
+        fclose(f);
+    }
+    port_cell->data.port.is_open = false;
+    return cell_bool(true);
+}
+
+/* ⊞∅? - at end of port? */
+Cell* prim_port_eof(Cell* args) {
+    Cell* port_cell = arg1(args);
+    if (!cell_is_port(port_cell)) return cell_error("type-error", port_cell);
+    if (!port_cell->data.port.is_open) return cell_bool(true);
+
+    FILE* f = (FILE*)port_cell->data.port.file;
+    return cell_bool(feof(f) != 0);
+}
+
+/* ⊞⊙ - flush port */
+Cell* prim_port_flush(Cell* args) {
+    Cell* port_cell = arg1(args);
+    if (!cell_is_port(port_cell)) return cell_error("type-error", port_cell);
+    if (!port_cell->data.port.is_open) return cell_error("port-closed", port_cell);
+
+    FILE* f = (FILE*)port_cell->data.port.file;
+    fflush(f);
+    return cell_bool(true);
+}
+
+/* ⊞⊳₀ - stdin port */
+Cell* prim_port_stdin(Cell* args) {
+    (void)args;
+    return cell_port(stdin, 0, PORT_INPUT | PORT_TEXTUAL, PORT_BUF_LINE);
+}
+
+/* ⊞⊲₀ - stdout port */
+Cell* prim_port_stdout(Cell* args) {
+    (void)args;
+    return cell_port(stdout, 1, PORT_OUTPUT | PORT_TEXTUAL, PORT_BUF_LINE);
+}
+
+/* ⊞⊲₁ - stderr port */
+Cell* prim_port_stderr(Cell* args) {
+    (void)args;
+    return cell_port(stderr, 2, PORT_OUTPUT | PORT_TEXTUAL, PORT_BUF_NONE);
+}
+
+/* --- §3.3 File System --- */
+
+/* ≋⊙⊕ - create directory */
+Cell* prim_mkdir(Cell* args) {
+    Cell* path_cell = arg1(args);
+    Cell* mode_cell = arg2(args);
+    if (!cell_is_string(path_cell)) return cell_error("type-error", path_cell);
+
+    mode_t mode = 0755;
+    if (cell_is_number(mode_cell)) mode = (mode_t)cell_get_number(mode_cell);
+
+    if (mkdir(cell_get_string(path_cell), mode) != 0)
+        return cell_error("io-error", cell_string(strerror(errno)));
+    return cell_bool(true);
+}
+
+/* ≋⊙⊘ - delete directory */
+Cell* prim_rmdir(Cell* args) {
+    Cell* path_cell = arg1(args);
+    if (!cell_is_string(path_cell)) return cell_error("type-error", path_cell);
+
+    if (rmdir(cell_get_string(path_cell)) != 0)
+        return cell_error("io-error", cell_string(strerror(errno)));
+    return cell_bool(true);
+}
+
+/* ≋⇔ - rename file */
+Cell* prim_rename(Cell* args) {
+    Cell* old_cell = arg1(args);
+    Cell* new_cell = arg2(args);
+    if (!cell_is_string(old_cell)) return cell_error("type-error", old_cell);
+    if (!cell_is_string(new_cell)) return cell_error("type-error", new_cell);
+
+    if (rename(cell_get_string(old_cell), cell_get_string(new_cell)) != 0)
+        return cell_error("io-error", cell_string(strerror(errno)));
+    return cell_bool(true);
+}
+
+/* ≋⊙≔ - set file mode */
+Cell* prim_chmod(Cell* args) {
+    Cell* path_cell = arg1(args);
+    Cell* mode_cell = arg2(args);
+    if (!cell_is_string(path_cell)) return cell_error("type-error", path_cell);
+    if (!cell_is_number(mode_cell)) return cell_error("type-error", mode_cell);
+
+    if (chmod(cell_get_string(path_cell), (mode_t)cell_get_number(mode_cell)) != 0)
+        return cell_error("io-error", cell_string(strerror(errno)));
+    return cell_bool(true);
+}
+
+/* ≋⊙⊕≔ - set file owner */
+Cell* prim_chown(Cell* args) {
+    Cell* path_cell = arg1(args);
+    Cell* uid_cell = arg2(args);
+    Cell* gid_cell = arg3(args);
+    if (!cell_is_string(path_cell)) return cell_error("type-error", path_cell);
+
+    uid_t uid = cell_is_number(uid_cell) ? (uid_t)cell_get_number(uid_cell) : (uid_t)-1;
+    gid_t gid = cell_is_number(gid_cell) ? (gid_t)cell_get_number(gid_cell) : (gid_t)-1;
+
+    if (chown(cell_get_string(path_cell), uid, gid) != 0)
+        return cell_error("io-error", cell_string(strerror(errno)));
+    return cell_bool(true);
+}
+
+/* ≋⏱≔ - set file times */
+Cell* prim_utimes(Cell* args) {
+    Cell* path_cell = arg1(args);
+    Cell* atime_cell = arg2(args);
+    Cell* mtime_cell = arg3(args);
+    if (!cell_is_string(path_cell)) return cell_error("type-error", path_cell);
+
+    struct timeval tv[2];
+    tv[0].tv_sec = cell_is_number(atime_cell) ? (time_t)cell_get_number(atime_cell) : 0;
+    tv[0].tv_usec = 0;
+    tv[1].tv_sec = cell_is_number(mtime_cell) ? (time_t)cell_get_number(mtime_cell) : 0;
+    tv[1].tv_usec = 0;
+
+    if (utimes(cell_get_string(path_cell), tv) != 0)
+        return cell_error("io-error", cell_string(strerror(errno)));
+    return cell_bool(true);
+}
+
+/* ≋⊂ - truncate file */
+Cell* prim_truncate(Cell* args) {
+    Cell* path_cell = arg1(args);
+    Cell* len_cell = arg2(args);
+    if (!cell_is_string(path_cell)) return cell_error("type-error", path_cell);
+    if (!cell_is_number(len_cell)) return cell_error("type-error", len_cell);
+
+    if (truncate(cell_get_string(path_cell), (off_t)cell_get_number(len_cell)) != 0)
+        return cell_error("io-error", cell_string(strerror(errno)));
+    return cell_bool(true);
+}
+
+/* ≋⊕ - create hard link (overloaded symbol - renamed to ≋⊕⊗) */
+Cell* prim_link(Cell* args) {
+    Cell* old_cell = arg1(args);
+    Cell* new_cell = arg2(args);
+    if (!cell_is_string(old_cell)) return cell_error("type-error", old_cell);
+    if (!cell_is_string(new_cell)) return cell_error("type-error", new_cell);
+
+    if (link(cell_get_string(old_cell), cell_get_string(new_cell)) != 0)
+        return cell_error("io-error", cell_string(strerror(errno)));
+    return cell_bool(true);
+}
+
+/* ≋⊕→ - create symlink */
+Cell* prim_symlink(Cell* args) {
+    Cell* target_cell = arg1(args);
+    Cell* link_cell = arg2(args);
+    if (!cell_is_string(target_cell)) return cell_error("type-error", target_cell);
+    if (!cell_is_string(link_cell)) return cell_error("type-error", link_cell);
+
+    if (symlink(cell_get_string(target_cell), cell_get_string(link_cell)) != 0)
+        return cell_error("io-error", cell_string(strerror(errno)));
+    return cell_bool(true);
+}
+
+/* ≋→ - read symlink */
+Cell* prim_readlink(Cell* args) {
+    Cell* path_cell = arg1(args);
+    if (!cell_is_string(path_cell)) return cell_error("type-error", path_cell);
+
+    char buf[4096];
+    ssize_t len = readlink(cell_get_string(path_cell), buf, sizeof(buf) - 1);
+    if (len < 0) return cell_error("io-error", cell_string(strerror(errno)));
+    buf[len] = '\0';
+    return cell_string(buf);
+}
+
+/* ≋⊙⊕⊞ - create FIFO */
+Cell* prim_mkfifo(Cell* args) {
+    Cell* path_cell = arg1(args);
+    Cell* mode_cell = arg2(args);
+    if (!cell_is_string(path_cell)) return cell_error("type-error", path_cell);
+
+    mode_t mode = 0644;
+    if (cell_is_number(mode_cell)) mode = (mode_t)cell_get_number(mode_cell);
+
+    if (mkfifo(cell_get_string(path_cell), mode) != 0)
+        return cell_error("io-error", cell_string(strerror(errno)));
+    return cell_bool(true);
+}
+
+/* ≋⊙ - file-info (stat) - returns struct */
+Cell* prim_file_info(Cell* args) {
+    Cell* path_cell = arg1(args);
+    Cell* follow_cell = cell_is_pair(cell_cdr(args)) ? arg2(args) : cell_bool(true);
+    if (!cell_is_string(path_cell)) return cell_error("type-error", path_cell);
+
+    struct stat st;
+    int rc;
+    if (cell_is_bool(follow_cell) && !cell_get_bool(follow_cell))
+        rc = lstat(cell_get_string(path_cell), &st);
+    else
+        rc = stat(cell_get_string(path_cell), &st);
+
+    if (rc != 0) return cell_error("io-error", cell_string(strerror(errno)));
+
+    /* Build alist of fields */
+    Cell* fields = cell_nil();
+    /* Build in reverse order so first field is first in list */
+    fields = cell_cons(cell_cons(cell_symbol("ctime"), cell_number((double)st.st_ctime)), fields);
+    fields = cell_cons(cell_cons(cell_symbol("mtime"), cell_number((double)st.st_mtime)), fields);
+    fields = cell_cons(cell_cons(cell_symbol("atime"), cell_number((double)st.st_atime)), fields);
+    fields = cell_cons(cell_cons(cell_symbol("blocks"), cell_number((double)st.st_blocks)), fields);
+    fields = cell_cons(cell_cons(cell_symbol("blksize"), cell_number((double)st.st_blksize)), fields);
+    fields = cell_cons(cell_cons(cell_symbol("size"), cell_number((double)st.st_size)), fields);
+    fields = cell_cons(cell_cons(cell_symbol("rdev"), cell_number((double)st.st_rdev)), fields);
+    fields = cell_cons(cell_cons(cell_symbol("gid"), cell_number((double)st.st_gid)), fields);
+    fields = cell_cons(cell_cons(cell_symbol("uid"), cell_number((double)st.st_uid)), fields);
+    fields = cell_cons(cell_cons(cell_symbol("nlinks"), cell_number((double)st.st_nlink)), fields);
+    fields = cell_cons(cell_cons(cell_symbol("mode"), cell_number((double)st.st_mode)), fields);
+    fields = cell_cons(cell_cons(cell_symbol("inode"), cell_number((double)st.st_ino)), fields);
+    fields = cell_cons(cell_cons(cell_symbol("device"), cell_number((double)st.st_dev)), fields);
+
+    return cell_struct(STRUCT_LEAF, cell_symbol("file-info"), cell_nil(), fields);
+}
+
+/* ≋⊙* - list directory contents */
+Cell* prim_directory_files(Cell* args) {
+    Cell* path_cell = arg1(args);
+    if (!cell_is_string(path_cell)) return cell_error("type-error", path_cell);
+
+    DIR* d = opendir(cell_get_string(path_cell));
+    if (!d) return cell_error("io-error", cell_string(strerror(errno)));
+
+    Cell* result = cell_nil();
+    struct dirent* entry;
+    while ((entry = readdir(d)) != NULL) {
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
+            continue;
+        result = cell_cons(cell_string(entry->d_name), result);
+    }
+    closedir(d);
+    return result;
+}
+
+/* ≋⊙⊳ - open directory stream */
+Cell* prim_opendir(Cell* args) {
+    Cell* path_cell = arg1(args);
+    if (!cell_is_string(path_cell)) return cell_error("type-error", path_cell);
+
+    DIR* d = opendir(cell_get_string(path_cell));
+    if (!d) return cell_error("io-error", cell_string(strerror(errno)));
+
+    return cell_dirstream(d);
+}
+
+/* ≋⊙← - read next directory entry */
+Cell* prim_readdir(Cell* args) {
+    Cell* dir_cell = arg1(args);
+    if (!cell_is_dir(dir_cell)) return cell_error("type-error", dir_cell);
+    if (!dir_cell->data.dirstream.is_open) return cell_error("dir-closed", dir_cell);
+
+    DIR* d = (DIR*)dir_cell->data.dirstream.dir;
+    struct dirent* entry = readdir(d);
+    if (!entry) return cell_nil();
+    return cell_string(entry->d_name);
+}
+
+/* ≋⊙× - close directory stream */
+Cell* prim_closedir_prim(Cell* args) {
+    Cell* dir_cell = arg1(args);
+    if (!cell_is_dir(dir_cell)) return cell_error("type-error", dir_cell);
+    if (!dir_cell->data.dirstream.is_open) return cell_bool(true);
+
+    closedir((DIR*)dir_cell->data.dirstream.dir);
+    dir_cell->data.dirstream.is_open = false;
+    return cell_bool(true);
+}
+
+/* ≋⊙⊣ - directory generator (returns an iterator-like port) */
+Cell* prim_directory_generator(Cell* args) {
+    /* Same as opendir — user calls readdir repeatedly */
+    return prim_opendir(args);
+}
+
+/* ≋⊙⊕→ - resolve real path */
+Cell* prim_realpath(Cell* args) {
+    Cell* path_cell = arg1(args);
+    if (!cell_is_string(path_cell)) return cell_error("type-error", path_cell);
+
+    char resolved[PATH_MAX];
+    if (realpath(cell_get_string(path_cell), resolved) == NULL)
+        return cell_error("io-error", cell_string(strerror(errno)));
+    return cell_string(resolved);
+}
+
+/* ≋⊙# - filesystem space info */
+Cell* prim_file_space(Cell* args) {
+    Cell* path_cell = arg1(args);
+    if (!cell_is_string(path_cell)) return cell_error("type-error", path_cell);
+
+    struct statvfs st;
+    if (statvfs(cell_get_string(path_cell), &st) != 0)
+        return cell_error("io-error", cell_string(strerror(errno)));
+
+    Cell* fields = cell_nil();
+    fields = cell_cons(cell_cons(cell_symbol("available"), cell_number((double)(st.f_bavail * st.f_frsize))), fields);
+    fields = cell_cons(cell_cons(cell_symbol("free"), cell_number((double)(st.f_bfree * st.f_frsize))), fields);
+    fields = cell_cons(cell_cons(cell_symbol("total"), cell_number((double)(st.f_blocks * st.f_frsize))), fields);
+
+    return cell_struct(STRUCT_LEAF, cell_symbol("file-space"), cell_nil(), fields);
+}
+
+/* ≋⊙⏱ - create temp file, returns pair of (port . path) */
+Cell* prim_create_temp_file(Cell* args) {
+    Cell* prefix_cell = arg1(args);
+    const char* prefix = cell_is_string(prefix_cell) ? cell_get_string(prefix_cell) : "/tmp/guage-";
+
+    char tmpl[1024];
+    snprintf(tmpl, sizeof(tmpl), "%sXXXXXX", prefix);
+
+    int fd = mkstemp(tmpl);
+    if (fd < 0) return cell_error("io-error", cell_string(strerror(errno)));
+
+    FILE* f = fdopen(fd, "w+");
+    if (!f) { close(fd); return cell_error("io-error", cell_string(strerror(errno))); }
+
+    Cell* port = cell_port(f, fd, PORT_INPUT | PORT_OUTPUT | PORT_TEXTUAL, PORT_BUF_BLOCK);
+    Cell* path = cell_string(tmpl);
+    return cell_cons(port, path);
+}
+
+/* ≋⊖ - delete/unlink file */
+Cell* prim_delete_file(Cell* args) {
+    Cell* path_cell = arg1(args);
+    if (!cell_is_string(path_cell)) return cell_error("type-error", path_cell);
+
+    if (unlink(cell_get_string(path_cell)) != 0)
+        return cell_error("io-error", cell_string(strerror(errno)));
+    return cell_bool(true);
+}
+
+/* --- §3.5 Process State --- */
+
+/* ⊙⌂⊙ - get umask */
+Cell* prim_umask_get(Cell* args) {
+    (void)args;
+    mode_t m = umask(0);
+    umask(m);  /* restore */
+    return cell_number((double)m);
+}
+
+/* ⊙⌂⊙≔ - set umask */
+Cell* prim_umask_set(Cell* args) {
+    Cell* mode_cell = arg1(args);
+    if (!cell_is_number(mode_cell)) return cell_error("type-error", mode_cell);
+    mode_t old = umask((mode_t)cell_get_number(mode_cell));
+    return cell_number((double)old);
+}
+
+/* ⊙⌂⊘ - current working directory */
+Cell* prim_cwd(Cell* args) {
+    (void)args;
+    char buf[4096];
+    if (getcwd(buf, sizeof(buf)) == NULL)
+        return cell_error("io-error", cell_string(strerror(errno)));
+    return cell_string(buf);
+}
+
+/* ⊙⌂⊘≔ - change directory */
+Cell* prim_chdir(Cell* args) {
+    Cell* path_cell = arg1(args);
+    if (!cell_is_string(path_cell)) return cell_error("type-error", path_cell);
+
+    if (chdir(cell_get_string(path_cell)) != 0)
+        return cell_error("io-error", cell_string(strerror(errno)));
+    return cell_bool(true);
+}
+
+/* ⊙⌂# - get process id */
+Cell* prim_pid(Cell* args) {
+    (void)args;
+    return cell_number((double)getpid());
+}
+
+/* ⊙⌂△ - adjust process priority */
+Cell* prim_nice(Cell* args) {
+    Cell* inc_cell = arg1(args);
+    if (!cell_is_number(inc_cell)) return cell_error("type-error", inc_cell);
+
+    errno = 0;
+    int result = nice((int)cell_get_number(inc_cell));
+    if (result == -1 && errno != 0)
+        return cell_error("io-error", cell_string(strerror(errno)));
+    return cell_number((double)result);
+}
+
+/* ⊙⌂⊕ - user id */
+Cell* prim_uid(Cell* args) { (void)args; return cell_number((double)getuid()); }
+
+/* ⊙⌂⊕⊕ - group id */
+Cell* prim_gid(Cell* args) { (void)args; return cell_number((double)getgid()); }
+
+/* ⊙⌂⊕* - effective user id */
+Cell* prim_euid(Cell* args) { (void)args; return cell_number((double)geteuid()); }
+
+/* ⊙⌂⊕⊕* - effective group id */
+Cell* prim_egid(Cell* args) { (void)args; return cell_number((double)getegid()); }
+
+/* ⊙⌂⊕⊕*⊕ - supplementary group ids */
+Cell* prim_groups(Cell* args) {
+    (void)args;
+    gid_t groups[128];
+    int n = getgroups(128, groups);
+    if (n < 0) return cell_error("io-error", cell_string(strerror(errno)));
+
+    Cell* result = cell_nil();
+    for (int i = n - 1; i >= 0; i--)
+        result = cell_cons(cell_number((double)groups[i]), result);
+    return result;
+}
+
+/* --- §3.6 User/Group Database --- */
+
+/* ⊙⌂⊕⊙ - user info (by uid or name) */
+Cell* prim_user_info(Cell* args) {
+    Cell* id_cell = arg1(args);
+    struct passwd* pw = NULL;
+
+    if (cell_is_number(id_cell))
+        pw = getpwuid((uid_t)cell_get_number(id_cell));
+    else if (cell_is_string(id_cell))
+        pw = getpwnam(cell_get_string(id_cell));
+    else
+        return cell_error("type-error", id_cell);
+
+    if (!pw) return cell_error("not-found", id_cell);
+
+    Cell* fields = cell_nil();
+    fields = cell_cons(cell_cons(cell_symbol("shell"), cell_string(pw->pw_shell)), fields);
+    fields = cell_cons(cell_cons(cell_symbol("home"), cell_string(pw->pw_dir)), fields);
+    fields = cell_cons(cell_cons(cell_symbol("gid"), cell_number((double)pw->pw_gid)), fields);
+    fields = cell_cons(cell_cons(cell_symbol("uid"), cell_number((double)pw->pw_uid)), fields);
+    fields = cell_cons(cell_cons(cell_symbol("name"), cell_string(pw->pw_name)), fields);
+
+    return cell_struct(STRUCT_LEAF, cell_symbol("user-info"), cell_nil(), fields);
+}
+
+/* ⊙⌂⊕⊕⊙ - group info (by gid or name) */
+Cell* prim_group_info(Cell* args) {
+    Cell* id_cell = arg1(args);
+    struct group* gr = NULL;
+
+    if (cell_is_number(id_cell))
+        gr = getgrgid((gid_t)cell_get_number(id_cell));
+    else if (cell_is_string(id_cell))
+        gr = getgrnam(cell_get_string(id_cell));
+    else
+        return cell_error("type-error", id_cell);
+
+    if (!gr) return cell_error("not-found", id_cell);
+
+    /* Build members list */
+    Cell* members = cell_nil();
+    if (gr->gr_mem) {
+        for (int i = 0; gr->gr_mem[i]; i++)
+            members = cell_cons(cell_string(gr->gr_mem[i]), members);
+    }
+
+    Cell* fields = cell_nil();
+    fields = cell_cons(cell_cons(cell_symbol("members"), members), fields);
+    fields = cell_cons(cell_cons(cell_symbol("gid"), cell_number((double)gr->gr_gid)), fields);
+    fields = cell_cons(cell_cons(cell_symbol("name"), cell_string(gr->gr_name)), fields);
+
+    return cell_struct(STRUCT_LEAF, cell_symbol("group-info"), cell_nil(), fields);
+}
+
+/* --- §3.10 Time --- */
+
+/* ⊙⏱ - posix time (realtime clock) */
+Cell* prim_posix_time(Cell* args) {
+    (void)args;
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+
+    Cell* fields = cell_nil();
+    fields = cell_cons(cell_cons(cell_symbol("nanoseconds"), cell_number((double)ts.tv_nsec)), fields);
+    fields = cell_cons(cell_cons(cell_symbol("seconds"), cell_number((double)ts.tv_sec)), fields);
+
+    return cell_struct(STRUCT_LEAF, cell_symbol("posix-time"), cell_nil(), fields);
+}
+
+/* ⊙⏱⊕ - monotonic time */
+Cell* prim_monotonic_time(Cell* args) {
+    (void)args;
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+
+    Cell* fields = cell_nil();
+    fields = cell_cons(cell_cons(cell_symbol("nanoseconds"), cell_number((double)ts.tv_nsec)), fields);
+    fields = cell_cons(cell_cons(cell_symbol("seconds"), cell_number((double)ts.tv_sec)), fields);
+
+    return cell_struct(STRUCT_LEAF, cell_symbol("monotonic-time"), cell_nil(), fields);
+}
+
+/* --- §3.11 Environment Variables --- */
+
+/* ⊙⌂≋ - get environment variable */
+Cell* prim_getenv(Cell* args) {
+    Cell* name_cell = arg1(args);
+    if (!cell_is_string(name_cell)) return cell_error("type-error", name_cell);
+
+    const char* val = getenv(cell_get_string(name_cell));
+    if (!val) return cell_nil();
+    return cell_string(val);
+}
+
+/* ⊙⌂≋≔ - set environment variable */
+Cell* prim_setenv(Cell* args) {
+    Cell* name_cell = arg1(args);
+    Cell* val_cell = arg2(args);
+    if (!cell_is_string(name_cell)) return cell_error("type-error", name_cell);
+    if (!cell_is_string(val_cell)) return cell_error("type-error", val_cell);
+
+    if (setenv(cell_get_string(name_cell), cell_get_string(val_cell), 1) != 0)
+        return cell_error("io-error", cell_string(strerror(errno)));
+    return cell_bool(true);
+}
+
+/* ⊙⌂≋⊘ - unset environment variable */
+Cell* prim_unsetenv(Cell* args) {
+    Cell* name_cell = arg1(args);
+    if (!cell_is_string(name_cell)) return cell_error("type-error", name_cell);
+
+    if (unsetenv(cell_get_string(name_cell)) != 0)
+        return cell_error("io-error", cell_string(strerror(errno)));
+    return cell_bool(true);
+}
+
+/* --- §3.12 Terminal --- */
+
+/* ⊞⊙? - is port a terminal? */
+Cell* prim_is_terminal(Cell* args) {
+    Cell* port_cell = arg1(args);
+    if (!cell_is_port(port_cell)) return cell_error("type-error", port_cell);
+    return cell_bool(isatty(port_cell->data.port.fd) != 0);
+}
+
+/* --- R7RS System Extras --- */
+
+/* ⊙⌂ - command line arguments */
+Cell* prim_argv(Cell* args) {
+    (void)args;
+    int argc = guage_get_argc();
+    char** argv = guage_get_argv();
+
+    Cell* result = cell_nil();
+    for (int i = argc - 1; i >= 0; i--)
+        result = cell_cons(cell_string(argv[i]), result);
+    return result;
+}
+
+/* ⊙⊘ - exit process */
+Cell* prim_exit_process(Cell* args) {
+    Cell* code_cell = arg1(args);
+    int code = cell_is_number(code_cell) ? (int)cell_get_number(code_cell) : 0;
+    exit(code);
+    return cell_nil(); /* unreachable */
+}
+
+/* ⊙⏱≈ - current second (seconds since epoch as float) */
+Cell* prim_current_second(Cell* args) {
+    (void)args;
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    return cell_number((double)ts.tv_sec + (double)ts.tv_nsec / 1e9);
+}
+
+/* ⊙⏱⊕# - jiffy (high-res monotonic counter) */
+Cell* prim_jiffy(Cell* args) {
+    (void)args;
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return cell_number((double)ts.tv_sec * 1e9 + (double)ts.tv_nsec);
+}
+
+/* ⊙⏱⊕≈ - jiffies per second */
+Cell* prim_jps(Cell* args) {
+    (void)args;
+    return cell_number(1e9); /* nanosecond resolution */
+}
+
 /* Primitive table - PURE SYMBOLS ONLY
  * EVERY primitive MUST have documentation */
 static Primitive primitives[] = {
@@ -9541,8 +10365,7 @@ static Primitive primitives[] = {
     /* Comparison & Logic */
     {"≡", prim_equal, 2, {"Test if two values are equal", "α → α → 𝔹"}},
     {"≢", prim_not_equal, 2, {"Test if two values are not equal", "α → α → 𝔹"}},
-    {"∧", prim_and, 2, {"Logical AND of two booleans", "𝔹 → 𝔹 → 𝔹"}},
-    {"∨", prim_or, 2, {"Logical OR of two booleans", "𝔹 → 𝔹 → 𝔹"}},
+    /* ∧ and ∨ are now special forms in eval.c (short-circuit + TCO) */
     {"¬", prim_not, 1, {"Logical NOT of boolean", "𝔹 → 𝔹"}},
 
     /* Arithmetic */
@@ -9813,6 +10636,10 @@ static Primitive primitives[] = {
     {"≈∅?", prim_str_empty, 1, {"Test if string is empty", "≈ → 𝔹"}},
     {"≈≡", prim_str_equal, 2, {"Test string equality", "≈ → ≈ → 𝔹"}},
     {"≈<", prim_str_less, 2, {"Test string ordering", "≈ → ≈ → 𝔹"}},
+    {"≈→#", prim_str_char_code, 2, {"Get character code at index", "≈ → ℕ → ℕ"}},
+    {"#→≈", prim_code_to_char, 1, {"Convert code to single-char string", "ℕ → ≈"}},
+    {"≈↑", prim_str_upcase, 1, {"Convert string to uppercase", "≈ → ≈"}},
+    {"≈↓", prim_str_downcase, 1, {"Convert string to lowercase", "≈ → ≈"}},
 
     /* I/O operations - Console */
     {"≋", prim_print, 1, {"Print value to stdout with newline", "α → α"}},
@@ -9977,6 +10804,80 @@ static Primitive primitives[] = {
     {"⊣∃", prim_iter_any, 2, {"Any element matches (short-circuit)", "⊣ → (α→𝔹) → 𝔹"}},
     {"⊣∀", prim_iter_all, 2, {"All elements match (short-circuit)", "⊣ → (α→𝔹) → 𝔹"}},
     {"⊣⊙", prim_iter_find, 2, {"Find first matching element", "⊣ → (α→𝔹) → α|∅"}},
+
+    /* §3.2 I/O Ports (SRFI-170) */
+    {"⊞⊳", prim_port_open, 2, {"Open file as port", "≈ → :symbol → ⊞"}},
+    {"⊞⊳#", prim_fd_to_port, 2, {"Wrap fd as port", "ℕ → :symbol → ⊞"}},
+    {"⊞←", prim_port_read_line, 1, {"Read line from port", "⊞ → ≈"}},
+    {"⊞←◈", prim_port_read_bytes, 2, {"Read N bytes from port", "⊞ → ℕ → ◈"}},
+    {"⊞←*", prim_port_read_all, 1, {"Read all remaining from port", "⊞ → ≈"}},
+    {"⊞→", prim_port_write, 2, {"Write string to port", "⊞ → ≈ → ℕ"}},
+    {"⊞→◈", prim_port_write_bytes, 2, {"Write bytes to port", "⊞ → ◈ → ℕ"}},
+    {"⊞×", prim_port_close, 1, {"Close port", "⊞ → 𝔹"}},
+    {"⊞∅?", prim_port_eof, 1, {"Test if port at EOF", "⊞ → 𝔹"}},
+    {"⊞⊙", prim_port_flush, 1, {"Flush port output", "⊞ → 𝔹"}},
+    {"⊞⊳₀", prim_port_stdin, 0, {"Get stdin port", "→ ⊞"}},
+    {"⊞⊲₀", prim_port_stdout, 0, {"Get stdout port", "→ ⊞"}},
+    {"⊞⊲₁", prim_port_stderr, 0, {"Get stderr port", "→ ⊞"}},
+
+    /* §3.3 File System (SRFI-170) */
+    {"≋⊙⊕", prim_mkdir, 2, {"Create directory", "≈ → ℕ → 𝔹"}},
+    {"≋⊙⊘", prim_rmdir, 1, {"Delete directory", "≈ → 𝔹"}},
+    {"≋⇔", prim_rename, 2, {"Rename file", "≈ → ≈ → 𝔹"}},
+    {"≋⊙≔", prim_chmod, 2, {"Set file mode", "≈ → ℕ → 𝔹"}},
+    {"≋⊙⊕≔", prim_chown, 3, {"Set file owner", "≈ → ℕ → ℕ → 𝔹"}},
+    {"≋⏱≔", prim_utimes, 3, {"Set file times", "≈ → ℕ → ℕ → 𝔹"}},
+    {"≋⊂", prim_truncate, 2, {"Truncate file", "≈ → ℕ → 𝔹"}},
+    {"≋⊕", prim_link, 2, {"Create hard link", "≈ → ≈ → 𝔹"}},
+    {"≋⊕→", prim_symlink, 2, {"Create symbolic link", "≈ → ≈ → 𝔹"}},
+    {"≋→", prim_readlink, 1, {"Read symbolic link target", "≈ → ≈"}},
+    {"≋⊙⊕⊞", prim_mkfifo, 2, {"Create FIFO", "≈ → ℕ → 𝔹"}},
+    {"≋⊙", prim_file_info, 1, {"Get file info (stat)", "≈ → ⊚"}},
+    {"≋⊙*", prim_directory_files, 1, {"List directory contents", "≈ → [≈]"}},
+    {"≋⊙⊳", prim_opendir, 1, {"Open directory stream", "≈ → ⊙dir"}},
+    {"≋⊙←", prim_readdir, 1, {"Read next directory entry", "⊙dir → ≈|∅"}},
+    {"≋⊙×", prim_closedir_prim, 1, {"Close directory stream", "⊙dir → 𝔹"}},
+    {"≋⊙⊣", prim_directory_generator, 1, {"Directory generator", "≈ → ⊙dir"}},
+    {"≋⊙⊕→", prim_realpath, 1, {"Resolve real path", "≈ → ≈"}},
+    {"≋⊙#", prim_file_space, 1, {"Get filesystem space info", "≈ → ⊚"}},
+    {"≋⊙⏱", prim_create_temp_file, 1, {"Create temp file", "≈ → ⟨⊞ ≈⟩"}},
+    {"≋⊖", prim_delete_file, 1, {"Delete/unlink file", "≈ → 𝔹"}},
+
+    /* §3.5 Process State (SRFI-170) */
+    {"⊙⌂⊙", prim_umask_get, 0, {"Get current umask", "→ ℕ"}},
+    {"⊙⌂⊙≔", prim_umask_set, 1, {"Set umask", "ℕ → ℕ"}},
+    {"⊙⌂⊘", prim_cwd, 0, {"Get current directory", "→ ≈"}},
+    {"⊙⌂⊘≔", prim_chdir, 1, {"Change directory", "≈ → 𝔹"}},
+    {"⊙⌂#", prim_pid, 0, {"Get process ID", "→ ℕ"}},
+    {"⊙⌂△", prim_nice, 1, {"Adjust priority", "ℕ → ℕ"}},
+    {"⊙⌂⊕", prim_uid, 0, {"Get user ID", "→ ℕ"}},
+    {"⊙⌂⊕⊕", prim_gid, 0, {"Get group ID", "→ ℕ"}},
+    {"⊙⌂⊕*", prim_euid, 0, {"Get effective user ID", "→ ℕ"}},
+    {"⊙⌂⊕⊕*", prim_egid, 0, {"Get effective group ID", "→ ℕ"}},
+    {"⊙⌂⊕⊕*⊕", prim_groups, 0, {"Get supplementary group IDs", "→ [ℕ]"}},
+
+    /* §3.6 User/Group Database (SRFI-170) */
+    {"⊙⌂⊕⊙", prim_user_info, 1, {"Get user info by uid or name", "ℕ|≈ → ⊚"}},
+    {"⊙⌂⊕⊕⊙", prim_group_info, 1, {"Get group info by gid or name", "ℕ|≈ → ⊚"}},
+
+    /* §3.10 Time (SRFI-170) */
+    {"⊙⏱", prim_posix_time, 0, {"Get POSIX realtime clock", "→ ⊚"}},
+    {"⊙⏱⊕", prim_monotonic_time, 0, {"Get monotonic clock", "→ ⊚"}},
+
+    /* §3.11 Environment Variables (SRFI-170) */
+    {"⊙⌂≋", prim_getenv, 1, {"Get environment variable", "≈ → ≈|∅"}},
+    {"⊙⌂≋≔", prim_setenv, 2, {"Set environment variable", "≈ → ≈ → 𝔹"}},
+    {"⊙⌂≋⊘", prim_unsetenv, 1, {"Unset environment variable", "≈ → 𝔹"}},
+
+    /* §3.12 Terminal (SRFI-170) */
+    {"⊞⊙?", prim_is_terminal, 1, {"Test if port is terminal", "⊞ → 𝔹"}},
+
+    /* R7RS System Extras */
+    {"⊙⌂", prim_argv, 0, {"Get command line arguments", "→ [≈]"}},
+    {"⊙⊘", prim_exit_process, 1, {"Exit process", "ℕ → ⊥"}},
+    {"⊙⏱≈", prim_current_second, 0, {"Current second (epoch float)", "→ ℕ"}},
+    {"⊙⏱⊕#", prim_jiffy, 0, {"High-res monotonic counter", "→ ℕ"}},
+    {"⊙⏱⊕≈", prim_jps, 0, {"Jiffies per second", "→ ℕ"}},
 
     {NULL, NULL, 0, {NULL, NULL}}
 };

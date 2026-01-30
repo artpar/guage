@@ -204,33 +204,33 @@
 ; Extended: Case conversion (basic ASCII)
 ; ============================================================================
 
-; ⌂: Convert character to uppercase (ASCII a-z only)
-; Note: Placeholder - needs char→code primitive
+; ⌂: Convert single-char symbol to uppercase (ASCII a-z only)
+; ∈: :char → :char
 (≔ char-to-upper (λ (c)
-  ; TODO: This requires numeric character codes
-  c))
+  ((λ (code)
+    (? (∧ (≥ code #97) (≤ code #122))
+       (≈→ (#→≈ (⊖ code #32)) #0)
+       c))
+   (≈→# (≈ c) #0))))
 
-; ⌂: Convert character to lowercase (ASCII A-Z only)
-; Note: Placeholder - needs char→code primitive
+; ⌂: Convert single-char symbol to lowercase (ASCII A-Z only)
+; ∈: :char → :char
 (≔ char-to-lower (λ (c)
-  ; TODO: This requires numeric character codes
-  c))
+  ((λ (code)
+    (? (∧ (≥ code #65) (≤ code #90))
+       (≈→ (#→≈ (⊕ code #32)) #0)
+       c))
+   (≈→# (≈ c) #0))))
 
 ; ⌂: Convert string to uppercase (ASCII only)
-; Note: Placeholder - needs char→code primitive
-(≔ string-upcase (λ (s)
-  ; TODO: Implement when we have char→code primitive
-  s))
+; ∈: ≈ → ≈
+; Delegates to C-side ≈↑ primitive for single-pass efficiency
+(≔ string-upcase ≈↑)
 
 ; ⌂: Convert string to lowercase (ASCII only)
-; Note: Placeholder - needs char→code primitive
-(≔ string-downcase (λ (s)
-  ; TODO: Implement when we have char→code primitive
-  s))
-
-; Aliases: ≈↑, ≈↓
-(≔ ≈↑ string-upcase)
-(≔ ≈↓ string-downcase)
+; ∈: ≈ → ≈
+; Delegates to C-side ≈↓ primitive for single-pass efficiency
+(≔ string-downcase ≈↓)
 
 ; ============================================================================
 ; Module complete - Core string utilities available

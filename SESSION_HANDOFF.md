@@ -1,11 +1,101 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-01-30 (Day 118 COMPLETE)
+Updated: 2026-01-30 (Day 121 COMPLETE)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 118 - First-Class Iterator Protocol (2026-01-30)
+# Session Handoff: Day 121 - SRFI-170 POSIX-lite (2026-01-30)
+
+## Day 121 Progress - Full SRFI-170 POSIX System Interface
+
+**RESULT:** 119 test files (116 passing, 3 pre-existing timeouts), 59 new POSIX primitives, 2 new cell types, 32 stdlib wrappers, 44 POSIX assertions all passing
+
+### Changes:
+
+1. **CELL_PORT type** — New cell type wrapping `FILE*` with port-type flags (input/output/binary/textual) and buffer mode. Auto-closes on GC (guards stdin/stdout/stderr).
+
+2. **CELL_DIR type** — New cell type wrapping `DIR*` for directory stream iteration. Auto-closes on GC.
+
+3. **59 new C primitives** covering full SRFI-170:
+   - §3.2 I/O Ports (13): open, fd→port, read-line, read-bytes, read-all, write, write-bytes, close, eof?, flush, stdin/stdout/stderr
+   - §3.3 File System (21): mkdir, rmdir, rename, chmod, chown, utimes, truncate, link, symlink, readlink, mkfifo, stat, directory-files, opendir, readdir, closedir, directory-generator, realpath, file-space, create-temp-file, delete-file
+   - §3.5 Process State (11): umask get/set, cwd, chdir, pid, nice, uid, gid, euid, egid, groups
+   - §3.6 User/Group DB (2): user-info, group-info (by id or name)
+   - §3.10 Time (2): posix-time, monotonic-time (struct with seconds + nanoseconds)
+   - §3.11 Environment (3): getenv, setenv, unsetenv
+   - §3.12 Terminal (1): isatty
+   - R7RS extras (5): argv, exit, current-second, jiffy, jiffies-per-second
+
+4. **stdlib/posix.scm** — 32 Guage stdlib wrappers: file-info predicates (7), file-info accessors (13), user-info accessors (5), group-info accessors (3), time accessors (2), file-space accessors (3), temp-file helpers (2)
+
+5. **test_posix.test** — 44 tests covering all POSIX sections (ports, file system, process state, user/group, time, environment, terminal, R7RS extras)
+
+### Files Modified (6) + 2 New:
+- `bootstrap/cell.h` — Added CELL_PORT, CELL_DIR types, PortTypeFlags, PortBufferMode enums, port/dir structs
+- `bootstrap/cell.c` — Port/dir creation, release (fclose/closedir), print, compare support
+- `bootstrap/primitives.h` — 59 new primitive declarations
+- `bootstrap/primitives.c` — 59 new primitive implementations + table entries, POSIX headers
+- `bootstrap/main.c` — Static argc/argv storage for ⊙⌂ primitive
+- **NEW** `bootstrap/stdlib/posix.scm` — 32 stdlib wrappers
+- **NEW** `bootstrap/tests/test_posix.test` — 44 POSIX tests
+
+### Primitive Count: 407 (348 prior + 59 POSIX)
+
+---
+
+## Day 120 Progress - TCO Cleanup + Short-Circuit ∧/∨
+
+**RESULT:** 118/118 test files passing (100%), 1 new test file (TCO), 253 primitives (2 moved to special forms)
+
+### Changes:
+
+1. **∧/∨ converted to special forms** — Short-circuit evaluation with TCO for second arg. `(∧ #f (⚠ :boom))` now returns `#f` instead of crashing. Second argument is in tail position via `goto tail_call`.
+
+2. **Removed trampoline dead code** — Cleaned `#if USE_TRAMPOLINE` block from main.c, removed stale "trampoline" comments from eval.h.
+
+3. **Added `*.dSYM` to .gitignore** — Deleted stale `test_trampoline.dSYM/` directory.
+
+### Files Modified (8) + 1 New Test:
+- `bootstrap/intern.h` — Added `SYM_ID_AND` (28), `SYM_ID_OR` (29)
+- `bootstrap/intern.c` — Added ∧/∨ UTF-8 to pre-intern table
+- `bootstrap/eval.c` — Added ∧/∨ special forms with short-circuit + TCO
+- `bootstrap/primitives.c` — Removed `prim_and`/`prim_or` functions + table entries
+- `bootstrap/primitives.h` — Removed `prim_and`/`prim_or` declarations
+- `bootstrap/main.c` — Removed `#if USE_TRAMPOLINE` block, cleaned comment
+- `bootstrap/eval.h` — Removed trampoline comments
+- `.gitignore` — Added `*.dSYM`
+- `SPEC.md` — Updated ∧/∨ docs as special forms with short-circuit semantics
+- `bootstrap/tests/test_tco.test` (NEW) — TCO stress test + short-circuit ∧/∨ tests
+
+---
+
+## Day 119 Progress - Char↔Code Primitives + Case Conversion
+
+**RESULT:** 117/117 test files passing (100%), 1 new test file (Char), 255 total primitives
+
+### New Primitives (4):
+- `≈→#` (str-char-code) — Get ASCII character code at index: `(≈→# "Hello" #0)` → `#72`
+- `#→≈` (code-to-char) — Convert code 0-127 to single-char string: `(#→≈ #65)` → `"A"`
+- `≈↑` (str-upcase) — Single-pass C-side uppercase: `(≈↑ "hello")` → `"HELLO"`
+- `≈↓` (str-downcase) — Single-pass C-side lowercase: `(≈↓ "HELLO")` → `"hello"`
+
+### stdlib/string.scm Updated:
+- `char-to-upper` / `char-to-lower` — Now functional using `≈→#` + `#→≈` with range checks
+- `string-upcase` / `string-downcase` — Delegate to C-side `≈↑` / `≈↓` primitives
+
+### Stale Doc Cleanup:
+- Archived 15 stale planning docs to `docs/archive/2026-01/plans/`
+- `docs/planning/` directory now empty (all plans completed or outdated)
+
+### Files Modified (5) + 1 New Test:
+- `bootstrap/primitives.c` — 4 new primitive functions + 4 table entries
+- `bootstrap/primitives.h` — 4 new declarations
+- `bootstrap/stdlib/string.scm` — Replaced placeholder stubs with real implementations
+- `SPEC.md` — Added 4 new primitives to string operations table
+- `bootstrap/tests/test_char.test` (NEW) — 19 assertions covering char↔code roundtrips + case conversion
+
+---
 
 ## Day 118 Progress - Iterator (`⊣`) — Morsel-Driven Batch Iteration with Selection Vectors
 

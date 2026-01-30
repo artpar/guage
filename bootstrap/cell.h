@@ -37,8 +37,25 @@ typedef enum {
     CELL_HEAP,           /* △ - priority queue (4-ary min-heap, SoA, cache-line aligned) */
     CELL_SORTED_MAP,     /* ⋔ - sorted map (Algorithmica-grade SIMD B-tree) */
     CELL_TRIE,           /* ⊮ - trie (ART with SIMD Node16 + path compression) */
-    CELL_ITERATOR        /* ⊣ - iterator (morsel-driven batch iteration) */
+    CELL_ITERATOR,       /* ⊣ - iterator (morsel-driven batch iteration) */
+    CELL_PORT,           /* ⊞⊳ - I/O port (FILE* wrapper) */
+    CELL_DIR             /* ≋⊙ - directory stream (DIR* wrapper) */
 } CellType;
+
+/* Port Type Flags */
+typedef enum {
+    PORT_INPUT     = 1 << 0,
+    PORT_OUTPUT    = 1 << 1,
+    PORT_BINARY    = 1 << 2,
+    PORT_TEXTUAL   = 1 << 3
+} PortTypeFlags;
+
+/* Port Buffer Mode */
+typedef enum {
+    PORT_BUF_NONE  = 0,
+    PORT_BUF_LINE  = 1,
+    PORT_BUF_BLOCK = 2
+} PortBufferMode;
 
 /* Linear Type Flags */
 typedef enum {
@@ -212,6 +229,17 @@ struct Cell {
         struct {
             void*    iter_data;   /* IteratorData* (defined in iter_batch.h) */
         } iterator;
+        struct {
+            void*           file;       /* FILE* (cast to avoid stdio include) */
+            int             fd;         /* Underlying file descriptor */
+            PortTypeFlags   flags;      /* Input/output/binary/textual */
+            PortBufferMode  buf_mode;   /* Buffer mode */
+            bool            is_open;    /* Whether port is still open */
+        } port;
+        struct {
+            void*   dir;        /* DIR* (cast to avoid dirent include) */
+            bool    is_open;    /* Whether directory stream is open */
+        } dirstream;
     } data;
 };
 
@@ -230,6 +258,9 @@ Cell* cell_graph(GraphType graph_type, Cell* nodes, Cell* edges, Cell* metadata)
 Cell* cell_actor(int actor_id);
 Cell* cell_channel(int channel_id);
 Cell* cell_box(Cell* value);
+
+Cell* cell_port(void* file, int fd, PortTypeFlags flags, PortBufferMode buf_mode);
+Cell* cell_dirstream(void* dir);
 
 /* Cell accessors */
 double cell_get_number(Cell* c);
@@ -397,6 +428,10 @@ Cell* cell_iterator_take(Cell* it, uint32_t n);
 Cell* cell_iterator_drop(Cell* it, uint32_t n);
 Cell* cell_iterator_chain(Cell* it1, Cell* it2);
 Cell* cell_iterator_zip(Cell* it1, Cell* it2);
+
+/* Port/Dir predicates and accessors */
+bool cell_is_port(Cell* c);
+bool cell_is_dir(Cell* c);
 
 /* Total ordering for all Cell types (Erlang term ordering) */
 int cell_compare(Cell* a, Cell* b);
