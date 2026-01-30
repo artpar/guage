@@ -1,4 +1,5 @@
 #include "cell.h"
+#include "intern.h"
 #include "siphash.h"
 #include "swisstable.h"
 #include <stdlib.h>
@@ -10,10 +11,12 @@
 static Cell* cell_alloc(CellType type) {
     Cell* c = (Cell*)malloc(sizeof(Cell));
     assert(c != NULL);
+    memset(c, 0, sizeof(Cell));
 
     c->type = type;
     c->refcount = 1;
     c->weak_refcount = 0;
+    c->sym_id = 0;
     c->linear_flags = LINEAR_NONE;
     c->caps = CAP_READ | CAP_WRITE | CAP_SHARE;  /* Default capabilities */
     c->marked = false;
@@ -36,7 +39,9 @@ Cell* cell_bool(bool b) {
 
 Cell* cell_symbol(const char* sym) {
     Cell* c = cell_alloc(CELL_ATOM_SYMBOL);
-    c->data.atom.symbol = strdup(sym);
+    InternResult r = intern(sym);
+    c->data.atom.symbol = r.canonical;
+    c->sym_id = r.id;
     return c;
 }
 
@@ -159,6 +164,11 @@ const char* cell_get_symbol(Cell* c) {
     return c->data.atom.symbol;
 }
 
+uint16_t cell_get_symbol_id(Cell* c) {
+    assert(c->type == CELL_ATOM_SYMBOL);
+    return c->sym_id;
+}
+
 const char* cell_get_string(Cell* c) {
     assert(c->type == CELL_ATOM_STRING);
     return c->data.atom.string;
@@ -203,7 +213,7 @@ void cell_release(Cell* c) {
                 }
                 break;
             case CELL_ATOM_SYMBOL:
-                free((void*)c->data.atom.symbol);
+                /* Interned strings are immortal — no free */
                 break;
             case CELL_ATOM_STRING:
                 free((void*)c->data.atom.string);
@@ -495,26 +505,31 @@ GraphType cell_graph_type(Cell* c) {
 
 Cell* cell_graph_nodes(Cell* c) {
     assert(c->type == CELL_GRAPH);
+    cell_retain(c->data.graph.nodes);
     return c->data.graph.nodes;
 }
 
 Cell* cell_graph_edges(Cell* c) {
     assert(c->type == CELL_GRAPH);
+    cell_retain(c->data.graph.edges);
     return c->data.graph.edges;
 }
 
 Cell* cell_graph_metadata(Cell* c) {
     assert(c->type == CELL_GRAPH);
+    cell_retain(c->data.graph.metadata);
     return c->data.graph.metadata;
 }
 
 Cell* cell_graph_entry(Cell* c) {
     assert(c->type == CELL_GRAPH);
+    if (c->data.graph.entry) cell_retain(c->data.graph.entry);
     return c->data.graph.entry;
 }
 
 Cell* cell_graph_exit(Cell* c) {
     assert(c->type == CELL_GRAPH);
+    if (c->data.graph.exit) cell_retain(c->data.graph.exit);
     return c->data.graph.exit;
 }
 
@@ -641,7 +656,7 @@ bool cell_equal(Cell* a, Cell* b) {
         case CELL_ATOM_BOOL:
             return a->data.atom.boolean == b->data.atom.boolean;
         case CELL_ATOM_SYMBOL:
-            return strcmp(a->data.atom.symbol, b->data.atom.symbol) == 0;
+            return a->data.atom.symbol == b->data.atom.symbol;
         case CELL_ATOM_STRING:
             return strcmp(a->data.atom.string, b->data.atom.string) == 0;
         case CELL_ATOM_NIL:
@@ -828,7 +843,7 @@ uint64_t cell_hash(Cell* c) {
             return guage_siphash(&n, sizeof(n));
         }
         case CELL_ATOM_SYMBOL:
-            return guage_siphash(c->data.atom.symbol, strlen(c->data.atom.symbol));
+            return intern_hash_by_id(c->sym_id);
         case CELL_ATOM_STRING:
             return guage_siphash(c->data.atom.string, strlen(c->data.atom.string));
         case CELL_ATOM_BOOL:

@@ -96,6 +96,9 @@ struct Cell {
     /* Weak reference counting (zombie support) */
     uint16_t weak_refcount;
 
+    /* Interned symbol ID (valid when type == CELL_ATOM_SYMBOL) */
+    uint16_t sym_id;
+
     /* Linear type tracking */
     LinearFlags linear_flags;
 
@@ -192,6 +195,7 @@ Cell* cell_box(Cell* value);
 double cell_get_number(Cell* c);
 bool cell_get_bool(Cell* c);
 const char* cell_get_symbol(Cell* c);
+uint16_t cell_get_symbol_id(Cell* c);
 const char* cell_get_string(Cell* c);
 Cell* cell_car(Cell* c);  /* ◁ - head */
 Cell* cell_cdr(Cell* c);  /* ▷ - tail */

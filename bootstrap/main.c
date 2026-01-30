@@ -8,6 +8,7 @@
 #define fileno _fileno
 #endif
 #include "cell.h"
+#include "intern.h"
 #include "siphash.h"
 #include "primitives.h"
 #include "eval.h"
@@ -719,6 +720,8 @@ void repl(void) {
 int main(int argc, char** argv) {
     (void)argc; (void)argv;
     guage_siphash_init();
+    intern_init();
+    intern_preload();
     repl();
     return 0;
 }

@@ -1,4 +1,5 @@
 #include "eval.h"
+#include "intern.h"
 #include "primitives.h"
 #include "debruijn.h"
 #include "pattern.h"
@@ -797,12 +798,9 @@ Cell* env_lookup_index(Cell* env, int index) {
         Cell* elem = cell_car(current);
 
         /* Skip marker */
-        if (cell_is_symbol(elem)) {
-            const char* sym = cell_get_symbol(elem);
-            if (strcmp(sym, ":__indexed__") == 0) {
+        if (cell_is_symbol(elem) && elem->sym_id == SYM_ID_INDEXED) {
                 current = cell_cdr(current);
                 continue;  /* Don't count this as an index */
-            }
         }
 
         /* Found the element at the desired index */
@@ -882,9 +880,8 @@ static Cell* eval_quasiquote(EvalContext* ctx, Cell* env, Cell* expr) {
     if (cell_is_pair(expr)) {
         Cell* first = cell_car(expr);
         if (cell_is_symbol(first)) {
-            const char* sym = cell_get_symbol(first);
             /* Check for unquote: ~ or unquote */
-            if (strcmp(sym, "~") == 0 || strcmp(sym, "unquote") == 0) {
+            if (first->sym_id == SYM_ID_UNQUOTE || first->sym_id == SYM_ID_UNQUOTE_ALT) {
                 /* Evaluate the unquoted expression */
                 Cell* rest = cell_cdr(expr);
                 if (cell_is_nil(rest)) {
@@ -951,11 +948,8 @@ bool env_is_indexed(Cell* env) {
     Cell* current = env;
     while (cell_is_pair(current)) {
         Cell* elem = cell_car(current);
-        if (cell_is_symbol(elem)) {
-            const char* sym = cell_get_symbol(elem);
-            if (strcmp(sym, ":__indexed__") == 0) {
+        if (cell_is_symbol(elem) && elem->sym_id == SYM_ID_INDEXED) {
                 return true;  /* Found marker - this is indexed */
-            }
         }
         current = cell_cdr(current);
     }
@@ -1056,23 +1050,23 @@ tail_call:  /* TCO: loop back here instead of recursive call */
 
         /* Special forms - PURE SYMBOLS ONLY */
         if (cell_is_symbol(first)) {
-            const char* sym = cell_get_symbol(first);
+            uint16_t id = first->sym_id;
 
             /* ⌜ - quote */
-            if (strcmp(sym, "⌜") == 0) {
+            if (id == SYM_ID_QUOTE) {
                 Cell* arg = cell_car(rest);
                 cell_retain(arg);
                 return arg;
             }
 
             /* ⌞̃ - quasiquote (quote with unquote support) */
-            if (strcmp(sym, "⌞̃") == 0 || strcmp(sym, "quasiquote") == 0) {
+            if (id == SYM_ID_QUASIQUOTE || id == SYM_ID_QUASIQUOTE_ALT) {
                 Cell* arg = cell_car(rest);
                 return eval_quasiquote(ctx, env, arg);
             }
 
             /* ⧉⊜ - pattern-based macro (macro-rules) */
-            if (strcmp(sym, "⧉⊜") == 0) {
+            if (id == SYM_ID_MACRO_RULES) {
                 /* Syntax: (⧉⊜ name ((pattern) template) ...) */
                 Cell* name = cell_car(rest);
                 Cell* clauses = cell_cdr(rest);
@@ -1091,7 +1085,7 @@ tail_call:  /* TCO: loop back here instead of recursive call */
             }
 
             /* ⧉ - macro define (3 args) OR arity (1 arg) */
-            if (strcmp(sym, "⧉") == 0) {
+            if (id == SYM_ID_MACRO) {
                 /* Count arguments */
                 int arg_count = 0;
                 Cell* temp = rest;
@@ -1123,7 +1117,7 @@ tail_call:  /* TCO: loop back here instead of recursive call */
             }
 
             /* ≔ - define */
-            if (strcmp(sym, "≔") == 0) {
+            if (id == SYM_ID_DEFINE) {
                 Cell* name = cell_car(rest);
                 Cell* value_expr = cell_car(cell_cdr(rest));
 
@@ -1135,8 +1129,7 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                 if (cell_is_pair(value_expr)) {
                     Cell* first_val = cell_car(value_expr);
                     if (cell_is_symbol(first_val)) {
-                        const char* sym_val = cell_get_symbol(first_val);
-                        is_lambda = (strcmp(sym_val, "λ") == 0);
+                        is_lambda = (first_val->sym_id == SYM_ID_LAMBDA);
                     }
                 }
 
@@ -1157,7 +1150,7 @@ tail_call:  /* TCO: loop back here instead of recursive call */
             }
 
             /* ∈ - type declaration (special form: first arg is NOT evaluated) */
-            if (strcmp(sym, "∈") == 0) {
+            if (id == SYM_ID_TYPE_DECL) {
                 /* Parse: (∈ name type-expr) */
                 Cell* name = cell_car(rest);
                 Cell* type_expr = cell_car(cell_cdr(rest));
@@ -1183,7 +1176,7 @@ tail_call:  /* TCO: loop back here instead of recursive call */
             }
 
             /* ∈? - type query (special form: arg is NOT evaluated) */
-            if (strcmp(sym, "∈?") == 0) {
+            if (id == SYM_ID_TYPE_CHECK) {
                 /* Parse: (∈? name) */
                 Cell* name = cell_car(rest);
 
@@ -1201,7 +1194,7 @@ tail_call:  /* TCO: loop back here instead of recursive call */
             }
 
             /* ∈✓ - type validation (special form: arg is NOT evaluated) */
-            if (strcmp(sym, "∈✓") == 0) {
+            if (id == SYM_ID_TYPE_VALIDATE) {
                 /* Parse: (∈✓ name) */
                 Cell* name = cell_car(rest);
 
@@ -1222,7 +1215,7 @@ tail_call:  /* TCO: loop back here instead of recursive call */
              * For symbols: checks annotation registry first, then infers from value.
              * For expressions: evaluates first, then infers from result.
              */
-            if (strcmp(sym, "∈⍜") == 0) {
+            if (id == SYM_ID_TYPE_INFER) {
                 Cell* expr = cell_car(rest);
                 extern Cell* prim_type_infer(Cell*);
                 extern Cell* prim_type_query(Cell*);
@@ -1267,7 +1260,7 @@ tail_call:  /* TCO: loop back here instead of recursive call */
             }
 
             /* ∈⊢ - type-check function application (special form: first arg NOT evaluated) */
-            if (strcmp(sym, "∈⊢") == 0) {
+            if (id == SYM_ID_TYPE_ASSERT) {
                 /* Parse: (∈⊢ fn-name arg1 arg2 ...) */
                 Cell* fn_name = cell_car(rest);
                 Cell* arg_exprs = cell_cdr(rest);
@@ -1313,7 +1306,7 @@ tail_call:  /* TCO: loop back here instead of recursive call */
              * Infers the type of an expression without evaluating it.
              * Uses primitive signatures, annotation registry, and recursive analysis.
              */
-            if (strcmp(sym, "∈⍜*") == 0) {
+            if (id == SYM_ID_TYPE_INFER_ALL) {
                 Cell* expr = cell_car(rest);
                 extern Cell* prim_type_infer(Cell*);
                 extern Cell* prim_type_prim_sig(Cell*);
@@ -1377,7 +1370,7 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                     Cell* op_args = cell_cdr(expr);
 
                     /* Conditional: (? cond then else) → union of then/else types */
-                    if (cell_is_symbol(op) && strcmp(cell_get_symbol(op), "?") == 0) {
+                    if (cell_is_symbol(op) && op->sym_id == SYM_ID_IF) {
                         /* Skip condition, infer then and else branches */
                         Cell* then_expr = cell_car(cell_cdr(op_args));
                         Cell* else_expr = cell_car(cell_cdr(cell_cdr(op_args)));
@@ -1419,7 +1412,7 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                     }
 
                     /* Lambda: (λ (params...) body) → (→ ⊤ ... body-type) */
-                    if (cell_is_symbol(op) && strcmp(cell_get_symbol(op), "λ") == 0) {
+                    if (cell_is_symbol(op) && op->sym_id == SYM_ID_LAMBDA) {
                         Cell* params = cell_car(op_args);
                         Cell* body = cell_car(cell_cdr(op_args));
 
@@ -1542,7 +1535,7 @@ tail_call:  /* TCO: loop back here instead of recursive call */
             }
 
             /* :λ-converted - already converted nested lambda */
-            if (strcmp(sym, ":λ-converted") == 0) {
+            if (id == SYM_ID_LAMBDA_CONV) {
                 /* Parse: (:λ-converted (param1 param2 ...) converted_body) */
                 Cell* params = cell_car(rest);
                 Cell* converted_body = cell_car(cell_cdr(rest));
@@ -1562,7 +1555,7 @@ tail_call:  /* TCO: loop back here instead of recursive call */
             }
 
             /* λ - lambda */
-            if (strcmp(sym, "λ") == 0) {
+            if (id == SYM_ID_LAMBDA) {
                 /* Parse: (λ (param1 param2 ...) body) */
                 Cell* params = cell_car(rest);
                 Cell* body_expr = cell_car(cell_cdr(rest));
@@ -1605,7 +1598,7 @@ tail_call:  /* TCO: loop back here instead of recursive call */
             }
 
             /* ? - conditional (no "if") */
-            if (strcmp(sym, "?") == 0) {
+            if (id == SYM_ID_IF) {
                 Cell* cond_expr = cell_car(rest);
                 Cell* then_expr = cell_car(cell_cdr(rest));
                 Cell* else_expr = cell_car(cell_cdr(cell_cdr(rest)));
@@ -1625,7 +1618,7 @@ tail_call:  /* TCO: loop back here instead of recursive call */
             }
 
             /* ⪢ - sequencing: evaluate all, return last (Day 107) */
-            if (strcmp(sym, "⪢") == 0) {
+            if (id == SYM_ID_SEQUENCE) {
                 if (!cell_is_pair(rest)) {
                     return cell_error("⪢ requires at least one expression", expr);
                 }
@@ -1649,7 +1642,7 @@ tail_call:  /* TCO: loop back here instead of recursive call */
             }
 
             /* ∇ - pattern match (special form) */
-            if (strcmp(sym, "∇") == 0) {
+            if (id == SYM_ID_RECUR) {
                 Cell* expr_unevaled = cell_car(rest);
                 Cell* clauses_sexpr = cell_car(cell_cdr(rest));
 
@@ -1673,7 +1666,7 @@ tail_call:  /* TCO: loop back here instead of recursive call */
              * Syntax: (⟪ :name :op1 :op2 ...)
              * Registers effect with its operations in the effect registry.
              */
-            if (strcmp(sym, "⟪") == 0) {
+            if (id == SYM_ID_EFFECT_DEF) {
                 Cell* name = cell_car(rest);
                 if (!cell_is_symbol(name)) {
                     return cell_error("effect-declare-requires-symbol", name);
@@ -1703,7 +1696,7 @@ tail_call:  /* TCO: loop back here instead of recursive call */
              * Syntax: (⟪? :name)
              * Returns #t if effect exists, #f otherwise.
              */
-            if (strcmp(sym, "⟪?") == 0) {
+            if (id == SYM_ID_EFFECT_Q) {
                 Cell* name = cell_car(rest);
                 if (!cell_is_symbol(name)) {
                     return cell_error("effect-query-requires-symbol", name);
@@ -1715,7 +1708,7 @@ tail_call:  /* TCO: loop back here instead of recursive call */
              * Syntax: (⟪→ :name)
              * Returns list of operation symbols, or error if undeclared.
              */
-            if (strcmp(sym, "⟪→") == 0) {
+            if (id == SYM_ID_EFFECT_GET) {
                 Cell* name = cell_car(rest);
                 if (!cell_is_symbol(name)) {
                     return cell_error("effect-ops-requires-symbol", name);
@@ -1733,7 +1726,7 @@ tail_call:  /* TCO: loop back here instead of recursive call */
              * Body can perform effects which are dispatched to handlers.
              * Multiple effect handler specs supported.
              */
-            if (strcmp(sym, "⟪⟫") == 0) {
+            if (id == SYM_ID_HANDLE) {
                 Cell* body = cell_car(rest);
                 Cell* handler_specs = cell_cdr(rest);
 
@@ -1834,7 +1827,7 @@ tail_call:  /* TCO: loop back here instead of recursive call */
              * Not calling k aborts — handler result replaces ⟪↺⟫.
              * Implementation: fiber/coroutine-based delimited continuations.
              */
-            if (strcmp(sym, "⟪↺⟫") == 0) {
+            if (id == SYM_ID_RESUME) {
                 Cell* body = cell_car(rest);
                 Cell* handler_specs = cell_cdr(rest);
 
@@ -2109,7 +2102,7 @@ tail_call:  /* TCO: loop back here instead of recursive call */
              * Non-resumable: returns handler function's result directly.
              * Resumable: checks replay buffer, or signals perform-request.
              */
-            if (strcmp(sym, "↯") == 0) {
+            if (id == SYM_ID_PERFORM) {
                 Cell* effect_name_cell = cell_car(rest);
                 Cell* op_name_cell = cell_car(cell_cdr(rest));
                 Cell* arg_exprs = cell_cdr(cell_cdr(rest));
@@ -2282,7 +2275,7 @@ tail_call:  /* TCO: loop back here instead of recursive call */
              * Evaluates body in a new fiber. If body calls (⊸ handler-fn),
              * handler-fn receives one-shot continuation k.
              */
-            if (strcmp(sym, "⟪⊸⟫") == 0) {
+            if (id == SYM_ID_COMPOSE) {
                 Cell* body = cell_car(rest);
 
                 /* Create fiber for body evaluation */
@@ -2377,7 +2370,7 @@ tail_call:  /* TCO: loop back here instead of recursive call */
              * Must be called inside a ⟪⊸⟫ reset block.
              * handler-fn receives one-shot continuation k.
              */
-            if (strcmp(sym, "⊸") == 0) {
+            if (id == SYM_ID_PIPE) {
                 Fiber* fiber = fiber_current();
                 if (!fiber) {
                     return cell_error("shift-outside-reset", cell_nil());

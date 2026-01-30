@@ -23,7 +23,7 @@ else
 endif
 
 # Source files (all in bootstrap/)
-SOURCES = cell.c primitives.c debruijn.c debug.c eval.c cfg.c dfg.c \
+SOURCES = cell.c intern.c primitives.c debruijn.c debug.c eval.c cfg.c dfg.c \
           pattern.c pattern_check.c type.c testgen.c module.c macro.c \
           fiber.c actor.c channel.c linenoise.c main.c
 OBJECTS = $(SOURCES:.c=.o)

@@ -1,0 +1,47 @@
+; Test: String Interning — HFT-grade intern table with symbol IDs
+; Day 112
+
+; 1. Symbol identity (same symbol ≡ same symbol)
+(⊨ (⌜ :intern-symbol-identity) #t (≡ :foo :foo))
+
+; 2. Symbol inequality (different symbols ≢)
+(⊨ (⌜ :intern-symbol-inequality) #t (≢ :foo :bar))
+
+; 3. Define still works
+(≔ intern-test-val #42)
+(⊨ (⌜ :intern-define-works) #42 intern-test-val)
+
+; 4. Lambda still works
+(≔ intern-add (λ (a b) (⊕ a b)))
+(⊨ (⌜ :intern-lambda-works) #7 (intern-add #3 #4))
+
+; 5. Conditional still works
+(⊨ (⌜ :intern-conditional-works) #1 (? #t #1 #2))
+
+; 6. Quote still works
+(⊨ (⌜ :intern-quote-works) :hello (⌜ :hello))
+
+; 7. HashMap with symbol keys
+(≔ intern-map (⊞ (⟨⟩ :x #10) (⟨⟩ :y #20)))
+(⊨ (⌜ :intern-hashmap-symbol-keys) #10 (⊞→ intern-map :x))
+
+; 8. Strings NOT interned (independent of symbols)
+(⊨ (⌜ :intern-string-independent) #t (≡ "hello" "hello"))
+
+; 9. Recursion still works
+(≔ intern-fact (λ (n) (? (≡ n #0) #1 (⊗ n (intern-fact (⊖ n #1))))))
+(⊨ (⌜ :intern-recursion-works) #120 (intern-fact #5))
+
+; 10. Sequence still works
+(⊨ (⌜ :intern-sequence-works) #3 (⪢ #1 #2 #3))
+
+; 11. Effects/handlers still work
+(⟪ :InternEff :get)
+(⊨ (⌜ :intern-effects-work) #42
+  (⟪↺⟫ (↯ :InternEff :get)
+    (:InternEff
+      (:get (λ (k) (k #42))))))
+
+; 12. Delimited continuation still works
+(⊨ (⌜ :intern-delcont-works) #12
+  (⟪⊸⟫ (⊕ (⊸ (λ (k) (k #10))) #2)))
