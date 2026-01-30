@@ -31,7 +31,7 @@ Everything is a **Cell**:
 
 **See:** `KEYWORDS.md` for complete specification.
 
-## Runtime Primitives (156 Total)
+## Runtime Primitives (160 Total)
 
 **Status:** 158 primitives implemented and stable (92/92 test files passing)
 **Note:** All primitives fully working including graph algorithms, actors, channels, supervision, and supervisors
@@ -679,6 +679,16 @@ Erlang-style supervision primitives. Bidirectional links propagate failure (erro
 | `⟳⊛⊖` | `ℕ → ⟳ → 𝔹` | Remove child from supervisor | ✅ |
 
 Supervisors manage groups of child actors and automatically restart them on failure. Strategies: `:one-for-one` (restart only failed child), `:one-for-all` (kill all siblings then restart all), `:rest-for-one` (restart failed child and all children after it). Max 5 restarts per supervisor prevents infinite restart loops. Normal exits do NOT trigger restarts. Children can be added/removed dynamically.
+
+### Process Registry (4) ✅
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `⟳⊜⊕` | `:symbol → ⟳ → #t \| ⚠` | Register actor under a name | ✅ |
+| `⟳⊜⊖` | `:symbol → #t \| ⚠` | Unregister a name | ✅ |
+| `⟳⊜?` | `:symbol → ⟳ \| ∅` | Look up actor by name | ✅ |
+| `⟳⊜*` | `() → [:symbol]` | List all registered names | ✅ |
+
+Erlang-style named process registry. Names are symbols. One name per actor, one actor per name. Dead actors are automatically deregistered via `actor_notify_exit`. `⟳∅` (reset) clears registry for test isolation.
 
 ### Documentation (10) ✅
 | Symbol | Type | Meaning | Status |

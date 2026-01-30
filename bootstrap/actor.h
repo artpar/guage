@@ -12,6 +12,7 @@
 #define MAX_SUPERVISORS 64
 #define MAX_SUP_CHILDREN 32
 #define SUP_MAX_RESTARTS 5
+#define MAX_REGISTRY 256
 
 /* Actor - a fiber with a mailbox */
 typedef struct Actor {
@@ -73,5 +74,13 @@ int         supervisor_spawn_child(Supervisor* sup, int index);
 void        supervisor_handle_exit(Supervisor* sup, int dead_id, Cell* reason);
 Supervisor* supervisor_lookup(int id);
 Supervisor* supervisor_find_for_child(int child_id);
+
+/* Named Process Registry */
+int  actor_registry_register(const char* name, int actor_id);   /* 0=ok, -1=dup name, -2=dup actor, -3=full, -4=dead */
+int  actor_registry_lookup(const char* name);                    /* actor_id or -1 */
+int  actor_registry_unregister_name(const char* name);           /* 0=ok, -1=not found */
+void actor_registry_unregister_actor(int actor_id);              /* silent if not registered */
+Cell* actor_registry_list(void);                                  /* list of name symbols */
+void actor_registry_reset(void);
 
 #endif /* GUAGE_ACTOR_H */

@@ -1,11 +1,42 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-01-30 (Day 94 COMPLETE)
+Updated: 2026-01-30 (Day 95 COMPLETE)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 94 - Dynamic Supervisor Children + Rest-for-One (2026-01-30)
+# Session Handoff: Day 95 - Process Registry / Named Actors (2026-01-30)
+
+## Day 95 Progress - Process Registry (`⟳⊜⊕`, `⟳⊜⊖`, `⟳⊜?`, `⟳⊜*`)
+
+**RESULT:** 93/93 test files passing (100%), 10 new tests (process registry)
+
+### New Feature: Named Process Registry
+
+Erlang-style process registry allowing actors to be registered and looked up by name (symbol). Essential for building discoverable services in actor systems.
+
+**New Primitives (4):**
+- `⟳⊜⊕` (register) — Register actor under a name: `(⟳⊜⊕ :server actor)` → `#t | ⚠`
+- `⟳⊜⊖` (unregister) — Remove name from registry: `(⟳⊜⊖ :server)` → `#t | ⚠`
+- `⟳⊜?` (whereis) — Look up actor by name: `(⟳⊜? :server)` → `⟳ | ∅`
+- `⟳⊜*` (registered) — List all registered names: `(⟳⊜*)` → `[:symbol]`
+
+**Semantics:**
+- Names are symbols (`:server`, `:logger`, etc.)
+- One name → one actor, one actor → one name (no duplicates)
+- Dead actors auto-deregistered via `actor_notify_exit` hook
+- `⟳∅` (reset) clears registry for test isolation
+- Whereis on unregistered name returns `∅` (not error)
+
+**Files Modified (3):**
+- `bootstrap/actor.h` — Registry API declarations, `MAX_REGISTRY`
+- `bootstrap/actor.c` — Registry implementation (parallel arrays), auto-deregister hook in `actor_notify_exit`, reset hook in `actor_reset_all`
+- `bootstrap/primitives.c` — 4 new primitive functions + registration in table
+
+**New Test File (1):**
+- `bootstrap/tests/test_registry.test` — 10 tests: register-basic, register-send-by-name, whereis-unregistered, unregister-basic, register-duplicate-name, register-duplicate-actor, registered-list, dead-actor-auto-deregister, register-not-symbol, register-dead-actor
+
+---
 
 ## Day 94 Progress - Dynamic Child Management (`⟳⊛⊕`, `⟳⊛⊖`) + Rest-for-One Strategy
 

@@ -11,10 +11,10 @@ Purpose: Project overview and quick start
 
 ## Current Status
 
-- **158 primitives** — all working
-- **92/92 test files passing** (100%)
+- **162 primitives** — all working
+- **93/93 test files passing** (100%)
 - **Turing complete** — lambda calculus with De Bruijn indices + TCO
-- **Day 94 complete** — dynamic supervisor children + rest-for-one strategy
+- **Day 95 complete** — process registry (named actors)
 - See [`SESSION_HANDOFF.md`](SESSION_HANDOFF.md) for detailed progress
 
 ## What's Working

@@ -2510,6 +2510,68 @@ Cell* prim_sup_remove_child(Cell* args) {
     return cell_bool(true);
 }
 
+/* ============ Process Registry Primitives ============ */
+
+/* ⟳⊜⊕ - register actor under a name
+ * (⟳⊜⊕ :name actor) → #t | ⚠ */
+Cell* prim_registry_register(Cell* args) {
+    Cell* name_cell = arg1(args);
+    Cell* actor_cell = arg2(args);
+
+    if (!cell_is_symbol(name_cell)) {
+        return cell_error("register-not-symbol", name_cell);
+    }
+    if (!cell_is_actor(actor_cell)) {
+        return cell_error("register-not-actor", actor_cell);
+    }
+
+    const char* name = cell_get_symbol(name_cell);
+    int actor_id = cell_get_actor_id(actor_cell);
+
+    int rc = actor_registry_register(name, actor_id);
+    switch (rc) {
+        case 0:  return cell_bool(true);
+        case -1: return cell_error("register-name-taken", name_cell);
+        case -2: return cell_error("register-actor-already-registered", actor_cell);
+        case -3: return cell_error("register-registry-full", cell_nil());
+        case -4: return cell_error("register-dead-actor", actor_cell);
+        default: return cell_error("register-unknown", cell_nil());
+    }
+}
+
+/* ⟳⊜⊖ - unregister a name
+ * (⟳⊜⊖ :name) → #t | ⚠ */
+Cell* prim_registry_unregister(Cell* args) {
+    Cell* name_cell = arg1(args);
+    if (!cell_is_symbol(name_cell)) {
+        return cell_error("unregister-not-symbol", name_cell);
+    }
+    const char* name = cell_get_symbol(name_cell);
+    int rc = actor_registry_unregister_name(name);
+    if (rc == 0) return cell_bool(true);
+    return cell_error("unregister-not-found", name_cell);
+}
+
+/* ⟳⊜? - look up actor by name
+ * (⟳⊜? :name) → ⟳ | ∅ */
+Cell* prim_registry_whereis(Cell* args) {
+    Cell* name_cell = arg1(args);
+    if (!cell_is_symbol(name_cell)) {
+        return cell_error("whereis-not-symbol", name_cell);
+    }
+    const char* name = cell_get_symbol(name_cell);
+    int id = actor_registry_lookup(name);
+    if (id < 0) return cell_nil();
+    return cell_actor(id);
+}
+
+/* ⟳⊜* - list all registered names
+ * (⟳⊜*) → list of symbols */
+Cell* prim_registry_list(Cell* args) {
+    (void)args;
+    return actor_registry_list();
+}
+
 /* ============ Channel Primitives ============ */
 
 /* ⟿⊚ - create channel
@@ -6556,6 +6618,12 @@ static Primitive primitives[] = {
     {"⟳⊛!", prim_sup_restart_count, 1, {"Get supervisor restart count", "ℕ → ℕ"}},
     {"⟳⊛⊕", prim_sup_add_child, 2, {"Add child to supervisor", "ℕ → λ → ℕ"}},
     {"⟳⊛⊖", prim_sup_remove_child, 2, {"Remove child from supervisor", "ℕ → ⟳ → 𝔹"}},
+
+    /* Process Registry primitives */
+    {"⟳⊜⊕", prim_registry_register, 2, {"Register actor under a name", ":symbol → ⟳ → #t | ⚠"}},
+    {"⟳⊜⊖", prim_registry_unregister, 1, {"Unregister a name", ":symbol → #t | ⚠"}},
+    {"⟳⊜?", prim_registry_whereis, 1, {"Look up actor by name", ":symbol → ⟳ | ∅"}},
+    {"⟳⊜*", prim_registry_list, 0, {"List all registered names", "() → [:symbol]"}},
 
     /* Channel primitives */
     {"⟿⊚", prim_chan_create, -1, {"Create channel (optional capacity)", "() → ⟿ | ℕ → ⟿"}},

@@ -1,0 +1,73 @@
+; Day 95: Process Registry (Named Actors)
+; Tests: register, whereis, unregister, registered list, auto-deregister
+
+;;; Test 1: register-basic — register and whereis returns actor
+(⟳∅)
+(≔ a1 (⟳ (λ (self) (←?))))
+(⟳⊜⊕ :server a1)
+(≔ found (⟳⊜? :server))
+(⊨ (⌜ :register-basic) #t (≡ found a1))
+
+;;; Test 2: register-send-by-name — send to named actor works
+(⟳∅)
+(≔ a2 (⟳ (λ (self) (←?))))
+(⟳⊜⊕ :echo a2)
+(≔ looked-up (⟳⊜? :echo))
+(→! looked-up :ping)
+(⟳! #100)
+(⊨ (⌜ :register-send-by-name) :ping (⟳→ a2))
+
+;;; Test 3: whereis-unregistered — returns ∅
+(⟳∅)
+(⊨ (⌜ :whereis-unregistered) ∅ (⟳⊜? :nonexistent))
+
+;;; Test 4: unregister-basic — unregister then whereis returns ∅
+(⟳∅)
+(≔ a4 (⟳ (λ (self) (←?))))
+(⟳⊜⊕ :temp a4)
+(⟳⊜⊖ :temp)
+(⊨ (⌜ :unregister-basic) ∅ (⟳⊜? :temp))
+
+;;; Test 5: register-duplicate-name — error on same name twice
+(⟳∅)
+(≔ a5a (⟳ (λ (self) (←?))))
+(≔ a5b (⟳ (λ (self) (←?))))
+(⟳⊜⊕ :dup-name a5a)
+(⊨ (⌜ :register-duplicate-name) #t (⚠? (⟳⊜⊕ :dup-name a5b)))
+
+;;; Test 6: register-duplicate-actor — error if actor already registered
+(⟳∅)
+(≔ a6 (⟳ (λ (self) (←?))))
+(⟳⊜⊕ :name1 a6)
+(⊨ (⌜ :register-duplicate-actor) #t (⚠? (⟳⊜⊕ :name2 a6)))
+
+;;; Test 7: registered-list — returns list of all names
+(⟳∅)
+(≔ a7a (⟳ (λ (self) (←?))))
+(≔ a7b (⟳ (λ (self) (←?))))
+(⟳⊜⊕ :svc-a a7a)
+(⟳⊜⊕ :svc-b a7b)
+(≔ names (⟳⊜*))
+; List should have 2 elements
+(⊨ (⌜ :registered-list-count) #t
+  (∧ (¬ (≡ names ∅))
+      (¬ (≡ (▷ names) ∅))))
+
+;;; Test 8: dead-actor-auto-deregister — dead actor removed from registry
+(⟳∅)
+(≔ a8 (⟳ (λ (self) :done)))
+(⟳⊜⊕ :mortal a8)
+(⟳! #100)
+; Actor finished → should be auto-deregistered
+(⊨ (⌜ :dead-actor-auto-deregister) ∅ (⟳⊜? :mortal))
+
+;;; Test 9: register-not-symbol — error if name isn't a symbol
+(⟳∅)
+(≔ a9 (⟳ (λ (self) (←?))))
+(⊨ (⌜ :register-not-symbol) #t (⚠? (⟳⊜⊕ #42 a9)))
+
+;;; Test 10: register-dead-actor — error if actor already dead
+(⟳∅)
+(≔ a10 (⟳ (λ (self) :done)))
+(⟳! #100)
+(⊨ (⌜ :register-dead-actor) #t (⚠? (⟳⊜⊕ :dead a10)))

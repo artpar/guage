@@ -202,6 +202,9 @@ void actor_exit_signal(Actor* target, Actor* sender, Cell* reason) {
 void actor_notify_exit(Actor* exiting, Cell* reason) {
     if (!exiting) return;
 
+    /* Auto-deregister from named registry */
+    actor_registry_unregister_actor(exiting->id);
+
     bool is_error = reason && reason->type == CELL_ERROR;
 
     /* Check if this actor belongs to a supervisor */
@@ -558,8 +561,87 @@ int actor_run_all(int max_ticks) {
     return ticks;
 }
 
+/* ─── Named Process Registry ─── */
+
+static char* g_registry_names[MAX_REGISTRY];
+static int   g_registry_ids[MAX_REGISTRY];
+static int   g_registry_count = 0;
+
+int actor_registry_register(const char* name, int actor_id) {
+    if (g_registry_count >= MAX_REGISTRY) return -3;
+
+    /* Check actor is alive */
+    Actor* actor = actor_lookup(actor_id);
+    if (!actor || !actor->alive) return -4;
+
+    for (int i = 0; i < g_registry_count; i++) {
+        if (strcmp(g_registry_names[i], name) == 0) return -1; /* dup name */
+        if (g_registry_ids[i] == actor_id) return -2;          /* dup actor */
+    }
+
+    g_registry_names[g_registry_count] = strdup(name);
+    g_registry_ids[g_registry_count] = actor_id;
+    g_registry_count++;
+    return 0;
+}
+
+int actor_registry_lookup(const char* name) {
+    for (int i = 0; i < g_registry_count; i++) {
+        if (strcmp(g_registry_names[i], name) == 0) {
+            return g_registry_ids[i];
+        }
+    }
+    return -1;
+}
+
+int actor_registry_unregister_name(const char* name) {
+    for (int i = 0; i < g_registry_count; i++) {
+        if (strcmp(g_registry_names[i], name) == 0) {
+            free(g_registry_names[i]);
+            g_registry_names[i] = g_registry_names[--g_registry_count];
+            g_registry_ids[i] = g_registry_ids[g_registry_count];
+            return 0;
+        }
+    }
+    return -1;
+}
+
+void actor_registry_unregister_actor(int actor_id) {
+    for (int i = 0; i < g_registry_count; i++) {
+        if (g_registry_ids[i] == actor_id) {
+            free(g_registry_names[i]);
+            g_registry_names[i] = g_registry_names[--g_registry_count];
+            g_registry_ids[i] = g_registry_ids[g_registry_count];
+            return;
+        }
+    }
+}
+
+Cell* actor_registry_list(void) {
+    Cell* list = cell_nil();
+    for (int i = g_registry_count - 1; i >= 0; i--) {
+        Cell* sym = cell_symbol(g_registry_names[i]);
+        Cell* new_list = cell_cons(sym, list);
+        cell_release(sym);
+        cell_release(list);
+        list = new_list;
+    }
+    return list;
+}
+
+void actor_registry_reset(void) {
+    for (int i = 0; i < g_registry_count; i++) {
+        free(g_registry_names[i]);
+        g_registry_names[i] = NULL;
+    }
+    g_registry_count = 0;
+}
+
 /* Reset all actors (for testing) */
 void actor_reset_all(void) {
+    /* Reset named registry */
+    actor_registry_reset();
+
     /* Reset supervisors first */
     for (int i = 0; i < g_supervisor_count; i++) {
         if (g_supervisors[i]) {
