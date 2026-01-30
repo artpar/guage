@@ -13,6 +13,7 @@
 #define MAX_SUP_CHILDREN 32
 #define SUP_MAX_RESTARTS 5
 #define MAX_REGISTRY 256
+#define MAX_TIMERS 256
 
 /* Actor - a fiber with a mailbox */
 typedef struct Actor {
@@ -82,5 +83,21 @@ int  actor_registry_unregister_name(const char* name);           /* 0=ok, -1=not
 void actor_registry_unregister_actor(int actor_id);              /* silent if not registered */
 Cell* actor_registry_list(void);                                  /* list of name symbols */
 void actor_registry_reset(void);
+
+/* Timers */
+typedef struct Timer {
+    int id;
+    int target_actor_id;
+    int remaining_ticks;
+    Cell* message;
+    bool active;
+} Timer;
+
+int   timer_create(int target_actor_id, int ticks, Cell* message);  /* returns timer id */
+int   timer_cancel(int timer_id);     /* 0=ok, -1=not found */
+bool  timer_active(int timer_id);
+bool  timer_tick_all(void);           /* called each scheduler tick, returns true if any fired */
+bool  timer_any_pending(void);       /* true if any timers still counting down */
+void  timer_reset_all(void);
 
 #endif /* GUAGE_ACTOR_H */

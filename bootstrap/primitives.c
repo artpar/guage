@@ -2572,6 +2572,76 @@ Cell* prim_registry_list(Cell* args) {
     return actor_registry_list();
 }
 
+/* ============ Timer Primitives ============ */
+
+/* ⟳⏱ - send-after
+ * (⟳⏱ ticks target message) — schedule message after N ticks */
+Cell* prim_timer_send_after(Cell* args) {
+    if (!args || cell_is_nil(args)) {
+        return cell_error("timer-args", cell_nil());
+    }
+    Cell* ticks_cell = cell_car(args);
+    Cell* rest = cell_cdr(args);
+    if (!rest || cell_is_nil(rest)) {
+        return cell_error("timer-args", cell_nil());
+    }
+    Cell* target_cell = cell_car(rest);
+    Cell* rest2 = cell_cdr(rest);
+    if (!rest2 || cell_is_nil(rest2)) {
+        return cell_error("timer-args", cell_nil());
+    }
+    Cell* message = cell_car(rest2);
+
+    if (!cell_is_number(ticks_cell)) {
+        return cell_error("timer-ticks-not-number", ticks_cell);
+    }
+    int ticks = (int)cell_get_number(ticks_cell);
+    if (ticks < 0) ticks = 0;
+
+    if (!cell_is_actor(target_cell)) {
+        return cell_error("timer-target-not-actor", target_cell);
+    }
+    int target_id = cell_get_actor_id(target_cell);
+
+    int tid = timer_create(target_id, ticks, message);
+    if (tid < 0) {
+        return cell_error("timer-limit", cell_nil());
+    }
+    return cell_number(tid);
+}
+
+/* ⟳⏱× - cancel-timer
+ * (⟳⏱× timer-id) — cancel pending timer */
+Cell* prim_timer_cancel(Cell* args) {
+    if (!args || cell_is_nil(args)) {
+        return cell_error("timer-cancel-args", cell_nil());
+    }
+    Cell* id_cell = cell_car(args);
+    if (!cell_is_number(id_cell)) {
+        return cell_error("timer-cancel-not-number", id_cell);
+    }
+    int tid = (int)cell_get_number(id_cell);
+    int result = timer_cancel(tid);
+    if (result < 0) {
+        return cell_error("timer-not-found", id_cell);
+    }
+    return cell_bool(true);
+}
+
+/* ⟳⏱? - timer-active?
+ * (⟳⏱? timer-id) — check if timer is still pending */
+Cell* prim_timer_active(Cell* args) {
+    if (!args || cell_is_nil(args)) {
+        return cell_error("timer-active-args", cell_nil());
+    }
+    Cell* id_cell = cell_car(args);
+    if (!cell_is_number(id_cell)) {
+        return cell_error("timer-active-not-number", id_cell);
+    }
+    int tid = (int)cell_get_number(id_cell);
+    return cell_bool(timer_active(tid));
+}
+
 /* ============ Channel Primitives ============ */
 
 /* ⟿⊚ - create channel
@@ -6624,6 +6694,9 @@ static Primitive primitives[] = {
     {"⟳⊜⊖", prim_registry_unregister, 1, {"Unregister a name", ":symbol → #t | ⚠"}},
     {"⟳⊜?", prim_registry_whereis, 1, {"Look up actor by name", ":symbol → ⟳ | ∅"}},
     {"⟳⊜*", prim_registry_list, 0, {"List all registered names", "() → [:symbol]"}},
+    {"⟳⏱", prim_timer_send_after, 3, {"Send message after N ticks", "ℕ → ⟳ → α → ℕ"}},
+    {"⟳⏱×", prim_timer_cancel, 1, {"Cancel a pending timer", "ℕ → #t | ⚠"}},
+    {"⟳⏱?", prim_timer_active, 1, {"Check if timer is active", "ℕ → #t | #f"}},
 
     /* Channel primitives */
     {"⟿⊚", prim_chan_create, -1, {"Create channel (optional capacity)", "() → ⟿ | ℕ → ⟿"}},

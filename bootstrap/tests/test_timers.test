@@ -1,0 +1,90 @@
+; Day 96: Timer tests — ⟳⏱, ⟳⏱×, ⟳⏱?
+
+; Reset state
+(⟳∅)
+
+; === timer-basic ===
+; Send-after delivers message after specified ticks
+(⟳∅)
+(≔ recv-actor (⟳ (λ (self) (←?))))
+(⟳⏱ #5 recv-actor :timer-fired)
+(⟳! #10)
+(⊨ (⌜ :timer-basic) :timer-fired (⟳→ recv-actor))
+
+; === timer-immediate ===
+; Send-after with 0 ticks delivers on next tick
+(⟳∅)
+(≔ recv-actor (⟳ (λ (self) (←?))))
+(⟳⏱ #0 recv-actor :immediate)
+(⟳! #5)
+(⊨ (⌜ :timer-immediate) :immediate (⟳→ recv-actor))
+
+; === timer-cancel ===
+; Cancelled timer does not fire
+(⟳∅)
+(≔ recv-actor (⟳ (λ (self) (←?))))
+(≔ tid (⟳⏱ #5 recv-actor :should-not-arrive))
+(⟳⏱× tid)
+(⟳! #20)
+; Actor should still be alive (waiting for message that never came)
+(⊨ (⌜ :timer-cancel) #t (⟳? recv-actor))
+
+; === timer-active ===
+; Timer-active? returns #t before firing, #f after
+(⟳∅)
+(≔ recv-actor (⟳ (λ (self) (←?))))
+(≔ tid (⟳⏱ #50 recv-actor :later))
+(⊨ (⌜ :timer-active) #t (⟳⏱? tid))
+
+; === timer-inactive-after-fire ===
+; Timer-active? returns #f after timer fires
+(⟳∅)
+(≔ recv-actor (⟳ (λ (self) (←?))))
+(≔ tid (⟳⏱ #2 recv-actor :done))
+(⟳! #10)
+(⊨ (⌜ :timer-inactive-after-fire) #f (⟳⏱? tid))
+
+; === timer-inactive-after-cancel ===
+; Timer-active? returns #f after cancel
+(⟳∅)
+(≔ recv-actor (⟳ (λ (self) (←?))))
+(≔ tid (⟳⏱ #50 recv-actor :later))
+(⟳⏱× tid)
+(⊨ (⌜ :timer-inactive-after-cancel) #f (⟳⏱? tid))
+
+; === timer-multiple ===
+; Multiple timers fire in order
+(⟳∅)
+(≔ recv-actor (⟳ (λ (self)
+  (≫ (←?) (λ (m1)
+    (≫ (←?) (λ (m2)
+      (⟨⟩ m1 m2))))))))
+(⟳⏱ #3 recv-actor :first)
+(⟳⏱ #6 recv-actor :second)
+(⟳! #20)
+(⊨ (⌜ :timer-multiple) (⟨⟩ :first :second) (⟳→ recv-actor))
+
+; === timer-cancel-invalid ===
+; Cancelling non-existent timer returns error
+(⟳∅)
+(⊨ (⌜ :timer-cancel-invalid) #t (⚠? (⟳⏱× #999)))
+
+; === timer-dead-actor ===
+; Timer to dead actor does not crash (message silently dropped)
+(⟳∅)
+(≔ short-actor (⟳ (λ (self) :done)))
+(⟳! #5)
+(⟳⏱ #2 short-actor :too-late)
+(⟳! #10)
+; No crash = success
+(⊨ (⌜ :timer-dead-actor) #t #t)
+
+; === timer-by-name ===
+; Can send timer to registered actor by name
+(⟳∅)
+(≔ srv (⟳ (λ (self) (←?))))
+(⟳⊜⊕ :my-server srv)
+(≔ target (⟳⊜? :my-server))
+(⟳⏱ #3 target :hello-server)
+(⟳! #10)
+(⊨ (⌜ :timer-by-name) :hello-server (⟳→ srv))

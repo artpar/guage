@@ -552,10 +552,16 @@ int actor_run_all(int max_ticks) {
             fiber_set_current(prev_fiber);
         }
 
-        if (any_ran) ticks++;
+        /* Tick timers each scheduler round */
+        bool timer_fired = timer_tick_all();
+
+        if (any_ran || timer_fired) ticks++;
         if (!any_alive) break;
-        /* If no actor ran this tick (all waiting), stop to avoid spin */
-        if (!any_ran) break;
+        /* If no actor ran and no timer fired, check for pending timers */
+        if (!any_ran && !timer_fired) {
+            /* Keep spinning if timers are counting down */
+            if (!timer_any_pending()) break;
+        }
     }
 
     return ticks;
@@ -638,7 +644,95 @@ void actor_registry_reset(void) {
 }
 
 /* Reset all actors (for testing) */
+/* ─── Timers ─── */
+
+static Timer g_timers[MAX_TIMERS];
+static int g_timer_count = 0;
+static int g_next_timer_id = 1;
+
+int timer_create(int target_actor_id, int ticks, Cell* message) {
+    if (g_timer_count >= MAX_TIMERS) return -1;
+    int id = g_next_timer_id++;
+    Timer* t = &g_timers[g_timer_count++];
+    t->id = id;
+    t->target_actor_id = target_actor_id;
+    t->remaining_ticks = ticks;
+    t->message = message;
+    if (message) cell_retain(message);
+    t->active = true;
+    return id;
+}
+
+int timer_cancel(int timer_id) {
+    for (int i = 0; i < g_timer_count; i++) {
+        if (g_timers[i].id == timer_id && g_timers[i].active) {
+            g_timers[i].active = false;
+            if (g_timers[i].message) {
+                cell_release(g_timers[i].message);
+                g_timers[i].message = NULL;
+            }
+            return 0;
+        }
+    }
+    return -1;
+}
+
+bool timer_active(int timer_id) {
+    for (int i = 0; i < g_timer_count; i++) {
+        if (g_timers[i].id == timer_id) {
+            return g_timers[i].active;
+        }
+    }
+    return false;
+}
+
+bool timer_tick_all(void) {
+    bool any_fired = false;
+    for (int i = 0; i < g_timer_count; i++) {
+        Timer* t = &g_timers[i];
+        if (!t->active) continue;
+        if (t->remaining_ticks > 0) {
+            t->remaining_ticks--;
+            continue;
+        }
+        /* Timer fired */
+        any_fired = true;
+        Actor* target = actor_lookup(t->target_actor_id);
+        if (target && target->alive && t->message) {
+            actor_send(target, t->message);
+        }
+        t->active = false;
+        if (t->message) {
+            cell_release(t->message);
+            t->message = NULL;
+        }
+    }
+    return any_fired;
+}
+
+bool timer_any_pending(void) {
+    for (int i = 0; i < g_timer_count; i++) {
+        if (g_timers[i].active) return true;
+    }
+    return false;
+}
+
+void timer_reset_all(void) {
+    for (int i = 0; i < g_timer_count; i++) {
+        if (g_timers[i].message) {
+            cell_release(g_timers[i].message);
+            g_timers[i].message = NULL;
+        }
+        g_timers[i].active = false;
+    }
+    g_timer_count = 0;
+    g_next_timer_id = 1;
+}
+
 void actor_reset_all(void) {
+    /* Reset timers */
+    timer_reset_all();
+
     /* Reset named registry */
     actor_registry_reset();
 

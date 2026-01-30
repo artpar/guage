@@ -1,11 +1,43 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-01-30 (Day 95 COMPLETE)
+Updated: 2026-01-30 (Day 96 COMPLETE)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 95 - Process Registry / Named Actors (2026-01-30)
+# Session Handoff: Day 96 - Timers / Send-After (2026-01-30)
+
+## Day 96 Progress - Timers (`⟳⏱`, `⟳⏱×`, `⟳⏱?`)
+
+**RESULT:** 94/94 test files passing (100%), 10 new tests (timers)
+
+### New Feature: Timers — Scheduled Message Delivery
+
+Timers schedule message delivery to an actor after N scheduler ticks. They integrate into the scheduler loop — each tick decrements active timers, and when a timer fires it sends its message to the target actor's mailbox. The scheduler keeps spinning while timers are pending, even if no actors ran.
+
+**New Primitives (3):**
+- `⟳⏱` (send-after) — Schedule message after N ticks: `(⟳⏱ ticks target message)` → timer-id
+- `⟳⏱×` (cancel-timer) — Cancel a pending timer: `(⟳⏱× timer-id)` → `#t | ⚠`
+- `⟳⏱?` (timer-active?) — Check if timer is still pending: `(⟳⏱? timer-id)` → `#t | #f`
+
+**Semantics:**
+- Timer IDs are monotonically increasing integers
+- Timer fires when remaining_ticks reaches 0 (fires after N+1 ticks from creation)
+- Dead actor targets silently drop the message (no crash)
+- Cancelled timers immediately release their message
+- `timer_tick_all()` called each scheduler tick, returns whether any timer fired
+- Scheduler keeps spinning while `timer_any_pending()` is true (prevents early exit)
+- `⟳∅` (reset) clears all timers for test isolation
+
+**Files Modified (3):**
+- `bootstrap/actor.h` — Timer struct, MAX_TIMERS, timer API declarations
+- `bootstrap/actor.c` — Timer implementation (array-based), scheduler integration, timer_tick_all/timer_any_pending
+- `bootstrap/primitives.c` — 3 new primitive functions + registration in table
+
+**New Test File (1):**
+- `bootstrap/tests/test_timers.test` — 10 tests: timer-basic, timer-immediate, timer-cancel, timer-active, timer-inactive-after-fire, timer-inactive-after-cancel, timer-multiple, timer-cancel-invalid, timer-dead-actor, timer-by-name
+
+---
 
 ## Day 95 Progress - Process Registry (`⟳⊜⊕`, `⟳⊜⊖`, `⟳⊜?`, `⟳⊜*`)
 
@@ -258,8 +290,8 @@ Replaced replay-based resumable effects with real delimited continuations using 
 ## Current Status
 
 **System State:**
-- **Primitives:** 158 total (146 + 5 supervision + 2 select + 3 supervisor + 2 dynamic supervisor)
-- **Tests:** 92/92 test files passing (100%)
+- **Primitives:** 165 total (146 + 5 supervision + 2 select + 3 supervisor + 2 dynamic supervisor + 4 registry + 3 timers)
+- **Tests:** 94/94 test files passing (100%)
 - **Build:** Clean, O2 optimized, 32MB stack
 
 **Core Capabilities:**
@@ -273,6 +305,8 @@ Replaced replay-based resumable effects with real delimited continuations using 
 - Supervision (⟳⊗, ⟳⊘, ⟳⊙, ⟳⊜, ⟳✕) — linking, monitoring, exit signals
 - Supervisor strategies (⟳⊛, ⟳⊛?, ⟳⊛!) — one-for-one, one-for-all, rest-for-one
 - Dynamic supervisor children (⟳⊛⊕, ⟳⊛⊖) — runtime add/remove
+- Process registry (⟳⊜⊕, ⟳⊜⊖, ⟳⊜?, ⟳⊜*) — named actors
+- Timers (⟳⏱, ⟳⏱×, ⟳⏱?) — scheduled message delivery
 - Module system (⋘ load, ⌂⊚ info)
 - Structures (⊙ leaf, ⊚ node/ADT)
 - Pattern matching (∇) with guards, as-patterns, or-patterns, view patterns
@@ -289,6 +323,8 @@ Replaced replay-based resumable effects with real delimited continuations using 
 
 | Day | Feature | Tests |
 |-----|---------|-------|
+| 96 | Timers (⟳⏱, ⟳⏱×, ⟳⏱?) — scheduled message delivery | 94/94 (100%), 10 new tests |
+| 95 | Process Registry (⟳⊜⊕, ⟳⊜⊖, ⟳⊜?, ⟳⊜*) — named actors | 93/93 (100%), 10 new tests |
 | 94 | Dynamic Supervisor Children (⟳⊛⊕, ⟳⊛⊖) + rest-for-one strategy | 92/92 (100%), 10 new tests |
 | 93 | Supervisor Strategies (⟳⊛, ⟳⊛?, ⟳⊛!) — one-for-one, one-for-all | 91/91 (100%), 8 new tests |
 | 92 | Supervision (⟳⊗, ⟳⊘, ⟳⊙, ⟳⊜, ⟳✕) + refcount bugfix | 90/90 (100%), 8 new tests |
@@ -361,5 +397,5 @@ bootstrap/tests/             # Test suite (88 test files)
 
 ---
 
-**Last Updated:** 2026-01-30 (Day 94 complete)
-**Next Session:** Day 95 - Process registry (named actors), supervisor trees, or optimizer
+**Last Updated:** 2026-01-30 (Day 96 complete)
+**Next Session:** Day 97 - GenServer pattern, supervisor trees, or optimizer

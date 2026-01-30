@@ -31,10 +31,10 @@ Everything is a **Cell**:
 
 **See:** `KEYWORDS.md` for complete specification.
 
-## Runtime Primitives (160 Total)
+## Runtime Primitives (165 Total)
 
-**Status:** 158 primitives implemented and stable (92/92 test files passing)
-**Note:** All primitives fully working including graph algorithms, actors, channels, supervision, and supervisors
+**Status:** 165 primitives implemented and stable (94/94 test files passing)
+**Note:** All primitives fully working including graph algorithms, actors, channels, supervision, supervisors, registry, and timers
 
 ### Core Lambda Calculus (3) ✅
 | Symbol | Type | Meaning | Status |
@@ -689,6 +689,15 @@ Supervisors manage groups of child actors and automatically restart them on fail
 | `⟳⊜*` | `() → [:symbol]` | List all registered names | ✅ |
 
 Erlang-style named process registry. Names are symbols. One name per actor, one actor per name. Dead actors are automatically deregistered via `actor_notify_exit`. `⟳∅` (reset) clears registry for test isolation.
+
+### Timers (3) ✅
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `⟳⏱` | `ℕ → ⟳ → α → ℕ` | Schedule message after N ticks | ✅ |
+| `⟳⏱×` | `ℕ → #t \| ⚠` | Cancel a pending timer | ✅ |
+| `⟳⏱?` | `ℕ → #t \| #f` | Check if timer is active | ✅ |
+
+Timers schedule message delivery to an actor after N scheduler ticks. The scheduler keeps spinning while timers are pending. Dead actor targets silently drop the message. `⟳∅` (reset) clears all timers.
 
 ### Documentation (10) ✅
 | Symbol | Type | Meaning | Status |
