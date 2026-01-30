@@ -459,6 +459,11 @@ int actor_run_all(int max_ticks) {
                         if (!any_ready) continue;
                         break;
                     }
+                    case SUSPEND_TASK_AWAIT: {
+                        Actor* awaited = actor_lookup(fiber->suspend_await_actor_id);
+                        if (awaited && awaited->alive) continue;
+                        break;
+                    }
                     case SUSPEND_GENERAL:
                         continue; /* Wait for explicit resume */
                 }
@@ -534,6 +539,16 @@ int actor_run_all(int max_ticks) {
                             resume_val = (closed_empty == total)
                                 ? cell_error("select-all-closed", cell_nil())
                                 : cell_nil();
+                        }
+                        break;
+                    }
+                    case SUSPEND_TASK_AWAIT: {
+                        Actor* awaited = actor_lookup(fiber->suspend_await_actor_id);
+                        if (awaited && awaited->result) {
+                            cell_retain(awaited->result);
+                            resume_val = awaited->result;
+                        } else {
+                            resume_val = cell_nil();
                         }
                         break;
                     }

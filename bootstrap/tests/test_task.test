@@ -1,0 +1,85 @@
+; Day 101: Task / Async-Await tests — ⟳⊳, ⟳⊲, ⟳⊲?
+
+; Reset state
+(⟳∅)
+
+; === task-async-basic ===
+; Spawn a task from zero-arg function, get result
+(⟳∅)
+(≔ t (⟳⊳ (λ () (⊕ #2 #3))))
+(⟳! #10)
+(⊨ (⌜ :task-async-basic) #5 (⟳→ t))
+
+; === task-yield-done ===
+; Non-blocking yield on completed task returns result
+(⟳∅)
+(≔ t (⟳⊳ (λ () :hello)))
+(⟳! #10)
+(⊨ (⌜ :task-yield-done) :hello (⟳⊲? t))
+
+; === task-yield-pending ===
+; Non-blocking yield on still-running task returns ∅
+(⟳∅)
+(≔ t (⟳⊳ (λ () (≫ (←?) (λ (m) m)))))
+; Don't run scheduler — task is blocked on receive
+(⊨ (⌜ :task-yield-pending) ∅ (⟳⊲? t))
+
+; === task-await-basic ===
+; Blocking await from within an actor
+(⟳∅)
+(≔ t (⟳⊳ (λ () (⊗ #6 #7))))
+(≔ waiter (⟳ (λ (self) (⟳⊲ t))))
+(⟳! #20)
+(⊨ (⌜ :task-await-basic) #42 (⟳→ waiter))
+
+; === task-await-immediate ===
+; Await on already-finished task returns immediately
+(⟳∅)
+(≔ t (⟳⊳ (λ () :done)))
+(⟳! #10)
+; Task is finished now
+(≔ waiter (⟳ (λ (self) (⟳⊲ t))))
+(⟳! #10)
+(⊨ (⌜ :task-await-immediate) :done (⟳→ waiter))
+
+; === task-async-closure ===
+; Task captures closure variables
+(⟳∅)
+(≔ x #100)
+(≔ t (⟳⊳ (λ () (⊕ x #1))))
+(⟳! #10)
+(⊨ (⌜ :task-async-closure) #101 (⟳→ t))
+
+; === task-await-error ===
+; Task that produces error — await gets the error
+(⟳∅)
+(≔ t (⟳⊳ (λ () (⚠ :oops #0))))
+(⟳! #10)
+(≔ waiter (⟳ (λ (self) (⟳⊲ t))))
+(⟳! #10)
+(⊨ (⌜ :task-await-error) #t (⚠? (⟳→ waiter)))
+
+; === task-await-not-actor ===
+; Await non-actor value returns error
+(⟳∅)
+(⊨ (⌜ :task-await-not-actor) #t (⚠? (⟳⊲ #42)))
+
+; === task-yield-not-actor ===
+; Yield non-actor value returns error
+(⟳∅)
+(⊨ (⌜ :task-yield-not-actor) #t (⚠? (⟳⊲? #42)))
+
+; === task-multiple ===
+; Multiple tasks awaited sequentially
+(⟳∅)
+(≔ t1 (⟳⊳ (λ () :a)))
+(≔ t2 (⟳⊳ (λ () :b)))
+(≔ t3 (⟳⊳ (λ () :c)))
+(⟳! #10)
+(≔ collector (⟳ (λ (self)
+  (≫ (⟳⊲ t1) (λ (r1)
+    (≫ (⟳⊲ t2) (λ (r2)
+      (≫ (⟳⊲ t3) (λ (r3)
+        (⟨⟩ r1 (⟨⟩ r2 r3)))))))))))
+(⟳! #20)
+(⊨ (⌜ :task-multiple) (⟨⟩ :a (⟨⟩ :b :c)) (⟳→ collector))

@@ -1,11 +1,47 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-01-30 (Day 100 COMPLETE)
+Updated: 2026-01-30 (Day 101 COMPLETE)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 100 - Application Behavior (2026-01-30)
+# Session Handoff: Day 101 - Task Async/Await (2026-01-30)
+
+## Day 101 Progress - Task Async/Await (`⟳⊳`, `⟳⊲`, `⟳⊲?`)
+
+**RESULT:** 99/99 test files passing (100%), 10 new tests (Task)
+
+### New Feature: Task — Async/Await Pattern
+
+Tasks are a higher-level abstraction over actors for spawning computations and retrieving their results. Unlike regular actor spawn (`⟳`) which takes a `(self)` behavior function, `⟳⊳` takes a zero-arg function — simpler for fire-and-forget computations. `⟳⊲` provides blocking await (suspends calling actor until target finishes), and `⟳⊲?` provides non-blocking polling.
+
+**New Primitives (3):**
+- `⟳⊳` (task-async) — Spawn task from zero-arg function: `(⟳⊳ (λ () expr))` → `⟳[id]`
+- `⟳⊲` (task-await) — Block until task finishes: `(⟳⊲ task)` → result (suspends if not done)
+- `⟳⊲?` (task-yield) — Non-blocking check: `(⟳⊲? task)` → result or `∅`
+
+**Semantics:**
+- Task-async spawns an actor whose body is `(fn)` — no self parameter needed
+- Task captures closure variables from definition scope
+- Await from actor context suspends via `SUSPEND_TASK_AWAIT` — scheduler polls target liveness
+- Await on already-finished task returns result immediately
+- Yield returns `∅` if task still running, result if finished
+- Both await and yield work on any actor (not just tasks)
+- Await/yield on non-actor values returns error
+
+**New Suspend Reason:**
+- `SUSPEND_TASK_AWAIT` — fiber yields until target actor's `alive` becomes false
+- Scheduler checks each tick: if target dead, resumes with target's result
+
+**Files Modified (3):**
+- `bootstrap/fiber.h` — Added `SUSPEND_TASK_AWAIT` to `SuspendReason` enum, `suspend_await_actor_id` field
+- `bootstrap/actor.c` — Two new `SUSPEND_TASK_AWAIT` cases in scheduler (skip check + resume logic)
+- `bootstrap/primitives.c` — 3 new primitive functions + registration in table
+
+**New Test File (1):**
+- `bootstrap/tests/test_task.test` — 10 tests: task-async-basic, task-yield-done, task-yield-pending, task-await-basic, task-await-immediate, task-async-closure, task-await-error, task-await-not-actor, task-yield-not-actor, task-multiple
+
+---
 
 ## Day 100 Progress - Application Behavior (`⟳⊚⊕`, `⟳⊚⊖`, `⟳⊚?`, `⟳⊚*`, `⟳⊚⊙`, `⟳⊚←`)
 
@@ -424,8 +460,8 @@ Replaced replay-based resumable effects with real delimited continuations using 
 ## Current Status
 
 **System State:**
-- **Primitives:** 180 total (174 + 6 application)
-- **Tests:** 98/98 test files passing (100%)
+- **Primitives:** 183 total (180 + 3 task)
+- **Tests:** 99/99 test files passing (100%)
 - **Build:** Clean, O2 optimized, 32MB stack
 
 **Core Capabilities:**
@@ -445,6 +481,7 @@ Replaced replay-based resumable effects with real delimited continuations using 
 - Process dictionary (⟳⊔⊕, ⟳⊔?, ⟳⊔⊖, ⟳⊔*) — per-actor key-value
 - ETS (⟳⊞⊕, ⟳⊞⊙, ⟳⊞?, ⟳⊞⊖, ⟳⊞!, ⟳⊞#, ⟳⊞*) — shared named tables
 - Application (⟳⊚⊕, ⟳⊚⊖, ⟳⊚?, ⟳⊚*, ⟳⊚⊙, ⟳⊚←) — OTP top-level container
+- Task async/await (⟳⊳, ⟳⊲, ⟳⊲?) — spawn computation and await result
 - Module system (⋘ load, ⌂⊚ info)
 - Structures (⊙ leaf, ⊚ node/ADT)
 - Pattern matching (∇) with guards, as-patterns, or-patterns, view patterns
@@ -461,6 +498,7 @@ Replaced replay-based resumable effects with real delimited continuations using 
 
 | Day | Feature | Tests |
 |-----|---------|-------|
+| 101 | Task async/await (⟳⊳, ⟳⊲, ⟳⊲?) — spawn and await computations | 99/99 (100%), 10 new tests |
 | 100 | Application (⟳⊚⊕, ⟳⊚⊖, ⟳⊚?, ⟳⊚*, ⟳⊚⊙, ⟳⊚←) — OTP top-level container | 98/98 (100%), 10 new tests |
 | 99 | ETS (⟳⊞⊕, ⟳⊞⊙, ⟳⊞?, ⟳⊞⊖, ⟳⊞!, ⟳⊞#, ⟳⊞*) — shared named tables | 97/97 (100%), 10 new tests |
 | 98 | Process Dictionary (⟳⊔⊕, ⟳⊔?, ⟳⊔⊖, ⟳⊔*) — per-actor state | 96/96 (100%), 10 new tests |
@@ -539,5 +577,5 @@ bootstrap/tests/             # Test suite (88 test files)
 
 ---
 
-**Last Updated:** 2026-01-30 (Day 100 complete)
-**Next Session:** Day 101 - Task (async/await), Agent (state wrapper), or new domain
+**Last Updated:** 2026-01-30 (Day 101 complete)
+**Next Session:** Day 102 - Agent (state wrapper), or new domain

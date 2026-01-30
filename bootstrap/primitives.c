@@ -3141,6 +3141,123 @@ Cell* prim_app_set_env(Cell* args) {
     return cell_bool(true);
 }
 
+/* ============ Task Primitives (Async/Await) ============ */
+
+/* ⟳⊳ - task-async
+ * (⟳⊳ fn) — spawn actor from zero-arg function, returns actor cell */
+Cell* prim_task_async(Cell* args) {
+    Cell* fn = arg1(args);
+    if (!cell_is_lambda(fn)) {
+        return cell_error("task-not-lambda", fn);
+    }
+
+    EvalContext* ctx = eval_get_current_context();
+
+    /* Create actor with placeholder body */
+    Cell* placeholder = cell_nil();
+    Actor* actor = actor_create(ctx, placeholder, ctx->env);
+    cell_release(placeholder);
+
+    if (!actor) {
+        return cell_error("max-actors-exceeded", cell_nil());
+    }
+
+    /* Build unique symbol name for the function */
+    char fn_name[64];
+    snprintf(fn_name, sizeof(fn_name), "__task_fn_%d", actor->id);
+
+    /* Define function in ctx->env */
+    eval_define(ctx, fn_name, fn);
+
+    /* Build body expression: (__task_fn_N) — zero-arg call */
+    Cell* fn_sym = cell_symbol(fn_name);
+    Cell* body = cell_cons(fn_sym, cell_nil());
+    cell_release(fn_sym);
+
+    /* Update fiber body */
+    cell_release(actor->fiber->body);
+    actor->fiber->body = body;
+    cell_retain(body);
+    cell_release(body);
+
+    return cell_actor(actor->id);
+}
+
+/* ⟳⊲ - task-await
+ * (⟳⊲ task) — block until task finishes, return its result.
+ * Can be called from actor context (suspends) or top-level (immediate check). */
+Cell* prim_task_await(Cell* args) {
+    Cell* target_cell = arg1(args);
+    if (!cell_is_actor(target_cell)) {
+        return cell_error("await-not-actor", target_cell);
+    }
+
+    int target_id = cell_get_actor_id(target_cell);
+    Actor* target = actor_lookup(target_id);
+    if (!target) {
+        return cell_error("await-not-found", target_cell);
+    }
+
+    /* If already finished, return result immediately */
+    if (!target->alive) {
+        if (target->result) {
+            cell_retain(target->result);
+            return target->result;
+        }
+        return cell_nil();
+    }
+
+    /* Must be in actor context to suspend */
+    Actor* caller = actor_current();
+    if (!caller) {
+        return cell_error("await-no-actor", cell_nil());
+    }
+
+    Fiber* fiber = caller->fiber;
+    if (!fiber) {
+        return cell_error("await-no-fiber", cell_nil());
+    }
+
+    /* Suspend waiting for target to finish */
+    fiber->suspend_reason = SUSPEND_TASK_AWAIT;
+    fiber->suspend_await_actor_id = target_id;
+    fiber_yield(fiber);
+
+    /* Resumed — target should be dead now */
+    Cell* resumed = fiber->resume_value;
+    if (resumed) {
+        cell_retain(resumed);
+        return resumed;
+    }
+    return cell_nil();
+}
+
+/* ⟳⊲? - task-yield (non-blocking)
+ * (⟳⊲? task) — if finished return result, otherwise ∅ */
+Cell* prim_task_yield(Cell* args) {
+    Cell* target_cell = arg1(args);
+    if (!cell_is_actor(target_cell)) {
+        return cell_error("yield-not-actor", target_cell);
+    }
+
+    int target_id = cell_get_actor_id(target_cell);
+    Actor* target = actor_lookup(target_id);
+    if (!target) {
+        return cell_error("yield-not-found", target_cell);
+    }
+
+    if (!target->alive) {
+        if (target->result) {
+            cell_retain(target->result);
+            return target->result;
+        }
+        return cell_nil();
+    }
+
+    /* Still running — return nil */
+    return cell_nil();
+}
+
 /* ============ Channel Primitives ============ */
 
 /* ⟿⊚ - create channel
@@ -7221,6 +7338,11 @@ static Primitive primitives[] = {
     {"⟳⊚*", prim_app_which, 0, {"List running applications", "() → [:name]"}},
     {"⟳⊚⊙", prim_app_get_env, 2, {"Get application env key", ":name → α → β | ∅"}},
     {"⟳⊚←", prim_app_set_env, 3, {"Set application env key", ":name → α → β → #t | ⚠"}},
+
+    /* Task primitives (async/await) */
+    {"⟳⊳", prim_task_async, 1, {"Spawn task from zero-arg function", "λ → ⟳[id]"}},
+    {"⟳⊲", prim_task_await, 1, {"Await task result (blocking)", "⟳ → α"}},
+    {"⟳⊲?", prim_task_yield, 1, {"Check task result (non-blocking)", "⟳ → α | ∅"}},
 
     /* Channel primitives */
     {"⟿⊚", prim_chan_create, -1, {"Create channel (optional capacity)", "() → ⟿ | ℕ → ⟿"}},

@@ -25,6 +25,7 @@ typedef enum {
     SUSPEND_CHAN_RECV,   /* ⟿← on empty channel */
     SUSPEND_CHAN_SEND,   /* ⟿→ on full channel */
     SUSPEND_SELECT,      /* ⟿⊞ waiting on multiple channels */
+    SUSPEND_TASK_AWAIT,  /* ⟳⊲ waiting for actor to finish */
 } SuspendReason;
 
 /* Fiber - lightweight coroutine for delimited continuations */
@@ -60,6 +61,9 @@ typedef struct Fiber {
     #define MAX_SELECT_CHANNELS 16
     int suspend_select_ids[MAX_SELECT_CHANNELS];
     int suspend_select_count;
+
+    /* Task await */
+    int suspend_await_actor_id;    /* actor ID we're waiting to finish */
 
     /* Evaluation context */
     EvalContext* eval_ctx;

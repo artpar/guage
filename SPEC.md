@@ -34,7 +34,7 @@ Everything is a **Cell**:
 ## Runtime Primitives (171 Total)
 
 **Status:** 171 primitives implemented and stable (96/96 test files passing)
-**Note:** All primitives fully working including graph algorithms, actors, channels, supervision, supervisors, registry, timers, GenServer, and process dictionary
+**Note:** All primitives fully working including graph algorithms, actors, channels, supervision, supervisors, registry, timers, GenServer, process dictionary, and task async/await
 
 ### Core Lambda Calculus (3) ✅
 | Symbol | Type | Meaning | Status |
@@ -716,6 +716,15 @@ Synchronous call-reply pattern. `⟳⇅` sends `⟨:call caller-actor request⟩
 | `⟳⊔*` | `() → [⟨α β⟩]` | List all actor dict entries | ✅ |
 
 Per-actor key-value store (Erlang `put/get/erase` equivalent). Keys compared with `cell_equal`. Per-actor isolation — no cross-actor access. Calling outside actor context returns `⚠ :not-in-actor`. Auto-cleared when actor is destroyed.
+
+### Task / Async-Await (3) ✅
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `⟳⊳` | `λ → ⟳` | Spawn task from zero-arg function | ✅ |
+| `⟳⊲` | `⟳ → α` | Await task result (blocking, suspends caller) | ✅ |
+| `⟳⊲?` | `⟳ → α \| ∅` | Check task result (non-blocking) | ✅ |
+
+Higher-level abstraction over actors for async computations. `⟳⊳` spawns an actor from a zero-arg function (no `self` parameter needed). `⟳⊲` blocks the calling actor until the target finishes, then returns its result. `⟳⊲?` returns the result if finished, `∅` if still running. Both work on any actor, not just tasks.
 
 ### Documentation (10) ✅
 | Symbol | Type | Meaning | Status |
