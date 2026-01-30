@@ -2832,6 +2832,154 @@ Cell* prim_proc_dict_all(Cell* args) {
     return list;
 }
 
+/* ============ ETS Primitives ============ */
+
+/* ⟳⊞⊕ - create named ETS table
+ * (⟳⊞⊕ :name) → :name | ⚠ */
+Cell* prim_ets_new(Cell* args) {
+    if (!args || cell_is_nil(args)) {
+        return cell_error("ets-new-args", cell_nil());
+    }
+    Cell* name_cell = cell_car(args);
+    if (!cell_is_symbol(name_cell)) {
+        return cell_error("ets-new-not-symbol", name_cell);
+    }
+    const char* name = cell_get_symbol(name_cell);
+
+    /* Owner is current actor if inside one, else -1 */
+    Actor* actor = actor_current();
+    int owner_id = actor ? actor->id : -1;
+
+    int rc = ets_create(name, owner_id);
+    if (rc == -1) return cell_error("ets-duplicate-name", name_cell);
+    if (rc == -2) return cell_error("ets-full", cell_nil());
+
+    cell_retain(name_cell);
+    return name_cell;
+}
+
+/* ⟳⊞⊙ - insert key-value into ETS table
+ * (⟳⊞⊙ :table key value) → #t | ⚠ */
+Cell* prim_ets_insert(Cell* args) {
+    if (!args || cell_is_nil(args)) {
+        return cell_error("ets-insert-args", cell_nil());
+    }
+    Cell* name_cell = cell_car(args);
+    if (!cell_is_symbol(name_cell)) {
+        return cell_error("ets-insert-not-symbol", name_cell);
+    }
+    Cell* rest = cell_cdr(args);
+    if (!rest || cell_is_nil(rest)) {
+        return cell_error("ets-insert-no-key", cell_nil());
+    }
+    Cell* key = cell_car(rest);
+    Cell* rest2 = cell_cdr(rest);
+    if (!rest2 || cell_is_nil(rest2)) {
+        return cell_error("ets-insert-no-value", cell_nil());
+    }
+    Cell* value = cell_car(rest2);
+
+    int rc = ets_insert(cell_get_symbol(name_cell), key, value);
+    if (rc == -1) return cell_error("ets-table-not-found", name_cell);
+    if (rc == -2) return cell_error("ets-table-full", name_cell);
+    return cell_bool(true);
+}
+
+/* ⟳⊞? - lookup key in ETS table
+ * (⟳⊞? :table key) → value | ∅ | ⚠ */
+Cell* prim_ets_lookup(Cell* args) {
+    if (!args || cell_is_nil(args)) {
+        return cell_error("ets-lookup-args", cell_nil());
+    }
+    Cell* name_cell = cell_car(args);
+    if (!cell_is_symbol(name_cell)) {
+        return cell_error("ets-lookup-not-symbol", name_cell);
+    }
+    Cell* rest = cell_cdr(args);
+    if (!rest || cell_is_nil(rest)) {
+        return cell_error("ets-lookup-no-key", cell_nil());
+    }
+    Cell* key = cell_car(rest);
+
+    const char* name = cell_get_symbol(name_cell);
+    /* Check table exists first to distinguish "no table" from "no key" */
+    int sz = ets_size(name);
+    if (sz < 0) return cell_error("ets-table-not-found", name_cell);
+
+    Cell* result = ets_lookup(name, key);
+    return result ? result : cell_nil();
+}
+
+/* ⟳⊞⊖ - delete key from ETS table
+ * (⟳⊞⊖ :table key) → #t | ⚠ */
+Cell* prim_ets_delete_key(Cell* args) {
+    if (!args || cell_is_nil(args)) {
+        return cell_error("ets-delete-args", cell_nil());
+    }
+    Cell* name_cell = cell_car(args);
+    if (!cell_is_symbol(name_cell)) {
+        return cell_error("ets-delete-not-symbol", name_cell);
+    }
+    Cell* rest = cell_cdr(args);
+    if (!rest || cell_is_nil(rest)) {
+        return cell_error("ets-delete-no-key", cell_nil());
+    }
+    Cell* key = cell_car(rest);
+
+    int rc = ets_delete_key(cell_get_symbol(name_cell), key);
+    if (rc == -1) return cell_error("ets-table-not-found", name_cell);
+    /* rc == -2 means key not found, which is fine (idempotent) */
+    return cell_bool(true);
+}
+
+/* ⟳⊞! - delete entire ETS table
+ * (⟳⊞! :name) → #t | ⚠ */
+Cell* prim_ets_delete_table(Cell* args) {
+    if (!args || cell_is_nil(args)) {
+        return cell_error("ets-delete-table-args", cell_nil());
+    }
+    Cell* name_cell = cell_car(args);
+    if (!cell_is_symbol(name_cell)) {
+        return cell_error("ets-delete-table-not-symbol", name_cell);
+    }
+
+    int rc = ets_delete_table(cell_get_symbol(name_cell));
+    if (rc == -1) return cell_error("ets-table-not-found", name_cell);
+    return cell_bool(true);
+}
+
+/* ⟳⊞# - get ETS table size
+ * (⟳⊞# :name) → count | ⚠ */
+Cell* prim_ets_size(Cell* args) {
+    if (!args || cell_is_nil(args)) {
+        return cell_error("ets-size-args", cell_nil());
+    }
+    Cell* name_cell = cell_car(args);
+    if (!cell_is_symbol(name_cell)) {
+        return cell_error("ets-size-not-symbol", name_cell);
+    }
+
+    int sz = ets_size(cell_get_symbol(name_cell));
+    if (sz < 0) return cell_error("ets-table-not-found", name_cell);
+    return cell_number((double)sz);
+}
+
+/* ⟳⊞* - get all entries from ETS table
+ * (⟳⊞* :name) → list of ⟨key value⟩ | ⚠ */
+Cell* prim_ets_all(Cell* args) {
+    if (!args || cell_is_nil(args)) {
+        return cell_error("ets-all-args", cell_nil());
+    }
+    Cell* name_cell = cell_car(args);
+    if (!cell_is_symbol(name_cell)) {
+        return cell_error("ets-all-not-symbol", name_cell);
+    }
+
+    Cell* result = ets_all(cell_get_symbol(name_cell));
+    if (!result) return cell_error("ets-table-not-found", name_cell);
+    return result;
+}
+
 /* ============ Channel Primitives ============ */
 
 /* ⟿⊚ - create channel
@@ -6895,6 +7043,15 @@ static Primitive primitives[] = {
     {"⟳⊔?", prim_proc_dict_get, 1, {"Lookup key in actor dict", "α → β | ∅"}},
     {"⟳⊔⊖", prim_proc_dict_erase, 1, {"Remove key from actor dict", "α → β | ∅"}},
     {"⟳⊔*", prim_proc_dict_all, 0, {"List all actor dict entries", "() → [⟨α β⟩]"}},
+
+    /* ETS (Erlang Term Storage) primitives */
+    {"⟳⊞⊕", prim_ets_new, 1, {"Create named ETS table", ":name → :name | ⚠"}},
+    {"⟳⊞⊙", prim_ets_insert, 3, {"Insert key-value into ETS table", ":name → α → β → #t | ⚠"}},
+    {"⟳⊞?", prim_ets_lookup, 2, {"Lookup key in ETS table", ":name → α → β | ∅ | ⚠"}},
+    {"⟳⊞⊖", prim_ets_delete_key, 2, {"Delete key from ETS table", ":name → α → #t | ⚠"}},
+    {"⟳⊞!", prim_ets_delete_table, 1, {"Delete entire ETS table", ":name → #t | ⚠"}},
+    {"⟳⊞#", prim_ets_size, 1, {"Get ETS table entry count", ":name → ℕ | ⚠"}},
+    {"⟳⊞*", prim_ets_all, 1, {"Get all ETS table entries", ":name → [⟨α β⟩] | ⚠"}},
 
     /* Channel primitives */
     {"⟿⊚", prim_chan_create, -1, {"Create channel (optional capacity)", "() → ⟿ | ℕ → ⟿"}},

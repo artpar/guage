@@ -15,6 +15,8 @@
 #define MAX_REGISTRY 256
 #define MAX_TIMERS 256
 #define MAX_DICT_ENTRIES 256
+#define MAX_ETS_TABLES 64
+#define MAX_ETS_ENTRIES 256
 
 /* Actor - a fiber with a mailbox */
 typedef struct Actor {
@@ -105,5 +107,25 @@ bool  timer_active(int timer_id);
 bool  timer_tick_all(void);           /* called each scheduler tick, returns true if any fired */
 bool  timer_any_pending(void);       /* true if any timers still counting down */
 void  timer_reset_all(void);
+
+/* ETS - Erlang Term Storage (shared named tables) */
+typedef struct EtsTable {
+    const char* name;                     /* Table name (symbol) */
+    int owner_actor_id;                   /* -1 if created outside actor */
+    Cell* keys[MAX_ETS_ENTRIES];
+    Cell* values[MAX_ETS_ENTRIES];
+    int count;
+    bool active;
+} EtsTable;
+
+int   ets_create(const char* name, int owner_actor_id);  /* 0=ok, -1=dup, -2=full */
+int   ets_insert(const char* name, Cell* key, Cell* value); /* 0=ok, -1=not found, -2=full */
+Cell* ets_lookup(const char* name, Cell* key);            /* value or NULL */
+int   ets_delete_key(const char* name, Cell* key);        /* 0=ok, -1=not found table, -2=key not found */
+int   ets_delete_table(const char* name);                 /* 0=ok, -1=not found */
+int   ets_size(const char* name);                         /* count or -1 */
+Cell* ets_all(const char* name);                          /* list of ⟨key value⟩ or NULL */
+void  ets_destroy_by_owner(int actor_id);                 /* destroy tables owned by actor */
+void  ets_reset_all(void);
 
 #endif /* GUAGE_ACTOR_H */

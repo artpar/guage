@@ -1,0 +1,82 @@
+; Day 99: ETS (Erlang Term Storage) — shared named tables
+; Primitives: ⟳⊞⊕ (new), ⟳⊞⊙ (insert), ⟳⊞? (lookup), ⟳⊞⊖ (delete),
+;             ⟳⊞! (delete-table), ⟳⊞# (size), ⟳⊞* (all)
+(⟳∅)
+
+; === ets-new-basic ===
+; Create a named ETS table
+(⟳∅)
+(⊨ (⌜ :ets-new-basic) :users (⟳⊞⊕ :users))
+
+; === ets-insert-lookup ===
+; Insert and lookup a key
+(⟳∅)
+(⟳⊞⊕ :cache)
+(⟳⊞⊙ :cache :key1 #42)
+(⊨ (⌜ :ets-insert-lookup) #42 (⟳⊞? :cache :key1))
+
+; === ets-lookup-missing ===
+; Lookup missing key returns ∅
+(⟳∅)
+(⟳⊞⊕ :data)
+(⊨ (⌜ :ets-lookup-missing) ∅ (⟳⊞? :data :nope))
+
+; === ets-insert-overwrite ===
+; Insert same key overwrites
+(⟳∅)
+(⟳⊞⊕ :cfg)
+(⟳⊞⊙ :cfg :port #8080)
+(⟳⊞⊙ :cfg :port #9090)
+(⊨ (⌜ :ets-insert-overwrite) #9090 (⟳⊞? :cfg :port))
+
+; === ets-delete-key ===
+; Delete a key from table
+(⟳∅)
+(⟳⊞⊕ :store)
+(⟳⊞⊙ :store :x #1)
+(⟳⊞⊙ :store :y #2)
+(⟳⊞⊖ :store :x)
+(⊨ (⌜ :ets-delete-key) ∅ (⟳⊞? :store :x))
+
+; === ets-size ===
+; Table size tracking
+(⟳∅)
+(⟳⊞⊕ :items)
+(⟳⊞⊙ :items :a #1)
+(⟳⊞⊙ :items :b #2)
+(⟳⊞⊙ :items :c #3)
+(⊨ (⌜ :ets-size) #3 (⟳⊞# :items))
+
+; === ets-all-entries ===
+; Get all entries as list of pairs
+(⟳∅)
+(⟳⊞⊕ :pairs)
+(⟳⊞⊙ :pairs :x #10)
+(⟳⊞⊙ :pairs :y #20)
+(≔ all (⟳⊞* :pairs))
+(⊨ (⌜ :ets-all-entries) #2 (⟳⊞# :pairs))
+
+; === ets-delete-table ===
+; Delete entire table
+(⟳∅)
+(⟳⊞⊕ :temp)
+(⟳⊞⊙ :temp :k #1)
+(⟳⊞! :temp)
+(⊨ (⌜ :ets-delete-table) #t (⚠? (⟳⊞? :temp :k)))
+
+; === ets-duplicate-name ===
+; Creating table with same name is error
+(⟳∅)
+(⟳⊞⊕ :uniq)
+(⊨ (⌜ :ets-duplicate-name) #t (⚠? (⟳⊞⊕ :uniq)))
+
+; === ets-cross-actor ===
+; Multiple actors can read/write same table
+(⟳∅)
+(⟳⊞⊕ :shared)
+(≔ writer (⟳ (λ (self)
+  (⟳⊞⊙ :shared :msg :hello))))
+(≔ reader (⟳ (λ (self)
+  (⟳⊞? :shared :msg))))
+(⟳! #20)
+(⊨ (⌜ :ets-cross-actor) :hello (⟳→ reader))

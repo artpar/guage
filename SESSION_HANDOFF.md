@@ -1,11 +1,50 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-01-30 (Day 98 COMPLETE)
+Updated: 2026-01-30 (Day 99 COMPLETE)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 98 - Process Dictionary (2026-01-30)
+# Session Handoff: Day 99 - ETS (2026-01-30)
+
+## Day 99 Progress - ETS (`⟳⊞⊕`, `⟳⊞⊙`, `⟳⊞?`, `⟳⊞⊖`, `⟳⊞!`, `⟳⊞#`, `⟳⊞*`)
+
+**RESULT:** 97/97 test files passing (100%), 10 new tests (ETS)
+
+### New Feature: ETS (Erlang Term Storage) — Shared Named Tables
+
+Global named key-value tables accessible from any context (actors or top-level). Tables are identified by symbol names and can be shared across multiple actors. Owner tracking enables automatic cleanup when an actor dies.
+
+**New Primitives (7):**
+- `⟳⊞⊕` (ets-new) — Create named table: `(⟳⊞⊕ :name)` → `:name` or `⚠`
+- `⟳⊞⊙` (ets-insert) — Insert key-value: `(⟳⊞⊙ :table key value)` → `#t`
+- `⟳⊞?` (ets-lookup) — Lookup key: `(⟳⊞? :table key)` → value or `∅`
+- `⟳⊞⊖` (ets-delete) — Delete key: `(⟳⊞⊖ :table key)` → `#t`
+- `⟳⊞!` (ets-delete-table) — Delete entire table: `(⟳⊞! :name)` → `#t`
+- `⟳⊞#` (ets-size) — Table size: `(⟳⊞# :name)` → count
+- `⟳⊞*` (ets-all) — All entries: `(⟳⊞* :name)` → list of `⟨key value⟩`
+
+**Semantics:**
+- Tables identified by symbol name (`:users`, `:cache`, etc.)
+- No duplicate names (error on conflict)
+- Global scope — accessible without actor context
+- Owner tracking: if created inside actor, table auto-destroyed when owner dies
+- Insert overwrites existing key (set semantics)
+- Delete key is idempotent (no error if key missing)
+- Lookup on deleted/nonexistent table returns error
+- `⟳∅` (reset) clears all ETS tables for test isolation
+- Linear scan for key lookup (fine for ≤256 entries)
+- Max 64 tables, 256 entries each
+
+**Files Modified (3):**
+- `bootstrap/actor.h` — EtsTable struct, MAX_ETS_TABLES/ENTRIES, ETS API declarations
+- `bootstrap/actor.c` — ETS implementation (global table registry), cleanup in `actor_notify_exit` and `actor_reset_all`
+- `bootstrap/primitives.c` — 7 new primitive functions + registration in table
+
+**New Test File (1):**
+- `bootstrap/tests/test_ets.test` — 10 tests: ets-new-basic, ets-insert-lookup, ets-lookup-missing, ets-insert-overwrite, ets-delete-key, ets-size, ets-all-entries, ets-delete-table, ets-duplicate-name, ets-cross-actor
+
+---
 
 ## Day 98 Progress - Process Dictionary (`⟳⊔⊕`, `⟳⊔?`, `⟳⊔⊖`, `⟳⊔*`)
 
@@ -350,8 +389,8 @@ Replaced replay-based resumable effects with real delimited continuations using 
 ## Current Status
 
 **System State:**
-- **Primitives:** 167 total (146 + 5 supervision + 2 select + 3 supervisor + 2 dynamic supervisor + 4 registry + 3 timers + 2 genserver)
-- **Tests:** 95/95 test files passing (100%)
+- **Primitives:** 174 total (146 + 5 supervision + 2 select + 3 supervisor + 2 dynamic supervisor + 4 registry + 3 timers + 2 genserver + 7 ETS)
+- **Tests:** 97/97 test files passing (100%)
 - **Build:** Clean, O2 optimized, 32MB stack
 
 **Core Capabilities:**
@@ -368,6 +407,8 @@ Replaced replay-based resumable effects with real delimited continuations using 
 - Process registry (⟳⊜⊕, ⟳⊜⊖, ⟳⊜?, ⟳⊜*) — named actors
 - Timers (⟳⏱, ⟳⏱×, ⟳⏱?) — scheduled message delivery
 - GenServer (⟳⇅, ⟳⇅!) — synchronous call-reply
+- Process dictionary (⟳⊔⊕, ⟳⊔?, ⟳⊔⊖, ⟳⊔*) — per-actor key-value
+- ETS (⟳⊞⊕, ⟳⊞⊙, ⟳⊞?, ⟳⊞⊖, ⟳⊞!, ⟳⊞#, ⟳⊞*) — shared named tables
 - Module system (⋘ load, ⌂⊚ info)
 - Structures (⊙ leaf, ⊚ node/ADT)
 - Pattern matching (∇) with guards, as-patterns, or-patterns, view patterns
@@ -384,6 +425,8 @@ Replaced replay-based resumable effects with real delimited continuations using 
 
 | Day | Feature | Tests |
 |-----|---------|-------|
+| 99 | ETS (⟳⊞⊕, ⟳⊞⊙, ⟳⊞?, ⟳⊞⊖, ⟳⊞!, ⟳⊞#, ⟳⊞*) — shared named tables | 97/97 (100%), 10 new tests |
+| 98 | Process Dictionary (⟳⊔⊕, ⟳⊔?, ⟳⊔⊖, ⟳⊔*) — per-actor state | 96/96 (100%), 10 new tests |
 | 97 | GenServer (⟳⇅, ⟳⇅!) — synchronous call-reply | 95/95 (100%), 10 new tests |
 | 96 | Timers (⟳⏱, ⟳⏱×, ⟳⏱?) — scheduled message delivery | 94/94 (100%), 10 new tests |
 | 95 | Process Registry (⟳⊜⊕, ⟳⊜⊖, ⟳⊜?, ⟳⊜*) — named actors | 93/93 (100%), 10 new tests |
@@ -459,5 +502,5 @@ bootstrap/tests/             # Test suite (88 test files)
 
 ---
 
-**Last Updated:** 2026-01-30 (Day 97 complete)
-**Next Session:** Day 98 - Supervisor trees, ETS/process dictionary, or optimizer
+**Last Updated:** 2026-01-30 (Day 99 complete)
+**Next Session:** Day 100 - Application behavior, OTP behaviors, or new domain

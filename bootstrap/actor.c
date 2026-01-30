@@ -209,6 +209,9 @@ void actor_exit_signal(Actor* target, Actor* sender, Cell* reason) {
 void actor_notify_exit(Actor* exiting, Cell* reason) {
     if (!exiting) return;
 
+    /* Destroy ETS tables owned by this actor */
+    ets_destroy_by_owner(exiting->id);
+
     /* Auto-deregister from named registry */
     actor_registry_unregister_actor(exiting->id);
 
@@ -736,7 +739,149 @@ void timer_reset_all(void) {
     g_next_timer_id = 1;
 }
 
+/* ============ ETS - Erlang Term Storage ============ */
+
+static EtsTable g_ets_tables[MAX_ETS_TABLES];
+static int g_ets_count = 0;
+
+static EtsTable* ets_find(const char* name) {
+    for (int i = 0; i < g_ets_count; i++) {
+        if (g_ets_tables[i].active && strcmp(g_ets_tables[i].name, name) == 0) {
+            return &g_ets_tables[i];
+        }
+    }
+    return NULL;
+}
+
+int ets_create(const char* name, int owner_actor_id) {
+    if (ets_find(name)) return -1;  /* duplicate name */
+    if (g_ets_count >= MAX_ETS_TABLES) return -2;  /* full */
+
+    EtsTable* t = &g_ets_tables[g_ets_count++];
+    t->name = strdup(name);
+    t->owner_actor_id = owner_actor_id;
+    t->count = 0;
+    t->active = true;
+    return 0;
+}
+
+int ets_insert(const char* name, Cell* key, Cell* value) {
+    EtsTable* t = ets_find(name);
+    if (!t) return -1;
+
+    /* Search for existing key */
+    for (int i = 0; i < t->count; i++) {
+        if (cell_equal(t->keys[i], key)) {
+            Cell* old = t->values[i];
+            cell_retain(value);
+            t->values[i] = value;
+            cell_release(old);
+            return 0;
+        }
+    }
+
+    /* New entry */
+    if (t->count >= MAX_ETS_ENTRIES) return -2;
+    cell_retain(key);
+    cell_retain(value);
+    t->keys[t->count] = key;
+    t->values[t->count] = value;
+    t->count++;
+    return 0;
+}
+
+Cell* ets_lookup(const char* name, Cell* key) {
+    EtsTable* t = ets_find(name);
+    if (!t) return NULL;
+
+    for (int i = 0; i < t->count; i++) {
+        if (cell_equal(t->keys[i], key)) {
+            cell_retain(t->values[i]);
+            return t->values[i];
+        }
+    }
+    return NULL;  /* key not found */
+}
+
+int ets_delete_key(const char* name, Cell* key) {
+    EtsTable* t = ets_find(name);
+    if (!t) return -1;
+
+    for (int i = 0; i < t->count; i++) {
+        if (cell_equal(t->keys[i], key)) {
+            cell_release(t->keys[i]);
+            cell_release(t->values[i]);
+            t->count--;
+            if (i < t->count) {
+                t->keys[i] = t->keys[t->count];
+                t->values[i] = t->values[t->count];
+            }
+            return 0;
+        }
+    }
+    return -2;  /* key not found */
+}
+
+static void ets_destroy_table(EtsTable* t) {
+    for (int i = 0; i < t->count; i++) {
+        if (t->keys[i]) cell_release(t->keys[i]);
+        if (t->values[i]) cell_release(t->values[i]);
+    }
+    free((void*)t->name);
+    t->name = NULL;
+    t->count = 0;
+    t->active = false;
+}
+
+int ets_delete_table(const char* name) {
+    EtsTable* t = ets_find(name);
+    if (!t) return -1;
+    ets_destroy_table(t);
+    return 0;
+}
+
+int ets_size(const char* name) {
+    EtsTable* t = ets_find(name);
+    if (!t) return -1;
+    return t->count;
+}
+
+Cell* ets_all(const char* name) {
+    EtsTable* t = ets_find(name);
+    if (!t) return NULL;
+
+    Cell* list = cell_nil();
+    for (int i = t->count - 1; i >= 0; i--) {
+        Cell* pair = cell_cons(t->keys[i], t->values[i]);
+        Cell* new_list = cell_cons(pair, list);
+        cell_release(pair);
+        cell_release(list);
+        list = new_list;
+    }
+    return list;
+}
+
+void ets_destroy_by_owner(int actor_id) {
+    for (int i = 0; i < g_ets_count; i++) {
+        if (g_ets_tables[i].active && g_ets_tables[i].owner_actor_id == actor_id) {
+            ets_destroy_table(&g_ets_tables[i]);
+        }
+    }
+}
+
+void ets_reset_all(void) {
+    for (int i = 0; i < g_ets_count; i++) {
+        if (g_ets_tables[i].active) {
+            ets_destroy_table(&g_ets_tables[i]);
+        }
+    }
+    g_ets_count = 0;
+}
+
 void actor_reset_all(void) {
+    /* Reset ETS tables */
+    ets_reset_all();
+
     /* Reset timers */
     timer_reset_all();
 
