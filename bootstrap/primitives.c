@@ -2346,6 +2346,8 @@ Cell* prim_sup_start(Cell* args) {
         strategy = SUP_ONE_FOR_ONE;
     } else if (strcmp(strat_name, ":one-for-all") == 0) {
         strategy = SUP_ONE_FOR_ALL;
+    } else if (strcmp(strat_name, ":rest-for-one") == 0) {
+        strategy = SUP_REST_FOR_ONE;
     } else {
         return cell_error("sup-unknown-strategy", strategy_sym);
     }
@@ -2406,6 +2408,106 @@ Cell* prim_sup_restart_count(Cell* args) {
         return cell_error("sup-not-found", sup_id_cell);
     }
     return cell_number(sup->restart_count);
+}
+
+/* ⟳⊛⊕ - add child to supervisor dynamically
+ * (⟳⊛⊕ sup-id behavior-lambda) → new child actor ID */
+Cell* prim_sup_add_child(Cell* args) {
+    Cell* sup_id_cell = arg1(args);
+    Cell* behavior = arg2(args);
+
+    if (!cell_is_number(sup_id_cell)) {
+        return cell_error("sup-add-not-number", sup_id_cell);
+    }
+    int sup_id = (int)cell_get_number(sup_id_cell);
+    Supervisor* sup = supervisor_lookup(sup_id);
+    if (!sup) {
+        return cell_error("sup-not-found", sup_id_cell);
+    }
+    if (sup->child_count >= MAX_SUP_CHILDREN) {
+        return cell_error("sup-max-children", cell_number(MAX_SUP_CHILDREN));
+    }
+
+    /* Store the spec */
+    int index = sup->child_count;
+    cell_retain(behavior);
+    sup->child_specs[index] = behavior;
+    sup->child_ids[index] = 0;
+    sup->child_count++;
+
+    /* Spawn the child */
+    int child_id = supervisor_spawn_child(sup, index);
+    if (child_id == 0) {
+        /* Undo */
+        sup->child_count--;
+        cell_release(behavior);
+        sup->child_specs[index] = NULL;
+        return cell_error("sup-spawn-failed", cell_number(index));
+    }
+
+    return cell_number(child_id);
+}
+
+/* ⟳⊛⊖ - remove child from supervisor
+ * (⟳⊛⊖ sup-id child-actor) → #t */
+Cell* prim_sup_remove_child(Cell* args) {
+    Cell* sup_id_cell = arg1(args);
+    Cell* child_cell = arg2(args);
+
+    if (!cell_is_number(sup_id_cell)) {
+        return cell_error("sup-remove-not-number", sup_id_cell);
+    }
+    int sup_id = (int)cell_get_number(sup_id_cell);
+    Supervisor* sup = supervisor_lookup(sup_id);
+    if (!sup) {
+        return cell_error("sup-not-found", sup_id_cell);
+    }
+
+    /* Accept actor cell or number for child ID */
+    int child_id;
+    if (child_cell->type == CELL_ACTOR) {
+        child_id = cell_get_actor_id(child_cell);
+    } else if (cell_is_number(child_cell)) {
+        child_id = (int)cell_get_number(child_cell);
+    } else {
+        return cell_error("sup-remove-bad-child", child_cell);
+    }
+
+    /* Find child index */
+    int found = -1;
+    for (int i = 0; i < sup->child_count; i++) {
+        if (sup->child_ids[i] == child_id) {
+            found = i;
+            break;
+        }
+    }
+    if (found < 0) {
+        return cell_error("sup-child-not-found", child_cell);
+    }
+
+    /* Kill the actor */
+    Actor* actor = actor_lookup(child_id);
+    if (actor && actor->alive) {
+        actor->alive = false;
+        actor->result = cell_symbol(":shutdown");
+        cell_retain(actor->result);
+    }
+
+    /* Release spec */
+    if (sup->child_specs[found]) {
+        cell_release(sup->child_specs[found]);
+    }
+
+    /* Shift arrays down */
+    for (int i = found; i < sup->child_count - 1; i++) {
+        sup->child_specs[i] = sup->child_specs[i + 1];
+        sup->child_ids[i] = sup->child_ids[i + 1];
+    }
+    sup->child_count--;
+    sup->child_specs[sup->child_count] = NULL;
+    sup->child_ids[sup->child_count] = 0;
+
+    return cell_bool(true);
 }
 
 /* ============ Channel Primitives ============ */
@@ -6452,6 +6554,8 @@ static Primitive primitives[] = {
     {"⟳⊛", prim_sup_start, 2, {"Create supervisor with strategy and children", ":strategy → [λ] → ℕ"}},
     {"⟳⊛?", prim_sup_children, 1, {"Get supervisor children", "ℕ → [⟳]"}},
     {"⟳⊛!", prim_sup_restart_count, 1, {"Get supervisor restart count", "ℕ → ℕ"}},
+    {"⟳⊛⊕", prim_sup_add_child, 2, {"Add child to supervisor", "ℕ → λ → ℕ"}},
+    {"⟳⊛⊖", prim_sup_remove_child, 2, {"Remove child from supervisor", "ℕ → ⟳ → 𝔹"}},
 
     /* Channel primitives */
     {"⟿⊚", prim_chan_create, -1, {"Create channel (optional capacity)", "() → ⟿ | ℕ → ⟿"}},

@@ -54,7 +54,8 @@ void   actor_notify_exit(Actor* exiting, Cell* reason);
 /* Supervisor strategies */
 typedef enum {
     SUP_ONE_FOR_ONE,
-    SUP_ONE_FOR_ALL
+    SUP_ONE_FOR_ALL,
+    SUP_REST_FOR_ONE
 } SupervisorStrategy;
 
 typedef struct Supervisor {

@@ -33,7 +33,7 @@ Everything is a **Cell**:
 
 ## Runtime Primitives (156 Total)
 
-**Status:** 156 primitives implemented and stable (91/91 test files passing)
+**Status:** 158 primitives implemented and stable (92/92 test files passing)
 **Note:** All primitives fully working including graph algorithms, actors, channels, supervision, and supervisors
 
 ### Core Lambda Calculus (3) ✅
@@ -675,8 +675,10 @@ Erlang-style supervision primitives. Bidirectional links propagate failure (erro
 | `⟳⊛` | `:strategy → [λ] → ℕ` | Create supervisor with strategy and child specs | ✅ |
 | `⟳⊛?` | `ℕ → [⟳]` | Get list of current child actor cells | ✅ |
 | `⟳⊛!` | `ℕ → ℕ` | Get supervisor restart count | ✅ |
+| `⟳⊛⊕` | `ℕ → λ → ℕ` | Add child to supervisor dynamically | ✅ |
+| `⟳⊛⊖` | `ℕ → ⟳ → 𝔹` | Remove child from supervisor | ✅ |
 
-Supervisors manage groups of child actors and automatically restart them on failure. Strategies: `:one-for-one` (restart only failed child), `:one-for-all` (kill all siblings then restart all). Max 5 restarts per supervisor prevents infinite restart loops. Normal exits do NOT trigger restarts.
+Supervisors manage groups of child actors and automatically restart them on failure. Strategies: `:one-for-one` (restart only failed child), `:one-for-all` (kill all siblings then restart all), `:rest-for-one` (restart failed child and all children after it). Max 5 restarts per supervisor prevents infinite restart loops. Normal exits do NOT trigger restarts. Children can be added/removed dynamically.
 
 ### Documentation (10) ✅
 | Symbol | Type | Meaning | Status |

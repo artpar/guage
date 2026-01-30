@@ -353,6 +353,20 @@ void supervisor_handle_exit(Supervisor* sup, int dead_id, Cell* reason) {
         for (int i = 0; i < sup->child_count; i++) {
             supervisor_spawn_child(sup, i);
         }
+    } else if (sup->strategy == SUP_REST_FOR_ONE) {
+        /* Kill children after dead_index, then restart from dead_index onward */
+        for (int i = dead_index + 1; i < sup->child_count; i++) {
+            Actor* child = actor_lookup(sup->child_ids[i]);
+            if (child && child->alive) {
+                child->alive = false;
+                child->result = cell_symbol(":shutdown");
+                cell_retain(child->result);
+            }
+        }
+        /* Respawn from dead_index to end */
+        for (int i = dead_index; i < sup->child_count; i++) {
+            supervisor_spawn_child(sup, i);
+        }
     }
 }
 

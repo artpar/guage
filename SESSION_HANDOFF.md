@@ -1,11 +1,41 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-01-30 (Day 93 COMPLETE)
+Updated: 2026-01-30 (Day 94 COMPLETE)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 93 - Supervisor Strategies (2026-01-30)
+# Session Handoff: Day 94 - Dynamic Supervisor Children + Rest-for-One (2026-01-30)
+
+## Day 94 Progress - Dynamic Child Management (`⟳⊛⊕`, `⟳⊛⊖`) + Rest-for-One Strategy
+
+**RESULT:** 92/92 test files passing (100%), 10 new tests (dynamic supervisor children + rest-for-one)
+
+### New Feature: Dynamic Supervisor Children + Rest-for-One
+
+Supervisors can now add and remove children at runtime, and a third restart strategy `:rest-for-one` restarts the crashed child and all children started after it (preserving earlier siblings).
+
+**New Primitives (2):**
+- `⟳⊛⊕` (sup-add-child) — Dynamically add a new child to a supervisor: `(⟳⊛⊕ sup-id behavior)` → new child actor ID
+- `⟳⊛⊖` (sup-remove-child) — Remove a child from a supervisor: `(⟳⊛⊖ sup-id child-actor)` → `#t`
+
+**New Strategy:**
+- `:rest-for-one` — On child crash, kill all children after the crashed one, then restart from crashed index onward. Earlier siblings are untouched.
+
+**Semantics:**
+- `⟳⊛⊕` validates supervisor exists and child_count < MAX_SUP_CHILDREN, stores spec, spawns child, returns actor ID
+- `⟳⊛⊖` accepts actor cell or number for child ID, kills actor with `:shutdown`, shifts arrays down, decrements count
+- Rest-for-one: on crash at index N, kills children N+1..end with `:shutdown`, respawns N..end from specs
+
+**Files Modified (3):**
+- `bootstrap/actor.h` — Added `SUP_REST_FOR_ONE` to `SupervisorStrategy` enum
+- `bootstrap/actor.c` — Added rest-for-one case in `supervisor_handle_exit`
+- `bootstrap/primitives.c` — 2 new primitive functions (`prim_sup_add_child`, `prim_sup_remove_child`), `:rest-for-one` strategy support in `prim_sup_start`, registration
+
+**New Test File (1):**
+- `bootstrap/tests/test_sup_dynamic.test` — 10 tests covering add-basic, add-multiple, add-max-overflow, remove-basic, remove-remaining-supervised, rest-for-one-middle, rest-for-one-first, rest-for-one-last, dynamic-add-with-rest-for-one, remove-then-crash
+
+---
 
 ## Day 93 Progress - Supervisor Strategies (`⟳⊛`, `⟳⊛?`, `⟳⊛!`)
 
@@ -197,8 +227,8 @@ Replaced replay-based resumable effects with real delimited continuations using 
 ## Current Status
 
 **System State:**
-- **Primitives:** 156 total (146 + 5 supervision + 2 select + 3 supervisor)
-- **Tests:** 91/91 test files passing (100%)
+- **Primitives:** 158 total (146 + 5 supervision + 2 select + 3 supervisor + 2 dynamic supervisor)
+- **Tests:** 92/92 test files passing (100%)
 - **Build:** Clean, O2 optimized, 32MB stack
 
 **Core Capabilities:**
@@ -210,7 +240,8 @@ Replaced replay-based resumable effects with real delimited continuations using 
 - Channels (⟿⊚, ⟿→, ⟿←, ⟿×) — bounded ring buffers with blocking
 - Channel select (⟿⊞, ⟿⊞?) — multiplexed channel waiting
 - Supervision (⟳⊗, ⟳⊘, ⟳⊙, ⟳⊜, ⟳✕) — linking, monitoring, exit signals
-- Supervisor strategies (⟳⊛, ⟳⊛?, ⟳⊛!) — one-for-one, one-for-all
+- Supervisor strategies (⟳⊛, ⟳⊛?, ⟳⊛!) — one-for-one, one-for-all, rest-for-one
+- Dynamic supervisor children (⟳⊛⊕, ⟳⊛⊖) — runtime add/remove
 - Module system (⋘ load, ⌂⊚ info)
 - Structures (⊙ leaf, ⊚ node/ADT)
 - Pattern matching (∇) with guards, as-patterns, or-patterns, view patterns
@@ -227,6 +258,7 @@ Replaced replay-based resumable effects with real delimited continuations using 
 
 | Day | Feature | Tests |
 |-----|---------|-------|
+| 94 | Dynamic Supervisor Children (⟳⊛⊕, ⟳⊛⊖) + rest-for-one strategy | 92/92 (100%), 10 new tests |
 | 93 | Supervisor Strategies (⟳⊛, ⟳⊛?, ⟳⊛!) — one-for-one, one-for-all | 91/91 (100%), 8 new tests |
 | 92 | Supervision (⟳⊗, ⟳⊘, ⟳⊙, ⟳⊜, ⟳✕) + refcount bugfix | 90/90 (100%), 8 new tests |
 | 91 | Channel Select (⟿⊞, ⟿⊞?) — multiplexed waiting | 89/89 (100%), 8 new tests |
@@ -256,7 +288,7 @@ Replaced replay-based resumable effects with real delimited continuations using 
 ### Build & Test
 ```bash
 make              # Build (O2 optimized, 32MB stack)
-make test         # Run full test suite (91 test files)
+make test         # Run full test suite (92 test files)
 make repl         # Start interactive REPL
 make clean        # Clean build artifacts
 make rebuild      # Clean + rebuild
@@ -298,5 +330,5 @@ bootstrap/tests/             # Test suite (88 test files)
 
 ---
 
-**Last Updated:** 2026-01-30 (Day 93 complete)
-**Next Session:** Day 94 - Dynamic child management (sup-add/sup-remove), rest-for-one strategy, or optimizer
+**Last Updated:** 2026-01-30 (Day 94 complete)
+**Next Session:** Day 95 - Process registry (named actors), supervisor trees, or optimizer

@@ -1,0 +1,229 @@
+; Day 94: Dynamic Supervisor Children + Rest-for-One Strategy
+; Tests: add/remove children dynamically, rest-for-one restart strategy
+
+;;; Test 1: sup-add-child basic — add child, verify alive
+(⟳∅)
+(≔ w1 (λ (self) (←?)))
+(≔ sup1 (⟳⊛ :one-for-one (⟨⟩ w1 ∅)))
+(⟳! #100)
+(≔ new-behavior (λ (self) (←?)))
+(≔ new-id (⟳⊛⊕ sup1 new-behavior))
+(⟳! #100)
+; Children list should now have 2 entries, both alive
+(≔ kids1 (⟳⊛? sup1))
+(⊨ (⌜ :sup-add-child-basic)
+  #t
+  (∧ (⟳? (◁ kids1))
+     (⟳? (◁ (▷ kids1)))))
+
+;;; Test 2: sup-add-child multiple — add several dynamically
+(⟳∅)
+(≔ base (λ (self) (←?)))
+(≔ sup2 (⟳⊛ :one-for-one (⟨⟩ base ∅)))
+(⟳! #50)
+(≔ d1 (⟳⊛⊕ sup2 (λ (self) (←?))))
+(≔ d2 (⟳⊛⊕ sup2 (λ (self) (←?))))
+(⟳! #100)
+(≔ kids2 (⟳⊛? sup2))
+; Should have 3 children total (1 original + 2 dynamic)
+(⊨ (⌜ :sup-add-child-multiple)
+  #3
+  (⊕ (? (⟳? (◁ kids2)) #1 #0)
+     (⊕ (? (⟳? (◁ (▷ kids2))) #1 #0)
+        (? (⟳? (◁ (▷ (▷ kids2)))) #1 #0))))
+
+;;; Test 3: sup-add-child max — exceed MAX_SUP_CHILDREN → error
+(⟳∅)
+(≔ sup3 (⟳⊛ :one-for-one ∅))
+; Add 32 children (MAX_SUP_CHILDREN)
+(≔ add-many (λ (n)
+  (? (≡ n #0)
+     :done
+     (≫ (⟳⊛⊕ sup3 (λ (self) (←?)))
+        (λ (_) (add-many (⊖ n #1)))))))
+(add-many #32)
+(⟳! #200)
+; 33rd should fail
+(≔ overflow-result (⟳⊛⊕ sup3 (λ (self) (←?))))
+(⊨ (⌜ :sup-add-child-max)
+  #t
+  (⚠? overflow-result))
+
+;;; Test 4: sup-remove-child basic — remove child, verify dead
+(⟳∅)
+(≔ w4 (λ (self) (←?)))
+(≔ sup4 (⟳⊛ :one-for-one (⟨⟩ w4 (⟨⟩ w4 ∅))))
+(⟳! #100)
+(≔ kids4 (⟳⊛? sup4))
+(≔ victim (◁ kids4))
+(⟳⊛⊖ sup4 victim)
+(⊨ (⌜ :sup-remove-child-basic)
+  #f
+  (⟳? victim))
+
+;;; Test 5: sup-remove remaining supervised — remove one, crash another, restart works
+(⟳∅)
+(≔ crashable (λ (self)
+  (≫ (←?) (λ (msg)
+    (? (≡ msg :crash) (⚠ :crashed :boom) msg)))))
+(≔ steady (λ (self) (←?)))
+(≔ sup5 (⟳⊛ :one-for-one (⟨⟩ crashable (⟨⟩ steady ∅))))
+(⟳! #100)
+(≔ kids5 (⟳⊛? sup5))
+(≔ crash-kid (◁ kids5))
+(≔ steady-kid (◁ (▷ kids5)))
+; Remove steady kid
+(⟳⊛⊖ sup5 steady-kid)
+; Crash the crashable one
+(→! crash-kid :crash)
+(⟳! #200)
+; Crashable should be restarted, only 1 child now
+(≔ kids5b (⟳⊛? sup5))
+(⊨ (⌜ :sup-remove-remaining-supervised)
+  #t
+  (∧ (⟳? (◁ kids5b))
+     (≡ (▷ kids5b) ∅)))
+
+;;; Test 6: rest-for-one basic — crash middle, later restart, earlier unchanged
+(⟳∅)
+(≔ ch6 (⟿⊚))
+(≔ w6a (λ (self)
+  (≫ (⟿→ ch6 :a-started) (λ (_) (←?)))))
+(≔ w6b (λ (self)
+  (≫ (⟿→ ch6 :b-started) (λ (_)
+    (≫ (←?) (λ (msg)
+      (? (≡ msg :crash) (⚠ :crashed :b) msg)))))))
+(≔ w6c (λ (self)
+  (≫ (⟿→ ch6 :c-started) (λ (_) (←?)))))
+(≔ sup6 (⟳⊛ :rest-for-one (⟨⟩ w6a (⟨⟩ w6b (⟨⟩ w6c ∅)))))
+(⟳! #100)
+(≔ kids6 (⟳⊛? sup6))
+(≔ old-a6 (◁ kids6))
+(≔ old-b6 (◁ (▷ kids6)))
+(≔ old-c6 (◁ (▷ (▷ kids6))))
+; Crash middle child (b)
+(→! old-b6 :crash)
+(⟳! #200)
+(≔ kids6b (⟳⊛? sup6))
+(≔ new-a6 (◁ kids6b))
+(≔ new-b6 (◁ (▷ kids6b)))
+(≔ new-c6 (◁ (▷ (▷ kids6b))))
+; a unchanged, b and c restarted (new IDs)
+(⊨ (⌜ :rest-for-one-middle-crash)
+  #t
+  (∧ (≡ old-a6 new-a6)
+     (∧ (¬ (≡ old-b6 new-b6))
+        (¬ (≡ old-c6 new-c6)))))
+
+;;; Test 7: rest-for-one first child — crash first, all restart
+(⟳∅)
+(≔ ch7 (⟿⊚))
+(≔ w7a (λ (self)
+  (≫ (⟿→ ch7 :a) (λ (_)
+    (≫ (←?) (λ (msg)
+      (? (≡ msg :crash) (⚠ :crashed :a) msg)))))))
+(≔ w7b (λ (self) (≫ (⟿→ ch7 :b) (λ (_) (←?)))))
+(≔ w7c (λ (self) (≫ (⟿→ ch7 :c) (λ (_) (←?)))))
+(≔ sup7 (⟳⊛ :rest-for-one (⟨⟩ w7a (⟨⟩ w7b (⟨⟩ w7c ∅)))))
+(⟳! #100)
+(≔ kids7 (⟳⊛? sup7))
+(≔ old-a7 (◁ kids7))
+(≔ old-b7 (◁ (▷ kids7)))
+(≔ old-c7 (◁ (▷ (▷ kids7))))
+(→! old-a7 :crash)
+(⟳! #200)
+(≔ kids7b (⟳⊛? sup7))
+(≔ new-a7 (◁ kids7b))
+(≔ new-b7 (◁ (▷ kids7b)))
+(≔ new-c7 (◁ (▷ (▷ kids7b))))
+; All should have new IDs
+(⊨ (⌜ :rest-for-one-first-crash)
+  #t
+  (∧ (¬ (≡ old-a7 new-a7))
+     (∧ (¬ (≡ old-b7 new-b7))
+        (¬ (≡ old-c7 new-c7)))))
+
+;;; Test 8: rest-for-one last child — only last restarts
+(⟳∅)
+(≔ ch8 (⟿⊚))
+(≔ w8a (λ (self) (≫ (⟿→ ch8 :a) (λ (_) (←?)))))
+(≔ w8b (λ (self) (≫ (⟿→ ch8 :b) (λ (_) (←?)))))
+(≔ w8c (λ (self)
+  (≫ (⟿→ ch8 :c) (λ (_)
+    (≫ (←?) (λ (msg)
+      (? (≡ msg :crash) (⚠ :crashed :c) msg)))))))
+(≔ sup8 (⟳⊛ :rest-for-one (⟨⟩ w8a (⟨⟩ w8b (⟨⟩ w8c ∅)))))
+(⟳! #100)
+(≔ kids8 (⟳⊛? sup8))
+(≔ old-a8 (◁ kids8))
+(≔ old-b8 (◁ (▷ kids8)))
+(≔ old-c8 (◁ (▷ (▷ kids8))))
+(→! old-c8 :crash)
+(⟳! #200)
+(≔ kids8b (⟳⊛? sup8))
+(≔ new-a8 (◁ kids8b))
+(≔ new-b8 (◁ (▷ kids8b)))
+(≔ new-c8 (◁ (▷ (▷ kids8b))))
+; a and b unchanged, only c restarted
+(⊨ (⌜ :rest-for-one-last-crash)
+  #t
+  (∧ (≡ old-a8 new-a8)
+     (∧ (≡ old-b8 new-b8)
+        (¬ (≡ old-c8 new-c8)))))
+
+;;; Test 9: dynamic-add then crash (rest-for-one) — dynamically added child restarts too
+(⟳∅)
+(≔ ch9 (⟿⊚))
+(≔ w9a (λ (self) (≫ (⟿→ ch9 :a) (λ (_) (←?)))))
+(≔ w9b (λ (self)
+  (≫ (⟿→ ch9 :b) (λ (_)
+    (≫ (←?) (λ (msg)
+      (? (≡ msg :crash) (⚠ :crashed :b) msg)))))))
+(≔ sup9 (⟳⊛ :rest-for-one (⟨⟩ w9a (⟨⟩ w9b ∅))))
+(⟳! #100)
+; Dynamically add a third child
+(≔ dyn9 (⟳⊛⊕ sup9 (λ (self) (≫ (⟿→ ch9 :dyn) (λ (_) (←?))))))
+(⟳! #100)
+(≔ kids9 (⟳⊛? sup9))
+(≔ old-a9 (◁ kids9))
+(≔ old-b9 (◁ (▷ kids9)))
+(≔ old-dyn9 (◁ (▷ (▷ kids9))))
+; Crash b (middle) — dyn (after b) should also restart
+(→! old-b9 :crash)
+(⟳! #200)
+(≔ kids9b (⟳⊛? sup9))
+(≔ new-a9 (◁ kids9b))
+(≔ new-b9 (◁ (▷ kids9b)))
+(≔ new-dyn9 (◁ (▷ (▷ kids9b))))
+(⊨ (⌜ :rest-for-one-dynamic-child)
+  #t
+  (∧ (≡ old-a9 new-a9)
+     (∧ (¬ (≡ old-b9 new-b9))
+        (¬ (≡ old-dyn9 new-dyn9)))))
+
+;;; Test 10: sup-remove then crash — removed child stays gone
+(⟳∅)
+(≔ ch10 (⟿⊚))
+(≔ w10a (λ (self) (≫ (⟿→ ch10 :a) (λ (_) (←?)))))
+(≔ w10b (λ (self) (≫ (⟿→ ch10 :b) (λ (_) (←?)))))
+(≔ w10c (λ (self)
+  (≫ (⟿→ ch10 :c) (λ (_)
+    (≫ (←?) (λ (msg)
+      (? (≡ msg :crash) (⚠ :crashed :c) msg)))))))
+(≔ sup10 (⟳⊛ :one-for-one (⟨⟩ w10a (⟨⟩ w10b (⟨⟩ w10c ∅)))))
+(⟳! #100)
+(≔ kids10 (⟳⊛? sup10))
+(≔ kid-b10 (◁ (▷ kids10)))
+(≔ kid-c10 (◁ (▷ (▷ kids10))))
+; Remove b
+(⟳⊛⊖ sup10 kid-b10)
+; Crash c
+(→! kid-c10 :crash)
+(⟳! #200)
+; Should have 2 children now (a and restarted c), b stays gone
+(≔ kids10b (⟳⊛? sup10))
+(⊨ (⌜ :sup-remove-then-crash)
+  #t
+  (∧ (≡ (▷ (▷ kids10b)) ∅)
+     (∧ (⟳? (◁ kids10b))
+        (⟳? (◁ (▷ kids10b))))))

@@ -11,10 +11,10 @@ Purpose: Project overview and quick start
 
 ## Current Status
 
-- **156 primitives** — all working
-- **91/91 test files passing** (100%)
+- **158 primitives** — all working
+- **92/92 test files passing** (100%)
 - **Turing complete** — lambda calculus with De Bruijn indices + TCO
-- **Day 93 complete** — supervisor strategies (one-for-one, one-for-all)
+- **Day 94 complete** — dynamic supervisor children + rest-for-one strategy
 - See [`SESSION_HANDOFF.md`](SESSION_HANDOFF.md) for detailed progress
 
 ## What's Working
@@ -54,7 +54,7 @@ Purpose: Project overview and quick start
 
 ```bash
 make              # Build (O2 optimized, 32MB stack)
-make test         # Run full test suite (91 test files)
+make test         # Run full test suite (92 test files)
 make repl         # Start interactive REPL
 make clean        # Clean build artifacts
 make rebuild      # Clean + rebuild
@@ -141,7 +141,7 @@ make rebuild      # Clean + rebuild
 guage/
 ├── Makefile              # Build system (from root)
 ├── README.md             # This file
-├── SPEC.md               # Language specification (156 primitives)
+├── SPEC.md               # Language specification (158 primitives)
 ├── CLAUDE.md             # Philosophy and principles
 ├── SESSION_HANDOFF.md    # Current progress and status
 ├── bootstrap/            # C implementation
@@ -162,7 +162,7 @@ guage/
 │   ├── testgen.{c,h}    # Test generation + mutation testing
 │   ├── main.c            # Parser, REPL with history/completion
 │   ├── stdlib/           # Standard library (Guage code)
-│   ├── tests/            # Test suite (91 test files)
+│   ├── tests/            # Test suite (92 test files)
 │   └── run_tests.sh      # Test runner
 └── docs/                 # Documentation
     ├── INDEX.md           # Navigation hub
