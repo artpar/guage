@@ -1,11 +1,39 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-01-30 (Day 96 COMPLETE)
+Updated: 2026-01-30 (Day 97 COMPLETE)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 96 - Timers / Send-After (2026-01-30)
+# Session Handoff: Day 97 - GenServer / Call-Reply (2026-01-30)
+
+## Day 97 Progress - GenServer (`⟳⇅`, `⟳⇅!`)
+
+**RESULT:** 95/95 test files passing (100%), 10 new tests (GenServer call-reply)
+
+### New Feature: GenServer — Synchronous Call-Reply Pattern
+
+Erlang-style synchronous call-reply between actors. `⟳⇅` (call) sends a tagged `⟨:call caller-id request⟩` message to the target actor and suspends the caller until a reply arrives. `⟳⇅!` (reply) sends the response back to the caller's mailbox.
+
+**New Primitives (2):**
+- `⟳⇅` (call) — Synchronous call: `(⟳⇅ target request)` → suspends until reply
+- `⟳⇅!` (reply) — Reply to caller: `(⟳⇅! caller-id response)` → sends response
+
+**Semantics:**
+- Call sends `⟨:call caller-actor request⟩` to target, then yields on mailbox
+- Server receives the message, extracts caller from `(◁ (▷ msg))` and request from `(◁ (▷ (▷ msg)))`
+- Reply sends response directly to caller's mailbox
+- Calling outside actor context returns error
+- Calling dead actor returns error
+- Multiple sequential calls work correctly (server handles them in order)
+
+**Files Modified (1):**
+- `bootstrap/primitives.c` — 2 new primitive functions + registration in table
+
+**New Test File (1):**
+- `bootstrap/tests/test_genserver.test` — 10 tests: call-reply-basic, call-reply-echo, call-reply-multiple, call-not-actor, call-dead-actor, reply-not-actor, call-with-registered, call-message-format, call-with-timer, call-outside-actor
+
+---
 
 ## Day 96 Progress - Timers (`⟳⏱`, `⟳⏱×`, `⟳⏱?`)
 
@@ -290,8 +318,8 @@ Replaced replay-based resumable effects with real delimited continuations using 
 ## Current Status
 
 **System State:**
-- **Primitives:** 165 total (146 + 5 supervision + 2 select + 3 supervisor + 2 dynamic supervisor + 4 registry + 3 timers)
-- **Tests:** 94/94 test files passing (100%)
+- **Primitives:** 167 total (146 + 5 supervision + 2 select + 3 supervisor + 2 dynamic supervisor + 4 registry + 3 timers + 2 genserver)
+- **Tests:** 95/95 test files passing (100%)
 - **Build:** Clean, O2 optimized, 32MB stack
 
 **Core Capabilities:**
@@ -307,6 +335,7 @@ Replaced replay-based resumable effects with real delimited continuations using 
 - Dynamic supervisor children (⟳⊛⊕, ⟳⊛⊖) — runtime add/remove
 - Process registry (⟳⊜⊕, ⟳⊜⊖, ⟳⊜?, ⟳⊜*) — named actors
 - Timers (⟳⏱, ⟳⏱×, ⟳⏱?) — scheduled message delivery
+- GenServer (⟳⇅, ⟳⇅!) — synchronous call-reply
 - Module system (⋘ load, ⌂⊚ info)
 - Structures (⊙ leaf, ⊚ node/ADT)
 - Pattern matching (∇) with guards, as-patterns, or-patterns, view patterns
@@ -323,6 +352,7 @@ Replaced replay-based resumable effects with real delimited continuations using 
 
 | Day | Feature | Tests |
 |-----|---------|-------|
+| 97 | GenServer (⟳⇅, ⟳⇅!) — synchronous call-reply | 95/95 (100%), 10 new tests |
 | 96 | Timers (⟳⏱, ⟳⏱×, ⟳⏱?) — scheduled message delivery | 94/94 (100%), 10 new tests |
 | 95 | Process Registry (⟳⊜⊕, ⟳⊜⊖, ⟳⊜?, ⟳⊜*) — named actors | 93/93 (100%), 10 new tests |
 | 94 | Dynamic Supervisor Children (⟳⊛⊕, ⟳⊛⊖) + rest-for-one strategy | 92/92 (100%), 10 new tests |
@@ -397,5 +427,5 @@ bootstrap/tests/             # Test suite (88 test files)
 
 ---
 
-**Last Updated:** 2026-01-30 (Day 96 complete)
-**Next Session:** Day 97 - GenServer pattern, supervisor trees, or optimizer
+**Last Updated:** 2026-01-30 (Day 97 complete)
+**Next Session:** Day 98 - Supervisor trees, ETS/process dictionary, or optimizer

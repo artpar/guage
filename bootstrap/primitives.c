@@ -2572,6 +2572,83 @@ Cell* prim_registry_list(Cell* args) {
     return actor_registry_list();
 }
 
+/* ============ GenServer / Call-Reply ============ */
+
+/* ⟳⇅ - synchronous call
+ * (⟳⇅ target request) — sends ⟨:call caller-id request⟩ to target,
+ * then yields until reply arrives in caller's mailbox */
+Cell* prim_call(Cell* args) {
+    Cell* target_cell = arg1(args);
+    Cell* request = arg2(args);
+
+    if (!cell_is_actor(target_cell)) {
+        return cell_error("call-not-actor", target_cell);
+    }
+
+    Actor* caller = actor_current();
+    if (!caller) {
+        return cell_error("call-no-actor", cell_nil());
+    }
+
+    int target_id = cell_get_actor_id(target_cell);
+    Actor* target = actor_lookup(target_id);
+    if (!target || !target->alive) {
+        return cell_error("call-dead-actor", target_cell);
+    }
+
+    /* Build message: ⟨:call caller-id request⟩ */
+    Cell* tag = cell_symbol(":call");
+    Cell* caller_cell = cell_actor(caller->id);
+    Cell* inner = cell_cons(request, cell_nil());
+    Cell* mid = cell_cons(caller_cell, inner);
+    Cell* msg = cell_cons(tag, mid);
+    cell_release(caller_cell);
+    cell_release(inner);
+    cell_release(mid);
+
+    actor_send(target, msg);
+    cell_release(msg);
+
+    /* Now yield to wait for reply (same as ←?) */
+    Fiber* fiber = caller->fiber;
+    Cell* reply = actor_receive(caller);
+    if (reply) {
+        return reply;
+    }
+
+    if (fiber) {
+        fiber->suspend_reason = SUSPEND_MAILBOX;
+        fiber_yield(fiber);
+        Cell* resumed = fiber->resume_value;
+        if (resumed) {
+            cell_retain(resumed);
+            return resumed;
+        }
+    }
+
+    return cell_nil();
+}
+
+/* ⟳⇅! - reply to a caller
+ * (⟳⇅! caller-id response) — sends response to caller's mailbox */
+Cell* prim_reply(Cell* args) {
+    Cell* caller_cell = arg1(args);
+    Cell* response = arg2(args);
+
+    if (!cell_is_actor(caller_cell)) {
+        return cell_error("reply-not-actor", caller_cell);
+    }
+
+    int caller_id = cell_get_actor_id(caller_cell);
+    Actor* caller = actor_lookup(caller_id);
+    if (!caller || !caller->alive) {
+        return cell_error("reply-dead-actor", caller_cell);
+    }
+
+    actor_send(caller, response);
+    return cell_nil();
+}
+
 /* ============ Timer Primitives ============ */
 
 /* ⟳⏱ - send-after
@@ -6694,6 +6771,8 @@ static Primitive primitives[] = {
     {"⟳⊜⊖", prim_registry_unregister, 1, {"Unregister a name", ":symbol → #t | ⚠"}},
     {"⟳⊜?", prim_registry_whereis, 1, {"Look up actor by name", ":symbol → ⟳ | ∅"}},
     {"⟳⊜*", prim_registry_list, 0, {"List all registered names", "() → [:symbol]"}},
+    {"⟳⇅", prim_call, 2, {"Synchronous call to actor", "⟳ → α → β"}},
+    {"⟳⇅!", prim_reply, 2, {"Reply to caller", "⟳ → α → ∅"}},
     {"⟳⏱", prim_timer_send_after, 3, {"Send message after N ticks", "ℕ → ⟳ → α → ℕ"}},
     {"⟳⏱×", prim_timer_cancel, 1, {"Cancel a pending timer", "ℕ → #t | ⚠"}},
     {"⟳⏱?", prim_timer_active, 1, {"Check if timer is active", "ℕ → #t | #f"}},

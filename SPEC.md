@@ -31,10 +31,10 @@ Everything is a **Cell**:
 
 **See:** `KEYWORDS.md` for complete specification.
 
-## Runtime Primitives (165 Total)
+## Runtime Primitives (167 Total)
 
-**Status:** 165 primitives implemented and stable (94/94 test files passing)
-**Note:** All primitives fully working including graph algorithms, actors, channels, supervision, supervisors, registry, and timers
+**Status:** 167 primitives implemented and stable (95/95 test files passing)
+**Note:** All primitives fully working including graph algorithms, actors, channels, supervision, supervisors, registry, timers, and GenServer
 
 ### Core Lambda Calculus (3) ✅
 | Symbol | Type | Meaning | Status |
@@ -698,6 +698,14 @@ Erlang-style named process registry. Names are symbols. One name per actor, one 
 | `⟳⏱?` | `ℕ → #t \| #f` | Check if timer is active | ✅ |
 
 Timers schedule message delivery to an actor after N scheduler ticks. The scheduler keeps spinning while timers are pending. Dead actor targets silently drop the message. `⟳∅` (reset) clears all timers.
+
+### GenServer / Call-Reply (2) ✅
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `⟳⇅` | `⟳ → α → β` | Synchronous call (send + wait for reply) | ✅ |
+| `⟳⇅!` | `⟳ → α → ∅` | Reply to caller | ✅ |
+
+Synchronous call-reply pattern. `⟳⇅` sends `⟨:call caller-actor request⟩` to target and yields until reply. Server extracts caller with `(◁ (▷ msg))`, request with `(◁ (▷ (▷ msg)))`, and replies via `⟳⇅!`.
 
 ### Documentation (10) ✅
 | Symbol | Type | Meaning | Status |
