@@ -1,11 +1,50 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-01-30 (Day 102 COMPLETE)
+Updated: 2026-01-30 (Day 103 COMPLETE)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 102 - Agent State Wrapper (2026-01-30)
+# Session Handoff: Day 103 - GenStage Producer-Consumer (2026-01-30)
+
+## Day 103 Progress - GenStage (`⟳⊵`, `⟳⊵⊕`, `⟳⊵→`, `⟳⊵⊙`, `⟳⊵?`, `⟳⊵×`)
+
+**RESULT:** 101/101 test files passing (100%), 10 new tests (GenStage)
+
+### New Feature: GenStage — Demand-Driven Producer-Consumer Pipelines
+
+GenStage provides a framework for building data processing pipelines with back-pressure. Stages are stateful C-side entities (like Agents) with three modes: producers generate events on demand, consumers process events, and producer-consumers transform events and forward output downstream. Subscriptions connect stages into pipelines.
+
+**New Primitives (6):**
+- `⟳⊵` (stage-new) — Create stage: `(⟳⊵ :producer handler init-state)` → stage-id
+- `⟳⊵⊕` (stage-subscribe) — Subscribe downstream to upstream: `(⟳⊵⊕ consumer-id producer-id)` → `#t`
+- `⟳⊵→` (stage-ask) — Request events from producer: `(⟳⊵→ stage-id demand)` → events list
+- `⟳⊵⊙` (stage-dispatch) — Dispatch events into stage pipeline: `(⟳⊵⊙ stage-id events)` → dispatched count
+- `⟳⊵?` (stage-info) — Get stage info: `(⟳⊵? stage-id)` → `⟨:mode state⟩`
+- `⟳⊵×` (stage-stop) — Stop stage: `(⟳⊵× stage-id)` → final state
+
+**Stage Modes:**
+- `:producer` — Handler: `(λ (demand state) ⟨events new-state⟩)` — generates events
+- `:consumer` — Handler: `(λ (events state) new-state)` — processes events
+- `:producer-consumer` — Handler: `(λ (events state) ⟨out-events new-state⟩)` — transforms events
+
+**Semantics:**
+- Stages are pure C-side state (like Agents), not actors
+- Ask calls producer handler with demand + state, returns events, updates state
+- Dispatch sends events into a stage: producers forward to subscribers, consumers process, producer-consumers process then forward output to their subscribers
+- Subscriptions form directed pipelines — producer-consumer auto-forwards to downstream
+- `⟳∅` (reset) clears all stages for test isolation
+- Max 64 stages, 16 subscribers per stage
+
+**Files Modified (3):**
+- `bootstrap/actor.h` — GenStage struct, StageMode enum, MAX_STAGES/MAX_STAGE_SUBSCRIBERS, stage API declarations
+- `bootstrap/actor.c` — GenStage implementation (global array), stage_create/lookup/subscribe/stop/reset_all; actor_reset_all calls stage_reset_all
+- `bootstrap/primitives.c` — 6 new primitive functions + stage_call_fn2 helper + stage_dispatch_to_subscribers + registration
+
+**New Test File (1):**
+- `bootstrap/tests/test_genstage.test` — 10 tests: stage-new-producer, stage-new-consumer, stage-ask-producer, stage-ask-updates-state, stage-subscribe-basic, stage-dispatch, stage-info, stage-stop, stage-stop-error, stage-producer-consumer
+
+---
 
 ## Day 102 Progress - Agent (`⟳⊶`, `⟳⊶?`, `⟳⊶!`, `⟳⊶⊕`, `⟳⊶×`)
 
@@ -496,8 +535,8 @@ Replaced replay-based resumable effects with real delimited continuations using 
 ## Current Status
 
 **System State:**
-- **Primitives:** 188 total (183 + 5 agent)
-- **Tests:** 100/100 test files passing (100%)
+- **Primitives:** 194 total (188 + 6 GenStage)
+- **Tests:** 101/101 test files passing (100%)
 - **Build:** Clean, O2 optimized, 32MB stack
 
 **Core Capabilities:**
@@ -519,6 +558,7 @@ Replaced replay-based resumable effects with real delimited continuations using 
 - Application (⟳⊚⊕, ⟳⊚⊖, ⟳⊚?, ⟳⊚*, ⟳⊚⊙, ⟳⊚←) — OTP top-level container
 - Task async/await (⟳⊳, ⟳⊲, ⟳⊲?) — spawn computation and await result
 - Agent (⟳⊶, ⟳⊶?, ⟳⊶!, ⟳⊶⊕, ⟳⊶×) — functional state wrapper
+- GenStage (⟳⊵, ⟳⊵⊕, ⟳⊵→, ⟳⊵⊙, ⟳⊵?, ⟳⊵×) — producer-consumer pipelines
 - Module system (⋘ load, ⌂⊚ info)
 - Structures (⊙ leaf, ⊚ node/ADT)
 - Pattern matching (∇) with guards, as-patterns, or-patterns, view patterns
@@ -535,6 +575,7 @@ Replaced replay-based resumable effects with real delimited continuations using 
 
 | Day | Feature | Tests |
 |-----|---------|-------|
+| 103 | GenStage (⟳⊵, ⟳⊵⊕, ⟳⊵→, ⟳⊵⊙, ⟳⊵?, ⟳⊵×) — producer-consumer pipelines | 101/101 (100%), 10 new tests |
 | 102 | Agent (⟳⊶, ⟳⊶?, ⟳⊶!, ⟳⊶⊕, ⟳⊶×) — functional state wrapper | 100/100 (100%), 10 new tests |
 | 101 | Task async/await (⟳⊳, ⟳⊲, ⟳⊲?) — spawn and await computations | 99/99 (100%), 10 new tests |
 | 100 | Application (⟳⊚⊕, ⟳⊚⊖, ⟳⊚?, ⟳⊚*, ⟳⊚⊙, ⟳⊚←) — OTP top-level container | 98/98 (100%), 10 new tests |
@@ -615,5 +656,5 @@ bootstrap/tests/             # Test suite (88 test files)
 
 ---
 
-**Last Updated:** 2026-01-30 (Day 102 complete)
-**Next Session:** Day 103 - GenStage (producer-consumer), or new domain
+**Last Updated:** 2026-01-30 (Day 103 complete)
+**Next Session:** Day 104 - DynamicSupervisor (on-demand child spawning), or new domain

@@ -164,4 +164,30 @@ int   agent_set_state(int id, Cell* st);  /* 0=ok, -1=not found */
 int   agent_stop(int id);                 /* 0=ok, -1=not found */
 void  agent_reset_all(void);
 
+/* GenStage - producer-consumer pipelines */
+#define MAX_STAGES 64
+#define MAX_STAGE_SUBSCRIBERS 16
+
+typedef enum {
+    STAGE_PRODUCER,
+    STAGE_CONSUMER,
+    STAGE_PRODUCER_CONSUMER
+} StageMode;
+
+typedef struct GenStage {
+    int id;
+    StageMode mode;
+    Cell* handler;              /* callback function */
+    Cell* state;                /* current state */
+    int subscribers[MAX_STAGE_SUBSCRIBERS];  /* downstream stage IDs */
+    int subscriber_count;
+    bool active;
+} GenStage;
+
+int        stage_create(StageMode mode, Cell* handler, Cell* state);  /* returns id or -1 */
+GenStage*  stage_lookup(int id);
+int        stage_subscribe(int consumer_id, int producer_id);  /* 0=ok, -1=not found, -2=full */
+int        stage_stop(int id);           /* 0=ok, -1=not found */
+void       stage_reset_all(void);
+
 #endif /* GUAGE_ACTOR_H */

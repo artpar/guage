@@ -1,0 +1,115 @@
+; Day 103: GenStage (producer-consumer) tests — ⟳⊵, ⟳⊵⊕, ⟳⊵→, ⟳⊵⊙, ⟳⊵?, ⟳⊵×
+
+; Reset state
+(⟳∅)
+
+; === stage-new-producer ===
+; Create a producer stage
+(⟳∅)
+(≔ p (⟳⊵ :producer
+  (λ (demand state) (⟨⟩ (⟨⟩ state ∅) (⊕ state #1)))
+  #0))
+(⊨ (⌜ :stage-new-producer) #t (≥ p #0))
+
+; === stage-new-consumer ===
+; Create a consumer stage
+(⟳∅)
+(≔ c (⟳⊵ :consumer
+  (λ (events state) (⊕ state #1))
+  #0))
+(⊨ (⌜ :stage-new-consumer) #t (≥ c #0))
+
+; === stage-ask-producer ===
+; Ask producer for events — returns list from handler
+(⟳∅)
+(≔ p (⟳⊵ :producer
+  (λ (demand state)
+    ; always produce (state), advance state by demand
+    (⟨⟩ (⟨⟩ state ∅) (⊕ state demand)))
+  #0))
+(≔ evts (⟳⊵→ p #3))
+; Should get (0) and state advanced to 3
+(⊨ (⌜ :stage-ask-producer) (⟨⟩ #0 ∅) evts)
+
+; === stage-ask-updates-state ===
+; Asking updates producer state across calls
+(⟳∅)
+(≔ p (⟳⊵ :producer
+  (λ (demand state)
+    (⟨⟩ (⟨⟩ state ∅) (⊕ state #1)))
+  #10))
+(⟳⊵→ p #1)   ; produces (10), state→11
+(⟳⊵→ p #1)   ; produces (11), state→12
+(≔ evts (⟳⊵→ p #1))  ; produces (12), state→13
+(⊨ (⌜ :stage-ask-updates-state) (⟨⟩ #12 ∅) evts)
+
+; === stage-subscribe-basic ===
+; Subscribe consumer to producer
+(⟳∅)
+(≔ p (⟳⊵ :producer
+  (λ (demand state) (⟨⟩ (⟨⟩ state ∅) (⊕ state #1)))
+  #0))
+(≔ c (⟳⊵ :consumer
+  (λ (events state) (⊕ state #1))
+  #0))
+(⊨ (⌜ :stage-subscribe-basic) #t (⟳⊵⊕ c p))
+
+; === stage-dispatch ===
+; Dispatch events to subscribed consumer updates its state
+(⟳∅)
+(≔ p (⟳⊵ :producer
+  (λ (demand state) (⟨⟩ (⟨⟩ state ∅) (⊕ state #1)))
+  #0))
+(≔ c (⟳⊵ :consumer
+  (λ (events state) (⊕ state #1))
+  #0))
+(⟳⊵⊕ c p)
+; Dispatch events to consumers
+(⟳⊵⊙ p (⟨⟩ :hello ∅))
+; Consumer handler called, state incremented to 1
+(≔ info (⟳⊵? c))
+(⊨ (⌜ :stage-dispatch) #1 (▷ info))
+
+; === stage-info ===
+; Get stage info returns ⟨mode state⟩
+(⟳∅)
+(≔ p (⟳⊵ :producer
+  (λ (demand state) (⟨⟩ ∅ state))
+  #42))
+(≔ info (⟳⊵? p))
+(⊨ (⌜ :stage-info) (⟨⟩ :producer #42) info)
+
+; === stage-stop ===
+; Stop returns final state
+(⟳∅)
+(≔ p (⟳⊵ :producer
+  (λ (demand state) (⟨⟩ ∅ state))
+  :final))
+(⊨ (⌜ :stage-stop) :final (⟳⊵× p))
+
+; === stage-stop-error ===
+; Operations on stopped stage return error
+(⟳∅)
+(≔ p (⟳⊵ :producer (λ (demand state) (⟨⟩ ∅ state)) #0))
+(⟳⊵× p)
+(⊨ (⌜ :stage-stop-error) #t (⚠? (⟳⊵→ p #1)))
+
+; === stage-producer-consumer ===
+; Producer-consumer mode: handler receives events, returns ⟨out-events new-state⟩
+(⟳∅)
+(≔ pc (⟳⊵ :producer-consumer
+  (λ (events state)
+    ; pass events through, increment state
+    (⟨⟩ events (⊕ state #1)))
+  #0))
+(≔ c (⟳⊵ :consumer
+  (λ (events state)
+    ; state = first event received
+    (? (≡ events ∅) state (◁ events)))
+  :none))
+(⟳⊵⊕ c pc)
+; Dispatch events into producer-consumer
+(⟳⊵⊙ pc (⟨⟩ :data ∅))
+; pc state should be 1, c should have received forwarded events
+(≔ pc-info (⟳⊵? pc))
+(⊨ (⌜ :stage-producer-consumer) #1 (▷ pc-info))

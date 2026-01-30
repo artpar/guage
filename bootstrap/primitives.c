@@ -3430,6 +3430,258 @@ Cell* prim_agent_stop(Cell* args) {
     return state;
 }
 
+/* ============ GenStage Primitives ============ */
+
+/* Helper: call a 2-arg lambda fn using temp define + eval */
+static Cell* stage_call_fn2(EvalContext* ctx, Cell* fn, Cell* arg1_val, Cell* arg2_val) {
+    static int stage_call_counter = 0;
+    char fn_name[64], a1_name[64], a2_name[64];
+    snprintf(fn_name, sizeof(fn_name), "__stage_fn_%d", stage_call_counter);
+    snprintf(a1_name, sizeof(a1_name), "__stage_a1_%d", stage_call_counter);
+    snprintf(a2_name, sizeof(a2_name), "__stage_a2_%d", stage_call_counter);
+    stage_call_counter++;
+
+    eval_define(ctx, fn_name, fn);
+    eval_define(ctx, a1_name, arg1_val);
+    eval_define(ctx, a2_name, arg2_val);
+
+    Cell* fn_sym = cell_symbol(fn_name);
+    Cell* a1_sym = cell_symbol(a1_name);
+    Cell* a2_sym = cell_symbol(a2_name);
+    Cell* call_expr = cell_cons(fn_sym, cell_cons(a1_sym, cell_cons(a2_sym, cell_nil())));
+    cell_release(fn_sym);
+    cell_release(a1_sym);
+    cell_release(a2_sym);
+
+    Cell* result = eval(ctx, call_expr);
+    cell_release(call_expr);
+    return result;
+}
+
+/* ⟳⊵ - stage-new
+ * (⟳⊵ mode handler init-state) — create a GenStage */
+Cell* prim_stage_new(Cell* args) {
+    Cell* mode_cell = arg1(args);
+    Cell* handler = arg2(args);
+    Cell* init_state = arg3(args);
+
+    if (!cell_is_symbol(mode_cell)) {
+        return cell_error("stage-mode-not-symbol", mode_cell);
+    }
+    if (!cell_is_lambda(handler)) {
+        return cell_error("stage-handler-not-lambda", handler);
+    }
+
+    const char* mode_str = cell_get_symbol(mode_cell);
+    StageMode mode;
+    if (strcmp(mode_str, ":producer") == 0) {
+        mode = STAGE_PRODUCER;
+    } else if (strcmp(mode_str, ":consumer") == 0) {
+        mode = STAGE_CONSUMER;
+    } else if (strcmp(mode_str, ":producer-consumer") == 0) {
+        mode = STAGE_PRODUCER_CONSUMER;
+    } else {
+        return cell_error("stage-invalid-mode", mode_cell);
+    }
+
+    int id = stage_create(mode, handler, init_state);
+    if (id < 0) {
+        return cell_error("stage-limit", cell_nil());
+    }
+    return cell_number(id);
+}
+
+/* ⟳⊵⊕ - stage-subscribe
+ * (⟳⊵⊕ consumer-id producer-id) — subscribe consumer to producer */
+Cell* prim_stage_subscribe(Cell* args) {
+    Cell* consumer_cell = arg1(args);
+    Cell* producer_cell = arg2(args);
+
+    if (!cell_is_number(consumer_cell)) {
+        return cell_error("stage-id-not-number", consumer_cell);
+    }
+    if (!cell_is_number(producer_cell)) {
+        return cell_error("stage-id-not-number", producer_cell);
+    }
+
+    int consumer_id = (int)cell_get_number(consumer_cell);
+    int producer_id = (int)cell_get_number(producer_cell);
+
+    int rc = stage_subscribe(consumer_id, producer_id);
+    if (rc == -1) return cell_error("stage-not-found", cell_nil());
+    if (rc == -2) return cell_error("stage-subscribers-full", cell_nil());
+    return cell_bool(true);
+}
+
+/* ⟳⊵→ - stage-ask
+ * (⟳⊵→ stage-id demand) — ask producer for events */
+Cell* prim_stage_ask(Cell* args) {
+    Cell* id_cell = arg1(args);
+    Cell* demand_cell = arg2(args);
+
+    if (!cell_is_number(id_cell)) {
+        return cell_error("stage-id-not-number", id_cell);
+    }
+    if (!cell_is_number(demand_cell)) {
+        return cell_error("stage-demand-not-number", demand_cell);
+    }
+
+    int id = (int)cell_get_number(id_cell);
+    GenStage* s = stage_lookup(id);
+    if (!s) return cell_error("stage-not-found", id_cell);
+    if (s->mode == STAGE_CONSUMER) {
+        return cell_error("stage-consumer-no-ask", id_cell);
+    }
+
+    EvalContext* ctx = eval_get_current_context();
+    Cell* result = stage_call_fn2(ctx, s->handler, demand_cell, s->state);
+
+    if (!cell_is_pair(result)) {
+        cell_release(result);
+        return cell_error("stage-handler-not-pair", cell_nil());
+    }
+
+    Cell* events = cell_car(result);
+    Cell* new_state = cell_cdr(result);
+    cell_retain(events);
+    cell_retain(new_state);
+
+    /* Update state */
+    cell_release(s->state);
+    s->state = new_state;
+
+    cell_release(result);
+    return events;
+}
+
+/* Forward declaration for recursive dispatch */
+static Cell* stage_dispatch_to_subscribers(EvalContext* ctx, GenStage* s, Cell* events);
+
+/* ⟳⊵⊙ - stage-dispatch
+ * (⟳⊵⊙ stage-id events) — dispatch events into stage and its pipeline */
+Cell* prim_stage_dispatch(Cell* args) {
+    Cell* id_cell = arg1(args);
+    Cell* events = arg2(args);
+
+    if (!cell_is_number(id_cell)) {
+        return cell_error("stage-id-not-number", id_cell);
+    }
+
+    int id = (int)cell_get_number(id_cell);
+    GenStage* s = stage_lookup(id);
+    if (!s) return cell_error("stage-not-found", id_cell);
+
+    EvalContext* ctx = eval_get_current_context();
+
+    if (s->mode == STAGE_PRODUCER) {
+        /* Producer: just forward events to subscribers */
+        return stage_dispatch_to_subscribers(ctx, s, events);
+    } else if (s->mode == STAGE_CONSUMER) {
+        /* Consumer: process events through handler */
+        Cell* new_state = stage_call_fn2(ctx, s->handler, events, s->state);
+        cell_release(s->state);
+        s->state = new_state;
+        return cell_number(1);
+    } else {
+        /* Producer-consumer: process, then forward output to subscribers */
+        Cell* result = stage_call_fn2(ctx, s->handler, events, s->state);
+        if (!cell_is_pair(result)) {
+            cell_release(result);
+            return cell_error("stage-handler-not-pair", cell_nil());
+        }
+        Cell* out_events = cell_car(result);
+        Cell* new_state = cell_cdr(result);
+        cell_retain(out_events);
+        cell_retain(new_state);
+        cell_release(s->state);
+        s->state = new_state;
+        cell_release(result);
+
+        Cell* fwd = stage_dispatch_to_subscribers(ctx, s, out_events);
+        cell_release(out_events);
+        return fwd;
+    }
+}
+
+static Cell* stage_dispatch_to_subscribers(EvalContext* ctx, GenStage* s, Cell* events) {
+    int dispatched = 0;
+    for (int i = 0; i < s->subscriber_count; i++) {
+        GenStage* sub = stage_lookup(s->subscribers[i]);
+        if (!sub) continue;
+
+        if (sub->mode == STAGE_CONSUMER) {
+            Cell* new_state = stage_call_fn2(ctx, sub->handler, events, sub->state);
+            cell_release(sub->state);
+            sub->state = new_state;
+            dispatched++;
+        } else if (sub->mode == STAGE_PRODUCER_CONSUMER) {
+            Cell* result = stage_call_fn2(ctx, sub->handler, events, sub->state);
+            if (cell_is_pair(result)) {
+                Cell* out_events = cell_car(result);
+                Cell* new_state = cell_cdr(result);
+                cell_retain(out_events);
+                cell_retain(new_state);
+                cell_release(sub->state);
+                sub->state = new_state;
+
+                Cell* fwd = stage_dispatch_to_subscribers(ctx, sub, out_events);
+                cell_release(fwd);
+                cell_release(out_events);
+            }
+            cell_release(result);
+            dispatched++;
+        }
+    }
+    return cell_number(dispatched);
+}
+
+/* ⟳⊵? - stage-info
+ * (⟳⊵? stage-id) → ⟨mode state⟩ */
+Cell* prim_stage_info(Cell* args) {
+    Cell* id_cell = arg1(args);
+
+    if (!cell_is_number(id_cell)) {
+        return cell_error("stage-id-not-number", id_cell);
+    }
+
+    int id = (int)cell_get_number(id_cell);
+    GenStage* s = stage_lookup(id);
+    if (!s) return cell_error("stage-not-found", id_cell);
+
+    const char* mode_str;
+    switch (s->mode) {
+        case STAGE_PRODUCER: mode_str = ":producer"; break;
+        case STAGE_CONSUMER: mode_str = ":consumer"; break;
+        case STAGE_PRODUCER_CONSUMER: mode_str = ":producer-consumer"; break;
+        default: mode_str = ":unknown"; break;
+    }
+
+    Cell* mode_sym = cell_symbol(mode_str);
+    Cell* pair = cell_cons(mode_sym, s->state);
+    cell_retain(s->state);
+    cell_release(mode_sym);
+    return pair;
+}
+
+/* ⟳⊵× - stage-stop
+ * (⟳⊵× stage-id) → final state */
+Cell* prim_stage_stop(Cell* args) {
+    Cell* id_cell = arg1(args);
+
+    if (!cell_is_number(id_cell)) {
+        return cell_error("stage-id-not-number", id_cell);
+    }
+
+    int id = (int)cell_get_number(id_cell);
+    GenStage* s = stage_lookup(id);
+    if (!s) return cell_error("stage-not-found", id_cell);
+
+    Cell* state = s->state;
+    cell_retain(state);
+    stage_stop(id);
+    return state;
+}
+
 /* ============ Channel Primitives ============ */
 
 /* ⟿⊚ - create channel
@@ -7522,6 +7774,14 @@ static Primitive primitives[] = {
     {"⟳⊶!", prim_agent_update, 2, {"Update agent state via function", "ℕ → λ → #t"}},
     {"⟳⊶⊕", prim_agent_get_and_update, 2, {"Get and update agent state", "ℕ → λ → α"}},
     {"⟳⊶×", prim_agent_stop, 1, {"Stop agent, return final state", "ℕ → α"}},
+
+    /* GenStage primitives (producer-consumer pipelines) */
+    {"⟳⊵", prim_stage_new, 3, {"Create GenStage (mode handler state)", ":mode → λ → α → ℕ"}},
+    {"⟳⊵⊕", prim_stage_subscribe, 2, {"Subscribe consumer to producer", "ℕ → ℕ → #t"}},
+    {"⟳⊵→", prim_stage_ask, 2, {"Ask producer for events", "ℕ → ℕ → [α]"}},
+    {"⟳⊵⊙", prim_stage_dispatch, 2, {"Dispatch events to subscribers", "ℕ → [α] → ℕ"}},
+    {"⟳⊵?", prim_stage_info, 1, {"Get stage info (mode state)", "ℕ → ⟨:mode α⟩"}},
+    {"⟳⊵×", prim_stage_stop, 1, {"Stop stage, return final state", "ℕ → α"}},
 
     /* Channel primitives */
     {"⟿⊚", prim_chan_create, -1, {"Create channel (optional capacity)", "() → ⟿ | ℕ → ⟿"}},

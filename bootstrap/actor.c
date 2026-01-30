@@ -938,6 +938,9 @@ void actor_reset_all(void) {
 
     /* Reset agents */
     agent_reset_all();
+
+    /* Reset stages */
+    stage_reset_all();
 }
 
 /* ============ Application ============ */
@@ -1132,4 +1135,76 @@ void agent_reset_all(void) {
     }
     g_agent_count = 0;
     g_next_agent_id = 0;
+}
+
+/* ============ GenStage (Producer-Consumer Pipelines) ============ */
+
+static GenStage g_stages[MAX_STAGES];
+static int g_stage_count = 0;
+static int g_next_stage_id = 0;
+
+int stage_create(StageMode mode, Cell* handler, Cell* state) {
+    if (g_stage_count >= MAX_STAGES) return -1;
+    for (int i = 0; i < MAX_STAGES; i++) {
+        if (!g_stages[i].active) {
+            g_stages[i].id = g_next_stage_id++;
+            g_stages[i].mode = mode;
+            g_stages[i].handler = handler;
+            cell_retain(handler);
+            g_stages[i].state = state;
+            cell_retain(state);
+            g_stages[i].subscriber_count = 0;
+            g_stages[i].active = true;
+            g_stage_count++;
+            return g_stages[i].id;
+        }
+    }
+    return -1;
+}
+
+GenStage* stage_lookup(int id) {
+    for (int i = 0; i < MAX_STAGES; i++) {
+        if (g_stages[i].active && g_stages[i].id == id) {
+            return &g_stages[i];
+        }
+    }
+    return NULL;
+}
+
+int stage_subscribe(int consumer_id, int producer_id) {
+    GenStage* producer = stage_lookup(producer_id);
+    if (!producer) return -1;
+    GenStage* consumer = stage_lookup(consumer_id);
+    if (!consumer) return -1;
+    if (producer->subscriber_count >= MAX_STAGE_SUBSCRIBERS) return -2;
+    producer->subscribers[producer->subscriber_count++] = consumer_id;
+    return 0;
+}
+
+int stage_stop(int id) {
+    GenStage* s = stage_lookup(id);
+    if (!s) return -1;
+    if (s->handler) cell_release(s->handler);
+    if (s->state) cell_release(s->state);
+    s->handler = NULL;
+    s->state = NULL;
+    s->active = false;
+    g_stage_count--;
+    return 0;
+}
+
+void stage_reset_all(void) {
+    for (int i = 0; i < MAX_STAGES; i++) {
+        if (g_stages[i].active) {
+            if (g_stages[i].handler) cell_release(g_stages[i].handler);
+            if (g_stages[i].state) cell_release(g_stages[i].state);
+        }
+        g_stages[i].active = false;
+        g_stages[i].handler = NULL;
+        g_stages[i].state = NULL;
+        g_stages[i].id = 0;
+        g_stages[i].subscriber_count = 0;
+    }
+    g_stage_count = 0;
+    g_next_stage_id = 0;
 }
