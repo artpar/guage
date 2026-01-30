@@ -1,5 +1,6 @@
 #include "primitives.h"
 #include "swisstable.h"
+#include "str_simd.h"
 #include "eval.h"
 #include "cfg.h"
 #include "dfg.h"
@@ -6235,6 +6236,604 @@ Cell* prim_str_downcase(Cell* args) {
     return ret;
 }
 
+/* ============ String SDK Primitives (Day 121 — SIMD-accelerated) ============ */
+
+/* ≈⊳ - Find first occurrence of needle in haystack, return index or ∅ */
+Cell* prim_str_find(Cell* args) {
+    Cell* str = arg1(args);
+    Cell* needle = arg2(args);
+    if (!cell_is_string(str) || !cell_is_string(needle))
+        return cell_error("≈⊳ requires two strings", str);
+    const char* s = cell_get_string(str);
+    const char* n = cell_get_string(needle);
+    size_t slen = strlen(s);
+    size_t nlen = strlen(n);
+    if (nlen == 0) return cell_number(0);
+    const char* found = str_simd_find_substr(s, slen, n, nlen);
+    if (!found) return cell_nil();
+    return cell_number((double)(found - s));
+}
+
+/* ≈⊲ - Find last occurrence of needle in haystack, return index or ∅ */
+Cell* prim_str_rfind(Cell* args) {
+    Cell* str = arg1(args);
+    Cell* needle = arg2(args);
+    if (!cell_is_string(str) || !cell_is_string(needle))
+        return cell_error("≈⊲ requires two strings", str);
+    const char* s = cell_get_string(str);
+    const char* n = cell_get_string(needle);
+    size_t slen = strlen(s);
+    size_t nlen = strlen(n);
+    if (nlen == 0) return cell_number((double)slen);
+    const char* found = str_simd_rfind_substr(s, slen, n, nlen);
+    if (!found) return cell_nil();
+    return cell_number((double)(found - s));
+}
+
+/* ≈∈? - Contains substring */
+Cell* prim_str_contains(Cell* args) {
+    Cell* str = arg1(args);
+    Cell* needle = arg2(args);
+    if (!cell_is_string(str) || !cell_is_string(needle))
+        return cell_error("≈∈? requires two strings", str);
+    const char* s = cell_get_string(str);
+    const char* n = cell_get_string(needle);
+    size_t slen = strlen(s);
+    size_t nlen = strlen(n);
+    if (nlen == 0) return cell_bool(true);
+    return cell_bool(str_simd_find_substr(s, slen, n, nlen) != NULL);
+}
+
+/* ≈⊲? - Starts with prefix */
+Cell* prim_str_starts_with(Cell* args) {
+    Cell* str = arg1(args);
+    Cell* prefix = arg2(args);
+    if (!cell_is_string(str) || !cell_is_string(prefix))
+        return cell_error("≈⊲? requires two strings", str);
+    const char* s = cell_get_string(str);
+    const char* p = cell_get_string(prefix);
+    size_t slen = strlen(s);
+    size_t plen = strlen(p);
+    if (plen == 0) return cell_bool(true);
+    if (plen > slen) return cell_bool(false);
+    return cell_bool(memcmp(s, p, plen) == 0);
+}
+
+/* ≈⊳? - Ends with suffix */
+Cell* prim_str_ends_with(Cell* args) {
+    Cell* str = arg1(args);
+    Cell* suffix = arg2(args);
+    if (!cell_is_string(str) || !cell_is_string(suffix))
+        return cell_error("≈⊳? requires two strings", str);
+    const char* s = cell_get_string(str);
+    const char* x = cell_get_string(suffix);
+    size_t slen = strlen(s);
+    size_t xlen = strlen(x);
+    if (xlen == 0) return cell_bool(true);
+    if (xlen > slen) return cell_bool(false);
+    return cell_bool(memcmp(s + slen - xlen, x, xlen) == 0);
+}
+
+/* ≈⊳# - Count non-overlapping occurrences of needle */
+Cell* prim_str_count(Cell* args) {
+    Cell* str = arg1(args);
+    Cell* needle = arg2(args);
+    if (!cell_is_string(str) || !cell_is_string(needle))
+        return cell_error("≈⊳# requires two strings", str);
+    const char* s = cell_get_string(str);
+    const char* n = cell_get_string(needle);
+    size_t slen = strlen(s);
+    size_t nlen = strlen(n);
+    if (nlen == 0) return cell_number(0);
+    size_t count = 0;
+    const char* pos = s;
+    size_t remaining = slen;
+    while (remaining >= nlen) {
+        const char* found = str_simd_find_substr(pos, remaining, n, nlen);
+        if (!found) break;
+        count++;
+        size_t advance = (size_t)(found - pos) + nlen;
+        pos = found + nlen;
+        remaining -= advance;
+    }
+    return cell_number((double)count);
+}
+
+/* ≈⇄ - Reverse string */
+Cell* prim_str_reverse(Cell* args) {
+    Cell* str = arg1(args);
+    if (!cell_is_string(str))
+        return cell_error("≈⇄ requires a string", str);
+    const char* s = cell_get_string(str);
+    size_t len = strlen(s);
+    char* result = (char*)malloc(len + 1);
+    for (size_t i = 0; i < len; i++)
+        result[i] = s[len - 1 - i];
+    result[len] = '\0';
+    Cell* ret = cell_string(result);
+    free(result);
+    return ret;
+}
+
+/* ≈⊛ - Repeat string n times */
+Cell* prim_str_repeat(Cell* args) {
+    Cell* str = arg1(args);
+    Cell* n_cell = arg2(args);
+    if (!cell_is_string(str) || !cell_is_number(n_cell))
+        return cell_error("≈⊛ requires string and number", str);
+    const char* s = cell_get_string(str);
+    int n = (int)cell_get_number(n_cell);
+    if (n <= 0) return cell_string("");
+    size_t slen = strlen(s);
+    size_t total = slen * (size_t)n;
+    char* result = (char*)malloc(total + 1);
+    for (int i = 0; i < n; i++)
+        memcpy(result + i * slen, s, slen);
+    result[total] = '\0';
+    Cell* ret = cell_string(result);
+    free(result);
+    return ret;
+}
+
+/* ≈⇔ - Replace all occurrences of old with new */
+Cell* prim_str_replace(Cell* args) {
+    Cell* str = arg1(args);
+    Cell* old_s = arg2(args);
+    Cell* new_s = arg3(args);
+    if (!cell_is_string(str) || !cell_is_string(old_s) || !cell_is_string(new_s))
+        return cell_error("≈⇔ requires three strings", str);
+    const char* s = cell_get_string(str);
+    const char* old = cell_get_string(old_s);
+    const char* nw = cell_get_string(new_s);
+    size_t slen = strlen(s);
+    size_t olen = strlen(old);
+    size_t nwlen = strlen(nw);
+    if (olen == 0) {
+        /* Can't replace empty string — return unchanged */
+        cell_retain(str);
+        return str;
+    }
+    /* Pass 1: count occurrences (SIMD-accelerated) */
+    size_t count = 0;
+    {
+        const char* pos = s;
+        size_t rem = slen;
+        while (rem >= olen) {
+            const char* found = str_simd_find_substr(pos, rem, old, olen);
+            if (!found) break;
+            count++;
+            size_t advance = (size_t)(found - pos) + olen;
+            pos = found + olen;
+            rem -= advance;
+        }
+    }
+    if (count == 0) {
+        cell_retain(str);
+        return str;
+    }
+    /* Pass 2: build result with single allocation */
+    size_t result_len = slen - count * olen + count * nwlen;
+    char* result = (char*)malloc(result_len + 1);
+    char* dst = result;
+    const char* pos = s;
+    size_t rem = slen;
+    while (rem >= olen) {
+        const char* found = str_simd_find_substr(pos, rem, old, olen);
+        if (!found) break;
+        size_t prefix = (size_t)(found - pos);
+        memcpy(dst, pos, prefix);
+        dst += prefix;
+        memcpy(dst, nw, nwlen);
+        dst += nwlen;
+        pos = found + olen;
+        rem -= prefix + olen;
+    }
+    /* Copy remainder */
+    memcpy(dst, pos, rem);
+    dst += rem;
+    *dst = '\0';
+    Cell* ret = cell_string(result);
+    free(result);
+    return ret;
+}
+
+/* ≈⇔# - Replace first N occurrences */
+Cell* prim_str_replacen(Cell* args) {
+    Cell* str = arg1(args);
+    Cell* old_s = arg2(args);
+    Cell* new_s = arg3(args);
+    Cell* max_cell = arg4(args);
+    if (!cell_is_string(str) || !cell_is_string(old_s) || !cell_is_string(new_s) || !cell_is_number(max_cell))
+        return cell_error("≈⇔# requires three strings and a number", str);
+    const char* s = cell_get_string(str);
+    const char* old = cell_get_string(old_s);
+    const char* nw = cell_get_string(new_s);
+    int max_n = (int)cell_get_number(max_cell);
+    size_t slen = strlen(s);
+    size_t olen = strlen(old);
+    size_t nwlen = strlen(nw);
+    if (olen == 0 || max_n <= 0) {
+        cell_retain(str);
+        return str;
+    }
+    /* Pass 1: count occurrences up to max_n */
+    size_t count = 0;
+    {
+        const char* pos = s;
+        size_t rem = slen;
+        while (rem >= olen && (int)count < max_n) {
+            const char* found = str_simd_find_substr(pos, rem, old, olen);
+            if (!found) break;
+            count++;
+            size_t advance = (size_t)(found - pos) + olen;
+            pos = found + olen;
+            rem -= advance;
+        }
+    }
+    if (count == 0) {
+        cell_retain(str);
+        return str;
+    }
+    /* Pass 2: build result */
+    size_t result_len = slen - count * olen + count * nwlen;
+    char* result = (char*)malloc(result_len + 1);
+    char* dst = result;
+    const char* pos = s;
+    size_t rem = slen;
+    size_t replaced = 0;
+    while (rem >= olen && (int)replaced < max_n) {
+        const char* found = str_simd_find_substr(pos, rem, old, olen);
+        if (!found) break;
+        size_t prefix = (size_t)(found - pos);
+        memcpy(dst, pos, prefix);
+        dst += prefix;
+        memcpy(dst, nw, nwlen);
+        dst += nwlen;
+        pos = found + olen;
+        rem -= prefix + olen;
+        replaced++;
+    }
+    memcpy(dst, pos, rem);
+    dst += rem;
+    *dst = '\0';
+    Cell* ret = cell_string(result);
+    free(result);
+    return ret;
+}
+
+/* ≈⊏ - Trim leading whitespace */
+Cell* prim_str_trim_left(Cell* args) {
+    Cell* str = arg1(args);
+    if (!cell_is_string(str))
+        return cell_error("≈⊏ requires a string", str);
+    const char* s = cell_get_string(str);
+    size_t len = strlen(s);
+    const char* start = str_simd_find_non_whitespace(s, len);
+    if (!start) return cell_string("");  /* All whitespace */
+    size_t new_len = len - (size_t)(start - s);
+    char* result = (char*)malloc(new_len + 1);
+    memcpy(result, start, new_len);
+    result[new_len] = '\0';
+    Cell* ret = cell_string(result);
+    free(result);
+    return ret;
+}
+
+/* ≈⊐ - Trim trailing whitespace */
+Cell* prim_str_trim_right(Cell* args) {
+    Cell* str = arg1(args);
+    if (!cell_is_string(str))
+        return cell_error("≈⊐ requires a string", str);
+    const char* s = cell_get_string(str);
+    size_t len = strlen(s);
+    /* Scan backwards for last non-whitespace */
+    size_t end = len;
+    while (end > 0 && str_is_whitespace(s[end - 1]))
+        end--;
+    char* result = (char*)malloc(end + 1);
+    memcpy(result, s, end);
+    result[end] = '\0';
+    Cell* ret = cell_string(result);
+    free(result);
+    return ret;
+}
+
+/* ≈⊏⊐ - Trim both sides */
+Cell* prim_str_trim(Cell* args) {
+    Cell* str = arg1(args);
+    if (!cell_is_string(str))
+        return cell_error("≈⊏⊐ requires a string", str);
+    const char* s = cell_get_string(str);
+    size_t len = strlen(s);
+    const char* start = str_simd_find_non_whitespace(s, len);
+    if (!start) return cell_string("");
+    size_t end = len;
+    while (end > (size_t)(start - s) && str_is_whitespace(s[end - 1]))
+        end--;
+    size_t new_len = end - (size_t)(start - s);
+    char* result = (char*)malloc(new_len + 1);
+    memcpy(result, start, new_len);
+    result[new_len] = '\0';
+    Cell* ret = cell_string(result);
+    free(result);
+    return ret;
+}
+
+/* ≈÷ - Split string by delimiter into cons list */
+Cell* prim_str_split(Cell* args) {
+    Cell* str = arg1(args);
+    Cell* delim = arg2(args);
+    if (!cell_is_string(str) || !cell_is_string(delim))
+        return cell_error("≈÷ requires two strings", str);
+    const char* s = cell_get_string(str);
+    const char* d = cell_get_string(delim);
+    size_t slen = strlen(s);
+    size_t dlen = strlen(d);
+
+    if (slen == 0) return cell_nil();
+
+    if (dlen == 0) {
+        /* Split into individual characters */
+        Cell* list = cell_nil();
+        for (size_t i = slen; i > 0; ) {
+            i--;
+            char buf[2] = {s[i], '\0'};
+            Cell* ch = cell_string(buf);
+            list = cell_cons(ch, list);
+            cell_release(ch);
+        }
+        return list;
+    }
+
+    /* Build list in reverse, then reverse */
+    Cell* rev = cell_nil();
+    size_t count = 0;
+    const char* pos = s;
+    size_t rem = slen;
+    while (rem >= dlen) {
+        const char* found = str_simd_find_substr(pos, rem, d, dlen);
+        if (!found) break;
+        size_t part_len = (size_t)(found - pos);
+        char* part = (char*)malloc(part_len + 1);
+        memcpy(part, pos, part_len);
+        part[part_len] = '\0';
+        Cell* cs = cell_string(part);
+        free(part);
+        rev = cell_cons(cs, rev);
+        cell_release(cs);
+        count++;
+        pos = found + dlen;
+        rem -= part_len + dlen;
+    }
+    /* Last segment */
+    char* last = (char*)malloc(rem + 1);
+    memcpy(last, pos, rem);
+    last[rem] = '\0';
+    Cell* cs = cell_string(last);
+    free(last);
+    rev = cell_cons(cs, rev);
+    cell_release(cs);
+
+    /* Reverse the list */
+    Cell* result = cell_nil();
+    Cell* cur = rev;
+    while (cell_is_pair(cur)) {
+        Cell* head = cell_car(cur);
+        cell_retain(head);
+        result = cell_cons(head, result);
+        cell_release(head);
+        cur = cell_cdr(cur);
+    }
+    cell_release(rev);
+    return result;
+}
+
+/* ≈÷# - Split into at most N parts */
+Cell* prim_str_splitn(Cell* args) {
+    Cell* str = arg1(args);
+    Cell* delim = arg2(args);
+    Cell* max_cell = arg3(args);
+    if (!cell_is_string(str) || !cell_is_string(delim) || !cell_is_number(max_cell))
+        return cell_error("≈÷# requires two strings and a number", str);
+    const char* s = cell_get_string(str);
+    const char* d = cell_get_string(delim);
+    int max_n = (int)cell_get_number(max_cell);
+    size_t slen = strlen(s);
+    size_t dlen = strlen(d);
+
+    if (slen == 0) return cell_nil();
+    if (max_n <= 1 || dlen == 0) {
+        /* Return whole string as single-element list */
+        Cell* cs = cell_string(s);
+        Cell* list = cell_cons(cs, cell_nil());
+        cell_release(cs);
+        return list;
+    }
+
+    Cell* rev = cell_nil();
+    int parts = 1;
+    const char* pos = s;
+    size_t rem = slen;
+    while (rem >= dlen && parts < max_n) {
+        const char* found = str_simd_find_substr(pos, rem, d, dlen);
+        if (!found) break;
+        size_t part_len = (size_t)(found - pos);
+        char* part = (char*)malloc(part_len + 1);
+        memcpy(part, pos, part_len);
+        part[part_len] = '\0';
+        Cell* cs = cell_string(part);
+        free(part);
+        rev = cell_cons(cs, rev);
+        cell_release(cs);
+        parts++;
+        pos = found + dlen;
+        rem -= part_len + dlen;
+    }
+    /* Last segment = remainder */
+    char* last = (char*)malloc(rem + 1);
+    memcpy(last, pos, rem);
+    last[rem] = '\0';
+    Cell* csl = cell_string(last);
+    free(last);
+    rev = cell_cons(csl, rev);
+    cell_release(csl);
+
+    /* Reverse */
+    Cell* result = cell_nil();
+    Cell* cur = rev;
+    while (cell_is_pair(cur)) {
+        Cell* head = cell_car(cur);
+        cell_retain(head);
+        result = cell_cons(head, result);
+        cell_release(head);
+        cur = cell_cdr(cur);
+    }
+    cell_release(rev);
+    return result;
+}
+
+/* ≈÷⊔ - Split by whitespace runs (like Go strings.Fields) */
+Cell* prim_str_fields(Cell* args) {
+    Cell* str = arg1(args);
+    if (!cell_is_string(str))
+        return cell_error("≈÷⊔ requires a string", str);
+    const char* s = cell_get_string(str);
+    size_t len = strlen(s);
+
+    Cell* rev = cell_nil();
+    size_t i = 0;
+    while (i < len) {
+        /* Skip whitespace */
+        while (i < len && str_is_whitespace(s[i])) i++;
+        if (i >= len) break;
+        /* Find end of token */
+        size_t start = i;
+        while (i < len && !str_is_whitespace(s[i])) i++;
+        size_t tok_len = i - start;
+        char* tok = (char*)malloc(tok_len + 1);
+        memcpy(tok, s + start, tok_len);
+        tok[tok_len] = '\0';
+        Cell* cs = cell_string(tok);
+        free(tok);
+        rev = cell_cons(cs, rev);
+        cell_release(cs);
+    }
+
+    /* Reverse */
+    Cell* result = cell_nil();
+    Cell* cur = rev;
+    while (cell_is_pair(cur)) {
+        Cell* head = cell_car(cur);
+        cell_retain(head);
+        result = cell_cons(head, result);
+        cell_release(head);
+        cur = cell_cdr(cur);
+    }
+    cell_release(rev);
+    return result;
+}
+
+/* ≈⊏⊕ - Pad left to target width with fill string */
+Cell* prim_str_pad_left(Cell* args) {
+    Cell* str = arg1(args);
+    Cell* width_cell = arg2(args);
+    Cell* fill = arg3(args);
+    if (!cell_is_string(str) || !cell_is_number(width_cell) || !cell_is_string(fill))
+        return cell_error("≈⊏⊕ requires string, number, string", str);
+    const char* s = cell_get_string(str);
+    int width = (int)cell_get_number(width_cell);
+    const char* f = cell_get_string(fill);
+    size_t slen = strlen(s);
+    size_t flen = strlen(f);
+    if ((int)slen >= width || flen == 0) {
+        cell_retain(str);
+        return str;
+    }
+    size_t pad_len = (size_t)(width) - slen;
+    char* result = (char*)malloc((size_t)width + 1);
+    /* Fill padding */
+    for (size_t i = 0; i < pad_len; i++)
+        result[i] = f[i % flen];
+    memcpy(result + pad_len, s, slen);
+    result[width] = '\0';
+    Cell* ret = cell_string(result);
+    free(result);
+    return ret;
+}
+
+/* ≈⊐⊕ - Pad right to target width with fill string */
+Cell* prim_str_pad_right(Cell* args) {
+    Cell* str = arg1(args);
+    Cell* width_cell = arg2(args);
+    Cell* fill = arg3(args);
+    if (!cell_is_string(str) || !cell_is_number(width_cell) || !cell_is_string(fill))
+        return cell_error("≈⊐⊕ requires string, number, string", str);
+    const char* s = cell_get_string(str);
+    int width = (int)cell_get_number(width_cell);
+    const char* f = cell_get_string(fill);
+    size_t slen = strlen(s);
+    size_t flen = strlen(f);
+    if ((int)slen >= width || flen == 0) {
+        cell_retain(str);
+        return str;
+    }
+    size_t pad_len = (size_t)(width) - slen;
+    char* result = (char*)malloc((size_t)width + 1);
+    memcpy(result, s, slen);
+    for (size_t i = 0; i < pad_len; i++)
+        result[slen + i] = f[i % flen];
+    result[width] = '\0';
+    Cell* ret = cell_string(result);
+    free(result);
+    return ret;
+}
+
+/* ≈⊏⊖ - Strip prefix if present */
+Cell* prim_str_strip_prefix(Cell* args) {
+    Cell* str = arg1(args);
+    Cell* prefix = arg2(args);
+    if (!cell_is_string(str) || !cell_is_string(prefix))
+        return cell_error("≈⊏⊖ requires two strings", str);
+    const char* s = cell_get_string(str);
+    const char* p = cell_get_string(prefix);
+    size_t slen = strlen(s);
+    size_t plen = strlen(p);
+    if (plen == 0 || plen > slen || memcmp(s, p, plen) != 0) {
+        cell_retain(str);
+        return str;
+    }
+    size_t new_len = slen - plen;
+    char* result = (char*)malloc(new_len + 1);
+    memcpy(result, s + plen, new_len);
+    result[new_len] = '\0';
+    Cell* ret = cell_string(result);
+    free(result);
+    return ret;
+}
+
+/* ≈⊐⊖ - Strip suffix if present */
+Cell* prim_str_strip_suffix(Cell* args) {
+    Cell* str = arg1(args);
+    Cell* suffix = arg2(args);
+    if (!cell_is_string(str) || !cell_is_string(suffix))
+        return cell_error("≈⊐⊖ requires two strings", str);
+    const char* s = cell_get_string(str);
+    const char* x = cell_get_string(suffix);
+    size_t slen = strlen(s);
+    size_t xlen = strlen(x);
+    if (xlen == 0 || xlen > slen || memcmp(s + slen - xlen, x, xlen) != 0) {
+        cell_retain(str);
+        return str;
+    }
+    size_t new_len = slen - xlen;
+    char* result = (char*)malloc(new_len + 1);
+    memcpy(result, s, new_len);
+    result[new_len] = '\0';
+    Cell* ret = cell_string(result);
+    free(result);
+    return ret;
+}
+
 /* ============ I/O Primitives ============ */
 
 /* ≋ - Print value to stdout with newline */
@@ -10640,6 +11239,34 @@ static Primitive primitives[] = {
     {"#→≈", prim_code_to_char, 1, {"Convert code to single-char string", "ℕ → ≈"}},
     {"≈↑", prim_str_upcase, 1, {"Convert string to uppercase", "≈ → ≈"}},
     {"≈↓", prim_str_downcase, 1, {"Convert string to lowercase", "≈ → ≈"}},
+
+    /* String SDK (Day 121 — SIMD-accelerated) */
+    /* Tier 1: Search */
+    {"≈⊳", prim_str_find, 2, {"Find first occurrence of substring", "≈ → ≈ → ℕ|∅"}},
+    {"≈⊲", prim_str_rfind, 2, {"Find last occurrence of substring", "≈ → ≈ → ℕ|∅"}},
+    {"≈∈?", prim_str_contains, 2, {"Test if string contains substring", "≈ → ≈ → 𝔹"}},
+    {"≈⊲?", prim_str_starts_with, 2, {"Test if string starts with prefix", "≈ → ≈ → 𝔹"}},
+    {"≈⊳?", prim_str_ends_with, 2, {"Test if string ends with suffix", "≈ → ≈ → 𝔹"}},
+    {"≈⊳#", prim_str_count, 2, {"Count non-overlapping occurrences", "≈ → ≈ → ℕ"}},
+    /* Tier 2: Transform */
+    {"≈⇄", prim_str_reverse, 1, {"Reverse string", "≈ → ≈"}},
+    {"≈⊛", prim_str_repeat, 2, {"Repeat string n times", "≈ → ℕ → ≈"}},
+    {"≈⇔", prim_str_replace, 3, {"Replace all occurrences", "≈ → ≈ → ≈ → ≈"}},
+    {"≈⇔#", prim_str_replacen, 4, {"Replace first n occurrences", "≈ → ≈ → ≈ → ℕ → ≈"}},
+    /* Tier 3: Trim */
+    {"≈⊏", prim_str_trim_left, 1, {"Trim leading whitespace", "≈ → ≈"}},
+    {"≈⊐", prim_str_trim_right, 1, {"Trim trailing whitespace", "≈ → ≈"}},
+    {"≈⊏⊐", prim_str_trim, 1, {"Trim whitespace both sides", "≈ → ≈"}},
+    /* Tier 4: Split */
+    {"≈÷", prim_str_split, 2, {"Split by delimiter", "≈ → ≈ → [≈]"}},
+    {"≈÷#", prim_str_splitn, 3, {"Split into at most n parts", "≈ → ≈ → ℕ → [≈]"}},
+    {"≈÷⊔", prim_str_fields, 1, {"Split by whitespace runs", "≈ → [≈]"}},
+    /* Tier 5: Pad */
+    {"≈⊏⊕", prim_str_pad_left, 3, {"Pad left to width", "≈ → ℕ → ≈ → ≈"}},
+    {"≈⊐⊕", prim_str_pad_right, 3, {"Pad right to width", "≈ → ℕ → ≈ → ≈"}},
+    /* Tier 6: Strip */
+    {"≈⊏⊖", prim_str_strip_prefix, 2, {"Strip prefix if present", "≈ → ≈ → ≈"}},
+    {"≈⊐⊖", prim_str_strip_suffix, 2, {"Strip suffix if present", "≈ → ≈ → ≈"}},
 
     /* I/O operations - Console */
     {"≋", prim_print, 1, {"Print value to stdout with newline", "α → α"}},

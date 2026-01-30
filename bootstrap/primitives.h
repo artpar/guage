@@ -249,6 +249,34 @@ Cell* prim_code_to_char(Cell* args);     /* #→≈ - code to single-char string
 Cell* prim_str_upcase(Cell* args);       /* ≈↑ - string to uppercase */
 Cell* prim_str_downcase(Cell* args);     /* ≈↓ - string to lowercase */
 
+/* String SDK primitives (Day 121 — SIMD-accelerated complete string API) */
+/* Tier 1: Search */
+Cell* prim_str_find(Cell* args);         /* ≈⊳ - find substring index */
+Cell* prim_str_rfind(Cell* args);        /* ≈⊲ - rfind substring index */
+Cell* prim_str_contains(Cell* args);     /* ≈∈? - contains substring */
+Cell* prim_str_starts_with(Cell* args);  /* ≈⊲? - starts with prefix */
+Cell* prim_str_ends_with(Cell* args);    /* ≈⊳? - ends with suffix */
+Cell* prim_str_count(Cell* args);        /* ≈⊳# - count occurrences */
+/* Tier 2: Transform */
+Cell* prim_str_reverse(Cell* args);      /* ≈⇄ - reverse string */
+Cell* prim_str_repeat(Cell* args);       /* ≈⊛ - repeat n times */
+Cell* prim_str_replace(Cell* args);      /* ≈⇔ - replace all occurrences */
+Cell* prim_str_replacen(Cell* args);     /* ≈⇔# - replace first n occurrences */
+/* Tier 3: Trim */
+Cell* prim_str_trim_left(Cell* args);    /* ≈⊏ - trim leading whitespace */
+Cell* prim_str_trim_right(Cell* args);   /* ≈⊐ - trim trailing whitespace */
+Cell* prim_str_trim(Cell* args);         /* ≈⊏⊐ - trim both sides */
+/* Tier 4: Split */
+Cell* prim_str_split(Cell* args);        /* ≈÷ - split by delimiter */
+Cell* prim_str_splitn(Cell* args);       /* ≈÷# - split max n parts */
+Cell* prim_str_fields(Cell* args);       /* ≈÷⊔ - split by whitespace runs */
+/* Tier 5: Pad */
+Cell* prim_str_pad_left(Cell* args);     /* ≈⊏⊕ - pad left to width */
+Cell* prim_str_pad_right(Cell* args);    /* ≈⊐⊕ - pad right to width */
+/* Tier 6: Strip prefix/suffix */
+Cell* prim_str_strip_prefix(Cell* args); /* ≈⊏⊖ - strip prefix if present */
+Cell* prim_str_strip_suffix(Cell* args); /* ≈⊐⊖ - strip suffix if present */
+
 /* Iterator primitives (Day 118 — morsel-driven batch iteration) */
 Cell* prim_iter(Cell* args);             /* ⊣ - create iterator */
 Cell* prim_iter_next(Cell* args);        /* ⊣→ - next element */

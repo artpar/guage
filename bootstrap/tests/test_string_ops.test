@@ -1,0 +1,200 @@
+#!/usr/bin/env guage
+; Test suite for Day 121 String SDK — 20 SIMD-accelerated primitives
+; Tests all tiers: Search, Transform, Trim, Split, Pad, Strip
+
+(≋ "Testing String SDK (Day 121)...")
+
+; ============================================================================
+; Tier 1: Search — ≈⊳, ≈⊲, ≈∈?, ≈⊲?, ≈⊳?, ≈⊳#
+; ============================================================================
+
+(≋ "  Tier 1: Search...")
+
+; ≈⊳ find
+(⊨ :find-basic #6 (≈⊳ "hello world" "world"))
+(⊨ :find-start #0 (≈⊳ "hello world" "hello"))
+(⊨ :find-not-found ∅ (≈⊳ "hello" "xyz"))
+(⊨ :find-empty-needle #0 (≈⊳ "hello" ""))
+(⊨ :find-single-char #4 (≈⊳ "hello" "o"))
+(⊨ :find-first-occ #0 (≈⊳ "abcabc" "abc"))
+
+; ≈⊲ rfind
+(⊨ :rfind-basic #6 (≈⊲ "hello world" "world"))
+(⊨ :rfind-last #3 (≈⊲ "abcabc" "abc"))
+(⊨ :rfind-not-found ∅ (≈⊲ "hello" "xyz"))
+(⊨ :rfind-single-char #4 (≈⊲ "hello" "o"))
+
+; ≈∈? contains
+(⊨ :contains-true #t (≈∈? "hello world" "world"))
+(⊨ :contains-false #f (≈∈? "hello" "xyz"))
+(⊨ :contains-empty #t (≈∈? "hello" ""))
+
+; ≈⊲? starts-with
+(⊨ :starts-with-match #t (≈⊲? "hello world" "hello"))
+(⊨ :starts-with-no-match #f (≈⊲? "hello world" "world"))
+(⊨ :starts-with-empty #t (≈⊲? "hello" ""))
+(⊨ :starts-with-longer #f (≈⊲? "hi" "hello"))
+
+; ≈⊳? ends-with
+(⊨ :ends-with-match #t (≈⊳? "hello world" "world"))
+(⊨ :ends-with-no-match #f (≈⊳? "hello world" "hello"))
+(⊨ :ends-with-empty #t (≈⊳? "hello" ""))
+(⊨ :ends-with-longer #f (≈⊳? "hi" "hello"))
+
+; ≈⊳# count
+(⊨ :count-multiple #3 (≈⊳# "abcabcabc" "abc"))
+(⊨ :count-zero #0 (≈⊳# "hello" "xyz"))
+(⊨ :count-single-char #2 (≈⊳# "hello" "l"))
+(⊨ :count-one #1 (≈⊳# "hello world" "world"))
+
+; ============================================================================
+; Tier 2: Transform — ≈⇄, ≈⊛, ≈⇔, ≈⇔#
+; ============================================================================
+
+(≋ "  Tier 2: Transform...")
+
+; ≈⇄ reverse
+(⊨ :reverse-basic "olleh" (≈⇄ "hello"))
+(⊨ :reverse-empty "" (≈⇄ ""))
+(⊨ :reverse-single "a" (≈⇄ "a"))
+(⊨ :reverse-palindrome "aba" (≈⇄ "aba"))
+
+; ≈⊛ repeat
+(⊨ :repeat-3 "abcabcabc" (≈⊛ "abc" #3))
+(⊨ :repeat-0 "" (≈⊛ "abc" #0))
+(⊨ :repeat-1 "abc" (≈⊛ "abc" #1))
+(⊨ :repeat-empty "" (≈⊛ "" #5))
+
+; ≈⇔ replace
+(⊨ :replace-basic "hello there" (≈⇔ "hello world" "world" "there"))
+(⊨ :replace-all "bbb" (≈⇔ "aaa" "a" "b"))
+(⊨ :replace-not-found "hello" (≈⇔ "hello" "xyz" "abc"))
+(⊨ :replace-delete "heo" (≈⇔ "hello" "l" ""))
+
+; ≈⇔# replacen
+(⊨ :replacen-first-2 "bb" (≈⇔# "abcabc" "abc" "b" #2))
+(⊨ :replacen-first-1 "babcabc" (≈⇔# "abcabcabc" "abc" "b" #1))
+
+; ============================================================================
+; Tier 3: Trim — ≈⊏, ≈⊐, ≈⊏⊐
+; ============================================================================
+
+(≋ "  Tier 3: Trim...")
+
+; ≈⊏ trim-left
+(⊨ :trim-left-spaces "hello" (≈⊏ "  hello"))
+(⊨ :trim-left-tabs "hello" (≈⊏ "\thello"))
+(⊨ :trim-left-mixed "hello" (≈⊏ " \t\nhello"))
+(⊨ :trim-left-none "hello" (≈⊏ "hello"))
+(⊨ :trim-left-all "" (≈⊏ "   "))
+
+; ≈⊐ trim-right
+(⊨ :trim-right-spaces "hello" (≈⊐ "hello  "))
+(⊨ :trim-right-tabs "hello" (≈⊐ "hello\t"))
+(⊨ :trim-right-none "hello" (≈⊐ "hello"))
+(⊨ :trim-right-all "" (≈⊐ "   "))
+
+; ≈⊏⊐ trim
+(⊨ :trim-both "hello" (≈⊏⊐ "  hello  "))
+(⊨ :trim-mixed "hello" (≈⊏⊐ "\t\n hello \n\t"))
+(⊨ :trim-none "hello" (≈⊏⊐ "hello"))
+
+; ============================================================================
+; Tier 4: Split — ≈÷, ≈÷#, ≈÷⊔
+; ============================================================================
+
+(≋ "  Tier 4: Split...")
+
+; ≈÷ split
+(⊨ :split-basic
+   (⟨⟩ "a" (⟨⟩ "b" (⟨⟩ "c" ∅)))
+   (≈÷ "a,b,c" ","))
+(⊨ :split-chars
+   (⟨⟩ "h" (⟨⟩ "e" (⟨⟩ "l" (⟨⟩ "l" (⟨⟩ "o" ∅)))))
+   (≈÷ "hello" ""))
+(⊨ :split-not-found
+   (⟨⟩ "hello" ∅)
+   (≈÷ "hello" ","))
+(⊨ :split-empty ∅ (≈÷ "" ","))
+(⊨ :split-multi-delim
+   (⟨⟩ "hello" (⟨⟩ "world" ∅))
+   (≈÷ "hello::world" "::"))
+
+; ≈÷# splitn
+(⊨ :splitn-3-parts
+   (⟨⟩ "a" (⟨⟩ "b" (⟨⟩ "c,d" ∅)))
+   (≈÷# "a,b,c,d" "," #3))
+(⊨ :splitn-1
+   (⟨⟩ "a,b,c" ∅)
+   (≈÷# "a,b,c" "," #1))
+
+; ≈÷⊔ fields
+(⊨ :fields-basic
+   (⟨⟩ "hello" (⟨⟩ "world" ∅))
+   (≈÷⊔ "hello world"))
+(⊨ :fields-multi-space
+   (⟨⟩ "hello" (⟨⟩ "world" ∅))
+   (≈÷⊔ "  hello   world  "))
+(⊨ :fields-tabs
+   (⟨⟩ "a" (⟨⟩ "b" (⟨⟩ "c" ∅)))
+   (≈÷⊔ "a\tb\tc"))
+(⊨ :fields-mixed-ws
+   (⟨⟩ "hello" (⟨⟩ "world" ∅))
+   (≈÷⊔ "\t hello \n world \r"))
+
+; ============================================================================
+; Tier 5: Pad — ≈⊏⊕, ≈⊐⊕
+; ============================================================================
+
+(≋ "  Tier 5: Pad...")
+
+; ≈⊏⊕ pad-left
+(⊨ :pad-left-basic "000hi" (≈⊏⊕ "hi" #5 "0"))
+(⊨ :pad-left-already "hello" (≈⊏⊕ "hello" #3 "0"))
+(⊨ :pad-left-exact "hello" (≈⊏⊕ "hello" #5 "0"))
+
+; ≈⊐⊕ pad-right
+(⊨ :pad-right-basic "hi000" (≈⊐⊕ "hi" #5 "0"))
+(⊨ :pad-right-already "hello" (≈⊐⊕ "hello" #3 "0"))
+(⊨ :pad-right-space "hi   " (≈⊐⊕ "hi" #5 " "))
+
+; ============================================================================
+; Tier 6: Strip — ≈⊏⊖, ≈⊐⊖
+; ============================================================================
+
+(≋ "  Tier 6: Strip...")
+
+; ≈⊏⊖ strip-prefix
+(⊨ :strip-prefix-match "world" (≈⊏⊖ "hello world" "hello "))
+(⊨ :strip-prefix-no-match "hello world" (≈⊏⊖ "hello world" "xyz"))
+(⊨ :strip-prefix-empty "hello" (≈⊏⊖ "hello" ""))
+
+; ≈⊐⊖ strip-suffix
+(⊨ :strip-suffix-match "hello" (≈⊐⊖ "hello world" " world"))
+(⊨ :strip-suffix-no-match "hello world" (≈⊐⊖ "hello world" "xyz"))
+(⊨ :strip-suffix-empty "hello" (≈⊐⊖ "hello" ""))
+
+; ============================================================================
+; Integration: long-name aliases via stdlib
+; ============================================================================
+
+(≋ "  Integration: aliases...")
+
+(⋘ "bootstrap/stdlib/string.scm")
+
+(⊨ :alias-split
+   (⟨⟩ "a" (⟨⟩ "b" ∅))
+   (string-split "a,b" ","))
+
+(⊨ :alias-contains #t (string-contains? "hello world" "world"))
+(⊨ :alias-replace "hi there" (string-replace "hi world" "world" "there"))
+(⊨ :alias-trim "hello" (string-trim "  hello  "))
+(⊨ :alias-index-of #6 (string-index-of "hello world" "world"))
+(⊨ :alias-starts-with #t (string-starts-with? "hello" "hel"))
+(⊨ :alias-ends-with #t (string-ends-with? "hello" "llo"))
+(⊨ :alias-reverse "olleh" (string-reverse "hello"))
+(⊨ :alias-fields
+   (⟨⟩ "a" (⟨⟩ "b" ∅))
+   (string-fields "  a  b  "))
+
+(≋ "\n✅ All Day 121 String SDK tests passed!")

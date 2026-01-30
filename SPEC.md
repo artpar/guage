@@ -873,7 +873,7 @@ Graph types are currently restricted to 5 predefined types for metaprogramming:
 
 Use `:generic` for custom graph types. This restriction enables specialized graph algorithms and optimizations for compiler metaprogramming while still allowing user-defined graph structures.
 
-### String Operations (9) ✅
+### String Operations (33) ✅
 | Symbol | Type | Meaning | Status |
 |--------|------|---------|--------|
 | `≈` | `α → ≈` | Convert value to string | ✅ DONE |
@@ -889,6 +889,26 @@ Use `:generic` for custom graph types. This restriction enables specialized grap
 | `#→≈` | `ℕ → ≈` | Code to single-char string | ✅ DONE |
 | `≈↑` | `≈ → ≈` | String to uppercase | ✅ DONE |
 | `≈↓` | `≈ → ≈` | String to lowercase | ✅ DONE |
+| `≈⊳` | `≈ → ≈ → ℕ∣∅` | Find first substring index | ✅ DONE |
+| `≈⊲` | `≈ → ≈ → ℕ∣∅` | Find last substring index | ✅ DONE |
+| `≈∈?` | `≈ → ≈ → 𝔹` | Contains substring | ✅ DONE |
+| `≈⊲?` | `≈ → ≈ → 𝔹` | Starts with prefix | ✅ DONE |
+| `≈⊳?` | `≈ → ≈ → 𝔹` | Ends with suffix | ✅ DONE |
+| `≈⊳#` | `≈ → ≈ → ℕ` | Count non-overlapping occurrences | ✅ DONE |
+| `≈⇄` | `≈ → ≈` | Reverse string | ✅ DONE |
+| `≈⊛` | `≈ → ℕ → ≈` | Repeat string n times | ✅ DONE |
+| `≈⇔` | `≈ → ≈ → ≈ → ≈` | Replace all occurrences | ✅ DONE |
+| `≈⇔#` | `≈ → ≈ → ≈ → ℕ → ≈` | Replace first n occurrences | ✅ DONE |
+| `≈⊏` | `≈ → ≈` | Trim leading whitespace | ✅ DONE |
+| `≈⊐` | `≈ → ≈` | Trim trailing whitespace | ✅ DONE |
+| `≈⊏⊐` | `≈ → ≈` | Trim whitespace both sides | ✅ DONE |
+| `≈÷` | `≈ → ≈ → [≈]` | Split by delimiter | ✅ DONE |
+| `≈÷#` | `≈ → ≈ → ℕ → [≈]` | Split into at most n parts | ✅ DONE |
+| `≈÷⊔` | `≈ → [≈]` | Split by whitespace runs | ✅ DONE |
+| `≈⊏⊕` | `≈ → ℕ → ≈ → ≈` | Pad left to width | ✅ DONE |
+| `≈⊐⊕` | `≈ → ℕ → ≈ → ≈` | Pad right to width | ✅ DONE |
+| `≈⊏⊖` | `≈ → ≈ → ≈` | Strip prefix if present | ✅ DONE |
+| `≈⊐⊖` | `≈ → ≈ → ≈` | Strip suffix if present | ✅ DONE |
 
 **String Literals:**
 Strings are enclosed in double quotes with escape sequences:
@@ -914,46 +934,65 @@ Strings are enclosed in double quotes with escape sequences:
 
 **Higher-Level String Library:**
 
-The `stdlib/string.scm` module provides higher-level string manipulation utilities built on the primitive operations above:
+The `stdlib/string.scm` module provides long-name aliases to the C primitives above:
 
 | Function | Alias | Description |
 |----------|-------|-------------|
-| `string-split` | `≈÷` | Split string by delimiter or into characters |
+| `string-split` | `≈÷` | Split by delimiter or into characters |
 | `string-join` | `≈⊗` | Join list of strings with delimiter |
 | `string-trim` | `≈⊏⊐` | Trim whitespace from both ends |
 | `string-contains?` | `≈∈?` | Check if substring exists |
 | `string-replace` | `≈⇔` | Replace all occurrences |
 | `string-split-lines` | `≈÷⊳` | Split by newlines |
 | `string-index-of` | `≈⊳` | Find substring position (or ∅) |
+| `string-rfind` | `≈⊲` | Find last substring position (or ∅) |
+| `string-starts-with?` | `≈⊲?` | Test if starts with prefix |
+| `string-ends-with?` | `≈⊳?` | Test if ends with suffix |
+| `string-count` | `≈⊳#` | Count non-overlapping occurrences |
+| `string-reverse` | `≈⇄` | Reverse string |
+| `string-repeat` | `≈⊛` | Repeat string n times |
+| `string-fields` | `≈÷⊔` | Split by whitespace runs |
+| `string-pad-left` | `≈⊏⊕` | Pad left to target width |
+| `string-pad-right` | `≈⊐⊕` | Pad right to target width |
+| `string-strip-prefix` | `≈⊏⊖` | Remove prefix if present |
+| `string-strip-suffix` | `≈⊐⊖` | Remove suffix if present |
 
 **Examples:**
 ```scheme
-(⋘ "stdlib/string.scm")
+; Search (SIMD-accelerated)
+(≈⊳ "hello world" "world")           ; → #6
+(≈⊲ "abcabc" "abc")                  ; → #3 (last occurrence)
+(≈∈? "hello world" "world")          ; → #t
+(≈⊲? "hello" "hel")                  ; → #t (starts-with)
+(≈⊳? "hello" "llo")                  ; → #t (ends-with)
+(≈⊳# "abcabcabc" "abc")              ; → #3 (count)
 
-; Split and join
-(string-split "a,b,c" ",")          ; → ⟨"a" ⟨"b" ⟨"c" ∅⟩⟩⟩
-(≈÷ "hello" "")                     ; → ⟨"h" ⟨"e" ⟨"l" ⟨"l" ⟨"o" ∅⟩⟩⟩⟩⟩
-(string-join ⟨"a" ⟨"b" ∅⟩⟩ ",")     ; → "a,b"
+; Transform
+(≈⇄ "hello")                         ; → "olleh"
+(≈⊛ "abc" #3)                        ; → "abcabcabc"
+(≈⇔ "aaa" "a" "b")                   ; → "bbb"
+(≈⇔# "abcabcabc" "abc" "X" #2)      ; → "XXabc"
 
-; Trim whitespace
-(string-trim "  hello  ")           ; → "hello"
-(≈⊏⊐ "\n\ttest\t\n")                ; → "test"
+; Trim (SIMD whitespace scan)
+(≈⊏ "  hello")                       ; → "hello"
+(≈⊐ "hello  ")                       ; → "hello"
+(≈⊏⊐ "\n\ttest\t\n")                 ; → "test"
 
-; Search and replace
-(string-contains? "hello world" "world")  ; → #t
-(≈∈? "test" "xyz")                       ; → #f
-(string-index-of "hello world" "world")  ; → #6
-(≈⊳ "test" "xyz")                        ; → ∅
-(string-replace "hello world" "world" "there")  ; → "hello there"
-(≈⇔ "aaa" "a" "b")                       ; → "bbb"
+; Split (SIMD delimiter scan)
+(≈÷ "a,b,c" ",")                     ; → ⟨"a" ⟨"b" ⟨"c" ∅⟩⟩⟩
+(≈÷# "a,b,c,d" "," #3)              ; → ⟨"a" ⟨"b" ⟨"c,d" ∅⟩⟩⟩
+(≈÷⊔ "  hello   world  ")            ; → ⟨"hello" ⟨"world" ∅⟩⟩
 
-; Real-world usage
-(string-split-lines "a\nb\nc")      ; → ⟨"a" ⟨"b" ⟨"c" ∅⟩⟩⟩
-(≈÷ "Alice,30,Engineer" ",")        ; → CSV parsing
-(≈⊗ words " ")                      ; → Sentence building
+; Pad
+(≈⊏⊕ "hi" #5 "0")                    ; → "000hi"
+(≈⊐⊕ "hi" #5 "0")                    ; → "hi000"
+
+; Strip prefix/suffix
+(≈⊏⊖ "hello world" "hello ")         ; → "world"
+(≈⊐⊖ "hello world" " world")         ; → "hello"
 ```
 
-See `bootstrap/tests/string.test` for comprehensive examples (42 passing tests).
+See `bootstrap/tests/test_string_ops.test` for comprehensive examples (80+ assertions).
 
 ### I/O Operations (8) ✅
 | Symbol | Type | Meaning | Status |
