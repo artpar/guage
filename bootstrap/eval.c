@@ -1573,6 +1573,9 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                 if (cell_is_error(expanded_body)) {
                     return expanded_body;
                 }
+                /* macro_expand may return the same pointer without retaining;
+                 * retain so we can safely release later */
+                cell_retain(expanded_body);
 
                 /* Count parameters and extract names */
                 int arity = list_length(params);
