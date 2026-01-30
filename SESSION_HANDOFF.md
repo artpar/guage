@@ -1,11 +1,55 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-01-30 (Day 106 COMPLETE)
+Updated: 2026-01-30 (Day 107 COMPLETE)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 106 - Flow Registry (2026-01-30)
+# Session Handoff: Day 107 - Mutable References + Sequencing (2026-01-30)
+
+## Day 107 Progress - Mutable References (`□`, `□→`, `□←`, `□?`, `□⊕`, `□⇌`) + Sequencing (`⪢`)
+
+**RESULT:** 105/105 test files passing (100%), 10 new tests (Mutable References + Sequencing)
+
+### New Feature 1: Mutable References (□) — First-Class Mutable Containers
+
+Boxes are first-class mutable containers usable anywhere (not actor-only). They hold a single mutable value with create/deref/set/update/swap operations.
+
+**New Cell Type:** `CELL_BOX` — printed as `□[value]`
+
+**New Primitives (6):**
+- `□` (box) — Create mutable box: `(□ #42)` → `□[#42]`
+- `□→` (deref) — Read box value: `(□→ b)` → current value
+- `□←` (set!) — Set box, return old: `(□← b #99)` → previous value
+- `□?` (box?) — Type predicate: `(□? b)` → `#t`
+- `□⊕` (update!) — Apply fn, store result, return old: `(□⊕ b (λ (x) (⊗ x #2)))` → old value
+- `□⇌` (swap) — Swap two boxes' contents: `(□⇌ b1 b2)` → `#t`
+
+**Semantics:**
+- `□←` returns old value (useful for CAS-like patterns)
+- `□⊕` is atomic get-and-update: returns old, stores `(fn old)`
+- Equality is identity-only (two boxes are never `≡` unless same object)
+- Refcount protocol: `cell_box_set` retains new, returns old without releasing (caller owns old ref)
+
+### New Feature 2: Sequencing (⪢) — Multi-Expression Evaluation
+
+**New Special Form (1):**
+- `⪢` (seq) — Evaluate all expressions, return last: `(⪢ e1 e2 ... en)` → `en`
+
+**Semantics:**
+- Last expression in tail position (TCO via `goto tail_call`)
+- Intermediate results properly released
+- Errors in intermediate expressions short-circuit
+- Requires at least 1 expression
+
+**Files Modified (5):**
+- `bootstrap/cell.h` — `CELL_BOX` in enum, `box` struct in union, function declarations
+- `bootstrap/cell.c` — Constructor, release, predicate, getter, setter, equality (identity), print
+- `bootstrap/primitives.c` — 6 primitive functions + `box_call_fn` helper + table entries + typeof updates
+- `bootstrap/eval.c` — `⪢` special form with TCO tail position
+- `bootstrap/tests/test_box.test` (NEW) — 10 tests
+
+---
 
 ## Day 106 Progress - Flow Registry (`⟳⊸⊜⊕`, `⟳⊸⊜?`, `⟳⊸⊜⊖`, `⟳⊸⊜*`)
 
@@ -644,8 +688,10 @@ Replaced replay-based resumable effects with real delimited continuations using 
 ## Current Status
 
 **System State:**
-- **Primitives:** 209 total (205 + 4 Flow Registry)
-- **Tests:** 104/104 test files passing (100%)
+- **Primitives:** 215 total (209 + 6 Mutable References)
+- **Special Forms:** Added ⪢ (sequencing)
+- **Cell Types:** 15 total (added CELL_BOX)
+- **Tests:** 105/105 test files passing (100%)
 - **Build:** Clean, O2 optimized, 32MB stack
 
 **Core Capabilities:**
@@ -670,6 +716,8 @@ Replaced replay-based resumable effects with real delimited continuations using 
 - GenStage (⟳⊵, ⟳⊵⊕, ⟳⊵→, ⟳⊵⊙, ⟳⊵?, ⟳⊵×) — producer-consumer pipelines
 - DynamicSupervisor (⟳⊛⊹, ⟳⊛⊹⊕, ⟳⊛⊹⊖, ⟳⊛⊹?, ⟳⊛⊹#) — on-demand child spawning with restart types
 - Flow (⟳⊸, ⟳⊸↦, ⟳⊸⊲, ⟳⊸⊕, ⟳⊸⊙, ⟳⊸!) — lazy computation pipelines
+- Mutable references (□, □→, □←, □?, □⊕, □⇌) — first-class mutable containers
+- Sequencing (⪢) — multi-expression evaluation with TCO
 - Flow Registry (⟳⊸⊜⊕, ⟳⊸⊜?, ⟳⊸⊜⊖, ⟳⊸⊜*) — named flow pipelines
 - Module system (⋘ load, ⌂⊚ info)
 - Structures (⊙ leaf, ⊚ node/ADT)
@@ -687,6 +735,7 @@ Replaced replay-based resumable effects with real delimited continuations using 
 
 | Day | Feature | Tests |
 |-----|---------|-------|
+| 107 | Mutable References (□, □→, □←, □?, □⊕, □⇌) + Sequencing (⪢) | 105/105 (100%), 10 new tests |
 | 106 | Flow Registry (⟳⊸⊜⊕, ⟳⊸⊜?, ⟳⊸⊜⊖, ⟳⊸⊜*) — named flow pipelines | 104/104 (100%), 10 new tests |
 | 105 | Flow (⟳⊸, ⟳⊸↦, ⟳⊸⊲, ⟳⊸⊕, ⟳⊸⊙, ⟳⊸!) — lazy computation pipelines | 103/103 (100%), 10 new tests |
 | 104 | DynamicSupervisor (⟳⊛⊹, ⟳⊛⊹⊕, ⟳⊛⊹⊖, ⟳⊛⊹?, ⟳⊛⊹#) — on-demand child spawning | 102/102 (100%), 10 new tests |
@@ -771,5 +820,5 @@ bootstrap/tests/             # Test suite (88 test files)
 
 ---
 
-**Last Updated:** 2026-01-30 (Day 106 complete)
-**Next Session:** Day 107 - New domain (OTP complete; consider stdlib, IO, or module enhancements)
+**Last Updated:** 2026-01-30 (Day 107 complete)
+**Next Session:** Day 108 - Continue building on mutable refs + sequencing, or new domain

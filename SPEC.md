@@ -31,10 +31,10 @@ Everything is a **Cell**:
 
 **See:** `KEYWORDS.md` for complete specification.
 
-## Runtime Primitives (171 Total)
+## Runtime Primitives (177 Total)
 
-**Status:** 171 primitives implemented and stable (96/96 test files passing)
-**Note:** All primitives fully working including graph algorithms, actors, channels, supervision, supervisors, registry, timers, GenServer, process dictionary, and task async/await
+**Status:** 177 primitives implemented and stable (105/105 test files passing)
+**Note:** All primitives fully working including graph algorithms, actors, channels, supervision, supervisors, registry, timers, GenServer, process dictionary, task async/await, mutable references, and sequencing
 
 ### Core Lambda Calculus (3) ✅
 | Symbol | Type | Meaning | Status |
@@ -1302,6 +1302,34 @@ All I/O operations return errors on failure:
 - Module registry to prevent double-loading
 - Namespace isolation
 - Dependency resolution
+
+### Mutable References (6) ✅
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `□` | `α → □α` | Create mutable box | ✅ DONE (Day 107) |
+| `□→` | `□α → α` | Dereference box | ✅ DONE (Day 107) |
+| `□←` | `□α → β → α` | Set box value, return old | ✅ DONE (Day 107) |
+| `□?` | `α → 𝔹` | Test if value is box | ✅ DONE (Day 107) |
+| `□⊕` | `□α → (α→β) → α` | Update box with function, return old | ✅ DONE (Day 107) |
+| `□⇌` | `□α → □β → 𝔹` | Swap two boxes' contents | ✅ DONE (Day 107) |
+
+Mutable references (boxes) are first-class mutable containers. `□←` returns the old value (useful for CAS-like patterns). `□⊕` is atomic get-and-update: applies function, stores result, returns old value. Equality is identity-only (two boxes are never `≡` unless same object). Print format: `□[value]`. Cell type: `CELL_BOX`.
+
+### Sequencing (1 special form) ✅
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `⪢` | `α... → ω` | Evaluate all expressions, return last | ✅ DONE (Day 107) |
+
+Sequencing evaluates multiple expressions left-to-right, releasing intermediate results, and returns the last. The last expression is in tail position (TCO via `goto tail_call`). Errors in intermediate expressions short-circuit. Requires at least 1 expression.
+
+```scheme
+; Basic sequencing
+(⪢ #1 #2 #3)              ; → #3
+
+; Sequencing with mutation
+(≔ b (□ #0))
+(⪢ (□← b #1) (□← b #2) (□→ b))  ; → #2
+```
 
 ---
 
