@@ -2204,6 +2204,128 @@ Cell* prim_actor_reset(Cell* args) {
     return cell_nil();
 }
 
+/* ============ Supervision Primitives ============ */
+
+/* ⟳⊗ - link current actor to target
+ * (⟳⊗ actor) — bidirectional link */
+Cell* prim_actor_link(Cell* args) {
+    Cell* target = arg1(args);
+    if (!cell_is_actor(target)) {
+        return cell_error("link-not-actor", target);
+    }
+    Actor* current = actor_current();
+    if (!current) {
+        return cell_error("link-no-actor", cell_nil());
+    }
+    int id = cell_get_actor_id(target);
+    Actor* other = actor_lookup(id);
+    if (!other) {
+        return cell_error("link-not-found", target);
+    }
+    if (!other->alive) {
+        /* Already dead — apply exit semantics immediately */
+        bool is_error = other->result && other->result->type == CELL_ERROR;
+        if (is_error) {
+            actor_exit_signal(current, other, other->result);
+        } else if (current->trap_exit) {
+            /* Normal exit, trapping → deliver as message */
+            Cell* msg = cell_cons(
+                cell_symbol(":EXIT"),
+                cell_cons(
+                    cell_number(other->id),
+                    cell_cons(cell_symbol(":normal"), cell_nil())));
+            actor_send(current, msg);
+            cell_release(msg);
+        }
+        /* Normal exit, no trap → do nothing (don't kill) */
+        return cell_nil();
+    }
+    actor_link(current, other);
+    return cell_nil();
+}
+
+/* ⟳⊘ - unlink current actor from target
+ * (⟳⊘ actor) — remove bidirectional link */
+Cell* prim_actor_unlink(Cell* args) {
+    Cell* target = arg1(args);
+    if (!cell_is_actor(target)) {
+        return cell_error("unlink-not-actor", target);
+    }
+    Actor* current = actor_current();
+    if (!current) {
+        return cell_error("unlink-no-actor", cell_nil());
+    }
+    int id = cell_get_actor_id(target);
+    Actor* other = actor_lookup(id);
+    if (other) {
+        actor_unlink(current, other);
+    }
+    return cell_nil();
+}
+
+/* ⟳⊙ - monitor target actor
+ * (⟳⊙ actor) — receive ⟨:DOWN id reason⟩ on death */
+Cell* prim_actor_monitor(Cell* args) {
+    Cell* target = arg1(args);
+    if (!cell_is_actor(target)) {
+        return cell_error("monitor-not-actor", target);
+    }
+    Actor* current = actor_current();
+    if (!current) {
+        return cell_error("monitor-no-actor", cell_nil());
+    }
+    int id = cell_get_actor_id(target);
+    Actor* other = actor_lookup(id);
+    if (!other) {
+        return cell_error("monitor-not-found", target);
+    }
+    if (!other->alive) {
+        /* Already dead — immediately send :DOWN */
+        Cell* reason = other->result && other->result->type == CELL_ERROR
+            ? other->result : cell_symbol(":normal");
+        Cell* msg = cell_cons(
+            cell_symbol(":DOWN"),
+            cell_cons(
+                cell_number(other->id),
+                cell_cons(reason, cell_nil())));
+        actor_send(current, msg);
+        cell_release(msg);
+    } else {
+        actor_add_monitor(other, current);
+    }
+    return cell_nil();
+}
+
+/* ⟳⊜ - set trap-exit flag
+ * (⟳⊜ #t) or (⟳⊜ #f) */
+Cell* prim_actor_trap_exit(Cell* args) {
+    Cell* flag = arg1(args);
+    Actor* current = actor_current();
+    if (!current) {
+        return cell_error("trap-exit-no-actor", cell_nil());
+    }
+    current->trap_exit = cell_is_bool(flag) && cell_get_bool(flag);
+    return cell_nil();
+}
+
+/* ⟳✕ - send exit signal to actor
+ * (⟳✕ actor reason) */
+Cell* prim_actor_exit(Cell* args) {
+    Cell* target = arg1(args);
+    Cell* reason = arg2(args);
+    if (!cell_is_actor(target)) {
+        return cell_error("exit-not-actor", target);
+    }
+    Actor* sender = actor_current();
+    int id = cell_get_actor_id(target);
+    Actor* other = actor_lookup(id);
+    if (!other || !other->alive) {
+        return cell_nil(); /* already dead, no-op */
+    }
+    actor_exit_signal(other, sender, reason);
+    return cell_nil();
+}
+
 /* ============ Channel Primitives ============ */
 
 /* ⟿⊚ - create channel
@@ -6236,6 +6358,13 @@ static Primitive primitives[] = {
     {"⟳?", prim_actor_alive, 1, {"Check if actor is alive", "⟳ → 𝔹"}},
     {"⟳→", prim_actor_result, 1, {"Get finished actor result", "⟳ → α | ⚠"}},
     {"⟳∅", prim_actor_reset, 0, {"Reset all actors (testing)", "() → ∅"}},
+
+    /* Supervision primitives */
+    {"⟳⊗", prim_actor_link, 1, {"Link current actor to target (bidirectional)", "⟳ → ∅"}},
+    {"⟳⊘", prim_actor_unlink, 1, {"Unlink current actor from target", "⟳ → ∅"}},
+    {"⟳⊙", prim_actor_monitor, 1, {"Monitor actor (receive :DOWN on death)", "⟳ → ∅"}},
+    {"⟳⊜", prim_actor_trap_exit, 1, {"Enable/disable exit trapping", "𝔹 → ∅"}},
+    {"⟳✕", prim_actor_exit, 2, {"Send exit signal to actor", "⟳ → α → ∅"}},
 
     /* Channel primitives */
     {"⟿⊚", prim_chan_create, -1, {"Create channel (optional capacity)", "() → ⟿ | ℕ → ⟿"}},

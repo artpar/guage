@@ -1,0 +1,102 @@
+; Day 92: Actor Supervision - Linking, Monitoring, Exit Signals
+; Tests: link, unlink, monitor, trap-exit, exit signals
+
+;;; Test 1: Monitor receives :DOWN on normal termination
+(⟳∅)
+(≔ child (⟳ (λ (self) :done)))
+(≔ watcher (⟳ (λ (self)
+  (≫ (⟳⊙ child) (λ (_)
+    (←?))))))
+(⟳! #200)
+(≔ got (⟳→ watcher))
+(⊨ (⌜ :monitor-normal-exit)
+  #t
+  (∧ (≡ (◁ got) :DOWN)
+      (≡ (◁ (▷ (▷ got))) :normal)))
+
+;;; Test 2: Monitor receives :DOWN with error on failure
+(⟳∅)
+(≔ child2 (⟳ (λ (self) (⚠ :crashed :oops))))
+(≔ watcher2 (⟳ (λ (self)
+  (≫ (⟳⊙ child2) (λ (_)
+    (←?))))))
+(⟳! #200)
+(≔ got2 (⟳→ watcher2))
+(⊨ (⌜ :monitor-error-exit)
+  #t
+  (∧ (≡ (◁ got2) :DOWN)
+      (⚠? (◁ (▷ (▷ got2))))))
+
+;;; Test 3: Link causes death propagation (no trap-exit)
+(⟳∅)
+(≔ child3 (⟳ (λ (self) (⚠ :crash :boom))))
+(≔ parent3 (⟳ (λ (self)
+  (≫ (⟳⊗ child3) (λ (_)
+    (←?))))))
+(⟳! #200)
+(⊨ (⌜ :link-propagates-death)
+  #f
+  (⟳? parent3))
+
+;;; Test 4: Link with trap-exit converts to message
+(⟳∅)
+(≔ child4 (⟳ (λ (self) (⚠ :crash :boom))))
+(≔ parent4 (⟳ (λ (self)
+  (≫ (⟳⊜ #t) (λ (_)
+  (≫ (⟳⊗ child4) (λ (_)
+    (←?))))))))
+(⟳! #200)
+(≔ got4 (⟳→ parent4))
+(⊨ (⌜ :trap-exit-converts-to-message)
+  #t
+  (∧ (≡ (◁ got4) :EXIT)
+      (⚠? (◁ (▷ (▷ got4))))))
+
+;;; Test 5: Unlink prevents propagation
+(⟳∅)
+(≔ child5 (⟳ (λ (self)
+  (≫ (←?) (λ (_) (⚠ :crash :boom))))))
+(≔ parent5 (⟳ (λ (self)
+  (≫ (⟳⊗ child5) (λ (_)
+  (≫ (⟳⊘ child5) (λ (_)
+  (≫ (→! child5 :go) (λ (_)
+    (←?))))))))))
+; parent links then unlinks — child crash should not kill parent
+(⟳! #200)
+(⊨ (⌜ :unlink-prevents-propagation)
+  #t
+  (⟳? parent5))
+
+;;; Test 6: Exit signal kills untrapping actor
+(⟳∅)
+(≔ target6 (⟳ (λ (self) (←?))))
+(≔ killer6 (⟳ (λ (self) (⟳✕ target6 :killed))))
+(⟳! #200)
+(⊨ (⌜ :exit-signal-kills)
+  #f
+  (⟳? target6))
+
+;;; Test 7: Exit signal trapped becomes message
+(⟳∅)
+(≔ target7 (⟳ (λ (self)
+  (≫ (⟳⊜ #t) (λ (_)
+    (←?))))))
+(≔ killer7 (⟳ (λ (self) (⟳✕ target7 :please-die))))
+(⟳! #200)
+(≔ got7 (⟳→ target7))
+(⊨ (⌜ :exit-signal-trapped)
+  #t
+  (∧ (≡ (◁ got7) :EXIT)
+      (≡ (◁ (▷ (▷ got7))) :please-die)))
+
+;;; Test 8: Normal exit does not kill linked actor
+(⟳∅)
+(≔ child8 (⟳ (λ (self) :normal-result)))
+(≔ parent8 (⟳ (λ (self)
+  (≫ (⟳⊗ child8) (λ (_)
+    (←?))))))
+(⟳! #200)
+; Parent should still be alive — normal exit doesn't propagate death
+(⊨ (⌜ :normal-exit-no-kill)
+  #t
+  (⟳? parent8))

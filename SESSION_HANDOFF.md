@@ -1,11 +1,58 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-01-30 (Day 91 COMPLETE)
+Updated: 2026-01-30 (Day 92 COMPLETE)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 91 - Channel Select/Alt (2026-01-30)
+# Session Handoff: Day 92 - Supervision + Refcount Bugfix (2026-01-30)
+
+## Critical Bugfix: Refcount Use-After-Free in Macro Expansion
+
+**FIXED:** Intermittent SIGABRT crash caused by use-after-free in refcount system.
+
+**Root Cause:** `macro_expand()` returns input pointer without retaining when no macros need expansion. When the lambda evaluator called `macro_expand(body_expr, ctx)` on a sub-cell of an already-expanded macro tree, the returned pointer shared ownership with the parent tree. Releasing `expanded_body` (eval.c:1586) freed a cell still referenced by the parent `owned_expr`, causing a double-free in the TCO loop (eval.c:2453).
+
+**Fix:** Added `cell_retain(expanded_body)` after the `macro_expand` call at eval.c:1572, ensuring the expanded body has its own reference before the parent tree is released.
+
+**Impact:** This was an intermittent crash (~5-10% of runs) affecting any test file using macros inside lambda bodies. Found via AddressSanitizer, verified with 100-run stress tests showing zero failures.
+
+**File Changed:** `bootstrap/eval.c` (1 line)
+
+---
+
+## Day 92 Progress - Actor Supervision (`⟳⊗`, `⟳⊘`, `⟳⊙`, `⟳⊜`, `⟳✕`)
+
+**RESULT:** 90/90 test files passing (100%), 8 new tests (supervision)
+
+### New Feature: Actor Supervision — Linking, Monitoring, Exit Signals
+
+Actors can now monitor and react to other actors' termination. Bidirectional links propagate failure (Erlang-style), monitors provide one-way death notifications, and exit trapping converts signals to messages.
+
+**New Primitives (5):**
+- `⟳⊗` (link) — Bidirectional link between current actor and target
+- `⟳⊘` (unlink) — Remove bidirectional link
+- `⟳⊙` (monitor) — One-way monitor; receive `⟨:DOWN id reason⟩` on death
+- `⟳⊜` (trap-exit) — Enable/disable exit trapping (#t/#f)
+- `⟳✕` (exit) — Send exit signal to actor with reason
+
+**Semantics:**
+- Error exit propagates to linked actors (kills them unless trapping)
+- Normal exit does NOT kill linked actors
+- Trap-exit converts exit signals to `⟨:EXIT sender-id reason⟩` messages
+- Monitors always receive `⟨:DOWN id reason⟩` messages (no death propagation)
+- Linking to already-dead actors immediately applies exit semantics
+- Monitoring already-dead actors immediately delivers `:DOWN` message
+
+**Files Modified (3):**
+- `bootstrap/actor.h` — Links/monitors arrays, trap_exit flag, supervision API
+- `bootstrap/actor.c` — `actor_link`, `actor_unlink`, `actor_add_monitor`, `actor_exit_signal`, `actor_notify_exit`; scheduler calls `actor_notify_exit` on actor finish
+- `bootstrap/primitives.c` — 5 new primitive functions + registration
+
+**New Test File (1):**
+- `bootstrap/tests/test_supervision.test` — 8 tests covering monitor-normal, monitor-error, link-propagation, trap-exit, unlink, exit-signal, exit-trapped, normal-no-kill
+
+---
 
 ## Day 91 Progress - Channel Select (`⟿⊞`, `⟿⊞?`)
 
@@ -130,8 +177,8 @@ Replaced replay-based resumable effects with real delimited continuations using 
 ## Current Status
 
 **System State:**
-- **Primitives:** 146 total (141 + 5 channel primitives)
-- **Tests:** 88/88 test files passing (100%)
+- **Primitives:** 153 total (146 + 5 supervision + 2 select)
+- **Tests:** 90/90 test files passing (100%)
 - **Build:** Clean, O2 optimized, 32MB stack
 
 **Core Capabilities:**
@@ -141,6 +188,8 @@ Replaced replay-based resumable effects with real delimited continuations using 
 - Delimited continuations (⟪⊸⟫, ⊸) — shift/reset
 - Actor model (⟳, →!, ←?, ⟳!) — cooperative round-robin scheduler
 - Channels (⟿⊚, ⟿→, ⟿←, ⟿×) — bounded ring buffers with blocking
+- Channel select (⟿⊞, ⟿⊞?) — multiplexed channel waiting
+- Supervision (⟳⊗, ⟳⊘, ⟳⊙, ⟳⊜, ⟳✕) — linking, monitoring, exit signals
 - Module system (⋘ load, ⌂⊚ info)
 - Structures (⊙ leaf, ⊚ node/ADT)
 - Pattern matching (∇) with guards, as-patterns, or-patterns, view patterns
@@ -157,6 +206,8 @@ Replaced replay-based resumable effects with real delimited continuations using 
 
 | Day | Feature | Tests |
 |-----|---------|-------|
+| 92 | Supervision (⟳⊗, ⟳⊘, ⟳⊙, ⟳⊜, ⟳✕) + refcount bugfix | 90/90 (100%), 8 new tests |
+| 91 | Channel Select (⟿⊞, ⟿⊞?) — multiplexed waiting | 89/89 (100%), 8 new tests |
 | 90 | Channels (⟿⊚, ⟿→, ⟿←, ⟿×, ⟿∅) — bounded ring buffers | 88/88 (100%), 12 new tests |
 | 89 | Actor Model (⟳, →!, ←?, ⟳!, ⟳?, ⟳→, ⟳∅) | 87/87 (100%), 12 new tests |
 | 88 | Delimited Continuations via Fibers (⟪⊸⟫, ⊸) - O(n) effects | 86/86 (100%), 21 new tests |
@@ -225,5 +276,5 @@ bootstrap/tests/             # Test suite (88 test files)
 
 ---
 
-**Last Updated:** 2026-01-30 (Day 90 complete)
-**Next Session:** Day 91 - Supervision trees, select/alt, or optimizer
+**Last Updated:** 2026-01-30 (Day 92 complete)
+**Next Session:** Day 93 - Supervisor strategies (one-for-one, one-for-all), or optimizer

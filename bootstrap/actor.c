@@ -127,6 +127,123 @@ void actor_destroy(Actor* actor) {
     free(actor);
 }
 
+/* Supervision: bidirectional link */
+void actor_link(Actor* a, Actor* b) {
+    if (!a || !b) return;
+    /* Add b to a's links (if not already there) */
+    for (int i = 0; i < a->link_count; i++) {
+        if (a->links[i] == b->id) goto add_reverse;
+    }
+    if (a->link_count < MAX_LINKS) {
+        a->links[a->link_count++] = b->id;
+    }
+add_reverse:
+    /* Add a to b's links */
+    for (int i = 0; i < b->link_count; i++) {
+        if (b->links[i] == a->id) return;
+    }
+    if (b->link_count < MAX_LINKS) {
+        b->links[b->link_count++] = a->id;
+    }
+}
+
+void actor_unlink(Actor* a, Actor* b) {
+    if (!a || !b) return;
+    /* Remove b from a's links */
+    for (int i = 0; i < a->link_count; i++) {
+        if (a->links[i] == b->id) {
+            a->links[i] = a->links[--a->link_count];
+            break;
+        }
+    }
+    /* Remove a from b's links */
+    for (int i = 0; i < b->link_count; i++) {
+        if (b->links[i] == a->id) {
+            b->links[i] = b->links[--b->link_count];
+            break;
+        }
+    }
+}
+
+/* Add watcher as a monitor of target */
+void actor_add_monitor(Actor* target, Actor* watcher) {
+    if (!target || !watcher) return;
+    if (target->monitor_count < MAX_MONITORS) {
+        target->monitors[target->monitor_count++] = watcher->id;
+    }
+}
+
+/* Send exit signal to target from sender with reason.
+ * If target traps exits → deliver as ⟨:EXIT sender-id reason⟩ message.
+ * If target does not trap → kill it. */
+void actor_exit_signal(Actor* target, Actor* sender, Cell* reason) {
+    if (!target || !target->alive) return;
+
+    if (target->trap_exit) {
+        /* Deliver as message: ⟨:EXIT sender-id reason⟩ */
+        Cell* msg = cell_cons(
+            cell_symbol(":EXIT"),
+            cell_cons(
+                cell_number(sender ? sender->id : 0),
+                cell_cons(reason, cell_nil())));
+        actor_send(target, msg);
+        cell_release(msg);
+    } else {
+        /* Kill the target actor */
+        target->alive = false;
+        target->result = reason;
+        if (reason) cell_retain(reason);
+        /* Propagate to target's own links/monitors */
+        actor_notify_exit(target, reason);
+    }
+}
+
+/* Called when an actor exits. Notifies links and monitors. */
+void actor_notify_exit(Actor* exiting, Cell* reason) {
+    if (!exiting) return;
+
+    bool is_error = reason && reason->type == CELL_ERROR;
+
+    /* Notify monitors: send ⟨:DOWN id reason⟩ message */
+    for (int i = 0; i < exiting->monitor_count; i++) {
+        Actor* watcher = actor_lookup(exiting->monitors[i]);
+        if (watcher && watcher->alive) {
+            Cell* exit_reason = is_error ? reason : cell_symbol(":normal");
+            Cell* msg = cell_cons(
+                cell_symbol(":DOWN"),
+                cell_cons(
+                    cell_number(exiting->id),
+                    cell_cons(exit_reason, cell_nil())));
+            actor_send(watcher, msg);
+            cell_release(msg);
+        }
+    }
+
+    /* Notify linked actors */
+    for (int i = 0; i < exiting->link_count; i++) {
+        Actor* linked = actor_lookup(exiting->links[i]);
+        if (linked && linked->alive) {
+            if (is_error) {
+                /* Error exit → send exit signal */
+                actor_exit_signal(linked, exiting, reason);
+            } else {
+                /* Normal exit → send :EXIT :normal as message if trapping,
+                 * otherwise just unlink silently */
+                if (linked->trap_exit) {
+                    Cell* msg = cell_cons(
+                        cell_symbol(":EXIT"),
+                        cell_cons(
+                            cell_number(exiting->id),
+                            cell_cons(cell_symbol(":normal"), cell_nil())));
+                    actor_send(linked, msg);
+                    cell_release(msg);
+                }
+                /* Normal exit: don't kill linked actor */
+            }
+        }
+    }
+}
+
 /* Lookup actor by ID */
 Actor* actor_lookup(int id) {
     for (int i = 0; i < g_actor_count; i++) {
@@ -277,6 +394,8 @@ int actor_run_all(int max_ticks) {
                 actor->alive = false;
                 actor->result = fiber->result;
                 if (actor->result) cell_retain(actor->result);
+                /* Notify links and monitors */
+                actor_notify_exit(actor, actor->result);
             }
 
             /* Restore */
