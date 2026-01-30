@@ -3114,8 +3114,8 @@ Cell* prim_app_get_env(Cell* args) {
     return val ? val : cell_nil();
 }
 
-/* ⟳⊚! - set application environment key
- * (⟳⊚! :app-name :key value) → #t | ⚠ */
+/* ⟳⊚← - set application environment key
+ * (⟳⊚← :app-name :key value) → #t | ⚠ */
 Cell* prim_app_set_env(Cell* args) {
     if (!args || cell_is_nil(args)) {
         return cell_error("app-set-env-args", cell_nil());
