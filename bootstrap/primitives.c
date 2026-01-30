@@ -914,6 +914,9 @@ Cell* prim_typeof(Cell* args) {
     if (cell_is_deque(val)) {
         return cell_symbol(":deque");
     }
+    if (cell_is_buffer(val)) {
+        return cell_symbol(":buffer");
+    }
 
     return cell_symbol(":unknown");
 }
@@ -8528,6 +8531,151 @@ Cell* prim_deque_empty(Cell* args) {
     return cell_bool(cell_deque_size(d) == 0);
 }
 
+/* =========================================================================
+ * Buffer primitives — cache-line aligned raw byte buffer
+ * ========================================================================= */
+
+/* ◈ - create buffer (variadic) */
+Cell* prim_buffer_new(Cell* args) {
+    /* (◈) → empty buffer, (◈ #65 #66 #67) → buffer from byte values */
+    Cell* buf = cell_buffer_new(64);
+    Cell* cur = args;
+    while (cur && !cell_is_nil(cur)) {
+        if (!cell_is_pair(cur)) break;
+        Cell* val = cell_car(cur);
+        if (!cell_is_number(val)) {
+            cell_release(buf);
+            return cell_error("◈ args must be numbers", val);
+        }
+        double n = cell_get_number(val);
+        if (n < 0 || n > 255 || n != (int)n) {
+            cell_release(buf);
+            return cell_error("byte-out-of-range", val);
+        }
+        cell_buffer_append(buf, (uint8_t)(int)n);
+        cur = cell_cdr(cur);
+    }
+    return buf;
+}
+
+/* ◈← - read byte at index */
+Cell* prim_buffer_get(Cell* args) {
+    Cell* buf = arg1(args);
+    if (!cell_is_buffer(buf))
+        return cell_error("◈← requires buffer", buf);
+    Cell* idx_cell = arg2(args);
+    if (!cell_is_number(idx_cell))
+        return cell_error("◈← index must be number", idx_cell);
+    double n = cell_get_number(idx_cell);
+    uint32_t idx = (uint32_t)n;
+    if (n < 0 || n != idx || idx >= cell_buffer_size(buf))
+        return cell_error("index-out-of-bounds", idx_cell);
+    return cell_number((double)cell_buffer_get(buf, idx));
+}
+
+/* ◈→ - write byte at index (mutates) */
+Cell* prim_buffer_set(Cell* args) {
+    Cell* buf = arg1(args);
+    if (!cell_is_buffer(buf))
+        return cell_error("◈→ requires buffer", buf);
+    Cell* idx_cell = arg2(args);
+    Cell* val_cell = arg3(args);
+    if (!cell_is_number(idx_cell))
+        return cell_error("◈→ index must be number", idx_cell);
+    if (!cell_is_number(val_cell))
+        return cell_error("◈→ value must be number", val_cell);
+    double ni = cell_get_number(idx_cell);
+    double nv = cell_get_number(val_cell);
+    uint32_t idx = (uint32_t)ni;
+    if (ni < 0 || ni != idx || idx >= cell_buffer_size(buf))
+        return cell_error("index-out-of-bounds", idx_cell);
+    if (nv < 0 || nv > 255 || nv != (int)nv)
+        return cell_error("byte-out-of-range", val_cell);
+    cell_buffer_set(buf, idx, (uint8_t)(int)nv);
+    return cell_bool(true);
+}
+
+/* ◈⊕ - append byte (mutates) */
+Cell* prim_buffer_append(Cell* args) {
+    Cell* buf = arg1(args);
+    if (!cell_is_buffer(buf))
+        return cell_error("◈⊕ requires buffer", buf);
+    Cell* val_cell = arg2(args);
+    if (!cell_is_number(val_cell))
+        return cell_error("◈⊕ value must be number", val_cell);
+    double nv = cell_get_number(val_cell);
+    if (nv < 0 || nv > 255 || nv != (int)nv)
+        return cell_error("byte-out-of-range", val_cell);
+    cell_buffer_append(buf, (uint8_t)(int)nv);
+    return cell_bool(true);
+}
+
+/* ◈⊕⊕ - concat two buffers → new buffer */
+Cell* prim_buffer_concat(Cell* args) {
+    Cell* a = arg1(args);
+    Cell* b = arg2(args);
+    if (!cell_is_buffer(a))
+        return cell_error("◈⊕⊕ first arg must be buffer", a);
+    if (!cell_is_buffer(b))
+        return cell_error("◈⊕⊕ second arg must be buffer", b);
+    return cell_buffer_concat(a, b);
+}
+
+/* ◈# - byte count */
+Cell* prim_buffer_size(Cell* args) {
+    Cell* buf = arg1(args);
+    if (!cell_is_buffer(buf))
+        return cell_error("◈# requires buffer", buf);
+    return cell_number((double)cell_buffer_size(buf));
+}
+
+/* ◈? - type predicate */
+Cell* prim_buffer_is(Cell* args) {
+    Cell* val = arg1(args);
+    return cell_bool(cell_is_buffer(val));
+}
+
+/* ◈⊂ - slice [start, end) → new buffer */
+Cell* prim_buffer_slice(Cell* args) {
+    Cell* buf = arg1(args);
+    if (!cell_is_buffer(buf))
+        return cell_error("◈⊂ requires buffer", buf);
+    Cell* start_cell = arg2(args);
+    Cell* end_cell = arg3(args);
+    if (!cell_is_number(start_cell) || !cell_is_number(end_cell))
+        return cell_error("◈⊂ indices must be numbers", start_cell);
+    uint32_t start = (uint32_t)cell_get_number(start_cell);
+    uint32_t end = (uint32_t)cell_get_number(end_cell);
+    return cell_buffer_slice(buf, start, end);
+}
+
+/* ◈⊙ - all bytes as cons list of numbers */
+Cell* prim_buffer_to_list(Cell* args) {
+    Cell* buf = arg1(args);
+    if (!cell_is_buffer(buf))
+        return cell_error("◈⊙ requires buffer", buf);
+    return cell_buffer_to_list(buf);
+}
+
+/* ◈≈ - interpret as UTF-8 string */
+Cell* prim_buffer_to_string(Cell* args) {
+    Cell* buf = arg1(args);
+    if (!cell_is_buffer(buf))
+        return cell_error("◈≈ requires buffer", buf);
+    const char* str = cell_buffer_to_string(buf);
+    Cell* result = cell_string(str);
+    free((void*)str);
+    return result;
+}
+
+/* ≈◈ - string to byte buffer */
+Cell* prim_buffer_from_string(Cell* args) {
+    Cell* s = arg1(args);
+    if (!cell_is_string(s))
+        return cell_error("≈◈ requires string", s);
+    return cell_buffer_from_string(cell_get_string(s));
+}
+
 /* Primitive table - PURE SYMBOLS ONLY
  * EVERY primitive MUST have documentation */
 static Primitive primitives[] = {
@@ -8893,6 +9041,19 @@ static Primitive primitives[] = {
     {"⊟?", prim_deque_is, 1, {"Test if value is deque", "α → 𝔹"}},
     {"⊟⊙", prim_deque_to_list, 1, {"All elements front-to-back as list", "⊟ → [α]"}},
     {"⊟∅?", prim_deque_empty, 1, {"Test if deque is empty", "⊟ → 𝔹"}},
+
+    /* Buffer (Day 113 — cache-line aligned raw byte buffer) */
+    {"◈", prim_buffer_new, -1, {"Create buffer from byte values", "ℕ... → ◈"}},
+    {"◈←", prim_buffer_get, 2, {"Read byte at index", "◈ → ℕ → ℕ"}},
+    {"◈→", prim_buffer_set, 3, {"Write byte at index (mutates)", "◈ → ℕ → ℕ → #t"}},
+    {"◈⊕", prim_buffer_append, 2, {"Append byte (mutates, grows)", "◈ → ℕ → #t"}},
+    {"◈⊕⊕", prim_buffer_concat, 2, {"Concat two buffers → new", "◈ → ◈ → ◈"}},
+    {"◈#", prim_buffer_size, 1, {"Byte count", "◈ → ℕ"}},
+    {"◈?", prim_buffer_is, 1, {"Test if value is buffer", "α → 𝔹"}},
+    {"◈⊂", prim_buffer_slice, 3, {"Slice [start,end) → new buffer", "◈ → ℕ → ℕ → ◈"}},
+    {"◈⊙", prim_buffer_to_list, 1, {"All bytes as list of numbers", "◈ → [ℕ]"}},
+    {"◈≈", prim_buffer_to_string, 1, {"Interpret as UTF-8 string", "◈ → string"}},
+    {"≈◈", prim_buffer_from_string, 1, {"String to byte buffer", "string → ◈"}},
 
     {NULL, NULL, 0, {NULL, NULL}}
 };

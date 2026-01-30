@@ -1,0 +1,56 @@
+; Test: Buffer (◈) — Cache-line aligned raw byte buffer
+; Day 113
+
+; 1. Empty creation + size
+(⊨ (⌜ :buf-empty) #0 (◈# (◈)))
+
+; 2. Create from byte values
+(≔ b1 (◈ #65 #66 #67))
+(⊨ (⌜ :buf-create-values) #3 (◈# b1))
+
+; 3. Get byte at index
+(⊨ (⌜ :buf-get-byte) #66 (◈← b1 #1))
+
+; 4. Set byte at index (mutation)
+(≔ b2 (◈ #10 #20 #30))
+(◈→ b2 #1 #99)
+(⊨ (⌜ :buf-set-byte) #99 (◈← b2 #1))
+
+; 5. Append (growth)
+(≔ b3 (◈))
+(◈⊕ b3 #1)
+(◈⊕ b3 #2)
+(◈⊕ b3 #3)
+(⊨ (⌜ :buf-append) #3 (◈# b3))
+
+; 6. Concat two buffers (new, no mutation)
+(≔ b4 (◈ #1 #2))
+(≔ b5 (◈ #3 #4))
+(≔ b6 (◈⊕⊕ b4 b5))
+(⊨ (⌜ :buf-concat-size) #4 (◈# b6))
+(⊨ (⌜ :buf-concat-val) #3 (◈← b6 #2))
+
+; 7. Slice extraction
+(≔ b7 (◈ #10 #20 #30 #40 #50))
+(≔ b8 (◈⊂ b7 #1 #4))
+(⊨ (⌜ :buf-slice-size) #3 (◈# b8))
+(⊨ (⌜ :buf-slice-val) #20 (◈← b8 #0))
+
+; 8. To-list conversion
+(≔ b9 (◈ #1 #2 #3))
+(⊨ (⌜ :buf-to-list) #1 (◁ (◈⊙ b9)))
+
+; 9. Type predicate
+(⊨ (⌜ :buf-type-pred-yes) #t (◈? (◈)))
+(⊨ (⌜ :buf-type-pred-no) #f (◈? #42))
+
+; 10. Bounds check errors
+(⊨ (⌜ :buf-oob-get) #t (⚠? (◈← (◈) #0)))
+(⊨ (⌜ :buf-oob-range) #t (⚠? (◈ #256)))
+
+; 11. String round-trip (≈◈ / ◈≈)
+(≔ b10 (≈◈ "hello"))
+(⊨ (⌜ :buf-string-roundtrip) "hello" (◈≈ b10))
+
+; 12. Buffer equality (structural memcmp)
+(⊨ (⌜ :buf-equality) #t (≡ (◈ #1 #2 #3) (◈ #1 #2 #3)))

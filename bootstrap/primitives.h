@@ -173,6 +173,19 @@ Cell* prim_deque_is(Cell* args);           /* ⊟? - type predicate */
 Cell* prim_deque_to_list(Cell* args);      /* ⊟⊙ - to list */
 Cell* prim_deque_empty(Cell* args);        /* ⊟∅? - empty predicate */
 
+/* Buffer primitives (Day 113 — cache-line aligned raw byte buffer) */
+Cell* prim_buffer_new(Cell* args);          /* ◈ - create buffer */
+Cell* prim_buffer_get(Cell* args);          /* ◈← - read byte at index */
+Cell* prim_buffer_set(Cell* args);          /* ◈→ - write byte at index */
+Cell* prim_buffer_append(Cell* args);       /* ◈⊕ - append byte */
+Cell* prim_buffer_concat(Cell* args);       /* ◈⊕⊕ - concat buffers */
+Cell* prim_buffer_size(Cell* args);         /* ◈# - byte count */
+Cell* prim_buffer_is(Cell* args);           /* ◈? - type predicate */
+Cell* prim_buffer_slice(Cell* args);        /* ◈⊂ - slice */
+Cell* prim_buffer_to_list(Cell* args);      /* ◈⊙ - bytes as list */
+Cell* prim_buffer_to_string(Cell* args);    /* ◈≈ - interpret as UTF-8 */
+Cell* prim_buffer_from_string(Cell* args);  /* ≈◈ - string to buffer */
+
 /* Primitive documentation structure */
 typedef struct {
     const char* description;     /* What this primitive does */

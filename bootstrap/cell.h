@@ -31,7 +31,8 @@ typedef enum {
     CELL_WEAK_REF,       /* ◇ - weak reference */
     CELL_HASHMAP,        /* ⊞ - hash map (Swiss Table) */
     CELL_SET,            /* ⊡ - hash set (Boost-style groups-of-15 + overflow Bloom byte) */
-    CELL_DEQUE           /* ⊟ - deque (DPDK-grade cache-optimized circular buffer) */
+    CELL_DEQUE,          /* ⊟ - deque (DPDK-grade cache-optimized circular buffer) */
+    CELL_BUFFER          /* ◈ - byte buffer (cache-line aligned raw bytes) */
 } CellType;
 
 /* Linear Type Flags */
@@ -172,6 +173,11 @@ struct Cell {
             uint32_t tail;        /* Virtual write index (monotonic, wraps via overflow) */
             uint32_t capacity;    /* Always power of 2 (min 8) */
         } deque;
+        struct {
+            uint8_t* bytes;       /* Cache-line aligned (64-byte) raw buffer */
+            uint32_t size;        /* Bytes stored */
+            uint32_t capacity;    /* Power of 2 (min 64 = one cache line) */
+        } buffer;
     } data;
 };
 
@@ -276,6 +282,19 @@ Cell* cell_deque_peek_front(Cell* d);
 Cell* cell_deque_peek_back(Cell* d);
 uint32_t cell_deque_size(Cell* d);
 Cell* cell_deque_to_list(Cell* d);
+
+/* Buffer operations (cache-line aligned raw byte buffer) */
+Cell* cell_buffer_new(uint32_t initial_cap);
+bool cell_is_buffer(Cell* c);
+uint8_t cell_buffer_get(Cell* buf, uint32_t idx);
+void cell_buffer_set(Cell* buf, uint32_t idx, uint8_t val);
+void cell_buffer_append(Cell* buf, uint8_t val);
+Cell* cell_buffer_concat(Cell* a, Cell* b);
+Cell* cell_buffer_slice(Cell* buf, uint32_t start, uint32_t end);
+uint32_t cell_buffer_size(Cell* buf);
+Cell* cell_buffer_to_list(Cell* buf);
+const char* cell_buffer_to_string(Cell* buf);
+Cell* cell_buffer_from_string(const char* str);
 
 /* Error accessors */
 const char* cell_error_message(Cell* c);

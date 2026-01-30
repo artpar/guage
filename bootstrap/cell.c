@@ -285,6 +285,9 @@ void cell_release(Cell* c) {
                 free(c->data.deque.buffer);
                 break;
             }
+            case CELL_BUFFER:
+                free(c->data.buffer.bytes);
+                break;
             default:
                 break;
         }
@@ -698,6 +701,9 @@ bool cell_equal(Cell* a, Cell* b) {
             }
             return true;
         }
+        case CELL_BUFFER:
+            if (a->data.buffer.size != b->data.buffer.size) return false;
+            return memcmp(a->data.buffer.bytes, b->data.buffer.bytes, a->data.buffer.size) == 0;
         case CELL_LAMBDA:
         case CELL_BUILTIN:
         case CELL_ERROR:
@@ -824,6 +830,9 @@ void cell_print(Cell* c) {
         case CELL_DEQUE:
             printf("⊟[%u]", c->data.deque.tail - c->data.deque.head);
             break;
+        case CELL_BUFFER:
+            printf("◈[%u]", c->data.buffer.size);
+            break;
     }
 }
 
@@ -855,6 +864,8 @@ uint64_t cell_hash(Cell* c) {
             h ^= cell_hash(c->data.pair.cdr) * 0x9E3779B97F4A7C15ULL + (h << 12) + (h >> 4);
             return h;
         }
+        case CELL_BUFFER:
+            return guage_siphash(c->data.buffer.bytes, c->data.buffer.size);
         default: {
             /* Lambda, error, actor, box, etc. — hash pointer */
             uintptr_t ptr = (uintptr_t)c;
@@ -1640,4 +1651,120 @@ Cell* cell_deque_to_list(Cell* d) {
         result = pair;
     }
     return result;
+}
+
+/* =========================================================================
+ * Buffer — Cache-line aligned raw byte buffer
+ * ========================================================================= */
+
+#define BUFFER_MIN_CAP 64  /* One cache line */
+
+bool cell_is_buffer(Cell* c) {
+    return c && c->type == CELL_BUFFER;
+}
+
+Cell* cell_buffer_new(uint32_t initial_cap) {
+    if (initial_cap < BUFFER_MIN_CAP) initial_cap = BUFFER_MIN_CAP;
+    /* Round up to power of 2 */
+    uint32_t cap = BUFFER_MIN_CAP;
+    while (cap < initial_cap) cap <<= 1;
+
+    Cell* c = cell_alloc(CELL_BUFFER);
+    c->data.buffer.capacity = cap;
+    c->data.buffer.size = 0;
+    c->data.buffer.bytes = (uint8_t*)aligned_alloc(64, cap);
+    memset(c->data.buffer.bytes, 0, cap);
+    return c;
+}
+
+static void buffer_grow(Cell* buf) {
+    uint32_t new_cap = buf->data.buffer.capacity * 2;
+    uint8_t* new_bytes = (uint8_t*)aligned_alloc(64, new_cap);
+    memset(new_bytes, 0, new_cap);
+    memcpy(new_bytes, buf->data.buffer.bytes, buf->data.buffer.size);
+    free(buf->data.buffer.bytes);
+    buf->data.buffer.bytes = new_bytes;
+    buf->data.buffer.capacity = new_cap;
+}
+
+uint8_t cell_buffer_get(Cell* buf, uint32_t idx) {
+    assert(buf->type == CELL_BUFFER);
+    assert(idx < buf->data.buffer.size);
+    __builtin_prefetch(buf->data.buffer.bytes + idx);
+    return buf->data.buffer.bytes[idx];
+}
+
+void cell_buffer_set(Cell* buf, uint32_t idx, uint8_t val) {
+    assert(buf->type == CELL_BUFFER);
+    assert(idx < buf->data.buffer.size);
+    __builtin_prefetch(buf->data.buffer.bytes + idx);
+    buf->data.buffer.bytes[idx] = val;
+}
+
+void cell_buffer_append(Cell* buf, uint8_t val) {
+    assert(buf->type == CELL_BUFFER);
+    if (buf->data.buffer.size >= buf->data.buffer.capacity) {
+        buffer_grow(buf);
+    }
+    buf->data.buffer.bytes[buf->data.buffer.size++] = val;
+}
+
+Cell* cell_buffer_concat(Cell* a, Cell* b) {
+    assert(a->type == CELL_BUFFER);
+    assert(b->type == CELL_BUFFER);
+    uint32_t total = a->data.buffer.size + b->data.buffer.size;
+    Cell* result = cell_buffer_new(total);
+    memcpy(result->data.buffer.bytes, a->data.buffer.bytes, a->data.buffer.size);
+    memcpy(result->data.buffer.bytes + a->data.buffer.size, b->data.buffer.bytes, b->data.buffer.size);
+    result->data.buffer.size = total;
+    return result;
+}
+
+Cell* cell_buffer_slice(Cell* buf, uint32_t start, uint32_t end) {
+    assert(buf->type == CELL_BUFFER);
+    /* Clamp bounds (Python semantics) */
+    if (start > buf->data.buffer.size) start = buf->data.buffer.size;
+    if (end > buf->data.buffer.size) end = buf->data.buffer.size;
+    if (end < start) end = start;
+    uint32_t len = end - start;
+    Cell* result = cell_buffer_new(len);
+    if (len > 0) {
+        memcpy(result->data.buffer.bytes, buf->data.buffer.bytes + start, len);
+    }
+    result->data.buffer.size = len;
+    return result;
+}
+
+uint32_t cell_buffer_size(Cell* buf) {
+    assert(buf->type == CELL_BUFFER);
+    return buf->data.buffer.size;
+}
+
+Cell* cell_buffer_to_list(Cell* buf) {
+    assert(buf->type == CELL_BUFFER);
+    Cell* result = cell_nil();
+    for (int32_t i = (int32_t)buf->data.buffer.size - 1; i >= 0; i--) {
+        Cell* num = cell_number((double)buf->data.buffer.bytes[i]);
+        Cell* pair = cell_cons(num, result);
+        cell_release(num);
+        cell_release(result);
+        result = pair;
+    }
+    return result;
+}
+
+const char* cell_buffer_to_string(Cell* buf) {
+    assert(buf->type == CELL_BUFFER);
+    char* str = (char*)malloc(buf->data.buffer.size + 1);
+    memcpy(str, buf->data.buffer.bytes, buf->data.buffer.size);
+    str[buf->data.buffer.size] = '\0';
+    return str;
+}
+
+Cell* cell_buffer_from_string(const char* str) {
+    uint32_t len = (uint32_t)strlen(str);
+    Cell* buf = cell_buffer_new(len);
+    memcpy(buf->data.buffer.bytes, str, len);
+    buf->data.buffer.size = len;
+    return buf;
 }
