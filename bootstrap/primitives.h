@@ -228,6 +228,22 @@ Cell* prim_sorted_map_range(Cell* args);
 Cell* prim_sorted_map_floor(Cell* args);
 Cell* prim_sorted_map_ceiling(Cell* args);
 
+/* Trie primitives (Day 117 — ART with SIMD Node16 + path compression) */
+Cell* prim_trie_new(Cell* args);
+Cell* prim_trie_get(Cell* args);
+Cell* prim_trie_put(Cell* args);
+Cell* prim_trie_del(Cell* args);
+Cell* prim_trie_is(Cell* args);
+Cell* prim_trie_has(Cell* args);
+Cell* prim_trie_size(Cell* args);
+Cell* prim_trie_merge(Cell* args);
+Cell* prim_trie_prefix_keys(Cell* args);
+Cell* prim_trie_prefix_count(Cell* args);
+Cell* prim_trie_longest_prefix(Cell* args);
+Cell* prim_trie_entries(Cell* args);
+Cell* prim_trie_keys(Cell* args);
+Cell* prim_trie_vals(Cell* args);
+
 /* Primitive documentation structure */
 typedef struct {
     const char* description;     /* What this primitive does */

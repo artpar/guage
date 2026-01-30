@@ -35,7 +35,8 @@ typedef enum {
     CELL_BUFFER,         /* ◈ - byte buffer (cache-line aligned raw bytes) */
     CELL_VECTOR,         /* ⟦⟧ - dynamic array (SBO + 1.5x growth + cache-line aligned) */
     CELL_HEAP,           /* △ - priority queue (4-ary min-heap, SoA, cache-line aligned) */
-    CELL_SORTED_MAP      /* ⋔ - sorted map (Algorithmica-grade SIMD B-tree) */
+    CELL_SORTED_MAP,     /* ⋔ - sorted map (Algorithmica-grade SIMD B-tree) */
+    CELL_TRIE            /* ⊮ - trie (ART with SIMD Node16 + path compression) */
 } CellType;
 
 /* Linear Type Flags */
@@ -203,6 +204,10 @@ struct Cell {
             uint32_t size;        /* Total entries */
             uint8_t  height;      /* Tree height (for search loop bound) */
         } sorted_map;
+        struct {
+            void*    root;        /* ART root node (ARTNode* or ARTLeaf*, tagged) */
+            uint32_t size;        /* Total key-value pairs */
+        } trie;
     } data;
 };
 
@@ -359,6 +364,22 @@ Cell* cell_sorted_map_max(Cell* m);
 Cell* cell_sorted_map_range(Cell* m, Cell* lo, Cell* hi);
 Cell* cell_sorted_map_floor(Cell* m, Cell* key);
 Cell* cell_sorted_map_ceiling(Cell* m, Cell* key);
+
+/* Trie operations (ART — Adaptive Radix Tree with SIMD Node16) */
+Cell* cell_trie_new(void);
+bool cell_is_trie(Cell* c);
+Cell* cell_trie_get(Cell* t, Cell* key);
+bool cell_trie_put(Cell* t, Cell* key, Cell* value);
+Cell* cell_trie_del(Cell* t, Cell* key);
+bool cell_trie_has(Cell* t, Cell* key);
+uint32_t cell_trie_size(Cell* t);
+Cell* cell_trie_merge(Cell* t1, Cell* t2);
+Cell* cell_trie_prefix_keys(Cell* t, Cell* prefix);
+uint32_t cell_trie_prefix_count(Cell* t, Cell* prefix);
+Cell* cell_trie_longest_prefix(Cell* t, Cell* query);
+Cell* cell_trie_entries(Cell* t);
+Cell* cell_trie_keys(Cell* t);
+Cell* cell_trie_values(Cell* t);
 
 /* Total ordering for all Cell types (Erlang term ordering) */
 int cell_compare(Cell* a, Cell* b);

@@ -926,6 +926,9 @@ Cell* prim_typeof(Cell* args) {
     if (cell_is_sorted_map(val)) {
         return cell_symbol(":sorted-map");
     }
+    if (cell_is_trie(val)) {
+        return cell_symbol(":trie");
+    }
 
     return cell_symbol(":unknown");
 }
@@ -1730,6 +1733,8 @@ Cell* prim_type_of(Cell* args) {
     else if (cell_is_buffer(value)) type_name = "buffer";
     else if (cell_is_vector(value)) type_name = "vector";
     else if (cell_is_heap(value)) type_name = "heap";
+    else if (cell_is_sorted_map(value)) type_name = "sorted-map";
+    else if (cell_is_trie(value)) type_name = "trie";
 
     return cell_symbol(type_name);
 }
@@ -9092,6 +9097,140 @@ Cell* prim_sorted_map_ceiling(Cell* args) {
     return result ? result : cell_nil();
 }
 
+/* === Trie primitives (Day 117 — ART with SIMD Node16) === */
+
+/* ⊮ - create trie, optionally from ⟨k v⟩ pairs */
+Cell* prim_trie_new(Cell* args) {
+    Cell* t = cell_trie_new();
+    Cell* cur = args;
+    while (cur && cell_is_pair(cur)) {
+        Cell* pair = cell_car(cur);
+        if (cell_is_pair(pair)) {
+            Cell* k = cell_car(pair);
+            Cell* v = cell_cdr(pair);
+            cell_trie_put(t, k, v);
+        }
+        cur = cell_cdr(cur);
+    }
+    return t;
+}
+
+/* ⊮→ - get value by key */
+Cell* prim_trie_get(Cell* args) {
+    Cell* t = arg1(args);
+    if (!cell_is_trie(t))
+        return cell_error("⊮→ requires trie", t);
+    Cell* key = arg2(args);
+    Cell* val = cell_trie_get(t, key);
+    return val ? val : cell_nil();
+}
+
+/* ⊮← - put key-value (mutates), returns #t */
+Cell* prim_trie_put(Cell* args) {
+    Cell* t = arg1(args);
+    if (!cell_is_trie(t))
+        return cell_error("⊮← requires trie", t);
+    Cell* key = arg2(args);
+    Cell* val = arg3(args);
+    cell_trie_put(t, key, val);
+    return cell_bool(true);
+}
+
+/* ⊮⊖ - delete key, returns old value or ∅ */
+Cell* prim_trie_del(Cell* args) {
+    Cell* t = arg1(args);
+    if (!cell_is_trie(t))
+        return cell_error("⊮⊖ requires trie", t);
+    Cell* key = arg2(args);
+    Cell* old = cell_trie_del(t, key);
+    return old ? old : cell_nil();
+}
+
+/* ⊮? - type predicate */
+Cell* prim_trie_is(Cell* args) {
+    return cell_bool(cell_is_trie(arg1(args)));
+}
+
+/* ⊮∋ - membership test */
+Cell* prim_trie_has(Cell* args) {
+    Cell* t = arg1(args);
+    if (!cell_is_trie(t))
+        return cell_error("⊮∋ requires trie", t);
+    Cell* key = arg2(args);
+    return cell_bool(cell_trie_has(t, key));
+}
+
+/* ⊮# - size */
+Cell* prim_trie_size(Cell* args) {
+    Cell* t = arg1(args);
+    if (!cell_is_trie(t))
+        return cell_error("⊮# requires trie", t);
+    return cell_number((double)cell_trie_size(t));
+}
+
+/* ⊮⊕ - merge two tries (t2 wins) */
+Cell* prim_trie_merge(Cell* args) {
+    Cell* t1 = arg1(args);
+    Cell* t2 = arg2(args);
+    if (!cell_is_trie(t1))
+        return cell_error("⊮⊕ first arg must be trie", t1);
+    if (!cell_is_trie(t2))
+        return cell_error("⊮⊕ second arg must be trie", t2);
+    return cell_trie_merge(t1, t2);
+}
+
+/* ⊮⊙ - prefix keys search */
+Cell* prim_trie_prefix_keys(Cell* args) {
+    Cell* t = arg1(args);
+    if (!cell_is_trie(t))
+        return cell_error("⊮⊙ requires trie", t);
+    Cell* prefix = arg2(args);
+    return cell_trie_prefix_keys(t, prefix);
+}
+
+/* ⊮⊗ - prefix count */
+Cell* prim_trie_prefix_count(Cell* args) {
+    Cell* t = arg1(args);
+    if (!cell_is_trie(t))
+        return cell_error("⊮⊗ requires trie", t);
+    Cell* prefix = arg2(args);
+    return cell_number((double)cell_trie_prefix_count(t, prefix));
+}
+
+/* ⊮≤ - longest stored prefix of query */
+Cell* prim_trie_longest_prefix(Cell* args) {
+    Cell* t = arg1(args);
+    if (!cell_is_trie(t))
+        return cell_error("⊮≤ requires trie", t);
+    Cell* query = arg2(args);
+    Cell* result = cell_trie_longest_prefix(t, query);
+    return result ? result : cell_nil();
+}
+
+/* ⊮* - all entries in lex order */
+Cell* prim_trie_entries(Cell* args) {
+    Cell* t = arg1(args);
+    if (!cell_is_trie(t))
+        return cell_error("⊮* requires trie", t);
+    return cell_trie_entries(t);
+}
+
+/* ⊮⊙* - all keys in lex order */
+Cell* prim_trie_keys(Cell* args) {
+    Cell* t = arg1(args);
+    if (!cell_is_trie(t))
+        return cell_error("⊮⊙* requires trie", t);
+    return cell_trie_keys(t);
+}
+
+/* ⊮⊗* - all values in key-sorted order */
+Cell* prim_trie_vals(Cell* args) {
+    Cell* t = arg1(args);
+    if (!cell_is_trie(t))
+        return cell_error("⊮⊗* requires trie", t);
+    return cell_trie_values(t);
+}
+
 /* Primitive table - PURE SYMBOLS ONLY
  * EVERY primitive MUST have documentation */
 static Primitive primitives[] = {
@@ -9512,6 +9651,22 @@ static Primitive primitives[] = {
     {"⋔⊂", prim_sorted_map_range, 3, {"Range [lo,hi] → ⟨k v⟩ list", "⋔ → α → α → [⟨α β⟩]"}},
     {"⋔≤", prim_sorted_map_floor, 2, {"Greatest key ≤ query → ⟨k v⟩", "⋔ → α → ⟨α β⟩"}},
     {"⋔≥", prim_sorted_map_ceiling, 2, {"Least key ≥ query → ⟨k v⟩", "⋔ → α → ⟨α β⟩"}},
+
+    /* Trie (Day 117 — ART with SIMD Node16 + path compression) */
+    {"⊮", prim_trie_new, -1, {"Create trie from ⟨k v⟩ pairs", "⟨k v⟩... → ⊮"}},
+    {"⊮→", prim_trie_get, 2, {"Get value by key or ∅", "⊮ → α → β"}},
+    {"⊮←", prim_trie_put, 3, {"Put key-value (mutates)", "⊮ → α → β → #t"}},
+    {"⊮⊖", prim_trie_del, 2, {"Delete key → old value or ∅", "⊮ → α → β"}},
+    {"⊮?", prim_trie_is, 1, {"Test if value is trie", "α → 𝔹"}},
+    {"⊮∋", prim_trie_has, 2, {"Test if key exists", "⊮ → α → 𝔹"}},
+    {"⊮#", prim_trie_size, 1, {"Get size", "⊮ → ℕ"}},
+    {"⊮⊕", prim_trie_merge, 2, {"Merge two tries (t2 wins)", "⊮ → ⊮ → ⊮"}},
+    {"⊮⊙", prim_trie_prefix_keys, 2, {"All keys with prefix", "⊮ → α → [α]"}},
+    {"⊮⊗", prim_trie_prefix_count, 2, {"Count keys with prefix", "⊮ → α → ℕ"}},
+    {"⊮≤", prim_trie_longest_prefix, 2, {"Longest stored prefix of query", "⊮ → α → α"}},
+    {"⊮*", prim_trie_entries, 1, {"All ⟨k v⟩ pairs in lex order", "⊮ → [⟨α β⟩]"}},
+    {"⊮⊙*", prim_trie_keys, 1, {"All keys in lex order", "⊮ → [α]"}},
+    {"⊮⊗*", prim_trie_vals, 1, {"All values in key-sorted order", "⊮ → [β]"}},
 
     {NULL, NULL, 0, {NULL, NULL}}
 };

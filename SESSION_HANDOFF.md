@@ -1,11 +1,59 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-01-30 (Day 116 COMPLETE)
+Updated: 2026-01-30 (Day 117 COMPLETE)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 116 - First-Class Sorted Map (2026-01-30)
+# Session Handoff: Day 117 - First-Class Trie (2026-01-30)
+
+## Day 117 Progress - Trie (`⊮`) — ART with SIMD Node16 + Path Compression
+
+**RESULT:** 115/115 test files passing (100%), 1 new test file (Trie)
+
+### New Feature: First-Class Trie (⊮) — Adaptive Radix Tree
+
+Production-grade trie using ART (Adaptive Radix Tree) with 4 adaptive node types (Node4/16/48/256), SIMD Node16 search reusing swisstable.h infrastructure, hybrid pessimistic/optimistic path compression (8-byte inline prefix), and lazy expansion for single-key subtrees.
+
+**New Cell Type:** `CELL_TRIE` (enum 23) — printed as `⊮[N]`
+
+**New Primitives (14):**
+- `⊮` (trie-new) — Create trie from ⟨k v⟩ pairs (variadic)
+- `⊮→` (get) — O(k) lookup where k = key byte length
+- `⊮←` (put) — O(k) insert with path compression + lazy expansion
+- `⊮⊖` (del) — O(k) delete with node shrinking
+- `⊮?` (is) — Type predicate
+- `⊮∋` (has) — O(k) membership test
+- `⊮#` (size) — O(1) cached
+- `⊮⊕` (merge) — Merge two tries (t2 wins conflicts)
+- `⊮⊙` (prefix-keys) — All keys with given prefix (lexicographic DFS)
+- `⊮⊗` (prefix-count) — Count keys under prefix
+- `⊮≤` (longest-prefix) — Longest stored key that is prefix of query
+- `⊮*` (entries) — All ⟨k v⟩ pairs in lexicographic order
+- `⊮⊙*` (keys) — All keys in lexicographic order
+- `⊮⊗*` (vals) — All values in key-sorted order
+
+**Architecture:**
+- **4 adaptive node types**: Node4 (1 cache line), Node16 (SIMD), Node48 (index), Node256 (direct)
+- **SIMD Node16**: Reuses `guage_group_match()` from swisstable.h (SSE2/NEON/SWAR)
+- **Path compression**: 8-byte pessimistic inline + optimistic full_prefix_len for longer
+- **Lazy expansion**: Single-key subtrees stored as tagged leaf pointers
+- **Key encoding**: Symbol/string → raw bytes, number → 8-byte big-endian sort-key
+- **Growth/shrink**: Node4→16→48→256 on insert, reverse on delete
+- **Node collapse**: Single-child nodes collapse into parent on delete
+
+**New Infrastructure:**
+- `art_simd.h` — ART-specific SIMD Node16 search wrapper using swisstable.h
+
+**Files Modified (4) + 1 New Header + 1 New Test:**
+- `bootstrap/art_simd.h` (NEW) — SIMD Node16 find + lower bound
+- `bootstrap/cell.h` — `CELL_TRIE` in enum, `trie` struct, 15 function declarations
+- `bootstrap/cell.c` — ART node types, insert/search/delete with path compression, prefix search, longest prefix match, full iteration (~600 lines)
+- `bootstrap/primitives.h` — 14 trie primitive declarations
+- `bootstrap/primitives.c` — 14 primitive implementations + table entries + typeof handler
+- `bootstrap/tests/test_trie.test` (NEW) — 15 test groups, 18 assertions
+
+---
 
 ## Day 116 Progress - Sorted Map (`⋔`) — Algorithmica-Grade SIMD B-Tree
 

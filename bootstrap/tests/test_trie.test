@@ -1,0 +1,81 @@
+; Test: Trie (⊮) — ART with SIMD Node16 + Path Compression
+; Day 117
+
+; 1. trie-new-empty — create + size 0
+(⊨ (⌜ :trie-new-empty) #0 (⊮# (⊮)))
+
+; 2. trie-put-get — insert then lookup
+(≔ t (⊮))
+(⊮← t :hello #42)
+(⊨ (⌜ :trie-put-get) #42 (⊮→ t :hello))
+
+; 3. trie-has-missing — membership false for absent key
+(⊨ (⌜ :trie-has-missing) #f (⊮∋ (⊮) :nope))
+
+; 4. trie-delete — remove returns old value
+(≔ t2 (⊮))
+(⊮← t2 :x #1)
+(⊨ (⌜ :trie-delete) #1 (⊮⊖ t2 :x))
+(⊨ (⌜ :trie-delete-size) #0 (⊮# t2))
+
+; 5. trie-type-predicate
+(⊨ (⌜ :trie-type-yes) #t (⊮? (⊮)))
+(⊨ (⌜ :trie-type-no) #f (⊮? #42))
+
+; 6. trie-prefix-search — keys with shared prefix
+(≔ t3 (⊮))
+(⊮← t3 :cat #1)
+(⊮← t3 :car #2)
+(⊮← t3 :card #3)
+(⊮← t3 :dog #4)
+(⊨ (⌜ :trie-prefix-count) #3 (⊮⊗ t3 :ca))
+
+; 7. trie-longest-prefix — routing-table style lookup
+(≔ t4 (⊮))
+(⊮← t4 :app #1)
+(⊮← t4 :apple #2)
+(⊮← t4 :application #3)
+(⊨ (⌜ :trie-longest-prefix) :apple (⊮≤ t4 :applesauce))
+
+; 8. trie-merge — combine two tries
+(≔ ta (⊮))
+(⊮← ta :a #1)
+(≔ tb (⊮))
+(⊮← tb :b #2)
+(≔ tm (⊮⊕ ta tb))
+(⊨ (⌜ :trie-merge-size) #2 (⊮# tm))
+
+; 9. trie-variadic-constructor — create from pairs
+(≔ t5 (⊮ (⟨⟩ :x #1) (⟨⟩ :y #2) (⟨⟩ :z #3)))
+(⊨ (⌜ :trie-variadic-size) #3 (⊮# t5))
+(⊨ (⌜ :trie-variadic-get) #2 (⊮→ t5 :y))
+
+; 10. trie-entries-sorted — all entries in lex order
+(≔ t6 (⊮ (⟨⟩ :z #3) (⟨⟩ :a #1) (⟨⟩ :m #2)))
+(≔ ks (⊮⊙* t6))
+(⊨ (⌜ :trie-keys-first) :a (◁ ks))
+
+; 11. trie-overwrite — put same key updates value
+(≔ t7 (⊮))
+(⊮← t7 :k #10)
+(⊮← t7 :k #20)
+(⊨ (⌜ :trie-overwrite) #20 (⊮→ t7 :k))
+(⊨ (⌜ :trie-overwrite-size) #1 (⊮# t7))
+
+; 12. trie-has — membership true for present key
+(≔ t8 (⊮ (⟨⟩ :foo #1)))
+(⊨ (⌜ :trie-has-yes) #t (⊮∋ t8 :foo))
+(⊨ (⌜ :trie-has-no) #f (⊮∋ t8 :bar))
+
+; 13. trie-get-missing — returns nil for absent key
+(⊨ (⌜ :trie-get-missing) ∅ (⊮→ (⊮) :nokey))
+
+; 14. trie-prefix-keys — prefix search returns key list
+(≔ t9 (⊮ (⟨⟩ :abc #1) (⟨⟩ :abd #2) (⟨⟩ :xyz #3)))
+(≔ pk (⊮⊙ t9 :ab))
+(⊨ (⌜ :trie-prefix-keys-first) :abc (◁ pk))
+
+; 15. trie-vals — all values in key-sorted order
+(≔ t10 (⊮ (⟨⟩ :b #2) (⟨⟩ :a #1) (⟨⟩ :c #3)))
+(≔ vs (⊮⊗* t10))
+(⊨ (⌜ :trie-vals-first) #1 (◁ vs))

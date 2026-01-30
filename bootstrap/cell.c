@@ -3,6 +3,7 @@
 #include "siphash.h"
 #include "swisstable.h"
 #include "btree_simd.h"
+#include "art_simd.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -33,8 +34,9 @@ typedef struct {
     uint32_t free_cap;
 } SMPool;
 
-/* Forward declaration */
+/* Forward declarations */
 static void sm_pool_destroy_impl(SMPool* p);
+void art_destroy_node(void* node);
 
 /* Cell allocation */
 static Cell* cell_alloc(CellType type) {
@@ -351,6 +353,11 @@ void cell_release(Cell* c) {
                     }
                     sm_pool_destroy_impl(pool);
                 }
+                break;
+            }
+            case CELL_TRIE: {
+                if (c->data.trie.root)
+                    art_destroy_node(c->data.trie.root);
                 break;
             }
             default:
@@ -783,6 +790,7 @@ bool cell_equal(Cell* a, Cell* b) {
             /* Identity only — heap ordering makes structural comparison meaningless */
             return false;
         case CELL_SORTED_MAP:
+        case CELL_TRIE:
             /* Identity only — structural comparison too expensive */
             return false;
         case CELL_LAMBDA:
@@ -923,6 +931,9 @@ void cell_print(Cell* c) {
         case CELL_SORTED_MAP:
             printf("⋔[%u]", c->data.sorted_map.size);
             break;
+        case CELL_TRIE:
+            printf("⊮[%u]", c->data.trie.size);
+            break;
     }
 }
 
@@ -978,6 +989,12 @@ uint64_t cell_hash(Cell* c) {
             uint32_t sz = c->data.sorted_map.size;
             smh ^= guage_siphash(&sz, sizeof(sz));
             return smh;
+        }
+        case CELL_TRIE: {
+            uint64_t th = 0xAE70ull;
+            uint32_t tsz = c->data.trie.size;
+            th ^= guage_siphash(&tsz, sizeof(tsz));
+            return th;
         }
         default: {
             /* Lambda, error, actor, box, etc. — hash pointer */
@@ -2338,6 +2355,7 @@ int cell_compare(Cell* a, Cell* b) {
         [CELL_VECTOR] = 19,
         [CELL_HEAP] = 20,
         [CELL_SORTED_MAP] = 21,
+        [CELL_TRIE] = 22,
     };
 
     int ta = type_order[a->type];
@@ -3091,4 +3109,990 @@ Cell* cell_sorted_map_ceiling(Cell* m, Cell* key) {
         }
     }
     return NULL;
+}
+
+/* ===== ART (Adaptive Radix Tree) Trie Implementation ===== */
+
+/* ART node types */
+#define ART_NODE4   0
+#define ART_NODE16  1
+#define ART_NODE48  2
+#define ART_NODE256 3
+#define ART_LEAF    4
+
+/* Tag bit: leaf pointers have bit 0 set */
+#define ART_IS_LEAF(p)    (((uintptr_t)(p)) & 1)
+#define ART_LEAF_RAW(p)   ((ARTLeaf*)((uintptr_t)(p) & ~(uintptr_t)1))
+#define ART_SET_LEAF(p)   ((void*)((uintptr_t)(p) | 1))
+
+/* Pessimistic prefix max */
+#define ART_MAX_PREFIX 8
+
+/* Common header for all inner ART nodes */
+typedef struct {
+    uint8_t  type;
+    uint8_t  num_children;
+    uint8_t  prefix_len;           /* pessimistic prefix len (0..8) */
+    uint32_t full_prefix_len;      /* total logical prefix length */
+    uint8_t  prefix[ART_MAX_PREFIX];
+} ARTHeader;
+
+typedef struct {
+    ARTHeader hdr;
+    uint8_t   keys[4];
+    void*     children[4];
+} ARTNode4;
+
+typedef struct {
+    ARTHeader hdr;
+    uint8_t   keys[16];
+    void*     children[16];
+} ARTNode16;
+
+typedef struct {
+    ARTHeader hdr;
+    uint8_t   child_index[256];
+    void*     children[48];
+} ARTNode48;
+
+typedef struct {
+    ARTHeader hdr;
+    void*     children[256];
+} ARTNode256;
+
+typedef struct {
+    uint8_t*  key;
+    uint32_t  key_len;
+    Cell*     value;
+} ARTLeaf;
+
+/* === Key encoding: Cell* → byte sequence === */
+
+static void art_key_from_cell(Cell* c, uint8_t** out, uint32_t* len) {
+    if (!c) {
+        static uint8_t nil_key[] = {0};
+        *out = nil_key;
+        *len = 0;
+        return;
+    }
+    switch (c->type) {
+        case CELL_ATOM_SYMBOL: {
+            const char* s = c->data.atom.symbol;
+            *out = (uint8_t*)s;
+            *len = (uint32_t)strlen(s);
+            break;
+        }
+        case CELL_ATOM_STRING: {
+            const char* s = c->data.atom.string;
+            *out = (uint8_t*)s;
+            *len = (uint32_t)strlen(s);
+            break;
+        }
+        case CELL_ATOM_NUMBER: {
+            static uint8_t nbuf[8];
+            uint64_t sk = double_to_sortkey(c->data.atom.number);
+            for (int i = 7; i >= 0; i--) { nbuf[7 - i] = (sk >> (i * 8)) & 0xFF; }
+            *out = nbuf;
+            *len = 8;
+            break;
+        }
+        default: {
+            /* Generic: type tag byte + pointer bytes */
+            static uint8_t gbuf[9];
+            gbuf[0] = (uint8_t)c->type;
+            uintptr_t ptr = (uintptr_t)c;
+            for (int i = 7; i >= 0; i--) { gbuf[8 - i] = (ptr >> (i * 8)) & 0xFF; }
+            *out = gbuf;
+            *len = 9;
+            break;
+        }
+    }
+}
+
+/* === ART node allocation === */
+
+static ARTLeaf* art_make_leaf(const uint8_t* key, uint32_t key_len, Cell* value) {
+    ARTLeaf* leaf = (ARTLeaf*)malloc(sizeof(ARTLeaf));
+    leaf->key = (uint8_t*)malloc(key_len + 1);
+    memcpy(leaf->key, key, key_len);
+    leaf->key[key_len] = '\0';  /* Null-terminate for symbol reconstruction */
+    leaf->key_len = key_len;
+    leaf->value = value;
+    cell_retain(value);
+    return leaf;
+}
+
+static void art_free_leaf(ARTLeaf* leaf) {
+    if (leaf->value) cell_release(leaf->value);
+    free(leaf->key);
+    free(leaf);
+}
+
+static ARTNode4* art_new_node4(void) {
+    ARTNode4* n = (ARTNode4*)calloc(1, sizeof(ARTNode4));
+    n->hdr.type = ART_NODE4;
+    return n;
+}
+
+static ARTNode16* art_new_node16(void) {
+    ARTNode16* n = (ARTNode16*)calloc(1, sizeof(ARTNode16));
+    n->hdr.type = ART_NODE16;
+    return n;
+}
+
+static ARTNode48* art_new_node48(void) {
+    ARTNode48* n = (ARTNode48*)calloc(1, sizeof(ARTNode48));
+    n->hdr.type = ART_NODE48;
+    memset(n->child_index, 0xFF, sizeof(n->child_index));
+    return n;
+}
+
+static ARTNode256* art_new_node256(void) {
+    ARTNode256* n = (ARTNode256*)calloc(1, sizeof(ARTNode256));
+    n->hdr.type = ART_NODE256;
+    return n;
+}
+
+/* === Node operations === */
+
+static ARTHeader* art_node_header(void* node) {
+    return (ARTHeader*)node;
+}
+
+static void** art_find_child(void* node, uint8_t byte) {
+    ARTHeader* hdr = art_node_header(node);
+    switch (hdr->type) {
+        case ART_NODE4: {
+            ARTNode4* n = (ARTNode4*)node;
+            for (uint8_t i = 0; i < n->hdr.num_children; i++) {
+                if (n->keys[i] == byte)
+                    return &n->children[i];
+            }
+            return NULL;
+        }
+        case ART_NODE16: {
+            ARTNode16* n = (ARTNode16*)node;
+            int idx = art_node16_find(n->keys, n->hdr.num_children, byte);
+            if (idx >= 0) return &n->children[idx];
+            return NULL;
+        }
+        case ART_NODE48: {
+            ARTNode48* n = (ARTNode48*)node;
+            uint8_t slot = n->child_index[byte];
+            if (slot != 0xFF) return &n->children[slot];
+            return NULL;
+        }
+        case ART_NODE256: {
+            ARTNode256* n = (ARTNode256*)node;
+            if (n->children[byte]) return &n->children[byte];
+            return NULL;
+        }
+    }
+    return NULL;
+}
+
+/* Check prefix match, return number of matching bytes */
+static uint32_t art_check_prefix(void* node, const uint8_t* key, uint32_t key_len, uint32_t depth) {
+    ARTHeader* hdr = art_node_header(node);
+    uint32_t max_cmp = hdr->prefix_len;
+    if (key_len - depth < max_cmp)
+        max_cmp = key_len - depth;
+    uint32_t idx = 0;
+    for (; idx < max_cmp; idx++) {
+        if (hdr->prefix[idx] != key[depth + idx])
+            return idx;
+    }
+    return idx;
+}
+
+/* Leaf key matches? */
+static bool art_leaf_matches(ARTLeaf* leaf, const uint8_t* key, uint32_t key_len) {
+    if (leaf->key_len != key_len) return false;
+    return memcmp(leaf->key, key, key_len) == 0;
+}
+
+/* Check if leaf key starts with prefix */
+static bool art_leaf_prefix_matches(ARTLeaf* leaf, const uint8_t* prefix, uint32_t prefix_len) {
+    if (leaf->key_len < prefix_len) return false;
+    return memcmp(leaf->key, prefix, prefix_len) == 0;
+}
+
+/* === Node growth (add child, grow when needed) === */
+
+static void art_add_child4(ARTNode4* n, void** ref, uint8_t byte, void* child) {
+    if (n->hdr.num_children < 4) {
+        int idx = 0;
+        while (idx < n->hdr.num_children && n->keys[idx] < byte) idx++;
+        memmove(n->keys + idx + 1, n->keys + idx, n->hdr.num_children - idx);
+        memmove(n->children + idx + 1, n->children + idx,
+                (n->hdr.num_children - idx) * sizeof(void*));
+        n->keys[idx] = byte;
+        n->children[idx] = child;
+        n->hdr.num_children++;
+    } else {
+        /* Grow to Node16 */
+        ARTNode16* new_node = art_new_node16();
+        memcpy(&new_node->hdr, &n->hdr, sizeof(ARTHeader));
+        new_node->hdr.type = ART_NODE16;
+        memcpy(new_node->keys, n->keys, 4);
+        memcpy(new_node->children, n->children, 4 * sizeof(void*));
+        int idx = art_node16_lower_bound(new_node->keys, 4, byte);
+        memmove(new_node->keys + idx + 1, new_node->keys + idx, 4 - idx);
+        memmove(new_node->children + idx + 1, new_node->children + idx,
+                (4 - idx) * sizeof(void*));
+        new_node->keys[idx] = byte;
+        new_node->children[idx] = child;
+        new_node->hdr.num_children = 5;
+        *ref = new_node;
+        free(n);
+    }
+}
+
+static void art_add_child16(ARTNode16* n, void** ref, uint8_t byte, void* child) {
+    if (n->hdr.num_children < 16) {
+        int idx = art_node16_lower_bound(n->keys, n->hdr.num_children, byte);
+        memmove(n->keys + idx + 1, n->keys + idx, n->hdr.num_children - idx);
+        memmove(n->children + idx + 1, n->children + idx,
+                (n->hdr.num_children - idx) * sizeof(void*));
+        n->keys[idx] = byte;
+        n->children[idx] = child;
+        n->hdr.num_children++;
+    } else {
+        /* Grow to Node48 */
+        ARTNode48* new_node = art_new_node48();
+        memcpy(&new_node->hdr, &n->hdr, sizeof(ARTHeader));
+        new_node->hdr.type = ART_NODE48;
+        for (uint8_t i = 0; i < 16; i++) {
+            new_node->child_index[n->keys[i]] = i;
+            new_node->children[i] = n->children[i];
+        }
+        new_node->child_index[byte] = 16;
+        new_node->children[16] = child;
+        new_node->hdr.num_children = 17;
+        *ref = new_node;
+        free(n);
+    }
+}
+
+static void art_add_child48(ARTNode48* n, void** ref, uint8_t byte, void* child) {
+    if (n->hdr.num_children < 48) {
+        uint8_t pos = n->hdr.num_children;
+        n->child_index[byte] = pos;
+        n->children[pos] = child;
+        n->hdr.num_children++;
+    } else {
+        /* Grow to Node256 */
+        ARTNode256* new_node = art_new_node256();
+        memcpy(&new_node->hdr, &n->hdr, sizeof(ARTHeader));
+        new_node->hdr.type = ART_NODE256;
+        for (int i = 0; i < 256; i++) {
+            if (n->child_index[i] != 0xFF)
+                new_node->children[i] = n->children[n->child_index[i]];
+        }
+        new_node->children[byte] = child;
+        new_node->hdr.num_children = 49;
+        *ref = new_node;
+        free(n);
+    }
+}
+
+static void art_add_child256(ARTNode256* n, uint8_t byte, void* child) {
+    n->children[byte] = child;
+    n->hdr.num_children++;
+}
+
+static void art_add_child(void* node, void** ref, uint8_t byte, void* child) {
+    ARTHeader* hdr = art_node_header(node);
+    switch (hdr->type) {
+        case ART_NODE4:   art_add_child4((ARTNode4*)node, ref, byte, child); break;
+        case ART_NODE16:  art_add_child16((ARTNode16*)node, ref, byte, child); break;
+        case ART_NODE48:  art_add_child48((ARTNode48*)node, ref, byte, child); break;
+        case ART_NODE256: art_add_child256((ARTNode256*)node, byte, child); break;
+    }
+}
+
+/* === Node shrink (remove child, shrink when needed) === */
+
+static void art_remove_child4(ARTNode4* n, void** ref, int idx) {
+    memmove(n->keys + idx, n->keys + idx + 1, (n->hdr.num_children - 1 - idx));
+    memmove(n->children + idx, n->children + idx + 1,
+            (n->hdr.num_children - 1 - idx) * sizeof(void*));
+    n->hdr.num_children--;
+    n->keys[n->hdr.num_children] = 0;
+    n->children[n->hdr.num_children] = NULL;
+
+    /* If only 1 child left and it's an inner node, collapse path */
+    if (n->hdr.num_children == 1 && !ART_IS_LEAF(n->children[0])) {
+        void* child = n->children[0];
+        ARTHeader* child_hdr = art_node_header(child);
+        uint32_t new_full_prefix = n->hdr.full_prefix_len + 1 + child_hdr->full_prefix_len;
+        uint8_t new_prefix[ART_MAX_PREFIX];
+        uint32_t copy_len = n->hdr.prefix_len;
+        if (copy_len > ART_MAX_PREFIX) copy_len = ART_MAX_PREFIX;
+        memcpy(new_prefix, n->hdr.prefix, copy_len);
+        if (copy_len < ART_MAX_PREFIX) new_prefix[copy_len] = n->keys[0];
+        uint32_t pos = copy_len + 1;
+        uint32_t child_copy = child_hdr->prefix_len;
+        if (pos + child_copy > ART_MAX_PREFIX)
+            child_copy = (pos < ART_MAX_PREFIX) ? (ART_MAX_PREFIX - pos) : 0;
+        if (pos < ART_MAX_PREFIX)
+            memcpy(new_prefix + pos, child_hdr->prefix, child_copy);
+
+        child_hdr->full_prefix_len = new_full_prefix;
+        uint32_t total = n->hdr.prefix_len + 1 + child_hdr->prefix_len;
+        child_hdr->prefix_len = (total <= ART_MAX_PREFIX) ? (uint8_t)total : ART_MAX_PREFIX;
+        memcpy(child_hdr->prefix, new_prefix, child_hdr->prefix_len);
+
+        *ref = child;
+        free(n);
+        return;
+    }
+    (void)ref;
+}
+
+static void art_remove_child16(ARTNode16* n, void** ref, int idx) {
+    memmove(n->keys + idx, n->keys + idx + 1, (n->hdr.num_children - 1 - idx));
+    memmove(n->children + idx, n->children + idx + 1,
+            (n->hdr.num_children - 1 - idx) * sizeof(void*));
+    n->hdr.num_children--;
+
+    if (n->hdr.num_children <= 4) {
+        ARTNode4* new_node = art_new_node4();
+        memcpy(&new_node->hdr, &n->hdr, sizeof(ARTHeader));
+        new_node->hdr.type = ART_NODE4;
+        memcpy(new_node->keys, n->keys, n->hdr.num_children);
+        memcpy(new_node->children, n->children, n->hdr.num_children * sizeof(void*));
+        *ref = new_node;
+        free(n);
+    }
+}
+
+static void art_remove_child48(ARTNode48* n, void** ref, uint8_t byte) {
+    uint8_t slot = n->child_index[byte];
+    n->child_index[byte] = 0xFF;
+    n->children[slot] = NULL;
+    n->hdr.num_children--;
+
+    if (n->hdr.num_children <= 16) {
+        ARTNode16* new_node = art_new_node16();
+        memcpy(&new_node->hdr, &n->hdr, sizeof(ARTHeader));
+        new_node->hdr.type = ART_NODE16;
+        int j = 0;
+        for (int i = 0; i < 256; i++) {
+            if (n->child_index[i] != 0xFF) {
+                new_node->keys[j] = (uint8_t)i;
+                new_node->children[j] = n->children[n->child_index[i]];
+                j++;
+            }
+        }
+        *ref = new_node;
+        free(n);
+    }
+}
+
+static void art_remove_child256(ARTNode256* n, void** ref, uint8_t byte) {
+    n->children[byte] = NULL;
+    n->hdr.num_children--;
+
+    if (n->hdr.num_children <= 48) {
+        ARTNode48* new_node = art_new_node48();
+        memcpy(&new_node->hdr, &n->hdr, sizeof(ARTHeader));
+        new_node->hdr.type = ART_NODE48;
+        uint8_t slot = 0;
+        for (int i = 0; i < 256; i++) {
+            if (n->children[i]) {
+                new_node->child_index[i] = slot;
+                new_node->children[slot] = n->children[i];
+                slot++;
+            }
+        }
+        *ref = new_node;
+        free(n);
+    }
+}
+
+/* === Recursive destroy === */
+
+void art_destroy_node(void* node) {
+    if (!node) return;
+    if (ART_IS_LEAF(node)) {
+        art_free_leaf(ART_LEAF_RAW(node));
+        return;
+    }
+    ARTHeader* hdr = art_node_header(node);
+    switch (hdr->type) {
+        case ART_NODE4: {
+            ARTNode4* n = (ARTNode4*)node;
+            for (uint8_t i = 0; i < n->hdr.num_children; i++)
+                art_destroy_node(n->children[i]);
+            break;
+        }
+        case ART_NODE16: {
+            ARTNode16* n = (ARTNode16*)node;
+            for (uint8_t i = 0; i < n->hdr.num_children; i++)
+                art_destroy_node(n->children[i]);
+            break;
+        }
+        case ART_NODE48: {
+            ARTNode48* n = (ARTNode48*)node;
+            for (int i = 0; i < 256; i++) {
+                if (n->child_index[i] != 0xFF)
+                    art_destroy_node(n->children[n->child_index[i]]);
+            }
+            break;
+        }
+        case ART_NODE256: {
+            ARTNode256* n = (ARTNode256*)node;
+            for (int i = 0; i < 256; i++) {
+                if (n->children[i])
+                    art_destroy_node(n->children[i]);
+            }
+            break;
+        }
+    }
+    free(node);
+}
+
+/* === ART search === */
+
+static ARTLeaf* art_search(void* root, const uint8_t* key, uint32_t key_len) {
+    void* node = root;
+    uint32_t depth = 0;
+
+    while (node) {
+        if (ART_IS_LEAF(node)) {
+            ARTLeaf* leaf = ART_LEAF_RAW(node);
+            if (art_leaf_matches(leaf, key, key_len))
+                return leaf;
+            return NULL;
+        }
+
+        ARTHeader* hdr = art_node_header(node);
+        if (hdr->prefix_len > 0) {
+            uint32_t prefix_match = art_check_prefix(node, key, key_len, depth);
+            if (prefix_match != hdr->prefix_len)
+                return NULL;
+            depth += hdr->prefix_len;
+        }
+
+        if (depth >= key_len) return NULL;
+
+        void** child = art_find_child(node, key[depth]);
+        if (!child) return NULL;
+        node = *child;
+        depth++;
+    }
+    return NULL;
+}
+
+/* === ART insert === */
+
+static int art_insert_recursive(void* node, void** ref,
+                                 const uint8_t* key, uint32_t key_len,
+                                 Cell* value, uint32_t depth) {
+    /* Empty tree → create leaf */
+    if (!node) {
+        ARTLeaf* leaf = art_make_leaf(key, key_len, value);
+        *ref = ART_SET_LEAF(leaf);
+        return 1;
+    }
+
+    /* Leaf node → check match or expand */
+    if (ART_IS_LEAF(node)) {
+        ARTLeaf* existing = ART_LEAF_RAW(node);
+
+        /* Same key → update value */
+        if (art_leaf_matches(existing, key, key_len)) {
+            Cell* old_val = existing->value;
+            existing->value = value;
+            cell_retain(value);
+            cell_release(old_val);
+            return 0;
+        }
+
+        /* Different key → create new inner node with shared prefix */
+        ARTNode4* new_node = art_new_node4();
+
+        uint32_t lcp = 0;
+        uint32_t max_lcp = key_len - depth;
+        if (existing->key_len > depth && existing->key_len - depth < max_lcp)
+            max_lcp = existing->key_len - depth;
+        while (lcp < max_lcp && existing->key[depth + lcp] == key[depth + lcp])
+            lcp++;
+
+        new_node->hdr.prefix_len = (lcp <= ART_MAX_PREFIX) ? (uint8_t)lcp : ART_MAX_PREFIX;
+        new_node->hdr.full_prefix_len = lcp;
+        memcpy(new_node->hdr.prefix, key + depth,
+               (lcp <= ART_MAX_PREFIX) ? lcp : ART_MAX_PREFIX);
+
+        /* Add existing leaf under its divergent byte */
+        uint8_t existing_byte = (depth + lcp < existing->key_len) ?
+            existing->key[depth + lcp] : 0;
+        new_node->keys[0] = existing_byte;
+        new_node->children[0] = node;
+        new_node->hdr.num_children = 1;
+
+        /* Add new leaf under its divergent byte */
+        uint8_t new_byte = (depth + lcp < key_len) ? key[depth + lcp] : 0;
+        ARTLeaf* new_leaf = art_make_leaf(key, key_len, value);
+        void* nref = new_node;
+        art_add_child(new_node, &nref, new_byte, ART_SET_LEAF(new_leaf));
+        *ref = nref;
+        return 1;
+    }
+
+    /* Inner node */
+    ARTHeader* hdr = art_node_header(node);
+
+    /* Check prefix match */
+    if (hdr->prefix_len > 0) {
+        uint32_t prefix_match = art_check_prefix(node, key, key_len, depth);
+        if (prefix_match != hdr->prefix_len) {
+            /* Prefix mismatch → split node */
+            ARTNode4* new_node = art_new_node4();
+            new_node->hdr.prefix_len = (prefix_match <= ART_MAX_PREFIX) ? (uint8_t)prefix_match : ART_MAX_PREFIX;
+            new_node->hdr.full_prefix_len = prefix_match;
+            memcpy(new_node->hdr.prefix, hdr->prefix,
+                   (prefix_match <= ART_MAX_PREFIX) ? prefix_match : ART_MAX_PREFIX);
+
+            /* Old node as child at its divergent byte */
+            uint8_t old_byte = hdr->prefix[prefix_match];
+            uint32_t remaining = hdr->prefix_len - prefix_match - 1;
+            memmove(hdr->prefix, hdr->prefix + prefix_match + 1,
+                    (remaining <= ART_MAX_PREFIX) ? remaining : ART_MAX_PREFIX);
+            hdr->prefix_len = (remaining <= ART_MAX_PREFIX) ? (uint8_t)remaining : ART_MAX_PREFIX;
+            hdr->full_prefix_len -= (prefix_match + 1);
+
+            new_node->keys[0] = old_byte;
+            new_node->children[0] = node;
+            new_node->hdr.num_children = 1;
+
+            /* New leaf */
+            uint8_t new_byte = (depth + prefix_match < key_len) ?
+                key[depth + prefix_match] : 0;
+            ARTLeaf* new_leaf = art_make_leaf(key, key_len, value);
+            void* nref = new_node;
+            art_add_child(new_node, &nref, new_byte, ART_SET_LEAF(new_leaf));
+            *ref = nref;
+            return 1;
+        }
+        depth += hdr->prefix_len;
+    }
+
+    /* Determine next byte */
+    uint8_t byte = (depth < key_len) ? key[depth] : 0;
+
+    void** child = art_find_child(node, byte);
+    if (child) {
+        return art_insert_recursive(*child, child, key, key_len, value, depth + 1);
+    }
+
+    /* No child → create leaf */
+    ARTLeaf* new_leaf = art_make_leaf(key, key_len, value);
+    art_add_child(node, ref, byte, ART_SET_LEAF(new_leaf));
+    return 1;
+}
+
+/* === ART delete === */
+
+static Cell* art_delete_recursive(void* node, void** ref,
+                                   const uint8_t* key, uint32_t key_len,
+                                   uint32_t depth) {
+    if (!node) return NULL;
+
+    if (ART_IS_LEAF(node)) {
+        ARTLeaf* leaf = ART_LEAF_RAW(node);
+        if (art_leaf_matches(leaf, key, key_len)) {
+            Cell* val = leaf->value;
+            cell_retain(val);
+            *ref = NULL;
+            art_free_leaf(leaf);
+            return val;
+        }
+        return NULL;
+    }
+
+    ARTHeader* hdr = art_node_header(node);
+
+    if (hdr->prefix_len > 0) {
+        uint32_t prefix_match = art_check_prefix(node, key, key_len, depth);
+        if (prefix_match != hdr->prefix_len)
+            return NULL;
+        depth += hdr->prefix_len;
+    }
+
+    uint8_t byte = (depth < key_len) ? key[depth] : 0;
+
+    void** child = art_find_child(node, byte);
+    if (!child) return NULL;
+
+    /* If child is a leaf, try to delete directly */
+    if (ART_IS_LEAF(*child)) {
+        ARTLeaf* leaf = ART_LEAF_RAW(*child);
+        if (!art_leaf_matches(leaf, key, key_len))
+            return NULL;
+
+        Cell* val = leaf->value;
+        cell_retain(val);
+        art_free_leaf(leaf);
+
+        /* Remove child from this node */
+        switch (hdr->type) {
+            case ART_NODE4: {
+                ARTNode4* n = (ARTNode4*)node;
+                for (int i = 0; i < n->hdr.num_children; i++) {
+                    if (n->keys[i] == byte) {
+                        art_remove_child4(n, ref, i);
+                        break;
+                    }
+                }
+                break;
+            }
+            case ART_NODE16: {
+                ARTNode16* n = (ARTNode16*)node;
+                int idx = art_node16_find(n->keys, n->hdr.num_children, byte);
+                if (idx >= 0) art_remove_child16(n, ref, idx);
+                break;
+            }
+            case ART_NODE48:
+                art_remove_child48((ARTNode48*)node, ref, byte);
+                break;
+            case ART_NODE256:
+                art_remove_child256((ARTNode256*)node, ref, byte);
+                break;
+        }
+        return val;
+    }
+
+    /* Recurse into inner child */
+    return art_delete_recursive(*child, child, key, key_len, depth + 1);
+}
+
+/* === ART iteration (DFS, lexicographic order via byte ordering) === */
+
+typedef void (*art_iter_cb)(ARTLeaf* leaf, void* ctx);
+
+static void art_iter_node(void* node, art_iter_cb cb, void* ctx) {
+    if (!node) return;
+    if (ART_IS_LEAF(node)) {
+        cb(ART_LEAF_RAW(node), ctx);
+        return;
+    }
+    ARTHeader* hdr = art_node_header(node);
+    switch (hdr->type) {
+        case ART_NODE4: {
+            ARTNode4* n = (ARTNode4*)node;
+            for (uint8_t i = 0; i < n->hdr.num_children; i++)
+                art_iter_node(n->children[i], cb, ctx);
+            break;
+        }
+        case ART_NODE16: {
+            ARTNode16* n = (ARTNode16*)node;
+            for (uint8_t i = 0; i < n->hdr.num_children; i++)
+                art_iter_node(n->children[i], cb, ctx);
+            break;
+        }
+        case ART_NODE48: {
+            ARTNode48* n = (ARTNode48*)node;
+            for (int i = 0; i < 256; i++) {
+                if (n->child_index[i] != 0xFF)
+                    art_iter_node(n->children[n->child_index[i]], cb, ctx);
+            }
+            break;
+        }
+        case ART_NODE256: {
+            ARTNode256* n = (ARTNode256*)node;
+            for (int i = 0; i < 256; i++) {
+                if (n->children[i])
+                    art_iter_node(n->children[i], cb, ctx);
+            }
+            break;
+        }
+    }
+}
+
+/* === Prefix search: find subtree rooted at prefix, then iterate === */
+
+static void* art_find_prefix_node(void* root, const uint8_t* prefix, uint32_t prefix_len) {
+    void* node = root;
+    uint32_t depth = 0;
+
+    while (node && !ART_IS_LEAF(node)) {
+        if (depth >= prefix_len) return node;
+
+        ARTHeader* hdr = art_node_header(node);
+        if (hdr->prefix_len > 0) {
+            uint32_t max_cmp = hdr->prefix_len;
+            if (prefix_len - depth < max_cmp)
+                max_cmp = prefix_len - depth;
+            for (uint32_t i = 0; i < max_cmp; i++) {
+                if (hdr->prefix[i] != prefix[depth + i])
+                    return NULL;
+            }
+            depth += hdr->prefix_len;
+            if (depth >= prefix_len) return node;
+        }
+
+        void** child = art_find_child(node, prefix[depth]);
+        if (!child) return NULL;
+        node = *child;
+        depth++;
+    }
+
+    /* Landed on a leaf — check if it matches prefix */
+    if (node && ART_IS_LEAF(node)) {
+        ARTLeaf* leaf = ART_LEAF_RAW(node);
+        if (art_leaf_prefix_matches(leaf, prefix, prefix_len))
+            return node;
+        return NULL;
+    }
+    return node;
+}
+
+/* === Longest prefix match: descend tree, track last stored key that prefixes query === */
+
+static ARTLeaf* art_longest_prefix_match(void* root, const uint8_t* key, uint32_t key_len) {
+    void* node = root;
+    uint32_t depth = 0;
+    ARTLeaf* last_match = NULL;
+
+    while (node) {
+        if (ART_IS_LEAF(node)) {
+            ARTLeaf* leaf = ART_LEAF_RAW(node);
+            if (leaf->key_len <= key_len &&
+                memcmp(leaf->key, key, leaf->key_len) == 0) {
+                last_match = leaf;
+            }
+            break;
+        }
+
+        ARTHeader* hdr = art_node_header(node);
+        if (hdr->prefix_len > 0) {
+            uint32_t prefix_match = art_check_prefix(node, key, key_len, depth);
+            if (prefix_match != hdr->prefix_len)
+                break;
+            depth += hdr->prefix_len;
+        }
+
+        if (depth >= key_len) break;
+
+        void** child = art_find_child(node, key[depth]);
+        if (!child) break;
+        node = *child;
+        depth++;
+
+        /* If we landed on a leaf, check if it's a prefix match */
+        if (ART_IS_LEAF(node)) {
+            ARTLeaf* leaf = ART_LEAF_RAW(node);
+            if (leaf->key_len <= key_len &&
+                memcmp(leaf->key, key, leaf->key_len) == 0) {
+                last_match = leaf;
+            }
+        }
+    }
+
+    return last_match;
+}
+
+/* === Iteration helpers for building cons lists === */
+
+typedef struct {
+    Cell* list;
+    int mode;   /* 0 = entries ⟨k v⟩, 1 = keys, 2 = values */
+} ARTIterCtx;
+
+static void art_collect_cb(ARTLeaf* leaf, void* ctx) {
+    ARTIterCtx* ic = (ARTIterCtx*)ctx;
+    Cell* item = NULL;
+    switch (ic->mode) {
+        case 0: {
+            Cell* k = cell_symbol((const char*)leaf->key);
+            cell_retain(leaf->value);
+            item = cell_cons(k, leaf->value);
+            cell_release(leaf->value);
+            break;
+        }
+        case 1: {
+            item = cell_symbol((const char*)leaf->key);
+            break;
+        }
+        case 2: {
+            item = leaf->value;
+            cell_retain(item);
+            break;
+        }
+    }
+    if (item) {
+        Cell* new_list = cell_cons(item, ic->list);
+        cell_release(ic->list);
+        ic->list = new_list;
+    }
+}
+
+/* Prefix keys callback */
+static void art_prefix_keys_cb(ARTLeaf* leaf, void* ctx) {
+    ARTIterCtx* ic = (ARTIterCtx*)ctx;
+    /* mode reused: prefix bytes stored elsewhere; this cb called only on subtree */
+    Cell* k = cell_symbol((const char*)leaf->key);
+    Cell* new_list = cell_cons(k, ic->list);
+    cell_release(ic->list);
+    ic->list = new_list;
+}
+
+/* Reverse a cons list */
+static Cell* art_reverse_list(Cell* list) {
+    Cell* result = cell_nil();
+    Cell* cur = list;
+    while (cur && cell_is_pair(cur)) {
+        Cell* head = cell_car(cur);
+        cell_retain(head);
+        Cell* new_result = cell_cons(head, result);
+        cell_release(result);
+        result = new_result;
+        cur = cell_cdr(cur);
+    }
+    cell_release(list);
+    return result;
+}
+
+/* === Public trie API === */
+
+Cell* cell_trie_new(void) {
+    Cell* c = cell_alloc(CELL_TRIE);
+    c->data.trie.root = NULL;
+    c->data.trie.size = 0;
+    return c;
+}
+
+bool cell_is_trie(Cell* c) {
+    return c && c->type == CELL_TRIE;
+}
+
+Cell* cell_trie_get(Cell* t, Cell* key) {
+    if (!t || !cell_is_trie(t) || !t->data.trie.root) return NULL;
+    uint8_t* kbytes;
+    uint32_t klen;
+    art_key_from_cell(key, &kbytes, &klen);
+    ARTLeaf* leaf = art_search(t->data.trie.root, kbytes, klen);
+    return leaf ? leaf->value : NULL;
+}
+
+bool cell_trie_put(Cell* t, Cell* key, Cell* value) {
+    if (!t || !cell_is_trie(t)) return false;
+    uint8_t* kbytes;
+    uint32_t klen;
+    art_key_from_cell(key, &kbytes, &klen);
+    int is_new = art_insert_recursive(t->data.trie.root, &t->data.trie.root,
+                                       kbytes, klen, value, 0);
+    if (is_new) t->data.trie.size++;
+    return (bool)is_new;
+}
+
+Cell* cell_trie_del(Cell* t, Cell* key) {
+    if (!t || !cell_is_trie(t) || !t->data.trie.root) return NULL;
+    uint8_t* kbytes;
+    uint32_t klen;
+    art_key_from_cell(key, &kbytes, &klen);
+    Cell* old = art_delete_recursive(t->data.trie.root, &t->data.trie.root,
+                                      kbytes, klen, 0);
+    if (old) t->data.trie.size--;
+    return old;
+}
+
+bool cell_trie_has(Cell* t, Cell* key) {
+    return cell_trie_get(t, key) != NULL;
+}
+
+uint32_t cell_trie_size(Cell* t) {
+    if (!t || !cell_is_trie(t)) return 0;
+    return t->data.trie.size;
+}
+
+Cell* cell_trie_merge(Cell* t1, Cell* t2) {
+    Cell* result = cell_trie_new();
+    /* Copy all from t1 */
+    if (t1 && cell_is_trie(t1) && t1->data.trie.root) {
+        ARTIterCtx ctx = { .list = cell_nil(), .mode = 0 };
+        art_iter_node(t1->data.trie.root, art_collect_cb, &ctx);
+        Cell* entries = art_reverse_list(ctx.list);
+        Cell* cur = entries;
+        while (cur && cell_is_pair(cur)) {
+            Cell* pair = cell_car(cur);
+            cell_trie_put(result, cell_car(pair), cell_cdr(pair));
+            cur = cell_cdr(cur);
+        }
+        cell_release(entries);
+    }
+    /* Copy all from t2 (overwrites on conflict) */
+    if (t2 && cell_is_trie(t2) && t2->data.trie.root) {
+        ARTIterCtx ctx = { .list = cell_nil(), .mode = 0 };
+        art_iter_node(t2->data.trie.root, art_collect_cb, &ctx);
+        Cell* entries = art_reverse_list(ctx.list);
+        Cell* cur = entries;
+        while (cur && cell_is_pair(cur)) {
+            Cell* pair = cell_car(cur);
+            cell_trie_put(result, cell_car(pair), cell_cdr(pair));
+            cur = cell_cdr(cur);
+        }
+        cell_release(entries);
+    }
+    return result;
+}
+
+Cell* cell_trie_prefix_keys(Cell* t, Cell* prefix) {
+    if (!t || !cell_is_trie(t) || !t->data.trie.root) return cell_nil();
+    uint8_t* pbytes;
+    uint32_t plen;
+    art_key_from_cell(prefix, &pbytes, &plen);
+
+    void* subtree = art_find_prefix_node(t->data.trie.root, pbytes, plen);
+    if (!subtree) return cell_nil();
+
+    ARTIterCtx ctx = { .list = cell_nil(), .mode = 1 };
+    art_iter_node(subtree, art_prefix_keys_cb, &ctx);
+    return art_reverse_list(ctx.list);
+}
+
+uint32_t cell_trie_prefix_count(Cell* t, Cell* prefix) {
+    if (!t || !cell_is_trie(t) || !t->data.trie.root) return 0;
+    Cell* keys = cell_trie_prefix_keys(t, prefix);
+    uint32_t count = 0;
+    Cell* cur = keys;
+    while (cur && cell_is_pair(cur)) {
+        count++;
+        cur = cell_cdr(cur);
+    }
+    cell_release(keys);
+    return count;
+}
+
+Cell* cell_trie_longest_prefix(Cell* t, Cell* query) {
+    if (!t || !cell_is_trie(t) || !t->data.trie.root) return NULL;
+    uint8_t* kbytes;
+    uint32_t klen;
+    art_key_from_cell(query, &kbytes, &klen);
+    ARTLeaf* leaf = art_longest_prefix_match(t->data.trie.root, kbytes, klen);
+    if (!leaf) return NULL;
+    return cell_symbol((const char*)leaf->key);
+}
+
+Cell* cell_trie_entries(Cell* t) {
+    if (!t || !cell_is_trie(t) || !t->data.trie.root) return cell_nil();
+    ARTIterCtx ctx = { .list = cell_nil(), .mode = 0 };
+    art_iter_node(t->data.trie.root, art_collect_cb, &ctx);
+    return art_reverse_list(ctx.list);
+}
+
+Cell* cell_trie_keys(Cell* t) {
+    if (!t || !cell_is_trie(t) || !t->data.trie.root) return cell_nil();
+    ARTIterCtx ctx = { .list = cell_nil(), .mode = 1 };
+    art_iter_node(t->data.trie.root, art_collect_cb, &ctx);
+    return art_reverse_list(ctx.list);
+}
+
+Cell* cell_trie_values(Cell* t) {
+    if (!t || !cell_is_trie(t) || !t->data.trie.root) return cell_nil();
+    ARTIterCtx ctx = { .list = cell_nil(), .mode = 2 };
+    art_iter_node(t->data.trie.root, art_collect_cb, &ctx);
+    return art_reverse_list(ctx.list);
 }
