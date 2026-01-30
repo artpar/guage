@@ -917,4 +917,133 @@ void actor_reset_all(void) {
     g_next_actor_id = 1;
     g_current_actor = NULL;
     channel_reset_all();
+
+    /* Reset applications */
+    app_reset_all();
+}
+
+/* ============ Application ============ */
+
+static Application g_applications[MAX_APPLICATIONS];
+static int g_app_count = 0;
+
+int app_start(const char* name, int supervisor_id, Cell* stop_fn) {
+    /* Check duplicate name */
+    for (int i = 0; i < g_app_count; i++) {
+        if (g_applications[i].running && strcmp(g_applications[i].name, name) == 0) {
+            return -1; /* duplicate */
+        }
+    }
+    if (g_app_count >= MAX_APPLICATIONS) return -2; /* full */
+
+    Application* app = &g_applications[g_app_count++];
+    app->name = name;
+    app->supervisor_id = supervisor_id;
+    app->stop_fn = stop_fn;
+    if (stop_fn) cell_retain(stop_fn);
+    app->env_count = 0;
+    app->running = true;
+    return 0;
+}
+
+int app_stop(const char* name) {
+    for (int i = 0; i < g_app_count; i++) {
+        if (g_applications[i].running && strcmp(g_applications[i].name, name) == 0) {
+            Application* app = &g_applications[i];
+            app->running = false;
+
+            /* Release env */
+            for (int j = 0; j < app->env_count; j++) {
+                if (app->env_keys[j]) cell_release(app->env_keys[j]);
+                if (app->env_vals[j]) cell_release(app->env_vals[j]);
+                app->env_keys[j] = NULL;
+                app->env_vals[j] = NULL;
+            }
+            app->env_count = 0;
+
+            /* Release stop_fn */
+            if (app->stop_fn) {
+                cell_release(app->stop_fn);
+                app->stop_fn = NULL;
+            }
+
+            return 0;
+        }
+    }
+    return -1; /* not found */
+}
+
+Application* app_lookup(const char* name) {
+    for (int i = 0; i < g_app_count; i++) {
+        if (g_applications[i].running && strcmp(g_applications[i].name, name) == 0) {
+            return &g_applications[i];
+        }
+    }
+    return NULL;
+}
+
+Cell* app_which(void) {
+    Cell* result = cell_nil();
+    for (int i = g_app_count - 1; i >= 0; i--) {
+        if (g_applications[i].running) {
+            Cell* name_sym = cell_symbol(g_applications[i].name);
+            Cell* new_result = cell_cons(name_sym, result);
+            cell_release(name_sym);
+            cell_release(result);
+            result = new_result;
+        }
+    }
+    return result;
+}
+
+Cell* app_get_env(const char* name, Cell* key) {
+    Application* app = app_lookup(name);
+    if (!app) return NULL;
+
+    for (int i = 0; i < app->env_count; i++) {
+        if (cell_equal(app->env_keys[i], key)) {
+            cell_retain(app->env_vals[i]);
+            return app->env_vals[i];
+        }
+    }
+    return NULL;
+}
+
+int app_set_env(const char* name, Cell* key, Cell* value) {
+    Application* app = app_lookup(name);
+    if (!app) return -1;
+
+    /* Overwrite existing key */
+    for (int i = 0; i < app->env_count; i++) {
+        if (cell_equal(app->env_keys[i], key)) {
+            cell_release(app->env_vals[i]);
+            cell_retain(value);
+            app->env_vals[i] = value;
+            return 0;
+        }
+    }
+
+    /* Insert new */
+    if (app->env_count >= MAX_APP_ENV) return -2;
+    cell_retain(key);
+    cell_retain(value);
+    app->env_keys[app->env_count] = key;
+    app->env_vals[app->env_count] = value;
+    app->env_count++;
+    return 0;
+}
+
+void app_reset_all(void) {
+    for (int i = 0; i < g_app_count; i++) {
+        Application* app = &g_applications[i];
+        if (app->running) {
+            for (int j = 0; j < app->env_count; j++) {
+                if (app->env_keys[j]) cell_release(app->env_keys[j]);
+                if (app->env_vals[j]) cell_release(app->env_vals[j]);
+            }
+            if (app->stop_fn) cell_release(app->stop_fn);
+        }
+        memset(app, 0, sizeof(Application));
+    }
+    g_app_count = 0;
 }

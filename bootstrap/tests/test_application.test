@@ -1,0 +1,85 @@
+; Day 100: Application Behavior — OTP top-level containers
+; Primitives: ⟳⊚⊕ (app-start), ⟳⊚⊖ (app-stop), ⟳⊚? (app-info),
+;             ⟳⊚* (app-which), ⟳⊚⊙ (app-get-env), ⟳⊚← (app-set-env)
+(⟳∅)
+
+; === app-start-basic ===
+; Start an application with a start function that returns a supervisor
+(⟳∅)
+(≔ my-sup (⟳⊛ :one-for-one (⟨⟩ (λ (self) :worker1) ∅)))
+(≔ result (⟳⊚⊕ :myapp (λ () my-sup)))
+(⊨ (⌜ :app-start-basic) :myapp result)
+
+; === app-which ===
+; List running applications
+(⟳∅)
+(≔ sup1 (⟳⊛ :one-for-one (⟨⟩ (λ (self) :w1) ∅)))
+(⟳⊚⊕ :app1 (λ () sup1))
+(≔ sup2 (⟳⊛ :one-for-one (⟨⟩ (λ (self) :w2) ∅)))
+(⟳⊚⊕ :app2 (λ () sup2))
+(≔ apps (⟳⊚*))
+; Should have 2 apps running
+(⊨ (⌜ :app-which) #t (∧ (¬ (≡ apps ∅)) (¬ (⚠? apps))))
+
+; === app-info ===
+; Get info about a running application
+(⟳∅)
+(≔ sup (⟳⊛ :one-for-one (⟨⟩ (λ (self) :w) ∅)))
+(⟳⊚⊕ :infoapp (λ () sup))
+(≔ info (⟳⊚? :infoapp))
+; Info should be a pair with name and supervisor id
+(⊨ (⌜ :app-info) :infoapp (◁ info))
+
+; === app-info-not-running ===
+; Info on non-running app returns ∅
+(⟳∅)
+(⊨ (⌜ :app-info-not-running) ∅ (⟳⊚? :noapp))
+
+; === app-stop ===
+; Stop a running application
+(⟳∅)
+(≔ sup (⟳⊛ :one-for-one (⟨⟩ (λ (self) :worker) ∅)))
+(⟳⊚⊕ :stopme (λ () sup))
+(⟳⊚⊖ :stopme)
+(⊨ (⌜ :app-stop) ∅ (⟳⊚? :stopme))
+
+; === app-stop-not-running ===
+; Stopping non-running app is an error
+(⟳∅)
+(⊨ (⌜ :app-stop-not-running) #t (⚠? (⟳⊚⊖ :noapp)))
+
+; === app-duplicate-name ===
+; Starting app with existing name is an error
+(⟳∅)
+(≔ sup (⟳⊛ :one-for-one (⟨⟩ (λ (self) :w) ∅)))
+(⟳⊚⊕ :dupapp (λ () sup))
+(⊨ (⌜ :app-duplicate-name) #t (⚠? (⟳⊚⊕ :dupapp (λ () sup))))
+
+; === app-set-get-env ===
+; Set and get application environment
+(⟳∅)
+(≔ sup (⟳⊛ :one-for-one (⟨⟩ (λ (self) :w) ∅)))
+(⟳⊚⊕ :envapp (λ () sup))
+(⟳⊚← :envapp :port #8080)
+(⊨ (⌜ :app-set-get-env) #8080 (⟳⊚⊙ :envapp :port))
+
+; === app-env-missing ===
+; Get missing env key returns ∅
+(⟳∅)
+(≔ sup (⟳⊛ :one-for-one (⟨⟩ (λ (self) :w) ∅)))
+(⟳⊚⊕ :envapp2 (λ () sup))
+(⊨ (⌜ :app-env-missing) ∅ (⟳⊚⊙ :envapp2 :nope))
+
+; === app-with-supervisor-tree ===
+; Application wrapping a real supervision tree with children
+(⟳∅)
+(≔ sup (⟳⊛ :one-for-one
+  (⟨⟩ (λ (self) (←?))
+  (⟨⟩ (λ (self) (←?))
+  ∅))))
+(⟳⊚⊕ :treeapp (λ () sup))
+(≔ info (⟳⊚? :treeapp))
+(≔ sid (◁ (▷ info)))
+(≔ children (⟳⊛? sid))
+; Should have 2 children
+(⊨ (⌜ :app-with-supervisor-tree) #t (¬ (≡ children ∅)))

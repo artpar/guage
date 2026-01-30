@@ -17,6 +17,8 @@
 #define MAX_DICT_ENTRIES 256
 #define MAX_ETS_TABLES 64
 #define MAX_ETS_ENTRIES 256
+#define MAX_APPLICATIONS 16
+#define MAX_APP_ENV 64
 
 /* Actor - a fiber with a mailbox */
 typedef struct Actor {
@@ -127,5 +129,24 @@ int   ets_size(const char* name);                         /* count or -1 */
 Cell* ets_all(const char* name);                          /* list of ⟨key value⟩ or NULL */
 void  ets_destroy_by_owner(int actor_id);                 /* destroy tables owned by actor */
 void  ets_reset_all(void);
+
+/* Application - OTP top-level container */
+typedef struct Application {
+    const char* name;                    /* Application name (symbol) */
+    int supervisor_id;                   /* Top-level supervisor ID */
+    Cell* stop_fn;                       /* Optional stop callback (or NULL) */
+    Cell* env_keys[MAX_APP_ENV];
+    Cell* env_vals[MAX_APP_ENV];
+    int env_count;
+    bool running;
+} Application;
+
+int   app_start(const char* name, int supervisor_id, Cell* stop_fn);  /* 0=ok, -1=dup, -2=full */
+int   app_stop(const char* name);                                       /* 0=ok, -1=not found */
+Application* app_lookup(const char* name);
+Cell* app_which(void);                                                  /* list of name symbols */
+Cell* app_get_env(const char* name, Cell* key);                        /* value or NULL */
+int   app_set_env(const char* name, Cell* key, Cell* value);           /* 0=ok, -1=not found, -2=full */
+void  app_reset_all(void);
 
 #endif /* GUAGE_ACTOR_H */

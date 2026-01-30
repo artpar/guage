@@ -2980,6 +2980,167 @@ Cell* prim_ets_all(Cell* args) {
     return result;
 }
 
+/* ============ Application Primitives ============ */
+
+/* ⟳⊚⊕ - start application
+ * (⟳⊚⊕ :name start-fn) → :name | ⚠
+ * (⟳⊚⊕ :name start-fn stop-fn) → :name | ⚠
+ * start-fn is (λ () supervisor-id) */
+Cell* prim_app_start(Cell* args) {
+    if (!args || cell_is_nil(args)) {
+        return cell_error("app-start-args", cell_nil());
+    }
+    Cell* name_cell = cell_car(args);
+    if (!cell_is_symbol(name_cell)) {
+        return cell_error("app-start-not-symbol", name_cell);
+    }
+    Cell* rest = cell_cdr(args);
+    if (!rest || cell_is_nil(rest)) {
+        return cell_error("app-start-no-fn", cell_nil());
+    }
+    Cell* start_fn = cell_car(rest);
+
+    /* Optional stop function */
+    Cell* stop_fn = NULL;
+    Cell* rest2 = cell_cdr(rest);
+    if (rest2 && !cell_is_nil(rest2)) {
+        stop_fn = cell_car(rest2);
+    }
+
+    const char* name = cell_get_symbol(name_cell);
+
+    /* Call start function to get supervisor id */
+    Cell* sup_result;
+    if (start_fn->type == CELL_LAMBDA) {
+        /* Directly apply lambda with no args */
+        Cell* closure_env = start_fn->data.lambda.env;
+        Cell* body = start_fn->data.lambda.body;
+        EvalContext* ctx = eval_get_current_context();
+        sup_result = eval_internal(ctx, closure_env, body);
+    } else if (start_fn->type == CELL_BUILTIN) {
+        Cell* (*builtin_fn)(Cell*) = (Cell* (*)(Cell*))start_fn->data.atom.builtin;
+        sup_result = builtin_fn(cell_nil());
+    } else {
+        return cell_error("app-start-not-fn", start_fn);
+    }
+
+    if (cell_is_error(sup_result)) {
+        return sup_result;
+    }
+
+    /* The start-fn should return a supervisor ID (number) */
+    int sup_id = 0;
+    if (cell_is_number(sup_result)) {
+        sup_id = (int)cell_get_number(sup_result);
+    }
+    cell_release(sup_result);
+
+    int rc = app_start(name, sup_id, stop_fn);
+    if (rc == -1) return cell_error("app-duplicate-name", name_cell);
+    if (rc == -2) return cell_error("app-full", cell_nil());
+
+    cell_retain(name_cell);
+    return name_cell;
+}
+
+/* ⟳⊚⊖ - stop application
+ * (⟳⊚⊖ :name) → #t | ⚠ */
+Cell* prim_app_stop(Cell* args) {
+    if (!args || cell_is_nil(args)) {
+        return cell_error("app-stop-args", cell_nil());
+    }
+    Cell* name_cell = cell_car(args);
+    if (!cell_is_symbol(name_cell)) {
+        return cell_error("app-stop-not-symbol", name_cell);
+    }
+
+    int rc = app_stop(cell_get_symbol(name_cell));
+    if (rc == -1) return cell_error("app-not-found", name_cell);
+    return cell_bool(true);
+}
+
+/* ⟳⊚? - get application info
+ * (⟳⊚? :name) → ⟨:name supervisor-id⟩ | ∅ */
+Cell* prim_app_info(Cell* args) {
+    if (!args || cell_is_nil(args)) {
+        return cell_error("app-info-args", cell_nil());
+    }
+    Cell* name_cell = cell_car(args);
+    if (!cell_is_symbol(name_cell)) {
+        return cell_error("app-info-not-symbol", name_cell);
+    }
+
+    Application* app = app_lookup(cell_get_symbol(name_cell));
+    if (!app) return cell_nil();
+
+    /* Return ⟨:name supervisor-id⟩ */
+    Cell* name_sym = cell_symbol(app->name);
+    Cell* sup_num = cell_number(app->supervisor_id);
+    Cell* pair = cell_cons(name_sym, cell_cons(sup_num, cell_nil()));
+    cell_release(name_sym);
+    Cell* inner = cell_cdr(pair);
+    cell_release(sup_num);
+    cell_release(inner);
+    return pair;
+}
+
+/* ⟳⊚* - list running applications
+ * (⟳⊚*) → [:name] */
+Cell* prim_app_which(Cell* args) {
+    (void)args;
+    return app_which();
+}
+
+/* ⟳⊚⊙ - get application environment key
+ * (⟳⊚⊙ :app-name :key) → value | ∅ | ⚠ */
+Cell* prim_app_get_env(Cell* args) {
+    if (!args || cell_is_nil(args)) {
+        return cell_error("app-get-env-args", cell_nil());
+    }
+    Cell* name_cell = cell_car(args);
+    if (!cell_is_symbol(name_cell)) {
+        return cell_error("app-get-env-not-symbol", name_cell);
+    }
+    Cell* rest = cell_cdr(args);
+    if (!rest || cell_is_nil(rest)) {
+        return cell_error("app-get-env-no-key", cell_nil());
+    }
+    Cell* key = cell_car(rest);
+
+    Application* app = app_lookup(cell_get_symbol(name_cell));
+    if (!app) return cell_error("app-not-found", name_cell);
+
+    Cell* val = app_get_env(cell_get_symbol(name_cell), key);
+    return val ? val : cell_nil();
+}
+
+/* ⟳⊚! - set application environment key
+ * (⟳⊚! :app-name :key value) → #t | ⚠ */
+Cell* prim_app_set_env(Cell* args) {
+    if (!args || cell_is_nil(args)) {
+        return cell_error("app-set-env-args", cell_nil());
+    }
+    Cell* name_cell = cell_car(args);
+    if (!cell_is_symbol(name_cell)) {
+        return cell_error("app-set-env-not-symbol", name_cell);
+    }
+    Cell* rest = cell_cdr(args);
+    if (!rest || cell_is_nil(rest)) {
+        return cell_error("app-set-env-no-key", cell_nil());
+    }
+    Cell* key = cell_car(rest);
+    Cell* rest2 = cell_cdr(rest);
+    if (!rest2 || cell_is_nil(rest2)) {
+        return cell_error("app-set-env-no-value", cell_nil());
+    }
+    Cell* value = cell_car(rest2);
+
+    int rc = app_set_env(cell_get_symbol(name_cell), key, value);
+    if (rc == -1) return cell_error("app-not-found", name_cell);
+    if (rc == -2) return cell_error("app-env-full", name_cell);
+    return cell_bool(true);
+}
+
 /* ============ Channel Primitives ============ */
 
 /* ⟿⊚ - create channel
@@ -7052,6 +7213,14 @@ static Primitive primitives[] = {
     {"⟳⊞!", prim_ets_delete_table, 1, {"Delete entire ETS table", ":name → #t | ⚠"}},
     {"⟳⊞#", prim_ets_size, 1, {"Get ETS table entry count", ":name → ℕ | ⚠"}},
     {"⟳⊞*", prim_ets_all, 1, {"Get all ETS table entries", ":name → [⟨α β⟩] | ⚠"}},
+
+    /* Application primitives */
+    {"⟳⊚⊕", prim_app_start, -1, {"Start application with supervisor", ":name → λ → :name | ⚠"}},
+    {"⟳⊚⊖", prim_app_stop, 1, {"Stop a running application", ":name → #t | ⚠"}},
+    {"⟳⊚?", prim_app_info, 1, {"Get application info", ":name → ⟨:name ℕ⟩ | ∅"}},
+    {"⟳⊚*", prim_app_which, 0, {"List running applications", "() → [:name]"}},
+    {"⟳⊚⊙", prim_app_get_env, 2, {"Get application env key", ":name → α → β | ∅"}},
+    {"⟳⊚←", prim_app_set_env, 3, {"Set application env key", ":name → α → β → #t | ⚠"}},
 
     /* Channel primitives */
     {"⟿⊚", prim_chan_create, -1, {"Create channel (optional capacity)", "() → ⟿ | ℕ → ⟿"}},

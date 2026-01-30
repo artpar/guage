@@ -1,11 +1,46 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-01-30 (Day 99 COMPLETE)
+Updated: 2026-01-30 (Day 100 COMPLETE)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 99 - ETS (2026-01-30)
+# Session Handoff: Day 100 - Application Behavior (2026-01-30)
+
+## Day 100 Progress - Application Behavior (`⟳⊚⊕`, `⟳⊚⊖`, `⟳⊚?`, `⟳⊚*`, `⟳⊚⊙`, `⟳⊚←`)
+
+**RESULT:** 98/98 test files passing (100%), 10 new tests (Application)
+
+### New Feature: Application Behavior — OTP Top-Level Container
+
+Applications are named units that wrap a supervision tree. They provide start/stop lifecycle, per-app environment (key-value config), and runtime discovery. This is the OTP Application behavior — the top-level container that ties together supervisors, workers, and configuration.
+
+**New Primitives (6):**
+- `⟳⊚⊕` (app-start) — Start named application: `(⟳⊚⊕ :name start-fn)` → `:name` or `⚠`
+- `⟳⊚⊖` (app-stop) — Stop application: `(⟳⊚⊖ :name)` → `#t` or `⚠`
+- `⟳⊚?` (app-info) — Get app info: `(⟳⊚? :name)` → `⟨:name sup-id⟩` or `∅`
+- `⟳⊚*` (app-which) — List running apps: `(⟳⊚*)` → `[:name]`
+- `⟳⊚⊙` (app-get-env) — Get app env key: `(⟳⊚⊙ :name :key)` → value or `∅`
+- `⟳⊚←` (app-set-env) — Set app env key: `(⟳⊚← :name :key value)` → `#t`
+
+**Semantics:**
+- Application name is a symbol (`:myapp`, `:webserver`, etc.)
+- Start function is `(λ () supervisor-id)` — must create and return a supervisor
+- No duplicate names (error on conflict)
+- Stop marks app inactive, releases env, releases stop callback
+- App environment is a per-app key-value store (max 64 entries)
+- `⟳∅` (reset) clears all applications for test isolation
+- Max 16 concurrent applications
+
+**Files Modified (3):**
+- `bootstrap/actor.h` — Application struct, MAX_APPLICATIONS/MAX_APP_ENV, app API declarations
+- `bootstrap/actor.c` — Application implementation (global array), app_start/stop/lookup/which/get_env/set_env/reset_all; actor_reset_all calls app_reset_all
+- `bootstrap/primitives.c` — 6 new primitive functions + registration in table
+
+**New Test File (1):**
+- `bootstrap/tests/test_application.test` — 10 tests: app-start-basic, app-which, app-info, app-info-not-running, app-stop, app-stop-not-running, app-duplicate-name, app-set-get-env, app-env-missing, app-with-supervisor-tree
+
+---
 
 ## Day 99 Progress - ETS (`⟳⊞⊕`, `⟳⊞⊙`, `⟳⊞?`, `⟳⊞⊖`, `⟳⊞!`, `⟳⊞#`, `⟳⊞*`)
 
@@ -389,8 +424,8 @@ Replaced replay-based resumable effects with real delimited continuations using 
 ## Current Status
 
 **System State:**
-- **Primitives:** 174 total (146 + 5 supervision + 2 select + 3 supervisor + 2 dynamic supervisor + 4 registry + 3 timers + 2 genserver + 7 ETS)
-- **Tests:** 97/97 test files passing (100%)
+- **Primitives:** 180 total (174 + 6 application)
+- **Tests:** 98/98 test files passing (100%)
 - **Build:** Clean, O2 optimized, 32MB stack
 
 **Core Capabilities:**
@@ -409,6 +444,7 @@ Replaced replay-based resumable effects with real delimited continuations using 
 - GenServer (⟳⇅, ⟳⇅!) — synchronous call-reply
 - Process dictionary (⟳⊔⊕, ⟳⊔?, ⟳⊔⊖, ⟳⊔*) — per-actor key-value
 - ETS (⟳⊞⊕, ⟳⊞⊙, ⟳⊞?, ⟳⊞⊖, ⟳⊞!, ⟳⊞#, ⟳⊞*) — shared named tables
+- Application (⟳⊚⊕, ⟳⊚⊖, ⟳⊚?, ⟳⊚*, ⟳⊚⊙, ⟳⊚←) — OTP top-level container
 - Module system (⋘ load, ⌂⊚ info)
 - Structures (⊙ leaf, ⊚ node/ADT)
 - Pattern matching (∇) with guards, as-patterns, or-patterns, view patterns
@@ -425,6 +461,7 @@ Replaced replay-based resumable effects with real delimited continuations using 
 
 | Day | Feature | Tests |
 |-----|---------|-------|
+| 100 | Application (⟳⊚⊕, ⟳⊚⊖, ⟳⊚?, ⟳⊚*, ⟳⊚⊙, ⟳⊚←) — OTP top-level container | 98/98 (100%), 10 new tests |
 | 99 | ETS (⟳⊞⊕, ⟳⊞⊙, ⟳⊞?, ⟳⊞⊖, ⟳⊞!, ⟳⊞#, ⟳⊞*) — shared named tables | 97/97 (100%), 10 new tests |
 | 98 | Process Dictionary (⟳⊔⊕, ⟳⊔?, ⟳⊔⊖, ⟳⊔*) — per-actor state | 96/96 (100%), 10 new tests |
 | 97 | GenServer (⟳⇅, ⟳⇅!) — synchronous call-reply | 95/95 (100%), 10 new tests |
@@ -502,5 +539,5 @@ bootstrap/tests/             # Test suite (88 test files)
 
 ---
 
-**Last Updated:** 2026-01-30 (Day 99 complete)
-**Next Session:** Day 100 - Application behavior, OTP behaviors, or new domain
+**Last Updated:** 2026-01-30 (Day 100 complete)
+**Next Session:** Day 101 - Task (async/await), Agent (state wrapper), or new domain
