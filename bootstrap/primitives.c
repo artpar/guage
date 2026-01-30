@@ -905,6 +905,12 @@ Cell* prim_typeof(Cell* args) {
     if (cell_is_weak_ref(val)) {
         return cell_symbol(":weak-ref");
     }
+    if (cell_is_hashmap(val)) {
+        return cell_symbol(":hashmap");
+    }
+    if (cell_is_hashset(val)) {
+        return cell_symbol(":set");
+    }
 
     return cell_symbol(":unknown");
 }
@@ -1704,6 +1710,7 @@ Cell* prim_type_of(Cell* args) {
     else if (cell_is_box(value)) type_name = "box";
     else if (cell_is_weak_ref(value)) type_name = "weak-ref";
     else if (cell_is_hashmap(value)) type_name = "hashmap";
+    else if (cell_is_hashset(value)) type_name = "set";
 
     return cell_symbol(type_name);
 }
@@ -8324,6 +8331,104 @@ Cell* prim_hashmap_merge(Cell* args) {
     return cell_hashmap_merge(m1, m2);
 }
 
+/* === HashSet Primitives (Boost-style groups-of-15 + overflow Bloom byte) === */
+
+Cell* prim_set_new(Cell* args) {
+    /* (⊍) → empty set, (⊍ v1 v2 ...) → set from values */
+    Cell* set = cell_hashset_new(1);
+    Cell* cur = args;
+    while (cur && !cell_is_nil(cur) && cell_is_pair(cur)) {
+        Cell* val = cell_car(cur);
+        cell_hashset_add(set, val);
+        cur = cell_cdr(cur);
+    }
+    return set;
+}
+
+Cell* prim_set_add(Cell* args) {
+    Cell* set = arg1(args);
+    Cell* val = arg2(args);
+    if (!cell_is_hashset(set))
+        return cell_error("⊍⊕ requires set as first arg", set);
+    bool added = cell_hashset_add(set, val);
+    return cell_bool(added);
+}
+
+Cell* prim_set_remove(Cell* args) {
+    Cell* set = arg1(args);
+    Cell* val = arg2(args);
+    if (!cell_is_hashset(set))
+        return cell_error("⊍⊖ requires set as first arg", set);
+    bool removed = cell_hashset_remove(set, val);
+    return cell_bool(removed);
+}
+
+Cell* prim_set_is(Cell* args) {
+    return cell_bool(cell_is_hashset(arg1(args)));
+}
+
+Cell* prim_set_has(Cell* args) {
+    Cell* set = arg1(args);
+    Cell* val = arg2(args);
+    if (!cell_is_hashset(set))
+        return cell_error("⊍∋ requires set as first arg", set);
+    return cell_bool(cell_hashset_has(set, val));
+}
+
+Cell* prim_set_size(Cell* args) {
+    Cell* set = arg1(args);
+    if (!cell_is_hashset(set))
+        return cell_error("⊍# requires set", set);
+    return cell_number((double)cell_hashset_size(set));
+}
+
+Cell* prim_set_elements(Cell* args) {
+    Cell* set = arg1(args);
+    if (!cell_is_hashset(set))
+        return cell_error("⊍⊙ requires set", set);
+    return cell_hashset_elements(set);
+}
+
+Cell* prim_set_union(Cell* args) {
+    Cell* s1 = arg1(args);
+    Cell* s2 = arg2(args);
+    if (!cell_is_hashset(s1))
+        return cell_error("⊍∪ requires set as first arg", s1);
+    if (!cell_is_hashset(s2))
+        return cell_error("⊍∪ requires set as second arg", s2);
+    return cell_hashset_union(s1, s2);
+}
+
+Cell* prim_set_intersection(Cell* args) {
+    Cell* s1 = arg1(args);
+    Cell* s2 = arg2(args);
+    if (!cell_is_hashset(s1))
+        return cell_error("⊍∩ requires set as first arg", s1);
+    if (!cell_is_hashset(s2))
+        return cell_error("⊍∩ requires set as second arg", s2);
+    return cell_hashset_intersection(s1, s2);
+}
+
+Cell* prim_set_difference(Cell* args) {
+    Cell* s1 = arg1(args);
+    Cell* s2 = arg2(args);
+    if (!cell_is_hashset(s1))
+        return cell_error("⊍∖ requires set as first arg", s1);
+    if (!cell_is_hashset(s2))
+        return cell_error("⊍∖ requires set as second arg", s2);
+    return cell_hashset_difference(s1, s2);
+}
+
+Cell* prim_set_subset(Cell* args) {
+    Cell* s1 = arg1(args);
+    Cell* s2 = arg2(args);
+    if (!cell_is_hashset(s1))
+        return cell_error("⊍⊆ requires set as first arg", s1);
+    if (!cell_is_hashset(s2))
+        return cell_error("⊍⊆ requires set as second arg", s2);
+    return cell_bool(cell_hashset_subset(s1, s2));
+}
+
 /* Primitive table - PURE SYMBOLS ONLY
  * EVERY primitive MUST have documentation */
 static Primitive primitives[] = {
@@ -8663,6 +8768,19 @@ static Primitive primitives[] = {
     {"⊞⊗", prim_hashmap_vals, 1, {"Get list of values", "⊞ → [β]"}},
     {"⊞*", prim_hashmap_entries, 1, {"Get list of ⟨k v⟩ pairs", "⊞ → [⟨α β⟩]"}},
     {"⊞⊕", prim_hashmap_merge, 2, {"Merge two maps (m2 wins)", "⊞ → ⊞ → ⊞"}},
+
+    /* HashSet (Boost-style groups-of-15 + overflow Bloom byte) */
+    {"⊍", prim_set_new, -1, {"Create set from values", "α... → ⊍"}},
+    {"⊍⊕", prim_set_add, 2, {"Add element to set (mutates)", "⊍ → α → 𝔹"}},
+    {"⊍⊖", prim_set_remove, 2, {"Remove element from set", "⊍ → α → 𝔹"}},
+    {"⊍?", prim_set_is, 1, {"Test if value is a set", "α → 𝔹"}},
+    {"⊍∋", prim_set_has, 2, {"Test membership in set", "⊍ → α → 𝔹"}},
+    {"⊍#", prim_set_size, 1, {"Get set size", "⊍ → ℕ"}},
+    {"⊍⊙", prim_set_elements, 1, {"Get all elements as list", "⊍ → [α]"}},
+    {"⊍∪", prim_set_union, 2, {"Union of two sets", "⊍ → ⊍ → ⊍"}},
+    {"⊍∩", prim_set_intersection, 2, {"Intersection of two sets", "⊍ → ⊍ → ⊍"}},
+    {"⊍∖", prim_set_difference, 2, {"Difference of two sets (s1 - s2)", "⊍ → ⊍ → ⊍"}},
+    {"⊍⊆", prim_set_subset, 2, {"Test if s1 is subset of s2", "⊍ → ⊍ → 𝔹"}},
 
     {NULL, NULL, 0, {NULL, NULL}}
 };

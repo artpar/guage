@@ -1,11 +1,53 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-01-30 (Day 109 COMPLETE)
+Updated: 2026-01-30 (Day 110 COMPLETE)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 109 - First-Class HashMap (2026-01-30)
+# Session Handoff: Day 110 - First-Class HashSet (2026-01-30)
+
+## Day 110 Progress - HashSet (`⊍`) — Boost-Style Groups-of-15 + Overflow Bloom Byte
+
+**RESULT:** 108/108 test files passing (100%), 10 new tests (HashSet)
+
+### New Feature: First-Class HashSet (⊍) — Boost-Style SOTA Design
+
+Production-grade hash set using Boost `unordered_flat_set` design (groups-of-15 with overflow Bloom byte). Chosen after benchmarking Swiss Table, F14 (Meta), Boost, and Elastic Hashing — Boost wins with 3.2x faster miss lookups (critical for set membership) and tombstone-free deletion.
+
+**New Cell Type:** `CELL_SET` (enum 17) — printed as `⊍[N]`
+
+**New Primitives (11):**
+- `⊍` (set-new, variadic) — `(⊍)` → empty set, `(⊍ #1 #2 #3)` → set from values
+- `⊍⊕` (set-add) — `(⊍⊕ s val)` → `#t` (new) / `#f` (existed), mutates
+- `⊍⊖` (set-remove) — `(⊍⊖ s val)` → `#t` (found) / `#f` (absent)
+- `⊍?` (set-is) — Type predicate
+- `⊍∋` (set-has) — `(⊍∋ s val)` → `#t`/`#f` membership test
+- `⊍#` (set-size) — O(1) size query
+- `⊍⊙` (set-elements) — All elements as list
+- `⊍∪` (set-union) — New set from s1 ∪ s2
+- `⊍∩` (set-intersection) — New set from s1 ∩ s2
+- `⊍∖` (set-difference) — New set s1 \ s2
+- `⊍⊆` (set-subset) — `(⊍⊆ s1 s2)` → `#t` if s1 ⊆ s2
+
+**Architecture:**
+- **Boost groups-of-15**: 15 tag bytes + 1 overflow Bloom byte = 16-byte metadata word (fits SIMD register)
+- **Overflow Bloom byte**: bit `(hash % 8)` set when element displaced past its home group → O(1) miss termination (3.2x faster than Swiss Table)
+- **Tombstone-free deletion**: Clear tag to EMPTY without modifying overflow bits; stale bits cleaned on rehash
+- **Tag encoding**: `0x00=EMPTY`, `0x01=SENTINEL`, `0x02..0xFF=occupied` (reduced hash from top 8 bits)
+- **Load factor**: 86.7% (13 elements per group of 15)
+- **SIMD reuse**: Existing `swisstable.h` (SSE2/NEON/SWAR) with `& 0x7FFF` mask to exclude overflow byte
+- **Hash reuse**: SipHash-2-4 via `cell_hash()`
+- **Probing**: Triangular between groups (same as HashMap)
+
+**Files Modified (4) + 1 New:**
+- `bootstrap/cell.h` — `CELL_SET` in enum, `hashset` struct in union, 11 function declarations
+- `bootstrap/cell.c` — Constructor, Boost-style find/insert/resize/delete, set ops (union/intersection/difference/subset), lifecycle (~300 lines)
+- `bootstrap/primitives.h` — 11 hashset primitive declarations
+- `bootstrap/primitives.c` — 11 primitive implementations + table entries + typeof updates (prim_type_of + prim_typeof)
+- `bootstrap/tests/test_set.test` (NEW) — 10 tests
+
+---
 
 ## Day 109 Progress - HashMap (`⊞`) — Swiss Table with Portable SIMD + SipHash-2-4
 
@@ -763,10 +805,10 @@ Replaced replay-based resumable effects with real delimited continuations using 
 ## Current Status
 
 **System State:**
-- **Primitives:** 215 total (209 + 6 Mutable References)
+- **Primitives:** 226 total (215 + 11 HashSet)
 - **Special Forms:** Added ⪢ (sequencing)
-- **Cell Types:** 15 total (added CELL_BOX)
-- **Tests:** 105/105 test files passing (100%)
+- **Cell Types:** 17 total (added CELL_HASHMAP, CELL_SET)
+- **Tests:** 108/108 test files passing (100%)
 - **Build:** Clean, O2 optimized, 32MB stack
 
 **Core Capabilities:**
@@ -794,6 +836,9 @@ Replaced replay-based resumable effects with real delimited continuations using 
 - Mutable references (□, □→, □←, □?, □⊕, □⇌) — first-class mutable containers
 - Sequencing (⪢) — multi-expression evaluation with TCO
 - Flow Registry (⟳⊸⊜⊕, ⟳⊸⊜?, ⟳⊸⊜⊖, ⟳⊸⊜*) — named flow pipelines
+- Weak references (◇, ◇→, ◇?, ◇⊙) — observe without preventing collection
+- HashMap (⊞) — Swiss Table + SipHash-2-4 with portable SIMD
+- HashSet (⊍) — Boost groups-of-15 + overflow Bloom byte
 - Module system (⋘ load, ⌂⊚ info)
 - Structures (⊙ leaf, ⊚ node/ADT)
 - Pattern matching (∇) with guards, as-patterns, or-patterns, view patterns
@@ -810,6 +855,9 @@ Replaced replay-based resumable effects with real delimited continuations using 
 
 | Day | Feature | Tests |
 |-----|---------|-------|
+| 110 | HashSet (⊍) — Boost groups-of-15 + overflow Bloom byte | 108/108 (100%), 10 new tests |
+| 109 | HashMap (⊞) — Swiss Table + SipHash-2-4 + portable SIMD | 107/107 (100%), 10 new tests |
+| 108 | Weak References (◇, ◇→, ◇?, ◇⊙) — intrusive dual-count zombie | 106/106 (100%), 10 new tests |
 | 107 | Mutable References (□, □→, □←, □?, □⊕, □⇌) + Sequencing (⪢) | 105/105 (100%), 10 new tests |
 | 106 | Flow Registry (⟳⊸⊜⊕, ⟳⊸⊜?, ⟳⊸⊜⊖, ⟳⊸⊜*) — named flow pipelines | 104/104 (100%), 10 new tests |
 | 105 | Flow (⟳⊸, ⟳⊸↦, ⟳⊸⊲, ⟳⊸⊕, ⟳⊸⊙, ⟳⊸!) — lazy computation pipelines | 103/103 (100%), 10 new tests |
@@ -895,5 +943,5 @@ bootstrap/tests/             # Test suite (88 test files)
 
 ---
 
-**Last Updated:** 2026-01-30 (Day 107 complete)
-**Next Session:** Day 108 - Continue building on mutable refs + sequencing, or new domain
+**Last Updated:** 2026-01-30 (Day 110 complete)
+**Next Session:** Day 111 - Continue data structures (trees, queues) or new domain

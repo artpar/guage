@@ -147,6 +147,19 @@ Cell* prim_hashmap_vals(Cell* args);      /* ⊞⊗ - values list */
 Cell* prim_hashmap_entries(Cell* args);   /* ⊞* - entries list */
 Cell* prim_hashmap_merge(Cell* args);     /* ⊞⊕ - merge two maps */
 
+/* HashSet primitives (Boost-style groups-of-15 + overflow Bloom byte) */
+Cell* prim_set_new(Cell* args);           /* ⊍ - create set */
+Cell* prim_set_add(Cell* args);           /* ⊍⊕ - add element */
+Cell* prim_set_remove(Cell* args);        /* ⊍⊖ - remove element */
+Cell* prim_set_is(Cell* args);            /* ⊍? - type predicate */
+Cell* prim_set_has(Cell* args);           /* ⊍∋ - membership test */
+Cell* prim_set_size(Cell* args);          /* ⊍# - size */
+Cell* prim_set_elements(Cell* args);      /* ⊍⊙ - elements list */
+Cell* prim_set_union(Cell* args);         /* ⊍∪ - union */
+Cell* prim_set_intersection(Cell* args);  /* ⊍∩ - intersection */
+Cell* prim_set_difference(Cell* args);    /* ⊍∖ - difference */
+Cell* prim_set_subset(Cell* args);        /* ⊍⊆ - subset test */
+
 /* Primitive documentation structure */
 typedef struct {
     const char* description;     /* What this primitive does */

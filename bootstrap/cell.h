@@ -29,7 +29,8 @@ typedef enum {
     CELL_CHANNEL,        /* ⟿ - channel (typed buffer) */
     CELL_BOX,            /* □ - mutable reference */
     CELL_WEAK_REF,       /* ◇ - weak reference */
-    CELL_HASHMAP         /* ⊞ - hash map (Swiss Table) */
+    CELL_HASHMAP,        /* ⊞ - hash map (Swiss Table) */
+    CELL_SET             /* ⊡ - hash set (Boost-style groups-of-15 + overflow Bloom byte) */
 } CellType;
 
 /* Linear Type Flags */
@@ -154,6 +155,13 @@ struct Cell {
             uint32_t capacity;    /* Total slots (power of 2, min GROUP_WIDTH) */
             uint32_t growth_left; /* Slots remaining before resize */
         } hashmap;
+        struct {
+            uint8_t* metadata;    /* 16-byte aligned: n_groups × 16 bytes (15 tags + 1 overflow) */
+            Cell** elements;      /* n_groups × 15 element pointers */
+            uint32_t size;        /* Live elements */
+            uint32_t n_groups;    /* Power of 2 */
+            uint32_t ml_left;     /* Remaining inserts before rehash */
+        } hashset;
     } data;
 };
 
@@ -232,6 +240,19 @@ Cell* cell_hashmap_keys(Cell* map);
 Cell* cell_hashmap_values(Cell* map);
 Cell* cell_hashmap_entries(Cell* map);
 Cell* cell_hashmap_merge(Cell* m1, Cell* m2);
+
+/* HashSet operations (Boost-style groups-of-15 + overflow Bloom byte) */
+Cell* cell_hashset_new(uint32_t initial_n_groups);
+bool cell_is_hashset(Cell* c);
+bool cell_hashset_add(Cell* set, Cell* val);
+bool cell_hashset_remove(Cell* set, Cell* val);
+bool cell_hashset_has(Cell* set, Cell* val);
+uint32_t cell_hashset_size(Cell* set);
+Cell* cell_hashset_elements(Cell* set);
+Cell* cell_hashset_union(Cell* s1, Cell* s2);
+Cell* cell_hashset_intersection(Cell* s1, Cell* s2);
+Cell* cell_hashset_difference(Cell* s1, Cell* s2);
+bool cell_hashset_subset(Cell* s1, Cell* s2);
 
 /* Error accessors */
 const char* cell_error_message(Cell* c);
