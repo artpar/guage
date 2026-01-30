@@ -929,6 +929,9 @@ Cell* prim_typeof(Cell* args) {
     if (cell_is_trie(val)) {
         return cell_symbol(":trie");
     }
+    if (cell_is_iterator(val)) {
+        return cell_symbol(":iterator");
+    }
 
     return cell_symbol(":unknown");
 }
@@ -9231,6 +9234,295 @@ Cell* prim_trie_vals(Cell* args) {
     return cell_trie_values(t);
 }
 
+/* =========================================================================
+ * Iterator (⊣) — Morsel-Driven Batch Iteration (Day 118)
+ * ========================================================================= */
+
+/* ⊣ - create iterator from collection */
+Cell* prim_iter(Cell* args) {
+    Cell* src = arg1(args);
+    return cell_iterator_new(src);
+}
+
+/* ⊣→ - next element */
+Cell* prim_iter_next(Cell* args) {
+    Cell* it = arg1(args);
+    /* Auto-coerce: if not iterator, create one */
+    if (!cell_is_iterator(it)) {
+        Cell* new_it = cell_iterator_new(it);
+        if (cell_is_error(new_it)) return new_it;
+        Cell* result = cell_iterator_next(new_it);
+        cell_release(new_it);
+        return result;
+    }
+    return cell_iterator_next(it);
+}
+
+/* ⊣? - type predicate */
+Cell* prim_iter_is(Cell* args) {
+    return cell_bool(cell_is_iterator(arg1(args)));
+}
+
+/* ⊣∅? - exhausted check */
+Cell* prim_iter_done(Cell* args) {
+    return cell_bool(cell_iterator_done(arg1(args)));
+}
+
+/* ⊣⊕ - collect to list */
+Cell* prim_iter_collect(Cell* args) {
+    Cell* src = arg1(args);
+    if (!cell_is_iterator(src)) {
+        Cell* it = cell_iterator_new(src);
+        if (cell_is_error(it)) return it;
+        Cell* result = cell_iterator_collect(it);
+        cell_release(it);
+        return result;
+    }
+    return cell_iterator_collect(src);
+}
+
+/* ⊣# - count remaining (consumes) */
+Cell* prim_iter_count(Cell* args) {
+    Cell* src = arg1(args);
+    Cell* it = src;
+    bool created = false;
+    if (!cell_is_iterator(src)) {
+        it = cell_iterator_new(src);
+        if (cell_is_error(it)) return it;
+        created = true;
+    }
+    uint32_t count = 0;
+    while (1) {
+        Cell* elem = cell_iterator_next(it);
+        if (cell_is_nil(elem)) { cell_release(elem); break; }
+        cell_release(elem);
+        count++;
+    }
+    if (created) cell_release(it);
+    return cell_number((double)count);
+}
+
+/* ⊣↦ - lazy map */
+Cell* prim_iter_map(Cell* args) {
+    Cell* src = arg1(args);
+    Cell* fn = arg2(args);
+    if (!cell_is_lambda(fn) && fn->type != CELL_BUILTIN)
+        return cell_error("⊣↦ requires function", fn);
+    return cell_iterator_map(src, fn);
+}
+
+/* ⊣⊲ - lazy filter */
+Cell* prim_iter_filter(Cell* args) {
+    Cell* src = arg1(args);
+    Cell* pred = arg2(args);
+    if (!cell_is_lambda(pred) && pred->type != CELL_BUILTIN)
+        return cell_error("⊣⊲ requires function", pred);
+    return cell_iterator_filter(src, pred);
+}
+
+/* ⊣↑ - take n */
+Cell* prim_iter_take(Cell* args) {
+    Cell* src = arg1(args);
+    Cell* n_cell = arg2(args);
+    if (!cell_is_number(n_cell))
+        return cell_error("⊣↑ requires number", n_cell);
+    uint32_t n = (uint32_t)cell_get_number(n_cell);
+    return cell_iterator_take(src, n);
+}
+
+/* ⊣↓ - drop n */
+Cell* prim_iter_drop(Cell* args) {
+    Cell* src = arg1(args);
+    Cell* n_cell = arg2(args);
+    if (!cell_is_number(n_cell))
+        return cell_error("⊣↓ requires number", n_cell);
+    uint32_t n = (uint32_t)cell_get_number(n_cell);
+    return cell_iterator_drop(src, n);
+}
+
+/* ⊣⊕⊕ - chain/concatenate */
+Cell* prim_iter_chain(Cell* args) {
+    Cell* a = arg1(args);
+    Cell* b = arg2(args);
+    return cell_iterator_chain(a, b);
+}
+
+/* ⊣⊗ - zip */
+Cell* prim_iter_zip(Cell* args) {
+    Cell* a = arg1(args);
+    Cell* b = arg2(args);
+    return cell_iterator_zip(a, b);
+}
+
+/* ⊣Σ - reduce/fold */
+Cell* prim_iter_reduce(Cell* args) {
+    Cell* src = arg1(args);
+    Cell* init = arg2(args);
+    Cell* fn = arg3(args);
+    if (!cell_is_lambda(fn) && fn->type != CELL_BUILTIN)
+        return cell_error("⊣Σ requires function", fn);
+
+    Cell* it = src;
+    bool created = false;
+    if (!cell_is_iterator(src)) {
+        it = cell_iterator_new(src);
+        if (cell_is_error(it)) return it;
+        created = true;
+    }
+
+    EvalContext* ctx = eval_get_current_context();
+    if (!ctx) {
+        if (created) cell_release(it);
+        return cell_error("no-context", cell_nil());
+    }
+
+    Cell* acc = init;
+    cell_retain(acc);
+    while (1) {
+        Cell* elem = cell_iterator_next(it);
+        if (cell_is_nil(elem)) { cell_release(elem); break; }
+        /* Call fn(acc, elem) */
+        static int reduce_counter = 0;
+        char fn_n[64], acc_n[64], elem_n[64];
+        snprintf(fn_n, sizeof(fn_n), "__reduce_fn_%d", reduce_counter);
+        snprintf(acc_n, sizeof(acc_n), "__reduce_acc_%d", reduce_counter);
+        snprintf(elem_n, sizeof(elem_n), "__reduce_el_%d", reduce_counter);
+        reduce_counter++;
+        eval_define(ctx, fn_n, fn);
+        eval_define(ctx, acc_n, acc);
+        eval_define(ctx, elem_n, elem);
+        Cell* fn_sym = cell_symbol(fn_n);
+        Cell* acc_sym = cell_symbol(acc_n);
+        Cell* elem_sym = cell_symbol(elem_n);
+        Cell* call = cell_cons(fn_sym, cell_cons(acc_sym, cell_cons(elem_sym, cell_nil())));
+        cell_release(fn_sym);
+        cell_release(acc_sym);
+        cell_release(elem_sym);
+        Cell* result = eval(ctx, call);
+        cell_release(call);
+        cell_release(elem);
+        cell_release(acc);
+        if (cell_is_error(result)) {
+            if (created) cell_release(it);
+            return result;
+        }
+        acc = result;
+    }
+    if (created) cell_release(it);
+    return acc;
+}
+
+/* Helper: call fn on one arg for iterator terminals */
+static Cell* iter_call_fn_prim(Cell* fn, Cell* arg) {
+    EvalContext* ctx = eval_get_current_context();
+    if (!ctx) return cell_error("no-context", cell_nil());
+    static int iter_prim_counter = 0;
+    char fn_name[64], arg_name[64];
+    snprintf(fn_name, sizeof(fn_name), "__iterp_fn_%d", iter_prim_counter);
+    snprintf(arg_name, sizeof(arg_name), "__iterp_arg_%d", iter_prim_counter);
+    iter_prim_counter++;
+    eval_define(ctx, fn_name, fn);
+    eval_define(ctx, arg_name, arg);
+    Cell* fn_sym = cell_symbol(fn_name);
+    Cell* arg_sym = cell_symbol(arg_name);
+    Cell* call_expr = cell_cons(fn_sym, cell_cons(arg_sym, cell_nil()));
+    cell_release(fn_sym);
+    cell_release(arg_sym);
+    Cell* result = eval(ctx, call_expr);
+    cell_release(call_expr);
+    return result;
+}
+
+/* ⊣∃ - any match (short-circuit) */
+Cell* prim_iter_any(Cell* args) {
+    Cell* src = arg1(args);
+    Cell* pred = arg2(args);
+    if (!cell_is_lambda(pred) && pred->type != CELL_BUILTIN)
+        return cell_error("⊣∃ requires function", pred);
+
+    Cell* it = src;
+    bool created = false;
+    if (!cell_is_iterator(src)) {
+        it = cell_iterator_new(src);
+        if (cell_is_error(it)) return it;
+        created = true;
+    }
+    while (1) {
+        Cell* elem = cell_iterator_next(it);
+        if (cell_is_nil(elem)) { cell_release(elem); break; }
+        Cell* result = iter_call_fn_prim(pred, elem);
+        cell_release(elem);
+        bool match = !cell_is_nil(result) && !(cell_is_bool(result) && !cell_get_bool(result));
+        cell_release(result);
+        if (match) {
+            if (created) cell_release(it);
+            return cell_bool(true);
+        }
+    }
+    if (created) cell_release(it);
+    return cell_bool(false);
+}
+
+/* ⊣∀ - all match (short-circuit) */
+Cell* prim_iter_all(Cell* args) {
+    Cell* src = arg1(args);
+    Cell* pred = arg2(args);
+    if (!cell_is_lambda(pred) && pred->type != CELL_BUILTIN)
+        return cell_error("⊣∀ requires function", pred);
+
+    Cell* it = src;
+    bool created = false;
+    if (!cell_is_iterator(src)) {
+        it = cell_iterator_new(src);
+        if (cell_is_error(it)) return it;
+        created = true;
+    }
+    while (1) {
+        Cell* elem = cell_iterator_next(it);
+        if (cell_is_nil(elem)) { cell_release(elem); break; }
+        Cell* result = iter_call_fn_prim(pred, elem);
+        cell_release(elem);
+        bool pass = !cell_is_nil(result) && !(cell_is_bool(result) && !cell_get_bool(result));
+        cell_release(result);
+        if (!pass) {
+            if (created) cell_release(it);
+            return cell_bool(false);
+        }
+    }
+    if (created) cell_release(it);
+    return cell_bool(true);
+}
+
+/* ⊣⊙ - find first match */
+Cell* prim_iter_find(Cell* args) {
+    Cell* src = arg1(args);
+    Cell* pred = arg2(args);
+    if (!cell_is_lambda(pred) && pred->type != CELL_BUILTIN)
+        return cell_error("⊣⊙ requires function", pred);
+
+    Cell* it = src;
+    bool created = false;
+    if (!cell_is_iterator(src)) {
+        it = cell_iterator_new(src);
+        if (cell_is_error(it)) return it;
+        created = true;
+    }
+    while (1) {
+        Cell* elem = cell_iterator_next(it);
+        if (cell_is_nil(elem)) { cell_release(elem); break; }
+        Cell* result = iter_call_fn_prim(pred, elem);
+        bool match = !cell_is_nil(result) && !(cell_is_bool(result) && !cell_get_bool(result));
+        cell_release(result);
+        if (match) {
+            if (created) cell_release(it);
+            return elem;
+        }
+        cell_release(elem);
+    }
+    if (created) cell_release(it);
+    return cell_nil();
+}
+
 /* Primitive table - PURE SYMBOLS ONLY
  * EVERY primitive MUST have documentation */
 static Primitive primitives[] = {
@@ -9667,6 +9959,24 @@ static Primitive primitives[] = {
     {"⊮*", prim_trie_entries, 1, {"All ⟨k v⟩ pairs in lex order", "⊮ → [⟨α β⟩]"}},
     {"⊮⊙*", prim_trie_keys, 1, {"All keys in lex order", "⊮ → [α]"}},
     {"⊮⊗*", prim_trie_vals, 1, {"All values in key-sorted order", "⊮ → [β]"}},
+
+    /* Iterator (Day 118 — morsel-driven batch iteration) */
+    {"⊣", prim_iter, 1, {"Create iterator from collection", "α → ⊣"}},
+    {"⊣→", prim_iter_next, 1, {"Next element or ∅", "⊣ → α|∅"}},
+    {"⊣?", prim_iter_is, 1, {"Test if value is iterator", "α → 𝔹"}},
+    {"⊣∅?", prim_iter_done, 1, {"Test if iterator exhausted", "⊣ → 𝔹"}},
+    {"⊣⊕", prim_iter_collect, 1, {"Collect remaining to list", "⊣ → [α]"}},
+    {"⊣#", prim_iter_count, 1, {"Count remaining (consumes)", "⊣ → ℕ"}},
+    {"⊣↦", prim_iter_map, 2, {"Lazy map transform", "⊣ → (α→β) → ⊣"}},
+    {"⊣⊲", prim_iter_filter, 2, {"Lazy filter (selection vector)", "⊣ → (α→𝔹) → ⊣"}},
+    {"⊣↑", prim_iter_take, 2, {"Take first n elements", "⊣ → ℕ → ⊣"}},
+    {"⊣↓", prim_iter_drop, 2, {"Drop first n elements", "⊣ → ℕ → ⊣"}},
+    {"⊣⊕⊕", prim_iter_chain, 2, {"Concatenate two iterators", "⊣ → ⊣ → ⊣"}},
+    {"⊣⊗", prim_iter_zip, 2, {"Zip two iterators into pairs", "⊣ → ⊣ → ⊣"}},
+    {"⊣Σ", prim_iter_reduce, 3, {"Fold/reduce with init and fn", "⊣ → α → (α→β→α) → α"}},
+    {"⊣∃", prim_iter_any, 2, {"Any element matches (short-circuit)", "⊣ → (α→𝔹) → 𝔹"}},
+    {"⊣∀", prim_iter_all, 2, {"All elements match (short-circuit)", "⊣ → (α→𝔹) → 𝔹"}},
+    {"⊣⊙", prim_iter_find, 2, {"Find first matching element", "⊣ → (α→𝔹) → α|∅"}},
 
     {NULL, NULL, 0, {NULL, NULL}}
 };

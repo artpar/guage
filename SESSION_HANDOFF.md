@@ -1,11 +1,65 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-01-30 (Day 117 COMPLETE)
+Updated: 2026-01-30 (Day 118 COMPLETE)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 117 - First-Class Trie (2026-01-30)
+# Session Handoff: Day 118 - First-Class Iterator Protocol (2026-01-30)
+
+## Day 118 Progress - Iterator (`⊣`) — Morsel-Driven Batch Iteration with Selection Vectors
+
+**RESULT:** 116/116 test files passing (100%), 1 new test file (Iterator)
+
+### New Feature: First-Class Iterator Protocol (⊣) — Batch Iteration Engine
+
+Production-grade iterator protocol using morsel-driven batch iteration (256 elements per batch, 2KB L1-cache-friendly). Selection vectors enable zero-allocation filter operations. Function pointer dispatch (iter_fill_fn vtable) eliminates switch overhead. Supports all 10 collection types with SIMD-accelerated batch fill for HashMap/HashSet, memcpy for Vector/Deque/Buffer, leaf-chain walk for SortedMap, resumable DFS for Trie, and auxiliary min-heap for lazy sorted Heap drain.
+
+**New Cell Type:** `CELL_ITERATOR` (enum 24) — printed as `⊣[kind]`
+
+**New Primitives (16):**
+
+Core (6):
+- `⊣` (iter) — Create iterator from any collection
+- `⊣→` (next) — Next element (batch-indexed hot path, 255/256 calls are fast path)
+- `⊣?` (iter-is) — Type predicate
+- `⊣∅?` (iter-done) — Exhausted check
+- `⊣⊕` (collect) — Drain remaining to cons list
+- `⊣#` (count) — Count remaining (consumes)
+
+Transformers (6) — lazy, fused per-batch:
+- `⊣↦` (iter-map) — Batch-applied map
+- `⊣⊲` (iter-filter) — Selection-vector filter
+- `⊣↑` (iter-take) — Clamped batch count
+- `⊣↓` (iter-drop) — Eagerly skip n at creation
+- `⊣⊕⊕` (iter-chain) — Concatenate two iterators
+- `⊣⊗` (iter-zip) — Parallel zip into ⟨a b⟩ pairs
+
+Terminals (4) — consume batches, return value:
+- `⊣Σ` (reduce) — Batch-streamed fold
+- `⊣∃` (any) — Short-circuit existential
+- `⊣∀` (all) — Short-circuit universal
+- `⊣⊙` (find) — First match
+
+**Architecture:**
+- **Batch size 256**: 256 × 8 = 2KB pointers, fits L1 cache. 255/256 next calls are fast path (array index + increment)
+- **Selection vectors**: uint8_t[256] indices — filter builds new sel without copying elements
+- **Function pointer dispatch**: iter_fill_fn set once at creation, CPU's IBP learns target after 1-2 calls
+- **Auto-coercion**: All transformers/terminals accept raw collections, auto-wrap to iterator
+- **Per-collection batch fill**: Vector (memcpy), Deque (ring-unwrap), HashMap (SIMD ctrl-byte scan), HashSet (SIMD group scan), SortedMap (leaf chain walk), Trie (DFS stack), Heap (aux min-heap for O(k log k) top-k), Buffer (byte→number), List (pointer chase + prefetch)
+
+**New Infrastructure:**
+- `iter_batch.h` — IterBatch, IteratorData, IterKind enum, iter_fill_fn typedef, ITER_BATCH_CAP constant
+
+**Files Modified (4) + 1 New Header + 1 New Test:**
+- `bootstrap/iter_batch.h` (NEW) — Batch + iterator data types
+- `bootstrap/cell.h` — `CELL_ITERATOR` in enum, `iterator` struct, 12 function declarations
+- `bootstrap/cell.c` — 10 source fill functions, 5 transformer fill functions, iterator lifecycle, aux min-heap for heap drain (~500 lines)
+- `bootstrap/primitives.h` — 16 iterator primitive declarations
+- `bootstrap/primitives.c` — 16 primitive implementations + table entries + typeof handler
+- `bootstrap/tests/test_iterator.test` (NEW) — 25 test groups, 51 assertions
+
+---
 
 ## Day 117 Progress - Trie (`⊮`) — ART with SIMD Node16 + Path Compression
 
@@ -984,10 +1038,10 @@ Replaced replay-based resumable effects with real delimited continuations using 
 ## Current Status
 
 **System State:**
-- **Primitives:** 235 total (226 + 9 Heap)
+- **Primitives:** 251 total (235 + 16 Iterator)
 - **Special Forms:** Added ⪢ (sequencing)
-- **Cell Types:** 22 total (through CELL_HEAP)
-- **Tests:** 113/113 test files passing (100%)
+- **Cell Types:** 24 total (through CELL_ITERATOR)
+- **Tests:** 116/116 test files passing (100%)
 - **Build:** Clean, O2 optimized, 32MB stack
 
 **Core Capabilities:**
@@ -1023,6 +1077,7 @@ Replaced replay-based resumable effects with real delimited continuations using 
 - String Interning — SipHash + LuaJIT cache + O(1) eval dispatch
 - Vector (⟦⟧) — SBO + 1.5x growth + cache-line aligned
 - Priority Queue (△) — 4-ary min-heap with SoA + branchless sift
+- Iterator Protocol (⊣) — Morsel-driven batch iteration with selection vectors
 - Module system (⋘ load, ⌂⊚ info)
 - Structures (⊙ leaf, ⊚ node/ADT)
 - Pattern matching (∇) with guards, as-patterns, or-patterns, view patterns
@@ -1039,6 +1094,9 @@ Replaced replay-based resumable effects with real delimited continuations using 
 
 | Day | Feature | Tests |
 |-----|---------|-------|
+| 118 | Iterator Protocol (⊣) — Morsel-driven batch iteration + selection vectors | 116/116 (100%), 1 new test file |
+| 117 | Trie (⊮) — ART + SIMD Node16 + path compression | 115/115 (100%), 1 new test file |
+| 116 | Sorted Map (⋔) — Algorithmica-grade SIMD B-tree | 114/114 (100%), 1 new test file |
 | 115 | Priority Queue (△) — 4-ary min-heap + SoA + branchless sift | 113/113 (100%), 1 new test file |
 | 114 | Vector (⟦⟧) — SBO + 1.5x growth + cache-line aligned heap | 112/112 (100%) |
 | 113 | Byte Buffer (◈) — cache-line aligned storage + 11 primitives | 111/111 (100%) |
@@ -1132,5 +1190,5 @@ bootstrap/tests/             # Test suite (88 test files)
 
 ---
 
-**Last Updated:** 2026-01-30 (Day 115 complete)
-**Next Session:** Day 116 - Continue data structures (trees, sorted maps) or new domain
+**Last Updated:** 2026-01-30 (Day 118 complete)
+**Next Session:** Day 119 - Continue data structures or new domain

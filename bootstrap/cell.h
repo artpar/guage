@@ -36,7 +36,8 @@ typedef enum {
     CELL_VECTOR,         /* ⟦⟧ - dynamic array (SBO + 1.5x growth + cache-line aligned) */
     CELL_HEAP,           /* △ - priority queue (4-ary min-heap, SoA, cache-line aligned) */
     CELL_SORTED_MAP,     /* ⋔ - sorted map (Algorithmica-grade SIMD B-tree) */
-    CELL_TRIE            /* ⊮ - trie (ART with SIMD Node16 + path compression) */
+    CELL_TRIE,           /* ⊮ - trie (ART with SIMD Node16 + path compression) */
+    CELL_ITERATOR        /* ⊣ - iterator (morsel-driven batch iteration) */
 } CellType;
 
 /* Linear Type Flags */
@@ -208,6 +209,9 @@ struct Cell {
             void*    root;        /* ART root node (ARTNode* or ARTLeaf*, tagged) */
             uint32_t size;        /* Total key-value pairs */
         } trie;
+        struct {
+            void*    iter_data;   /* IteratorData* (defined in iter_batch.h) */
+        } iterator;
     } data;
 };
 
@@ -380,6 +384,19 @@ Cell* cell_trie_longest_prefix(Cell* t, Cell* query);
 Cell* cell_trie_entries(Cell* t);
 Cell* cell_trie_keys(Cell* t);
 Cell* cell_trie_values(Cell* t);
+
+/* Iterator operations (⊣ — morsel-driven batch iteration) */
+Cell* cell_iterator_new(Cell* source);
+Cell* cell_iterator_next(Cell* it);
+bool  cell_iterator_done(Cell* it);
+Cell* cell_iterator_collect(Cell* it);
+bool  cell_is_iterator(Cell* c);
+Cell* cell_iterator_map(Cell* it, Cell* fn);
+Cell* cell_iterator_filter(Cell* it, Cell* pred);
+Cell* cell_iterator_take(Cell* it, uint32_t n);
+Cell* cell_iterator_drop(Cell* it, uint32_t n);
+Cell* cell_iterator_chain(Cell* it1, Cell* it2);
+Cell* cell_iterator_zip(Cell* it1, Cell* it2);
 
 /* Total ordering for all Cell types (Erlang term ordering) */
 int cell_compare(Cell* a, Cell* b);

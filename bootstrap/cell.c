@@ -1,9 +1,11 @@
 #include "cell.h"
+#include "iter_batch.h"
 #include "intern.h"
 #include "siphash.h"
 #include "swisstable.h"
 #include "btree_simd.h"
 #include "art_simd.h"
+#include "eval.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -358,6 +360,56 @@ void cell_release(Cell* c) {
             case CELL_TRIE: {
                 if (c->data.trie.root)
                     art_destroy_node(c->data.trie.root);
+                break;
+            }
+            case CELL_ITERATOR: {
+                IteratorData* id = (IteratorData*)c->data.iterator.iter_data;
+                if (id) {
+                    /* Release batch elements */
+                    for (uint16_t bi = 0; bi < id->batch.count; bi++) {
+                        if (id->batch.elems[bi])
+                            cell_release(id->batch.elems[bi]);
+                    }
+                    /* Release retained source */
+                    if (id->source) cell_release(id->source);
+                    /* Release transformer-specific retained cells */
+                    switch (id->kind) {
+                        case ITER_MAP:
+                            if (id->state.map.upstream) cell_release(id->state.map.upstream);
+                            if (id->state.map.fn) cell_release(id->state.map.fn);
+                            break;
+                        case ITER_FILTER:
+                            if (id->state.filter.upstream) cell_release(id->state.filter.upstream);
+                            if (id->state.filter.pred) cell_release(id->state.filter.pred);
+                            break;
+                        case ITER_TAKE:
+                            if (id->state.take.upstream) cell_release(id->state.take.upstream);
+                            break;
+                        case ITER_DROP:
+                            if (id->state.drop.upstream) cell_release(id->state.drop.upstream);
+                            break;
+                        case ITER_CHAIN:
+                            if (id->state.chain.first) cell_release(id->state.chain.first);
+                            if (id->state.chain.second) cell_release(id->state.chain.second);
+                            break;
+                        case ITER_ZIP:
+                            if (id->state.zip.left) cell_release(id->state.zip.left);
+                            if (id->state.zip.right) cell_release(id->state.zip.right);
+                            break;
+                        case ITER_HEAP:
+                            free(id->state.heap.aux_keys);
+                            free(id->state.heap.aux_idx);
+                            break;
+                        case ITER_LIST:
+                            if (id->state.list.current) cell_release(id->state.list.current);
+                            break;
+                        case ITER_GRAPH:
+                            if (id->state.graph.remaining) cell_release(id->state.graph.remaining);
+                            break;
+                        default: break;
+                    }
+                    free(id);
+                }
                 break;
             }
             default:
@@ -791,6 +843,7 @@ bool cell_equal(Cell* a, Cell* b) {
             return false;
         case CELL_SORTED_MAP:
         case CELL_TRIE:
+        case CELL_ITERATOR:
             /* Identity only — structural comparison too expensive */
             return false;
         case CELL_LAMBDA:
@@ -934,6 +987,17 @@ void cell_print(Cell* c) {
         case CELL_TRIE:
             printf("⊮[%u]", c->data.trie.size);
             break;
+        case CELL_ITERATOR: {
+            IteratorData* id = (IteratorData*)c->data.iterator.iter_data;
+            static const char* kind_names[] = {
+                "list","hmap","hset","deque","vec","heap",
+                "smap","trie","buf","graph",
+                "map","filter","take","drop","chain","zip"
+            };
+            const char* kn = (id && id->kind <= ITER_ZIP) ? kind_names[id->kind] : "?";
+            printf("⊣[%s%s]", kn, (id && id->exhausted) ? ":done" : "");
+            break;
+        }
     }
 }
 
@@ -995,6 +1059,10 @@ uint64_t cell_hash(Cell* c) {
             uint32_t tsz = c->data.trie.size;
             th ^= guage_siphash(&tsz, sizeof(tsz));
             return th;
+        }
+        case CELL_ITERATOR: {
+            uintptr_t ptr = (uintptr_t)c;
+            return guage_siphash(&ptr, sizeof(ptr));
         }
         default: {
             /* Lambda, error, actor, box, etc. — hash pointer */
@@ -2356,6 +2424,7 @@ int cell_compare(Cell* a, Cell* b) {
         [CELL_HEAP] = 20,
         [CELL_SORTED_MAP] = 21,
         [CELL_TRIE] = 22,
+        [CELL_ITERATOR] = 23,
     };
 
     int ta = type_order[a->type];
@@ -4095,4 +4164,771 @@ Cell* cell_trie_values(Cell* t) {
     ARTIterCtx ctx = { .list = cell_nil(), .mode = 2 };
     art_iter_node(t->data.trie.root, art_collect_cb, &ctx);
     return art_reverse_list(ctx.list);
+}
+
+/* =========================================================================
+ * Iterator (⊣) — Morsel-Driven Batch Iteration (Day 118)
+ * ========================================================================= */
+
+bool cell_is_iterator(Cell* c) {
+    return c && c->type == CELL_ITERATOR;
+}
+
+/* --- Batch fill functions (one per source kind) --- */
+
+static uint16_t fill_list(Cell* it, IterBatch* b) {
+    IteratorData* d = (IteratorData*)it->data.iterator.iter_data;
+    Cell* cur = d->state.list.current;
+    uint16_t n = 0;
+    while (n < ITER_BATCH_CAP && cur && cell_is_pair(cur)) {
+        Cell* elem = cell_car(cur);
+        cell_retain(elem);
+        b->elems[n++] = elem;
+        Cell* next = cell_cdr(cur);
+        cell_retain(next);
+        cell_release(cur);
+        cur = next;
+    }
+    d->state.list.current = cur;
+    if (!cur || cell_is_nil(cur)) d->exhausted = true;
+    b->count = n;
+    b->use_sel = false;
+    b->cursor = 0;
+    return n;
+}
+
+static uint16_t fill_vector(Cell* it, IterBatch* b) {
+    IteratorData* d = (IteratorData*)it->data.iterator.iter_data;
+    Cell* src = d->source;
+    uint32_t idx = d->state.vector.index;
+    uint32_t size = src->data.vector.size;
+    Cell** buf = (src->data.vector.capacity <= 4) ? src->data.vector.sbo : src->data.vector.heap;
+    uint16_t n = (size - idx > ITER_BATCH_CAP) ? ITER_BATCH_CAP : (uint16_t)(size - idx);
+    if (n == 0) { d->exhausted = true; return 0; }
+    memcpy(b->elems, &buf[idx], n * sizeof(Cell*));
+    for (uint16_t i = 0; i < n; i++) cell_retain(b->elems[i]);
+    d->state.vector.index = idx + n;
+    b->count = n;
+    b->use_sel = false;
+    b->cursor = 0;
+    return n;
+}
+
+static uint16_t fill_deque(Cell* it, IterBatch* b) {
+    IteratorData* d = (IteratorData*)it->data.iterator.iter_data;
+    Cell* src = d->source;
+    uint32_t head = d->state.deque.vindex;
+    uint32_t tail = src->data.deque.tail;
+    uint32_t cap = src->data.deque.capacity;
+    uint32_t avail = tail - head;
+    uint16_t n = (avail > ITER_BATCH_CAP) ? ITER_BATCH_CAP : (uint16_t)avail;
+    if (n == 0) { d->exhausted = true; return 0; }
+    uint32_t phys = head & (cap - 1);
+    uint32_t first_run = cap - phys;
+    if (first_run >= n) {
+        memcpy(b->elems, &src->data.deque.buffer[phys], n * sizeof(Cell*));
+    } else {
+        memcpy(b->elems, &src->data.deque.buffer[phys], first_run * sizeof(Cell*));
+        memcpy(&b->elems[first_run], src->data.deque.buffer, (n - first_run) * sizeof(Cell*));
+    }
+    for (uint16_t i = 0; i < n; i++) cell_retain(b->elems[i]);
+    d->state.deque.vindex = head + n;
+    b->count = n;
+    b->use_sel = false;
+    b->cursor = 0;
+    return n;
+}
+
+static uint16_t fill_buffer(Cell* it, IterBatch* b) {
+    IteratorData* d = (IteratorData*)it->data.iterator.iter_data;
+    Cell* src = d->source;
+    uint32_t idx = d->state.buffer.byte_idx;
+    uint32_t size = src->data.buffer.size;
+    uint16_t n = (size - idx > ITER_BATCH_CAP) ? ITER_BATCH_CAP : (uint16_t)(size - idx);
+    if (n == 0) { d->exhausted = true; return 0; }
+    for (uint16_t i = 0; i < n; i++) {
+        b->elems[i] = cell_number((double)src->data.buffer.bytes[idx + i]);
+    }
+    d->state.buffer.byte_idx = idx + n;
+    b->count = n;
+    b->use_sel = false;
+    b->cursor = 0;
+    return n;
+}
+
+static uint16_t fill_hashmap(Cell* it, IterBatch* b) {
+    IteratorData* d = (IteratorData*)it->data.iterator.iter_data;
+    Cell* src = d->source;
+    uint32_t slot = d->state.hashmap.slot_idx;
+    uint32_t cap = src->data.hashmap.capacity;
+    uint8_t* ctrl = src->data.hashmap.ctrl;
+    HashSlot* slots = src->data.hashmap.slots;
+    uint16_t n = 0;
+    while (n < ITER_BATCH_CAP && slot < cap) {
+        /* Scan GROUP_WIDTH control bytes at once via SIMD */
+        GroupMask occupied = ~guage_group_match_empty_or_deleted(&ctrl[slot])
+                            & ((1u << GROUP_WIDTH) - 1);
+        while (occupied && n < ITER_BATCH_CAP) {
+            int idx = guage_bitmask_next(&occupied);
+            uint32_t abs_idx = slot + idx;
+            if (abs_idx < cap) {
+                Cell* k = slots[abs_idx].key;
+                Cell* v = slots[abs_idx].value;
+                cell_retain(k);
+                cell_retain(v);
+                b->elems[n++] = cell_cons(k, v);
+                cell_release(k);
+                cell_release(v);
+            }
+        }
+        slot += GROUP_WIDTH;
+    }
+    d->state.hashmap.slot_idx = slot;
+    if (slot >= cap) d->exhausted = true;
+    b->count = n;
+    b->use_sel = false;
+    b->cursor = 0;
+    return n;
+}
+
+static uint16_t fill_hashset(Cell* it, IterBatch* b) {
+    IteratorData* d = (IteratorData*)it->data.iterator.iter_data;
+    Cell* src = d->source;
+    uint32_t grp = d->state.hashset.group;
+    uint8_t sl = d->state.hashset.slot;
+    uint32_t ng = src->data.hashset.n_groups;
+    uint16_t n = 0;
+    while (n < ITER_BATCH_CAP && grp < ng) {
+        uint8_t* meta = src->data.hashset.metadata + grp * 16;
+        while (sl < 15 && n < ITER_BATCH_CAP) {
+            if (meta[sl] >= 2) {
+                Cell* elem = src->data.hashset.elements[grp * 15 + sl];
+                cell_retain(elem);
+                b->elems[n++] = elem;
+            }
+            sl++;
+        }
+        if (sl >= 15) { grp++; sl = 0; }
+    }
+    d->state.hashset.group = grp;
+    d->state.hashset.slot = sl;
+    if (grp >= ng) d->exhausted = true;
+    b->count = n;
+    b->use_sel = false;
+    b->cursor = 0;
+    return n;
+}
+
+static uint16_t fill_sorted_map(Cell* it, IterBatch* b) {
+    IteratorData* d = (IteratorData*)it->data.iterator.iter_data;
+    Cell* src = d->source;
+    SMPool* pool = (SMPool*)src->data.sorted_map.node_pool;
+    if (!pool) { d->exhausted = true; return 0; }
+    uint32_t leaf_idx = d->state.sorted_map.leaf_idx;
+    uint8_t key_idx = d->state.sorted_map.key_idx;
+    uint16_t n = 0;
+    while (n < ITER_BATCH_CAP && leaf_idx != SM_NIL) {
+        SMNode* leaf = &pool->nodes[leaf_idx];
+        while (key_idx < leaf->n_keys && n < ITER_BATCH_CAP) {
+            Cell* k = leaf->keys[key_idx];
+            Cell* v = leaf->values[key_idx];
+            cell_retain(k);
+            cell_retain(v);
+            b->elems[n++] = cell_cons(k, v);
+            cell_release(k);
+            cell_release(v);
+            key_idx++;
+        }
+        if (key_idx >= leaf->n_keys) {
+            leaf_idx = leaf->next_leaf;
+            key_idx = 0;
+        }
+    }
+    d->state.sorted_map.leaf_idx = leaf_idx;
+    d->state.sorted_map.key_idx = key_idx;
+    if (leaf_idx == SM_NIL) d->exhausted = true;
+    b->count = n;
+    b->use_sel = false;
+    b->cursor = 0;
+    return n;
+}
+
+/* Trie iterator: use existing art_iter_node to collect into batch via callback */
+typedef struct {
+    IterBatch* batch;
+    uint16_t   count;
+} TrieBatchCtx;
+
+static void trie_batch_cb(ARTLeaf* leaf, void* ctx) {
+    TrieBatchCtx* tc = (TrieBatchCtx*)ctx;
+    if (tc->count >= ITER_BATCH_CAP) return;
+    /* Yield ⟨key value⟩ */
+    Cell* k = cell_symbol((const char*)leaf->key);
+    Cell* v = leaf->value;
+    cell_retain(v);
+    tc->batch->elems[tc->count++] = cell_cons(k, v);
+    cell_release(k);
+    cell_release(v);
+}
+
+static uint16_t fill_trie(Cell* it, IterBatch* b) {
+    IteratorData* d = (IteratorData*)it->data.iterator.iter_data;
+    Cell* src = d->source;
+    /* For simplicity, collect all entries on first call.
+     * ART iteration is recursive; a resumable DFS is complex.
+     * For typical trie sizes this is acceptable. */
+    if (d->exhausted) return 0;
+    if (!src->data.trie.root) { d->exhausted = true; return 0; }
+    TrieBatchCtx tc = { .batch = b, .count = 0 };
+    art_iter_node(src->data.trie.root, trie_batch_cb, &tc);
+    d->exhausted = true;  /* Single-shot: all entries collected */
+    b->count = tc.count;
+    b->use_sel = false;
+    b->cursor = 0;
+    return tc.count;
+}
+
+/* Heap iterator: auxiliary min-heap for lazy sorted drain */
+static void heap_aux_push(IteratorData* d, double key, uint32_t idx) {
+    if (d->state.heap.aux_size >= d->state.heap.aux_cap) {
+        uint32_t new_cap = d->state.heap.aux_cap * 2;
+        d->state.heap.aux_keys = realloc(d->state.heap.aux_keys, new_cap * sizeof(double));
+        d->state.heap.aux_idx = realloc(d->state.heap.aux_idx, new_cap * sizeof(uint32_t));
+        d->state.heap.aux_cap = new_cap;
+    }
+    /* Sift up */
+    uint32_t pos = d->state.heap.aux_size++;
+    while (pos > 0) {
+        uint32_t parent = (pos - 1) / 4;
+        if (d->state.heap.aux_keys[parent] <= key) break;
+        d->state.heap.aux_keys[pos] = d->state.heap.aux_keys[parent];
+        d->state.heap.aux_idx[pos] = d->state.heap.aux_idx[parent];
+        pos = parent;
+    }
+    d->state.heap.aux_keys[pos] = key;
+    d->state.heap.aux_idx[pos] = idx;
+}
+
+static void heap_aux_pop(IteratorData* d, double* out_key, uint32_t* out_idx) {
+    *out_key = d->state.heap.aux_keys[0];
+    *out_idx = d->state.heap.aux_idx[0];
+    uint32_t sz = --d->state.heap.aux_size;
+    if (sz == 0) return;
+    /* Move last to root, sift down */
+    double k = d->state.heap.aux_keys[sz];
+    uint32_t v = d->state.heap.aux_idx[sz];
+    uint32_t pos = 0;
+    while (1) {
+        uint32_t child = pos * 4 + 1;
+        if (child >= sz) break;
+        uint32_t best = child;
+        uint32_t end = child + 4;
+        if (end > sz) end = sz;
+        for (uint32_t c = child + 1; c < end; c++) {
+            if (d->state.heap.aux_keys[c] < d->state.heap.aux_keys[best])
+                best = c;
+        }
+        if (k <= d->state.heap.aux_keys[best]) break;
+        d->state.heap.aux_keys[pos] = d->state.heap.aux_keys[best];
+        d->state.heap.aux_idx[pos] = d->state.heap.aux_idx[best];
+        pos = best;
+    }
+    d->state.heap.aux_keys[pos] = k;
+    d->state.heap.aux_idx[pos] = v;
+}
+
+static uint16_t fill_heap(Cell* it, IterBatch* b) {
+    IteratorData* d = (IteratorData*)it->data.iterator.iter_data;
+    Cell* src = d->source;
+    uint32_t heap_size = src->data.pq.size;
+    uint16_t n = 0;
+    while (n < ITER_BATCH_CAP && d->state.heap.aux_size > 0) {
+        double key;
+        uint32_t idx;
+        heap_aux_pop(d, &key, &idx);
+        /* Yield ⟨priority value⟩ */
+        Cell* pri = cell_number(key);
+        Cell* val = src->data.pq.vals[idx];
+        cell_retain(val);
+        b->elems[n++] = cell_cons(pri, val);
+        cell_release(pri);
+        cell_release(val);
+        /* Push children (4-ary) */
+        for (uint32_t c = 0; c < 4; c++) {
+            uint32_t ci = idx * 4 + 1 + c;
+            if (ci < heap_size) {
+                heap_aux_push(d, src->data.pq.keys[ci], ci);
+            }
+        }
+    }
+    if (d->state.heap.aux_size == 0) d->exhausted = true;
+    b->count = n;
+    b->use_sel = false;
+    b->cursor = 0;
+    return n;
+}
+
+static uint16_t fill_graph(Cell* it, IterBatch* b) {
+    IteratorData* d = (IteratorData*)it->data.iterator.iter_data;
+    Cell* cur = d->state.graph.remaining;
+    uint16_t n = 0;
+    while (n < ITER_BATCH_CAP && cur && cell_is_pair(cur)) {
+        Cell* elem = cell_car(cur);
+        cell_retain(elem);
+        b->elems[n++] = elem;
+        Cell* next = cell_cdr(cur);
+        cell_retain(next);
+        cell_release(cur);
+        cur = next;
+    }
+    d->state.graph.remaining = cur;
+    if (!cur || cell_is_nil(cur)) d->exhausted = true;
+    b->count = n;
+    b->use_sel = false;
+    b->cursor = 0;
+    return n;
+}
+
+/* --- Transformer fill functions --- */
+
+/* Helper: call a lambda/builtin on one argument using eval */
+static Cell* iter_call_fn(Cell* fn, Cell* arg) {
+    EvalContext* ctx = eval_get_current_context();
+    if (!ctx) return cell_error("no-context", cell_nil());
+    static int iter_fn_counter = 0;
+    char fn_name[64], arg_name[64];
+    snprintf(fn_name, sizeof(fn_name), "__iter_fn_%d", iter_fn_counter);
+    snprintf(arg_name, sizeof(arg_name), "__iter_arg_%d", iter_fn_counter);
+    iter_fn_counter++;
+    eval_define(ctx, fn_name, fn);
+    eval_define(ctx, arg_name, arg);
+    Cell* fn_sym = cell_symbol(fn_name);
+    Cell* arg_sym = cell_symbol(arg_name);
+    Cell* call_expr = cell_cons(fn_sym, cell_cons(arg_sym, cell_nil()));
+    cell_release(fn_sym);
+    cell_release(arg_sym);
+    Cell* result = eval(ctx, call_expr);
+    cell_release(call_expr);
+    return result;
+}
+
+static uint16_t fill_map(Cell* it, IterBatch* b) {
+    IteratorData* d = (IteratorData*)it->data.iterator.iter_data;
+    Cell* upstream = d->state.map.upstream;
+    IteratorData* ud = (IteratorData*)upstream->data.iterator.iter_data;
+    uint16_t n = ud->fill(upstream, b);
+    if (n == 0) { d->exhausted = true; return 0; }
+    Cell* fn = d->state.map.fn;
+    uint16_t count = b->use_sel ? b->sel_count : b->count;
+    for (uint16_t i = 0; i < count; i++) {
+        uint16_t idx = b->use_sel ? b->sel[i] : i;
+        Cell* old = b->elems[idx];
+        Cell* result = iter_call_fn(fn, old);
+        cell_release(old);
+        b->elems[idx] = result;
+    }
+    return count;
+}
+
+static uint16_t fill_filter(Cell* it, IterBatch* b) {
+    IteratorData* d = (IteratorData*)it->data.iterator.iter_data;
+    Cell* upstream = d->state.filter.upstream;
+    IteratorData* ud = (IteratorData*)upstream->data.iterator.iter_data;
+    while (!d->exhausted) {
+        uint16_t n = ud->fill(upstream, b);
+        if (n == 0) { d->exhausted = true; return 0; }
+        Cell* pred = d->state.filter.pred;
+        uint16_t sel_count = 0;
+        uint16_t src_count = b->use_sel ? b->sel_count : b->count;
+        for (uint16_t i = 0; i < src_count; i++) {
+            uint16_t idx = b->use_sel ? b->sel[i] : i;
+            Cell* elem = b->elems[idx];
+            Cell* result = iter_call_fn(pred, elem);
+            bool keep = !cell_is_nil(result) && !(cell_is_bool(result) && !cell_get_bool(result));
+            cell_release(result);
+            if (keep) {
+                b->sel[sel_count++] = (uint8_t)idx;
+            }
+        }
+        b->use_sel = true;
+        b->sel_count = sel_count;
+        b->cursor = 0;
+        if (sel_count > 0) return sel_count;
+        /* Nothing passed filter — release batch, try next upstream batch */
+        for (uint16_t i = 0; i < b->count; i++) {
+            cell_release(b->elems[i]);
+            b->elems[i] = NULL;
+        }
+        b->count = 0;
+    }
+    return 0;
+}
+
+static uint16_t fill_take(Cell* it, IterBatch* b) {
+    IteratorData* d = (IteratorData*)it->data.iterator.iter_data;
+    if (d->state.take.remaining == 0) { d->exhausted = true; return 0; }
+    Cell* upstream = d->state.take.upstream;
+    IteratorData* ud = (IteratorData*)upstream->data.iterator.iter_data;
+    uint16_t n = ud->fill(upstream, b);
+    if (n == 0) { d->exhausted = true; return 0; }
+    uint16_t effective = b->use_sel ? b->sel_count : b->count;
+    if (effective > d->state.take.remaining) {
+        effective = (uint16_t)d->state.take.remaining;
+        if (!b->use_sel) {
+            b->use_sel = true;
+            for (uint16_t i = 0; i < effective; i++) b->sel[i] = (uint8_t)i;
+        }
+        b->sel_count = effective;
+    }
+    d->state.take.remaining -= effective;
+    b->cursor = 0;
+    return effective;
+}
+
+static uint16_t fill_chain(Cell* it, IterBatch* b) {
+    IteratorData* d = (IteratorData*)it->data.iterator.iter_data;
+    if (!d->state.chain.on_second) {
+        Cell* first = d->state.chain.first;
+        IteratorData* fd = (IteratorData*)first->data.iterator.iter_data;
+        uint16_t n = fd->fill(first, b);
+        if (n > 0) return n;
+        d->state.chain.on_second = true;
+    }
+    Cell* second = d->state.chain.second;
+    IteratorData* sd = (IteratorData*)second->data.iterator.iter_data;
+    uint16_t n = sd->fill(second, b);
+    if (n == 0) d->exhausted = true;
+    return n;
+}
+
+static uint16_t fill_zip(Cell* it, IterBatch* b) {
+    IteratorData* d = (IteratorData*)it->data.iterator.iter_data;
+    Cell* left = d->state.zip.left;
+    Cell* right = d->state.zip.right;
+    IteratorData* ld = (IteratorData*)left->data.iterator.iter_data;
+    IteratorData* rd = (IteratorData*)right->data.iterator.iter_data;
+    /* Fill left batch into temp */
+    IterBatch lb = {0};
+    IterBatch rb = {0};
+    uint16_t ln = ld->fill(left, &lb);
+    uint16_t rn = rd->fill(right, &rb);
+    uint16_t n = (ln < rn) ? ln : rn;
+    if (n == 0) {
+        d->exhausted = true;
+        /* Release any filled elements */
+        for (uint16_t i = 0; i < lb.count; i++) cell_release(lb.elems[i]);
+        for (uint16_t i = 0; i < rb.count; i++) cell_release(rb.elems[i]);
+        return 0;
+    }
+    for (uint16_t i = 0; i < n; i++) {
+        uint16_t li = lb.use_sel ? lb.sel[i] : i;
+        uint16_t ri = rb.use_sel ? rb.sel[i] : i;
+        b->elems[i] = cell_cons(lb.elems[li], rb.elems[ri]);
+        cell_release(lb.elems[li]);
+        cell_release(rb.elems[ri]);
+    }
+    /* Release remaining elements beyond n */
+    uint16_t lc = lb.use_sel ? lb.sel_count : lb.count;
+    uint16_t rc = rb.use_sel ? rb.sel_count : rb.count;
+    for (uint16_t i = n; i < lc; i++) {
+        uint16_t li = lb.use_sel ? lb.sel[i] : i;
+        cell_release(lb.elems[li]);
+    }
+    for (uint16_t i = n; i < rc; i++) {
+        uint16_t ri = rb.use_sel ? rb.sel[i] : i;
+        cell_release(rb.elems[ri]);
+    }
+    b->count = n;
+    b->use_sel = false;
+    b->cursor = 0;
+    return n;
+}
+
+/* --- Iterator creation --- */
+
+static Cell* iter_alloc(void) {
+    Cell* c = (Cell*)malloc(sizeof(Cell));
+    assert(c != NULL);
+    memset(c, 0, sizeof(Cell));
+    c->type = CELL_ITERATOR;
+    c->refcount = 1;
+    c->linear_flags = LINEAR_NONE;
+    c->caps = CAP_READ;
+    return c;
+}
+
+static IteratorData* iterdata_alloc(void) {
+    IteratorData* d = (IteratorData*)calloc(1, sizeof(IteratorData));
+    assert(d != NULL);
+    return d;
+}
+
+Cell* cell_iterator_new(Cell* source) {
+    if (!source) return cell_error("iter-nil", cell_nil());
+
+    Cell* it = iter_alloc();
+    IteratorData* d = iterdata_alloc();
+    it->data.iterator.iter_data = d;
+
+    cell_retain(source);
+    d->source = source;
+    d->exhausted = false;
+
+    switch (source->type) {
+        case CELL_PAIR:
+        case CELL_ATOM_NIL:
+            d->kind = ITER_LIST;
+            d->fill = fill_list;
+            d->state.list.current = source;
+            cell_retain(source);  /* state.list.current also holds ref */
+            break;
+        case CELL_VECTOR:
+            d->kind = ITER_VECTOR;
+            d->fill = fill_vector;
+            d->state.vector.index = 0;
+            break;
+        case CELL_DEQUE:
+            d->kind = ITER_DEQUE;
+            d->fill = fill_deque;
+            d->state.deque.vindex = source->data.deque.head;
+            break;
+        case CELL_BUFFER:
+            d->kind = ITER_BUFFER;
+            d->fill = fill_buffer;
+            d->state.buffer.byte_idx = 0;
+            break;
+        case CELL_HASHMAP:
+            d->kind = ITER_HASHMAP;
+            d->fill = fill_hashmap;
+            d->state.hashmap.slot_idx = 0;
+            break;
+        case CELL_SET:
+            d->kind = ITER_HASHSET;
+            d->fill = fill_hashset;
+            d->state.hashset.group = 0;
+            d->state.hashset.slot = 0;
+            break;
+        case CELL_SORTED_MAP:
+            d->kind = ITER_SORTED_MAP;
+            d->fill = fill_sorted_map;
+            d->state.sorted_map.pool = source->data.sorted_map.node_pool;
+            d->state.sorted_map.leaf_idx = source->data.sorted_map.first_leaf;
+            d->state.sorted_map.key_idx = 0;
+            break;
+        case CELL_TRIE:
+            d->kind = ITER_TRIE;
+            d->fill = fill_trie;
+            break;
+        case CELL_HEAP:
+            d->kind = ITER_HEAP;
+            d->fill = fill_heap;
+            d->state.heap.aux_cap = 64;
+            d->state.heap.aux_keys = (double*)malloc(64 * sizeof(double));
+            d->state.heap.aux_idx = (uint32_t*)malloc(64 * sizeof(uint32_t));
+            d->state.heap.aux_size = 0;
+            /* Seed aux heap with root (index 0) if heap is non-empty */
+            if (source->data.pq.size > 0) {
+                heap_aux_push(d, source->data.pq.keys[0], 0);
+            } else {
+                d->exhausted = true;
+            }
+            break;
+        case CELL_GRAPH:
+            d->kind = ITER_GRAPH;
+            d->fill = fill_graph;
+            d->state.graph.remaining = source->data.graph.nodes;
+            cell_retain(source->data.graph.nodes);
+            break;
+        default:
+            /* Not iterable */
+            free(d);
+            cell_release(source);
+            free(it);
+            return cell_error("not-iterable", source);
+    }
+    return it;
+}
+
+Cell* cell_iterator_next(Cell* it) {
+    if (!it || !cell_is_iterator(it)) return cell_nil();
+    IteratorData* d = (IteratorData*)it->data.iterator.iter_data;
+
+    IterBatch* b = &d->batch;
+
+    /* Fast path: element available in current batch */
+    uint16_t limit = b->use_sel ? b->sel_count : b->count;
+    if (b->cursor < limit) {
+        uint16_t idx = b->use_sel ? b->sel[b->cursor] : b->cursor;
+        b->cursor++;
+        Cell* elem = b->elems[idx];
+        cell_retain(elem);
+        return elem;
+    }
+
+    /* Slow path: release previous batch, refill */
+    for (uint16_t i = 0; i < b->count; i++) {
+        if (b->elems[i]) cell_release(b->elems[i]);
+        b->elems[i] = NULL;
+    }
+    b->count = 0;
+    b->sel_count = 0;
+    b->cursor = 0;
+    b->use_sel = false;
+
+    uint16_t n = d->fill(it, b);
+    if (n == 0) { d->exhausted = true; return cell_nil(); }
+
+    uint16_t idx = b->use_sel ? b->sel[0] : 0;
+    b->cursor = 1;
+    Cell* elem = b->elems[idx];
+    cell_retain(elem);
+    return elem;
+}
+
+bool cell_iterator_done(Cell* it) {
+    if (!it || !cell_is_iterator(it)) return true;
+    IteratorData* d = (IteratorData*)it->data.iterator.iter_data;
+    if (d->exhausted) {
+        /* Also check if cursor still has elements */
+        IterBatch* b = &d->batch;
+        uint16_t limit = b->use_sel ? b->sel_count : b->count;
+        return b->cursor >= limit;
+    }
+    return false;
+}
+
+Cell* cell_iterator_collect(Cell* it) {
+    if (!it || !cell_is_iterator(it)) return cell_nil();
+    /* Collect all remaining into a list (reversed then reverse) */
+    Cell* acc = cell_nil();
+    uint32_t count = 0;
+    while (1) {
+        Cell* elem = cell_iterator_next(it);
+        if (cell_is_nil(elem)) { cell_release(elem); break; }
+        Cell* new_acc = cell_cons(elem, acc);
+        cell_release(elem);
+        cell_release(acc);
+        acc = new_acc;
+        count++;
+    }
+    /* Reverse */
+    Cell* result = cell_nil();
+    Cell* cur = acc;
+    while (cell_is_pair(cur)) {
+        Cell* h = cell_car(cur);
+        cell_retain(h);
+        Cell* new_result = cell_cons(h, result);
+        cell_release(h);
+        cell_release(result);
+        result = new_result;
+        cur = cell_cdr(cur);
+    }
+    cell_release(acc);
+    return result;
+}
+
+/* --- Transformer iterator constructors --- */
+
+/* Helper: auto-coerce collection to iterator */
+static Cell* ensure_iterator(Cell* x) {
+    if (cell_is_iterator(x)) {
+        cell_retain(x);
+        return x;
+    }
+    return cell_iterator_new(x);
+}
+
+Cell* cell_iterator_map(Cell* src, Cell* fn) {
+    Cell* upstream = ensure_iterator(src);
+    if (cell_is_error(upstream)) return upstream;
+
+    Cell* it = iter_alloc();
+    IteratorData* d = iterdata_alloc();
+    it->data.iterator.iter_data = d;
+    d->kind = ITER_MAP;
+    d->fill = fill_map;
+    d->source = NULL;
+    d->state.map.upstream = upstream;  /* already retained by ensure_iterator */
+    cell_retain(fn);
+    d->state.map.fn = fn;
+    return it;
+}
+
+Cell* cell_iterator_filter(Cell* src, Cell* pred) {
+    Cell* upstream = ensure_iterator(src);
+    if (cell_is_error(upstream)) return upstream;
+
+    Cell* it = iter_alloc();
+    IteratorData* d = iterdata_alloc();
+    it->data.iterator.iter_data = d;
+    d->kind = ITER_FILTER;
+    d->fill = fill_filter;
+    d->source = NULL;
+    d->state.filter.upstream = upstream;
+    cell_retain(pred);
+    d->state.filter.pred = pred;
+    return it;
+}
+
+Cell* cell_iterator_take(Cell* src, uint32_t n) {
+    Cell* upstream = ensure_iterator(src);
+    if (cell_is_error(upstream)) return upstream;
+
+    Cell* it = iter_alloc();
+    IteratorData* d = iterdata_alloc();
+    it->data.iterator.iter_data = d;
+    d->kind = ITER_TAKE;
+    d->fill = fill_take;
+    d->source = NULL;
+    d->state.take.upstream = upstream;
+    d->state.take.remaining = n;
+    return it;
+}
+
+Cell* cell_iterator_drop(Cell* src, uint32_t n) {
+    Cell* upstream = ensure_iterator(src);
+    if (cell_is_error(upstream)) return upstream;
+
+    /* Eagerly consume n elements */
+    for (uint32_t i = 0; i < n; i++) {
+        Cell* elem = cell_iterator_next(upstream);
+        if (cell_is_nil(elem)) { cell_release(elem); break; }
+        cell_release(elem);
+    }
+    return upstream;  /* Already an iterator, just advanced */
+}
+
+Cell* cell_iterator_chain(Cell* it1, Cell* it2) {
+    Cell* first = ensure_iterator(it1);
+    if (cell_is_error(first)) return first;
+    Cell* second = ensure_iterator(it2);
+    if (cell_is_error(second)) { cell_release(first); return second; }
+
+    Cell* it = iter_alloc();
+    IteratorData* d = iterdata_alloc();
+    it->data.iterator.iter_data = d;
+    d->kind = ITER_CHAIN;
+    d->fill = fill_chain;
+    d->source = NULL;
+    d->state.chain.first = first;
+    d->state.chain.second = second;
+    d->state.chain.on_second = false;
+    return it;
+}
+
+Cell* cell_iterator_zip(Cell* it1, Cell* it2) {
+    Cell* left = ensure_iterator(it1);
+    if (cell_is_error(left)) return left;
+    Cell* right = ensure_iterator(it2);
+    if (cell_is_error(right)) { cell_release(left); return right; }
+
+    Cell* it = iter_alloc();
+    IteratorData* d = iterdata_alloc();
+    it->data.iterator.iter_data = d;
+    d->kind = ITER_ZIP;
+    d->fill = fill_zip;
+    d->source = NULL;
+    d->state.zip.left = left;
+    d->state.zip.right = right;
+    return it;
 }

@@ -1,0 +1,174 @@
+; Test: Iterator (⊣) — Morsel-Driven Batch Iteration
+; Day 118
+
+; 1. iter-list-basic — create from list, next returns elements in order
+(≔ it1 (⊣ (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅)))))
+(⊨ (⌜ :iter-list-first) #1 (⊣→ it1))
+(⊨ (⌜ :iter-list-second) #2 (⊣→ it1))
+(⊨ (⌜ :iter-list-third) #3 (⊣→ it1))
+
+; 2. iter-list-exhaust — next after exhaustion returns ∅
+(⊨ (⌜ :iter-list-exhaust) ∅ (⊣→ it1))
+
+; 3. iter-done-predicate — ⊣∅? true after drain, false before
+(≔ it2 (⊣ (⟨⟩ #1 ∅)))
+(⊨ (⌜ :iter-done-false) #f (⊣∅? it2))
+(⊣→ it2)
+(⊨ (⌜ :iter-done-true) #t (⊣∅? it2))
+
+; 4. iter-collect — ⊣⊕ collects remaining to list
+(≔ it3 (⊣ (⟨⟩ #10 (⟨⟩ #20 (⟨⟩ #30 ∅)))))
+(⊣→ it3)
+(≔ rest (⊣⊕ it3))
+(⊨ (⌜ :iter-collect-first) #20 (◁ rest))
+(⊨ (⌜ :iter-collect-second) #30 (◁ (▷ rest)))
+
+; 5. iter-count — ⊣# returns correct count
+(⊨ (⌜ :iter-count) #3 (⊣# (⊣ (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅))))))
+
+; 6. iter-vector — iterate vector, correct order
+(≔ v (⟦⟧))
+(⟦⊕ v #100)
+(⟦⊕ v #200)
+(⟦⊕ v #300)
+(≔ vit (⊣ v))
+(⊨ (⌜ :iter-vec-first) #100 (⊣→ vit))
+(⊨ (⌜ :iter-vec-second) #200 (⊣→ vit))
+(⊨ (⌜ :iter-vec-third) #300 (⊣→ vit))
+(⊨ (⌜ :iter-vec-done) ∅ (⊣→ vit))
+
+; 7. iter-deque — iterate deque front→back
+(≔ dq (⊟))
+(⊟▷ dq #1)
+(⊟▷ dq #2)
+(⊟▷ dq #3)
+(≔ dit (⊣ dq))
+(⊨ (⌜ :iter-deque-first) #1 (⊣→ dit))
+(⊨ (⌜ :iter-deque-second) #2 (⊣→ dit))
+(⊨ (⌜ :iter-deque-third) #3 (⊣→ dit))
+
+; 8. iter-buffer — iterate buffer as byte numbers
+(≔ buf (◈))
+(◈⊕ buf #65)
+(◈⊕ buf #66)
+(◈⊕ buf #67)
+(≔ bit (⊣ buf))
+(⊨ (⌜ :iter-buf-first) #65 (⊣→ bit))
+(⊨ (⌜ :iter-buf-second) #66 (⊣→ bit))
+(⊨ (⌜ :iter-buf-third) #67 (⊣→ bit))
+
+; 9. iter-hashmap — iterate HashMap yields ⟨k v⟩ pairs
+(≔ hm (⊞))
+(⊞← hm :a #1)
+(⊞← hm :b #2)
+(≔ hmit (⊣ hm))
+(≔ e1 (⊣→ hmit))
+(≔ e2 (⊣→ hmit))
+(⊨ (⌜ :iter-hmap-count) #2 (⊣# (⊣ hm)))
+
+; 10. iter-hashset — iterate HashSet yields elements
+(≔ hs (⊍))
+(⊍⊕ hs #10)
+(⊍⊕ hs #20)
+(⊍⊕ hs #30)
+(⊨ (⌜ :iter-hset-count) #3 (⊣# (⊣ hs)))
+
+; 11. iter-sorted-map — iterate SortedMap in key order
+(≔ sm (⋔))
+(⋔← sm #3 :c)
+(⋔← sm #1 :a)
+(⋔← sm #2 :b)
+(≔ smit (⊣ sm))
+(≔ sme1 (⊣→ smit))
+(⊨ (⌜ :iter-smap-first-key) #1 (◁ sme1))
+(⊨ (⌜ :iter-smap-first-val) :a (▷ sme1))
+(≔ sme2 (⊣→ smit))
+(⊨ (⌜ :iter-smap-second-key) #2 (◁ sme2))
+
+; 12. iter-trie — iterate Trie yields ⟨key value⟩ pairs
+(≔ tr (⊮))
+(⊮← tr :cat #1)
+(⊮← tr :dog #2)
+(⊨ (⌜ :iter-trie-count) #2 (⊣# (⊣ tr)))
+
+; 13. iter-heap — iterate Heap in priority order
+(≔ hp (△))
+(△⊕ hp #30 :c)
+(△⊕ hp #10 :a)
+(△⊕ hp #20 :b)
+(≔ hpit (⊣ hp))
+(≔ hp1 (⊣→ hpit))
+(⊨ (⌜ :iter-heap-first-pri) #10 (◁ hp1))
+(⊨ (⌜ :iter-heap-first-val) :a (▷ hp1))
+(≔ hp2 (⊣→ hpit))
+(⊨ (⌜ :iter-heap-second-pri) #20 (◁ hp2))
+
+; 14. iter-map-transform — ⊣↦ applies fn lazily, correct results
+(≔ doubled (⊣↦ (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅))) (λ (x) (⊗ x #2))))
+(⊨ (⌜ :iter-map-first) #2 (⊣→ doubled))
+(⊨ (⌜ :iter-map-second) #4 (⊣→ doubled))
+(⊨ (⌜ :iter-map-third) #6 (⊣→ doubled))
+
+; 15. iter-filter-select — ⊣⊲ filters correctly
+(≔ evens (⊣⊲ (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 (⟨⟩ #4 (⟨⟩ #5 ∅))))) (λ (x) (≡ (% x #2) #0))))
+(⊨ (⌜ :iter-filter-first) #2 (⊣→ evens))
+(⊨ (⌜ :iter-filter-second) #4 (⊣→ evens))
+(⊨ (⌜ :iter-filter-done) ∅ (⊣→ evens))
+
+; 16. iter-take-limit — ⊣↑ stops after n elements
+(≔ taken (⊣↑ (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 (⟨⟩ #4 (⟨⟩ #5 ∅))))) #2))
+(⊨ (⌜ :iter-take-first) #1 (⊣→ taken))
+(⊨ (⌜ :iter-take-second) #2 (⊣→ taken))
+(⊨ (⌜ :iter-take-done) ∅ (⊣→ taken))
+
+; 17. iter-drop-skip — ⊣↓ skips first n
+(≔ dropped (⊣↓ (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 (⟨⟩ #4 ∅)))) #2))
+(⊨ (⌜ :iter-drop-first) #3 (⊣→ dropped))
+(⊨ (⌜ :iter-drop-second) #4 (⊣→ dropped))
+
+; 18. iter-chain-concat — ⊣⊕⊕ drains first then second
+(≔ chained (⊣⊕⊕ (⟨⟩ #1 (⟨⟩ #2 ∅)) (⟨⟩ #3 (⟨⟩ #4 ∅))))
+(⊨ (⌜ :iter-chain-1) #1 (⊣→ chained))
+(⊨ (⌜ :iter-chain-2) #2 (⊣→ chained))
+(⊨ (⌜ :iter-chain-3) #3 (⊣→ chained))
+(⊨ (⌜ :iter-chain-4) #4 (⊣→ chained))
+
+; 19. iter-zip-pairs — ⊣⊗ yields ⟨a b⟩ pairs, stops at shorter
+(≔ zipped (⊣⊗ (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅))) (⟨⟩ :a (⟨⟩ :b ∅))))
+(≔ z1 (⊣→ zipped))
+(⊨ (⌜ :iter-zip-1a) #1 (◁ z1))
+(⊨ (⌜ :iter-zip-1b) :a (▷ z1))
+(≔ z2 (⊣→ zipped))
+(⊨ (⌜ :iter-zip-2a) #2 (◁ z2))
+(⊨ (⌜ :iter-zip-2b) :b (▷ z2))
+(⊨ (⌜ :iter-zip-done) ∅ (⊣→ zipped))
+
+; 20. iter-pipeline-fused — chained map→filter→take
+(≔ pipeline (⊣↑ (⊣⊲ (⊣↦ (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 (⟨⟩ #4 (⟨⟩ #5 ∅)))))
+                          (λ (x) (⊗ x #10)))
+                    (λ (x) (> x #20)))
+              #2))
+(⊨ (⌜ :iter-pipeline-1) #30 (⊣→ pipeline))
+(⊨ (⌜ :iter-pipeline-2) #40 (⊣→ pipeline))
+(⊨ (⌜ :iter-pipeline-done) ∅ (⊣→ pipeline))
+
+; 21. iter-reduce-fold — ⊣Σ folds correctly
+(⊨ (⌜ :iter-reduce-sum) #15 (⊣Σ (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 (⟨⟩ #4 (⟨⟩ #5 ∅)))) #0 (λ (acc x) (⊕ acc x))))
+
+; 22. iter-any-short-circuit — ⊣∃ stops early on match
+(⊨ (⌜ :iter-any-found) #t (⊣∃ (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅))) (λ (x) (≡ x #2))))
+(⊨ (⌜ :iter-any-missing) #f (⊣∃ (⟨⟩ #1 (⟨⟩ #2 ∅)) (λ (x) (≡ x #99))))
+
+; 23. iter-all-short-circuit — ⊣∀ stops early on mismatch
+(⊨ (⌜ :iter-all-yes) #t (⊣∀ (⟨⟩ #2 (⟨⟩ #4 (⟨⟩ #6 ∅))) (λ (x) (≡ (% x #2) #0))))
+(⊨ (⌜ :iter-all-no) #f (⊣∀ (⟨⟩ #2 (⟨⟩ #3 (⟨⟩ #4 ∅))) (λ (x) (≡ (% x #2) #0))))
+
+; 24. iter-find-first — ⊣⊙ returns first match
+(⊨ (⌜ :iter-find-yes) #3 (⊣⊙ (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 (⟨⟩ #4 ∅)))) (λ (x) (> x #2))))
+(⊨ (⌜ :iter-find-no) ∅ (⊣⊙ (⟨⟩ #1 (⟨⟩ #2 ∅)) (λ (x) (> x #99))))
+
+; 25. iter-auto-coerce — transformers accept raw collections
+(⊨ (⌜ :iter-type-yes) #t (⊣? (⊣ (⟨⟩ #1 ∅))))
+(⊨ (⌜ :iter-type-no) #f (⊣? #42))
+(⊨ (⌜ :iter-auto-map) #t (⊣? (⊣↦ (⟨⟩ #1 ∅) (λ (x) x))))
+(⊨ (⌜ :iter-auto-filter) #t (⊣? (⊣⊲ (⟨⟩ #1 ∅) (λ (x) #t))))

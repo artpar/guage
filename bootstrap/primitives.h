@@ -244,6 +244,24 @@ Cell* prim_trie_entries(Cell* args);
 Cell* prim_trie_keys(Cell* args);
 Cell* prim_trie_vals(Cell* args);
 
+/* Iterator primitives (Day 118 — morsel-driven batch iteration) */
+Cell* prim_iter(Cell* args);             /* ⊣ - create iterator */
+Cell* prim_iter_next(Cell* args);        /* ⊣→ - next element */
+Cell* prim_iter_is(Cell* args);          /* ⊣? - type predicate */
+Cell* prim_iter_done(Cell* args);        /* ⊣∅? - exhausted check */
+Cell* prim_iter_collect(Cell* args);     /* ⊣⊕ - collect to list */
+Cell* prim_iter_count(Cell* args);       /* ⊣# - count remaining */
+Cell* prim_iter_map(Cell* args);         /* ⊣↦ - lazy map */
+Cell* prim_iter_filter(Cell* args);      /* ⊣⊲ - lazy filter */
+Cell* prim_iter_take(Cell* args);        /* ⊣↑ - take n */
+Cell* prim_iter_drop(Cell* args);        /* ⊣↓ - drop n */
+Cell* prim_iter_chain(Cell* args);       /* ⊣⊕⊕ - concatenate */
+Cell* prim_iter_zip(Cell* args);         /* ⊣⊗ - zip */
+Cell* prim_iter_reduce(Cell* args);      /* ⊣Σ - fold/reduce */
+Cell* prim_iter_any(Cell* args);         /* ⊣∃ - any match */
+Cell* prim_iter_all(Cell* args);         /* ⊣∀ - all match */
+Cell* prim_iter_find(Cell* args);        /* ⊣⊙ - find first */
+
 /* Primitive documentation structure */
 typedef struct {
     const char* description;     /* What this primitive does */
