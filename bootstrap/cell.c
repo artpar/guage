@@ -11,6 +11,7 @@ static Cell* cell_alloc(CellType type) {
 
     c->type = type;
     c->refcount = 1;
+    c->weak_refcount = 0;
     c->linear_flags = LINEAR_NONE;
     c->caps = CAP_READ | CAP_WRITE | CAP_SHARE;  /* Default capabilities */
     c->marked = false;
@@ -230,9 +231,15 @@ void cell_release(Cell* c) {
             case CELL_BOX:
                 cell_release(c->data.box.value);
                 break;
+            case CELL_WEAK_REF:
+                cell_weak_release(c->data.weak_ref.target);
+                break;
             default:
                 break;
         }
+
+        /* Zombie: if weak refs still point here, keep shell alive */
+        if (c->weak_refcount > 0) return;
 
         free(c);
     }
@@ -356,6 +363,36 @@ Cell* cell_box_set(Cell* c, Cell* new_value) {
     c->data.box.value = new_value;
     /* Return old WITHOUT releasing — caller inherits the box's old reference */
     return old;
+}
+
+/* Weak reference operations */
+Cell* cell_weak_ref(Cell* target) {
+    Cell* c = cell_alloc(CELL_WEAK_REF);
+    c->data.weak_ref.target = target;
+    cell_weak_retain(target);
+    return c;
+}
+
+bool cell_is_weak_ref(Cell* c) {
+    return c && c->type == CELL_WEAK_REF;
+}
+
+Cell* cell_get_weak_target(Cell* c) {
+    assert(c->type == CELL_WEAK_REF);
+    return c->data.weak_ref.target;
+}
+
+void cell_weak_retain(Cell* c) {
+    if (c) c->weak_refcount++;
+}
+
+void cell_weak_release(Cell* c) {
+    if (!c) return;
+    assert(c->weak_refcount > 0);
+    c->weak_refcount--;
+    if (c->weak_refcount == 0 && c->refcount == 0) {
+        free(c);
+    }
 }
 
 /* Error accessors */
@@ -586,6 +623,7 @@ bool cell_equal(Cell* a, Cell* b) {
         case CELL_CHANNEL:
             return a->data.channel.channel_id == b->data.channel.channel_id;
         case CELL_BOX:
+        case CELL_WEAK_REF:
             /* Identity only — handled by a == b at top */
             return false;
         case CELL_LAMBDA:
@@ -697,6 +735,13 @@ void cell_print(Cell* c) {
             printf("□[");
             cell_print(c->data.box.value);
             printf("]");
+            break;
+        case CELL_WEAK_REF:
+            if (c->data.weak_ref.target && c->data.weak_ref.target->refcount > 0) {
+                printf("◇[alive]");
+            } else {
+                printf("◇[dead]");
+            }
             break;
     }
 }

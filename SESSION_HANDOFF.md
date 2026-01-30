@@ -1,11 +1,43 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-01-30 (Day 107 COMPLETE)
+Updated: 2026-01-30 (Day 108 COMPLETE)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 107 - Mutable References + Sequencing (2026-01-30)
+# Session Handoff: Day 108 - Weak References (2026-01-30)
+
+## Day 108 Progress - Weak References (`◇`, `◇→`, `◇?`, `◇⊙`)
+
+**RESULT:** 106/106 test files passing (100%), 10 new tests (Weak References)
+
+### New Feature: Weak References (◇) — Intrusive Dual-Count Zombie Approach
+
+Weak references allow observing a cell without preventing its collection. Uses Swift pre-4 style zombie approach: when strong refcount→0 but weak_refcount>0, children are released but the cell shell persists for O(1) liveness checks.
+
+**New Cell Type:** `CELL_WEAK_REF` — printed as `◇[alive]` or `◇[dead]`
+
+**New Primitives (4):**
+- `◇` (weak-create) — Create weak reference: `(◇ target)` → `◇[alive]`
+- `◇→` (weak-deref) — Deref, returns ∅ if dead: `(◇→ w)` → target or `∅`
+- `◇?` (weak-alive) — Check liveness without retaining: `(◇? w)` → `#t`/`#f`
+- `◇⊙` (weak-is) — Type predicate: `(◇⊙ w)` → `#t`
+
+**Semantics:**
+- `◇→` retains the returned target (caller gets a strong ref, preventing collection during use)
+- `◇?` is pure observation (no retain, zero side effects)
+- Zombie memory: only cell shell (~100 bytes) persists; children released immediately on refcount→0
+- `uint16_t weak_refcount` added to Cell struct (2 bytes overhead per cell, zero when unused)
+- Single branch in `cell_release`: if `weak_refcount > 0` after releasing children, don't free shell
+
+**Files Modified (4) + 1 New:**
+- `bootstrap/cell.h` — `CELL_WEAK_REF` in enum, `weak_refcount` field, `weak_ref` struct in union, function declarations
+- `bootstrap/cell.c` — Constructor, weak_retain/release, zombie logic in cell_release, print, equality
+- `bootstrap/primitives.h` — 4 weak ref primitive declarations
+- `bootstrap/primitives.c` — 4 primitive functions + table entries + typeof updates (prim_type_of + prim_typeof)
+- `bootstrap/tests/test_weak.test` (NEW) — 10 tests
+
+---
 
 ## Day 107 Progress - Mutable References (`□`, `□→`, `□←`, `□?`, `□⊕`, `□⇌`) + Sequencing (`⪢`)
 

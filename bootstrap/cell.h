@@ -27,7 +27,8 @@ typedef enum {
     CELL_GRAPH,          /* ⊝ - graph structure (CFG/DFG/etc) */
     CELL_ACTOR,          /* ⟳ - actor (fiber + mailbox) */
     CELL_CHANNEL,        /* ⟿ - channel (typed buffer) */
-    CELL_BOX             /* □ - mutable reference */
+    CELL_BOX,            /* □ - mutable reference */
+    CELL_WEAK_REF        /* ◇ - weak reference */
 } CellType;
 
 /* Linear Type Flags */
@@ -83,6 +84,9 @@ struct Cell {
     /* Reference counting for GC */
     uint32_t refcount;
 
+    /* Weak reference counting (zombie support) */
+    uint16_t weak_refcount;
+
     /* Linear type tracking */
     LinearFlags linear_flags;
 
@@ -133,6 +137,9 @@ struct Cell {
         struct {
             Cell* value;          /* Mutable box contents */
         } box;
+        struct {
+            Cell* target;         /* Weak reference target (direct pointer) */
+        } weak_ref;
     } data;
 };
 
@@ -190,6 +197,13 @@ int  cell_get_channel_id(Cell* c);
 bool cell_is_box(Cell* c);
 Cell* cell_box_get(Cell* c);
 Cell* cell_box_set(Cell* c, Cell* new_value);
+
+/* Weak reference operations */
+Cell* cell_weak_ref(Cell* target);
+bool cell_is_weak_ref(Cell* c);
+Cell* cell_get_weak_target(Cell* c);
+void cell_weak_retain(Cell* c);
+void cell_weak_release(Cell* c);
 
 /* Error accessors */
 const char* cell_error_message(Cell* c);

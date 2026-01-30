@@ -1315,6 +1315,16 @@ All I/O operations return errors on failure:
 
 Mutable references (boxes) are first-class mutable containers. `□←` returns the old value (useful for CAS-like patterns). `□⊕` is atomic get-and-update: applies function, stores result, returns old value. Equality is identity-only (two boxes are never `≡` unless same object). Print format: `□[value]`. Cell type: `CELL_BOX`.
 
+### Weak References (4 primitives) ✅
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `◇` | `α → ◇α` | Create weak reference | ✅ DONE (Day 108) |
+| `◇→` | `◇α → α\|∅` | Dereference weak ref (returns ∅ if dead) | ✅ DONE (Day 108) |
+| `◇?` | `◇α → 𝔹` | Check if weak ref target is alive | ✅ DONE (Day 108) |
+| `◇⊙` | `α → 𝔹` | Test if value is weak-ref | ✅ DONE (Day 108) |
+
+Weak references use an intrusive dual-count zombie approach (Swift pre-4 style). When a cell's strong refcount hits 0 but weak_refcount > 0, children are released but the cell shell persists as a "zombie" for O(1) liveness checks. `◇→` retains the returned target (caller gets a strong ref). `◇?` is pure observation (no retain). Cell type: `CELL_WEAK_REF`. Print format: `◇[alive]` or `◇[dead]`.
+
 ### Sequencing (1 special form) ✅
 | Symbol | Type | Meaning | Status |
 |--------|------|---------|--------|

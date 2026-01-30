@@ -1,0 +1,49 @@
+; Test: Weak References (◇)
+; Day 108 - Intrusive dual-count zombie weak references
+
+; ============ Type Predicate Positive ============
+
+(≔ t1 (□ #42))
+(≔ w1 (◇ t1))
+(⊨ (⌜ :weak-is-weak) #t (◇⊙ w1))
+
+; ============ Type Predicate Negative ============
+
+(⊨ (⌜ :weak-not-weak) #f (◇⊙ #7))
+
+; ============ Deref Returns Target When Alive ============
+
+(⊨ (⌜ :weak-deref-alive) #t (□? (◇→ w1)))
+
+; ============ Alive Check Returns True ============
+
+(⊨ (⌜ :weak-alive-true) #t (◇? w1))
+
+; ============ Deref Through Box ============
+
+(⊨ (⌜ :weak-deref-value) #42 (□→ (◇→ w1)))
+
+; ============ Weak Ref to Pair ============
+
+(≔ t2 (⟨⟩ #1 #2))
+(≔ w2 (◇ t2))
+(⊨ (⌜ :weak-ref-pair) #1 (◁ (◇→ w2)))
+
+; ============ Weak Ref to Number ============
+
+(≔ t3 #99)
+(≔ w3 (◇ t3))
+(⊨ (⌜ :weak-ref-number) #99 (◇→ w3))
+
+; ============ Weak Ref to Nil ============
+
+(≔ w4 (◇ ∅))
+(⊨ (⌜ :weak-ref-nil) #t (◇⊙ w4))
+
+; ============ Error: Deref Non-Weak ============
+
+(⊨ (⌜ :weak-deref-error) #t (⚠? (◇→ #5)))
+
+; ============ Error: Alive Check on Non-Weak ============
+
+(⊨ (⌜ :weak-alive-error) #t (⚠? (◇? #5)))

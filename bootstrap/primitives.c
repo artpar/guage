@@ -901,6 +901,9 @@ Cell* prim_typeof(Cell* args) {
     if (cell_is_box(val)) {
         return cell_symbol(":box");
     }
+    if (cell_is_weak_ref(val)) {
+        return cell_symbol(":weak-ref");
+    }
 
     return cell_symbol(":unknown");
 }
@@ -1698,6 +1701,7 @@ Cell* prim_type_of(Cell* args) {
     else if (cell_is_actor(value)) type_name = "actor";
     else if (cell_is_channel(value)) type_name = "channel";
     else if (cell_is_box(value)) type_name = "box";
+    else if (cell_is_weak_ref(value)) type_name = "weak-ref";
 
     return cell_symbol(type_name);
 }
@@ -8175,6 +8179,42 @@ Cell* prim_box_swap(Cell* args) {
     return cell_bool(true);
 }
 
+/* ◇ - create weak reference */
+Cell* prim_weak_create(Cell* args) {
+    Cell* target = arg1(args);
+    return cell_weak_ref(target);
+}
+
+/* ◇→ - dereference weak ref */
+Cell* prim_weak_deref(Cell* args) {
+    Cell* wr = arg1(args);
+    if (!cell_is_weak_ref(wr)) {
+        return cell_error("◇→ requires weak-ref", wr);
+    }
+    Cell* target = wr->data.weak_ref.target;
+    if (target && target->refcount > 0) {
+        cell_retain(target);
+        return target;
+    }
+    return cell_nil();
+}
+
+/* ◇? - check weak ref alive */
+Cell* prim_weak_alive(Cell* args) {
+    Cell* wr = arg1(args);
+    if (!cell_is_weak_ref(wr)) {
+        return cell_error("◇? requires weak-ref", wr);
+    }
+    Cell* target = wr->data.weak_ref.target;
+    return cell_bool(target && target->refcount > 0);
+}
+
+/* ◇⊙ - type predicate for weak ref */
+Cell* prim_weak_is(Cell* args) {
+    Cell* val = arg1(args);
+    return cell_bool(cell_is_weak_ref(val));
+}
+
 /* Primitive table - PURE SYMBOLS ONLY
  * EVERY primitive MUST have documentation */
 static Primitive primitives[] = {
@@ -8495,6 +8535,12 @@ static Primitive primitives[] = {
     {"□?", prim_box_is, 1, {"Test if value is box", "α → 𝔹"}},
     {"□⊕", prim_box_update, 2, {"Update box with function, return old", "□α → (α→β) → α"}},
     {"□⇌", prim_box_swap, 2, {"Swap two boxes' contents", "□α → □β → 𝔹"}},
+
+    /* Weak References (Day 108) */
+    {"◇", prim_weak_create, 1, {"Create weak reference", "α → ◇α"}},
+    {"◇→", prim_weak_deref, 1, {"Dereference weak ref", "◇α → α|∅"}},
+    {"◇?", prim_weak_alive, 1, {"Check weak ref alive", "◇α → 𝔹"}},
+    {"◇⊙", prim_weak_is, 1, {"Test if weak-ref", "α → 𝔹"}},
 
     {NULL, NULL, 0, {NULL, NULL}}
 };

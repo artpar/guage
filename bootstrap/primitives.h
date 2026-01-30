@@ -128,6 +128,12 @@ Cell* prim_module_import(Cell* args);       /* ⋖ - selective import */
 Cell* prim_module_info(Cell* args);         /* ⌂⊚ - module information */
 Cell* prim_module_dependencies(Cell* args); /* ⌂⊚→ - module dependencies */
 
+/* Weak reference primitives */
+Cell* prim_weak_create(Cell* args);    /* ◇ - create weak reference */
+Cell* prim_weak_deref(Cell* args);     /* ◇→ - deref weak ref */
+Cell* prim_weak_alive(Cell* args);     /* ◇? - check if alive */
+Cell* prim_weak_is(Cell* args);        /* ◇⊙ - type predicate */
+
 /* Primitive documentation structure */
 typedef struct {
     const char* description;     /* What this primitive does */
