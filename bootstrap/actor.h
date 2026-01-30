@@ -70,13 +70,22 @@ typedef enum {
     SUP_REST_FOR_ONE
 } SupervisorStrategy;
 
+/* Per-child restart types (for DynamicSupervisor) */
+typedef enum {
+    CHILD_PERMANENT,   /* Always restart on exit */
+    CHILD_TRANSIENT,   /* Restart only on error exit */
+    CHILD_TEMPORARY    /* Never restart */
+} ChildRestartType;
+
 typedef struct Supervisor {
     int id;
     SupervisorStrategy strategy;
     Cell* child_specs[MAX_SUP_CHILDREN];   /* Behavior functions */
     int child_ids[MAX_SUP_CHILDREN];       /* Current child actor IDs */
+    ChildRestartType child_restart[MAX_SUP_CHILDREN]; /* Per-child restart type */
     int child_count;
     int restart_count;
+    bool is_dynamic;                       /* true for DynamicSupervisor */
     EvalContext* ctx;                       /* For spawning */
 } Supervisor;
 

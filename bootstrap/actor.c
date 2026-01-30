@@ -205,6 +205,9 @@ void actor_exit_signal(Actor* target, Actor* sender, Cell* reason) {
     }
 }
 
+/* Forward declaration — defined after supervisor_handle_exit */
+static void dynsup_remove_child_at(Supervisor* sup, int index);
+
 /* Called when an actor exits. Notifies links and monitors. */
 void actor_notify_exit(Actor* exiting, Cell* reason) {
     if (!exiting) return;
@@ -219,8 +222,25 @@ void actor_notify_exit(Actor* exiting, Cell* reason) {
 
     /* Check if this actor belongs to a supervisor */
     Supervisor* sup = supervisor_find_for_child(exiting->id);
-    if (sup && is_error) {
-        supervisor_handle_exit(sup, exiting->id, reason);
+    if (sup) {
+        if (is_error) {
+            /* Error exit — always notify supervisor */
+            supervisor_handle_exit(sup, exiting->id, reason);
+        } else if (sup->is_dynamic) {
+            /* Normal exit on dynamic supervisor — remove temporary/transient children */
+            int idx = -1;
+            for (int i = 0; i < sup->child_count; i++) {
+                if (sup->child_ids[i] == exiting->id) { idx = i; break; }
+            }
+            if (idx >= 0) {
+                ChildRestartType rt = sup->child_restart[idx];
+                if (rt == CHILD_TEMPORARY || rt == CHILD_TRANSIENT) {
+                    /* Both temporary and transient are removed on normal exit */
+                    dynsup_remove_child_at(sup, idx);
+                }
+                /* CHILD_PERMANENT on normal exit: not restarted (normal is fine) */
+            }
+        }
     }
 
     /* Notify monitors: send ⟨:DOWN id reason⟩ message */
@@ -278,6 +298,7 @@ Supervisor* supervisor_create(EvalContext* ctx, SupervisorStrategy strategy, Cel
     sup->ctx = ctx;
     sup->restart_count = 0;
     sup->child_count = 0;
+    sup->is_dynamic = false;
 
     /* Parse child specs from list */
     Cell* cur = specs;
@@ -286,6 +307,7 @@ Supervisor* supervisor_create(EvalContext* ctx, SupervisorStrategy strategy, Cel
         cell_retain(spec);
         sup->child_specs[sup->child_count] = spec;
         sup->child_ids[sup->child_count] = 0; /* not yet spawned */
+        sup->child_restart[sup->child_count] = CHILD_PERMANENT; /* default */
         sup->child_count++;
         cur = cell_cdr(cur);
     }
@@ -331,6 +353,21 @@ int supervisor_spawn_child(Supervisor* sup, int index) {
     return actor->id;
 }
 
+/* Remove a dynamic child at given index (shift arrays down) */
+static void dynsup_remove_child_at(Supervisor* sup, int index) {
+    if (sup->child_specs[index]) {
+        cell_release(sup->child_specs[index]);
+    }
+    for (int i = index; i < sup->child_count - 1; i++) {
+        sup->child_specs[i] = sup->child_specs[i + 1];
+        sup->child_ids[i] = sup->child_ids[i + 1];
+        sup->child_restart[i] = sup->child_restart[i + 1];
+    }
+    sup->child_count--;
+    sup->child_specs[sup->child_count] = NULL;
+    sup->child_ids[sup->child_count] = 0;
+}
+
 /* Handle a child's exit — apply restart strategy */
 void supervisor_handle_exit(Supervisor* sup, int dead_id, Cell* reason) {
     if (!sup) return;
@@ -345,6 +382,19 @@ void supervisor_handle_exit(Supervisor* sup, int dead_id, Cell* reason) {
         }
     }
     if (dead_index < 0) return;
+
+    /* For dynamic supervisors, check per-child restart type */
+    if (sup->is_dynamic) {
+        ChildRestartType rt = sup->child_restart[dead_index];
+        if (rt == CHILD_TEMPORARY) {
+            /* Never restart — remove child */
+            dynsup_remove_child_at(sup, dead_index);
+            return;
+        }
+        /* CHILD_PERMANENT always restarts (handled below as one-for-one) */
+        /* CHILD_TRANSIENT restarts only on error — caller already checked is_error,
+         * but we also handle normal exit for transient in actor_notify_exit */
+    }
 
     sup->restart_count++;
 

@@ -2510,6 +2510,181 @@ Cell* prim_sup_remove_child(Cell* args) {
     return cell_bool(true);
 }
 
+/* ============ DynamicSupervisor Primitives ============ */
+
+/* ⟳⊛⊹ - create empty dynamic supervisor
+ * (⟳⊛⊹) → ℕ */
+Cell* prim_dynsup_start(Cell* args) {
+    (void)args;
+    EvalContext* ctx = eval_get_current_context();
+    Supervisor* sup = supervisor_create(ctx, SUP_ONE_FOR_ONE, cell_nil());
+    if (!sup) {
+        return cell_error("dynsup-max-exceeded", cell_nil());
+    }
+    sup->is_dynamic = true;
+    return cell_number(sup->id);
+}
+
+/* ⟳⊛⊹⊕ - start child with restart type
+ * (⟳⊛⊹⊕ sup-id behavior :restart-type) → actor-id */
+Cell* prim_dynsup_start_child(Cell* args) {
+    Cell* sup_id_cell = arg1(args);
+    Cell* behavior = arg2(args);
+    Cell* restart_sym = arg3(args);
+
+    if (!cell_is_number(sup_id_cell)) {
+        return cell_error("dynsup-not-number", sup_id_cell);
+    }
+    int sup_id = (int)cell_get_number(sup_id_cell);
+    Supervisor* sup = supervisor_lookup(sup_id);
+    if (!sup || !sup->is_dynamic) {
+        return cell_error("dynsup-not-found", sup_id_cell);
+    }
+    if (sup->child_count >= MAX_SUP_CHILDREN) {
+        return cell_error("dynsup-max-children", cell_number(MAX_SUP_CHILDREN));
+    }
+
+    /* Parse restart type */
+    ChildRestartType rt = CHILD_PERMANENT;
+    if (restart_sym && cell_is_symbol(restart_sym)) {
+        const char* rname = cell_get_symbol(restart_sym);
+        if (strcmp(rname, ":permanent") == 0) rt = CHILD_PERMANENT;
+        else if (strcmp(rname, ":transient") == 0) rt = CHILD_TRANSIENT;
+        else if (strcmp(rname, ":temporary") == 0) rt = CHILD_TEMPORARY;
+        else return cell_error("dynsup-bad-restart-type", restart_sym);
+    }
+
+    /* Store spec */
+    int index = sup->child_count;
+    cell_retain(behavior);
+    sup->child_specs[index] = behavior;
+    sup->child_ids[index] = 0;
+    sup->child_restart[index] = rt;
+    sup->child_count++;
+
+    /* Spawn the child */
+    int child_id = supervisor_spawn_child(sup, index);
+    if (child_id == 0) {
+        sup->child_count--;
+        cell_release(behavior);
+        sup->child_specs[index] = NULL;
+        return cell_error("dynsup-spawn-failed", cell_number(index));
+    }
+
+    return cell_actor(child_id);
+}
+
+/* ⟳⊛⊹⊖ - terminate child in dynamic supervisor
+ * (⟳⊛⊹⊖ sup-id child-id) → #t */
+Cell* prim_dynsup_terminate_child(Cell* args) {
+    Cell* sup_id_cell = arg1(args);
+    Cell* child_cell = arg2(args);
+
+    if (!cell_is_number(sup_id_cell)) {
+        return cell_error("dynsup-not-number", sup_id_cell);
+    }
+    int sup_id = (int)cell_get_number(sup_id_cell);
+    Supervisor* sup = supervisor_lookup(sup_id);
+    if (!sup || !sup->is_dynamic) {
+        return cell_error("dynsup-not-found", sup_id_cell);
+    }
+
+    /* Accept actor cell or number */
+    int child_id;
+    if (child_cell->type == CELL_ACTOR) {
+        child_id = cell_get_actor_id(child_cell);
+    } else if (cell_is_number(child_cell)) {
+        child_id = (int)cell_get_number(child_cell);
+    } else {
+        return cell_error("dynsup-bad-child", child_cell);
+    }
+
+    /* Find child index */
+    int found = -1;
+    for (int i = 0; i < sup->child_count; i++) {
+        if (sup->child_ids[i] == child_id) {
+            found = i;
+            break;
+        }
+    }
+    if (found < 0) {
+        return cell_error("dynsup-child-not-found", child_cell);
+    }
+
+    /* Kill the actor */
+    Actor* actor = actor_lookup(child_id);
+    if (actor && actor->alive) {
+        actor->alive = false;
+        actor->result = cell_symbol(":shutdown");
+        cell_retain(actor->result);
+    }
+
+    /* Remove from arrays */
+    if (sup->child_specs[found]) {
+        cell_release(sup->child_specs[found]);
+    }
+    for (int i = found; i < sup->child_count - 1; i++) {
+        sup->child_specs[i] = sup->child_specs[i + 1];
+        sup->child_ids[i] = sup->child_ids[i + 1];
+        sup->child_restart[i] = sup->child_restart[i + 1];
+    }
+    sup->child_count--;
+    sup->child_specs[sup->child_count] = NULL;
+    sup->child_ids[sup->child_count] = 0;
+
+    return cell_bool(true);
+}
+
+/* ⟳⊛⊹? - list children with restart types
+ * (⟳⊛⊹? sup-id) → [⟨actor-cell :restart-type⟩] */
+Cell* prim_dynsup_which_children(Cell* args) {
+    Cell* sup_id_cell = arg1(args);
+
+    if (!cell_is_number(sup_id_cell)) {
+        return cell_error("dynsup-not-number", sup_id_cell);
+    }
+    int sup_id = (int)cell_get_number(sup_id_cell);
+    Supervisor* sup = supervisor_lookup(sup_id);
+    if (!sup || !sup->is_dynamic) {
+        return cell_error("dynsup-not-found", sup_id_cell);
+    }
+
+    Cell* list = cell_nil();
+    for (int i = sup->child_count - 1; i >= 0; i--) {
+        const char* rt_name;
+        switch (sup->child_restart[i]) {
+            case CHILD_PERMANENT: rt_name = ":permanent"; break;
+            case CHILD_TRANSIENT: rt_name = ":transient"; break;
+            case CHILD_TEMPORARY: rt_name = ":temporary"; break;
+            default: rt_name = ":unknown"; break;
+        }
+        Cell* entry = cell_cons(cell_actor(sup->child_ids[i]), cell_symbol(rt_name));
+        Cell* new_list = cell_cons(entry, list);
+        cell_release(entry);
+        cell_release(list);
+        list = new_list;
+    }
+
+    return list;
+}
+
+/* ⟳⊛⊹# - count children in dynamic supervisor
+ * (⟳⊛⊹# sup-id) → ℕ */
+Cell* prim_dynsup_count(Cell* args) {
+    Cell* sup_id_cell = arg1(args);
+
+    if (!cell_is_number(sup_id_cell)) {
+        return cell_error("dynsup-not-number", sup_id_cell);
+    }
+    int sup_id = (int)cell_get_number(sup_id_cell);
+    Supervisor* sup = supervisor_lookup(sup_id);
+    if (!sup || !sup->is_dynamic) {
+        return cell_error("dynsup-not-found", sup_id_cell);
+    }
+
+    return cell_number(sup->child_count);
+}
+
 /* ============ Process Registry Primitives ============ */
 
 /* ⟳⊜⊕ - register actor under a name
@@ -7728,6 +7903,13 @@ static Primitive primitives[] = {
     {"⟳⊛!", prim_sup_restart_count, 1, {"Get supervisor restart count", "ℕ → ℕ"}},
     {"⟳⊛⊕", prim_sup_add_child, 2, {"Add child to supervisor", "ℕ → λ → ℕ"}},
     {"⟳⊛⊖", prim_sup_remove_child, 2, {"Remove child from supervisor", "ℕ → ⟳ → 𝔹"}},
+
+    /* DynamicSupervisor primitives */
+    {"⟳⊛⊹", prim_dynsup_start, 0, {"Create empty dynamic supervisor", "() → ℕ"}},
+    {"⟳⊛⊹⊕", prim_dynsup_start_child, 3, {"Start child with restart type", "ℕ → λ → :type → ℕ"}},
+    {"⟳⊛⊹⊖", prim_dynsup_terminate_child, 2, {"Terminate child in dynamic supervisor", "ℕ → ⟳ → #t"}},
+    {"⟳⊛⊹?", prim_dynsup_which_children, 1, {"List dynamic supervisor children", "ℕ → [⟨⟳ :type⟩]"}},
+    {"⟳⊛⊹#", prim_dynsup_count, 1, {"Count dynamic supervisor children", "ℕ → ℕ"}},
 
     /* Process Registry primitives */
     {"⟳⊜⊕", prim_registry_register, 2, {"Register actor under a name", ":symbol → ⟳ → #t | ⚠"}},

@@ -1,0 +1,115 @@
+; Day 104: DynamicSupervisor — on-demand child spawning with restart types
+; Primitives: ⟳⊛⊹, ⟳⊛⊹⊕, ⟳⊛⊹⊖, ⟳⊛⊹?, ⟳⊛⊹#
+
+;;; Test 1: dynsup-start — create empty dynamic supervisor
+(⟳∅)
+(≔ ds1 (⟳⊛⊹))
+(⊨ (⌜ :dynsup-start-basic)
+  #t
+  (≥ ds1 #0))
+
+;;; Test 2: dynsup-count — starts with zero children
+(⟳∅)
+(≔ ds2 (⟳⊛⊹))
+(⊨ (⌜ :dynsup-count-empty)
+  #0
+  (⟳⊛⊹# ds2))
+
+;;; Test 3: dynsup-start-child permanent — add child, verify alive
+(⟳∅)
+(≔ ds3 (⟳⊛⊹))
+(≔ c3 (⟳⊛⊹⊕ ds3 (λ (self) (←?)) :permanent))
+(⟳! #50)
+(⊨ (⌜ :dynsup-start-child-permanent)
+  #t
+  (∧ (⟳? c3) (≡ (⟳⊛⊹# ds3) #1)))
+
+;;; Test 4: dynsup-which-children — list children with restart types
+(⟳∅)
+(≔ ds4 (⟳⊛⊹))
+(≔ c4 (⟳⊛⊹⊕ ds4 (λ (self) (←?)) :transient))
+(⟳! #50)
+(≔ kids4 (⟳⊛⊹? ds4))
+; Should be list of ⟨actor-cell :restart-type⟩
+(⊨ (⌜ :dynsup-which-children)
+  :transient
+  (▷ (◁ kids4)))
+
+;;; Test 5: dynsup-terminate-child — terminate and remove
+(⟳∅)
+(≔ ds5 (⟳⊛⊹))
+(≔ c5 (⟳⊛⊹⊕ ds5 (λ (self) (←?)) :permanent))
+(⟳! #50)
+(⟳⊛⊹⊖ ds5 c5)
+(⊨ (⌜ :dynsup-terminate-child)
+  #0
+  (⟳⊛⊹# ds5))
+
+;;; Test 6: permanent child — error crash triggers restart
+(⟳∅)
+(≔ ds6 (⟳⊛⊹))
+(≔ crasher6 (λ (self)
+  (≫ (←?) (λ (msg)
+    (? (≡ msg :crash) (⚠ :crashed :boom) msg)))))
+(≔ c6 (⟳⊛⊹⊕ ds6 crasher6 :permanent))
+(⟳! #50)
+(→! c6 :crash)
+(⟳! #200)
+; Permanent: should restart on error — count stays 1
+(⊨ (⌜ :dynsup-permanent-restarts)
+  #1
+  (⟳⊛⊹# ds6))
+
+;;; Test 7: temporary child — never restarted on error
+(⟳∅)
+(≔ ds7 (⟳⊛⊹))
+(≔ crasher7 (λ (self)
+  (≫ (←?) (λ (msg)
+    (? (≡ msg :crash) (⚠ :crashed :boom) msg)))))
+(≔ c7 (⟳⊛⊹⊕ ds7 crasher7 :temporary))
+(⟳! #50)
+(→! c7 :crash)
+(⟳! #200)
+; Temporary: not restarted, removed from children
+(⊨ (⌜ :dynsup-temporary-no-restart)
+  #0
+  (⟳⊛⊹# ds7))
+
+;;; Test 8: transient child — not restarted on normal exit
+(⟳∅)
+(≔ ds8 (⟳⊛⊹))
+; Normal exit child
+(≔ normal8 (λ (self) :done))
+(≔ c8a (⟳⊛⊹⊕ ds8 normal8 :transient))
+(⟳! #100)
+; Transient: normal exit → not restarted, removed
+(⊨ (⌜ :dynsup-transient-normal-no-restart)
+  #0
+  (⟳⊛⊹# ds8))
+
+;;; Test 9: transient child — restarts on error exit
+(⟳∅)
+(≔ ds9 (⟳⊛⊹))
+(≔ crasher9 (λ (self)
+  (≫ (←?) (λ (msg)
+    (? (≡ msg :crash) (⚠ :crashed :boom) msg)))))
+(≔ c9 (⟳⊛⊹⊕ ds9 crasher9 :transient))
+(⟳! #50)
+(→! c9 :crash)
+(⟳! #200)
+; Transient: error exit → restarted
+(⊨ (⌜ :dynsup-transient-error-restarts)
+  #1
+  (⟳⊛⊹# ds9))
+
+;;; Test 10: multiple children with mixed restart types
+(⟳∅)
+(≔ ds10 (⟳⊛⊹))
+(≔ w10 (λ (self) (←?)))
+(⟳⊛⊹⊕ ds10 w10 :permanent)
+(⟳⊛⊹⊕ ds10 w10 :transient)
+(⟳⊛⊹⊕ ds10 w10 :temporary)
+(⟳! #50)
+(⊨ (⌜ :dynsup-multiple-children)
+  #3
+  (⟳⊛⊹# ds10))

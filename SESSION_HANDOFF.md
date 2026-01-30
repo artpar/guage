@@ -1,11 +1,51 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-01-30 (Day 103 COMPLETE)
+Updated: 2026-01-30 (Day 104 COMPLETE)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 103 - GenStage Producer-Consumer (2026-01-30)
+# Session Handoff: Day 104 - DynamicSupervisor (2026-01-30)
+
+## Day 104 Progress - DynamicSupervisor (`⟳⊛⊹`, `⟳⊛⊹⊕`, `⟳⊛⊹⊖`, `⟳⊛⊹?`, `⟳⊛⊹#`)
+
+**RESULT:** 102/102 test files passing (100%), 10 new tests (DynamicSupervisor)
+
+### New Feature: DynamicSupervisor — On-Demand Child Spawning with Restart Types
+
+DynamicSupervisor is a specialized supervisor that starts empty and allows children to be added on demand, each with a per-child restart type. Unlike regular supervisors which start with a fixed child spec list, DynamicSupervisor is designed for dynamically-spawned, short-lived or long-lived workers. Always uses one-for-one strategy.
+
+**New Primitives (5):**
+- `⟳⊛⊹` (dynsup-start) — Create empty dynamic supervisor: `(⟳⊛⊹)` → supervisor-id
+- `⟳⊛⊹⊕` (dynsup-start-child) — Start child with restart type: `(⟳⊛⊹⊕ sup-id behavior :type)` → actor-cell
+- `⟳⊛⊹⊖` (dynsup-terminate-child) — Terminate child: `(⟳⊛⊹⊖ sup-id child)` → `#t`
+- `⟳⊛⊹?` (dynsup-which-children) — List children: `(⟳⊛⊹? sup-id)` → `[⟨⟳ :type⟩]`
+- `⟳⊛⊹#` (dynsup-count) — Count children: `(⟳⊛⊹# sup-id)` → count
+
+**Per-Child Restart Types:**
+- `:permanent` — Always restart on any exit (error or normal)
+- `:transient` — Restart only on error exit; normal exit removes child
+- `:temporary` — Never restart; removed on any exit
+
+**Semantics:**
+- Dynamic supervisors start with no children
+- Always one-for-one strategy (each child independent)
+- `⟳⊛⊹⊕` returns an actor cell (not a number) for direct `→!` usage
+- Error exit: permanent/transient restart, temporary removed
+- Normal exit: transient/temporary removed, permanent stays (but not restarted since it exited normally)
+- Child removal shifts arrays to maintain order
+- Reuses Supervisor struct with `is_dynamic` flag and per-child `child_restart[]` array
+- `⟳∅` (reset) clears all dynamic supervisors (via existing supervisor cleanup)
+
+**Files Modified (3):**
+- `bootstrap/actor.h` — Added `ChildRestartType` enum, `child_restart[]` and `is_dynamic` fields to Supervisor
+- `bootstrap/actor.c` — Added `dynsup_remove_child_at()`, modified `supervisor_handle_exit()` to check restart types, modified `actor_notify_exit()` to handle normal exits for dynamic supervisors
+- `bootstrap/primitives.c` — 5 new primitive functions + registration in table
+
+**New Test File (1):**
+- `bootstrap/tests/test_dynsup.test` — 10 tests: dynsup-start-basic, dynsup-count-empty, dynsup-start-child-permanent, dynsup-which-children, dynsup-terminate-child, dynsup-permanent-restarts, dynsup-temporary-no-restart, dynsup-transient-normal-no-restart, dynsup-transient-error-restarts, dynsup-multiple-children
+
+---
 
 ## Day 103 Progress - GenStage (`⟳⊵`, `⟳⊵⊕`, `⟳⊵→`, `⟳⊵⊙`, `⟳⊵?`, `⟳⊵×`)
 
@@ -535,8 +575,8 @@ Replaced replay-based resumable effects with real delimited continuations using 
 ## Current Status
 
 **System State:**
-- **Primitives:** 194 total (188 + 6 GenStage)
-- **Tests:** 101/101 test files passing (100%)
+- **Primitives:** 199 total (194 + 5 DynamicSupervisor)
+- **Tests:** 102/102 test files passing (100%)
 - **Build:** Clean, O2 optimized, 32MB stack
 
 **Core Capabilities:**
@@ -559,6 +599,7 @@ Replaced replay-based resumable effects with real delimited continuations using 
 - Task async/await (⟳⊳, ⟳⊲, ⟳⊲?) — spawn computation and await result
 - Agent (⟳⊶, ⟳⊶?, ⟳⊶!, ⟳⊶⊕, ⟳⊶×) — functional state wrapper
 - GenStage (⟳⊵, ⟳⊵⊕, ⟳⊵→, ⟳⊵⊙, ⟳⊵?, ⟳⊵×) — producer-consumer pipelines
+- DynamicSupervisor (⟳⊛⊹, ⟳⊛⊹⊕, ⟳⊛⊹⊖, ⟳⊛⊹?, ⟳⊛⊹#) — on-demand child spawning with restart types
 - Module system (⋘ load, ⌂⊚ info)
 - Structures (⊙ leaf, ⊚ node/ADT)
 - Pattern matching (∇) with guards, as-patterns, or-patterns, view patterns
@@ -575,6 +616,7 @@ Replaced replay-based resumable effects with real delimited continuations using 
 
 | Day | Feature | Tests |
 |-----|---------|-------|
+| 104 | DynamicSupervisor (⟳⊛⊹, ⟳⊛⊹⊕, ⟳⊛⊹⊖, ⟳⊛⊹?, ⟳⊛⊹#) — on-demand child spawning | 102/102 (100%), 10 new tests |
 | 103 | GenStage (⟳⊵, ⟳⊵⊕, ⟳⊵→, ⟳⊵⊙, ⟳⊵?, ⟳⊵×) — producer-consumer pipelines | 101/101 (100%), 10 new tests |
 | 102 | Agent (⟳⊶, ⟳⊶?, ⟳⊶!, ⟳⊶⊕, ⟳⊶×) — functional state wrapper | 100/100 (100%), 10 new tests |
 | 101 | Task async/await (⟳⊳, ⟳⊲, ⟳⊲?) — spawn and await computations | 99/99 (100%), 10 new tests |
@@ -656,5 +698,5 @@ bootstrap/tests/             # Test suite (88 test files)
 
 ---
 
-**Last Updated:** 2026-01-30 (Day 103 complete)
-**Next Session:** Day 104 - DynamicSupervisor (on-demand child spawning), or new domain
+**Last Updated:** 2026-01-30 (Day 104 complete)
+**Next Session:** Day 105 - Flow (computation graphs), or new domain

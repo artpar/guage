@@ -680,6 +680,17 @@ Erlang-style supervision primitives. Bidirectional links propagate failure (erro
 
 Supervisors manage groups of child actors and automatically restart them on failure. Strategies: `:one-for-one` (restart only failed child), `:one-for-all` (kill all siblings then restart all), `:rest-for-one` (restart failed child and all children after it). Max 5 restarts per supervisor prevents infinite restart loops. Normal exits do NOT trigger restarts. Children can be added/removed dynamically.
 
+### DynamicSupervisor (5) ✅
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `⟳⊛⊹` | `() → ℕ` | Create empty dynamic supervisor | ✅ |
+| `⟳⊛⊹⊕` | `ℕ → λ → :type → ⟳` | Start child with restart type | ✅ |
+| `⟳⊛⊹⊖` | `ℕ → ⟳ → #t` | Terminate child in dynamic supervisor | ✅ |
+| `⟳⊛⊹?` | `ℕ → [⟨⟳ :type⟩]` | List children with restart types | ✅ |
+| `⟳⊛⊹#` | `ℕ → ℕ` | Count children in dynamic supervisor | ✅ |
+
+DynamicSupervisor starts empty and adds children on demand, each with a per-child restart type. Always uses one-for-one strategy. Restart types: `:permanent` (always restart on error), `:transient` (restart only on error exit; normal exit removes child), `:temporary` (never restart; removed on any exit). Returns actor cells from `⟳⊛⊹⊕` for direct use with `→!`.
+
 ### Process Registry (4) ✅
 | Symbol | Type | Meaning | Status |
 |--------|------|---------|--------|
