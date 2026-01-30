@@ -1,0 +1,62 @@
+; Test: Vector (⟦⟧) — HFT-grade dynamic array with SBO
+; Day 114
+
+; 1. Empty creation + size + empty predicate
+(⊨ (⌜ :vec-new-empty) #0 (⟦# (⟦⟧)))
+(⊨ (⌜ :vec-new-empty-pred) #t (⟦∅? (⟦⟧)))
+
+; 2. Create from values
+(≔ v1 (⟦⟧ #1 #2 #3))
+(⊨ (⌜ :vec-new-from-values) #3 (⟦# v1))
+
+; 3. O(1) random access
+(⊨ (⌜ :vec-get-0) #1 (⟦→ v1 #0))
+(⊨ (⌜ :vec-get-1) #2 (⟦→ v1 #1))
+(⊨ (⌜ :vec-get-2) #3 (⟦→ v1 #2))
+
+; 4. Set returns old value
+(≔ v2 (⟦⟧ #10 #20 #30))
+(⊨ (⌜ :vec-set-returns-old) #20 (⟦← v2 #1 #99))
+
+; 5. Set mutates — subsequent get returns new value
+(⊨ (⌜ :vec-set-mutates) #99 (⟦→ v2 #1))
+
+; 6. Push/pop LIFO order
+(≔ v3 (⟦⟧))
+(⟦⊕ v3 #10)
+(⟦⊕ v3 #20)
+(⟦⊕ v3 #30)
+(⊨ (⌜ :vec-pop-lifo-1) #30 (⟦⊖ v3))
+(⊨ (⌜ :vec-pop-lifo-2) #20 (⟦⊖ v3))
+(⊨ (⌜ :vec-pop-lifo-3) #10 (⟦⊖ v3))
+
+; 7. Empty predicate: empty before push, not-empty after
+(≔ v4 (⟦⟧))
+(⊨ (⌜ :vec-empty-before) #t (⟦∅? v4))
+(⟦⊕ v4 #1)
+(⊨ (⌜ :vec-empty-after) #f (⟦∅? v4))
+
+; 8. To-list preserves order
+(≔ v5 (⟦⟧ #1 #2 #3))
+(⊨ (⌜ :vec-to-list-head) #1 (◁ (⟦⊙ v5)))
+
+; 9. Type predicate
+(⊨ (⌜ :vec-type-pred-yes) #t (⟦? (⟦⟧)))
+(⊨ (⌜ :vec-type-pred-no) #f (⟦? #42))
+
+; 10. OOB errors
+(⊨ (⌜ :vec-oob-get) #t (⚠? (⟦→ (⟦⟧) #0)))
+(⊨ (⌜ :vec-oob-pop) #t (⚠? (⟦⊖ (⟦⟧))))
+
+; 11. Slice [1,4) of 5 elements
+(≔ v6 (⟦⟧ #10 #20 #30 #40 #50))
+(≔ v7 (⟦⊞ v6 #1 #4))
+(⊨ (⌜ :vec-slice-size) #3 (⟦# v7))
+(⊨ (⌜ :vec-slice-first) #20 (⟦→ v7 #0))
+
+; 12. Map ×10 over vector
+(≔ v8 (⟦⟧ #1 #2 #3))
+(≔ v9 (⟦↦ v8 (λ (x) (⊗ x #10))))
+(⊨ (⌜ :vec-map-0) #10 (⟦→ v9 #0))
+(⊨ (⌜ :vec-map-1) #20 (⟦→ v9 #1))
+(⊨ (⌜ :vec-map-2) #30 (⟦→ v9 #2))

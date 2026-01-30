@@ -288,6 +288,17 @@ void cell_release(Cell* c) {
             case CELL_BUFFER:
                 free(c->data.buffer.bytes);
                 break;
+            case CELL_VECTOR: {
+                Cell** vbuf = (c->data.vector.capacity <= 4)
+                    ? c->data.vector.sbo : c->data.vector.heap;
+                for (uint32_t vi = 0; vi < c->data.vector.size; vi++) {
+                    if (vbuf[vi]) cell_release(vbuf[vi]);
+                }
+                if (c->data.vector.capacity > 4) {
+                    free(c->data.vector.heap);
+                }
+                break;
+            }
             default:
                 break;
         }
@@ -704,6 +715,16 @@ bool cell_equal(Cell* a, Cell* b) {
         case CELL_BUFFER:
             if (a->data.buffer.size != b->data.buffer.size) return false;
             return memcmp(a->data.buffer.bytes, b->data.buffer.bytes, a->data.buffer.size) == 0;
+        case CELL_VECTOR: {
+            if (a->data.vector.size != b->data.vector.size) return false;
+            uint32_t vsz = a->data.vector.size;
+            Cell** va = (a->data.vector.capacity <= 4) ? a->data.vector.sbo : a->data.vector.heap;
+            Cell** vb = (b->data.vector.capacity <= 4) ? b->data.vector.sbo : b->data.vector.heap;
+            for (uint32_t vi = 0; vi < vsz; vi++) {
+                if (!cell_equal(va[vi], vb[vi])) return false;
+            }
+            return true;
+        }
         case CELL_LAMBDA:
         case CELL_BUILTIN:
         case CELL_ERROR:
@@ -833,6 +854,9 @@ void cell_print(Cell* c) {
         case CELL_BUFFER:
             printf("◈[%u]", c->data.buffer.size);
             break;
+        case CELL_VECTOR:
+            printf("⟦%u⟧", c->data.vector.size);
+            break;
     }
 }
 
@@ -866,6 +890,15 @@ uint64_t cell_hash(Cell* c) {
         }
         case CELL_BUFFER:
             return guage_siphash(c->data.buffer.bytes, c->data.buffer.size);
+        case CELL_VECTOR: {
+            /* Hash all elements */
+            uint64_t vh = 0x5678ULL;
+            Cell** vbuf = (c->data.vector.capacity <= 4) ? c->data.vector.sbo : c->data.vector.heap;
+            for (uint32_t vi = 0; vi < c->data.vector.size; vi++) {
+                vh ^= cell_hash(vbuf[vi]) * 0x9E3779B97F4A7C15ULL + (vh << 12) + (vh >> 4);
+            }
+            return vh;
+        }
         default: {
             /* Lambda, error, actor, box, etc. — hash pointer */
             uintptr_t ptr = (uintptr_t)c;
@@ -1767,4 +1800,166 @@ Cell* cell_buffer_from_string(const char* str) {
     memcpy(buf->data.buffer.bytes, str, len);
     buf->data.buffer.size = len;
     return buf;
+}
+
+/* =========================================================================
+ * Vector — HFT-grade dynamic array with Small Buffer Optimization
+ *
+ * SBO: 4 inline Cell* slots (32 bytes, zero alloc for small vectors)
+ * Growth: 1.5x (enables memory reuse unlike 2x; used by fbvector/MSVC/Java)
+ * Heap: cache-line aligned (64 bytes) for L1 utilization
+ * Prefetch: 8 elements ahead for sequential, target for random access
+ * Branch hints: OOB and resize marked unlikely
+ * ========================================================================= */
+
+#define VEC_SBO_CAP 4
+#define VEC_INITIAL_HEAP_CAP 8
+
+/* Get pointer to element buffer (SBO or heap) */
+static inline Cell** vec_buf(Cell* v) {
+    return __builtin_expect(v->data.vector.capacity <= VEC_SBO_CAP, 1)
+        ? v->data.vector.sbo
+        : v->data.vector.heap;
+}
+
+/* Next capacity: 1.5x growth (integer-only) */
+static inline uint32_t vec_next_cap(uint32_t old) {
+    return old + (old >> 1);
+}
+
+/* Grow vector: SBO→heap or heap→bigger heap */
+static void vector_grow(Cell* v) {
+    uint32_t old_cap = v->data.vector.capacity;
+    uint32_t sz = v->data.vector.size;
+
+    if (old_cap <= VEC_SBO_CAP) {
+        /* SBO → heap transition */
+        uint32_t new_cap = VEC_INITIAL_HEAP_CAP;
+        Cell** new_buf = (Cell**)aligned_alloc(64, new_cap * sizeof(Cell*));
+        memset(new_buf, 0, new_cap * sizeof(Cell*));
+        /* Copy SBO elements to heap */
+        memcpy(new_buf, v->data.vector.sbo, sz * sizeof(Cell*));
+        v->data.vector.heap = new_buf;
+        v->data.vector.capacity = new_cap;
+    } else {
+        /* Heap → bigger heap (1.5x) */
+        uint32_t new_cap = vec_next_cap(old_cap);
+        Cell** old_buf = v->data.vector.heap;
+        Cell** new_buf = (Cell**)aligned_alloc(64, new_cap * sizeof(Cell*));
+        memset(new_buf, 0, new_cap * sizeof(Cell*));
+        memcpy(new_buf, old_buf, sz * sizeof(Cell*));
+        free(old_buf);
+        v->data.vector.heap = new_buf;
+        v->data.vector.capacity = new_cap;
+    }
+}
+
+bool cell_is_vector(Cell* c) {
+    return c && c->type == CELL_VECTOR;
+}
+
+Cell* cell_vector_new(uint32_t initial_cap) {
+    Cell* c = cell_alloc(CELL_VECTOR);
+    c->data.vector.size = 0;
+
+    if (initial_cap <= VEC_SBO_CAP) {
+        /* SBO mode — inline storage, zero heap alloc */
+        c->data.vector.capacity = VEC_SBO_CAP;
+        memset(c->data.vector.sbo, 0, VEC_SBO_CAP * sizeof(Cell*));
+    } else {
+        /* Heap mode */
+        uint32_t cap = VEC_INITIAL_HEAP_CAP;
+        while (cap < initial_cap) cap = vec_next_cap(cap);
+        c->data.vector.capacity = cap;
+        c->data.vector.heap = (Cell**)aligned_alloc(64, cap * sizeof(Cell*));
+        memset(c->data.vector.heap, 0, cap * sizeof(Cell*));
+    }
+    return c;
+}
+
+Cell* cell_vector_get(Cell* v, uint32_t idx) {
+    assert(v->type == CELL_VECTOR);
+    if (__builtin_expect(idx >= v->data.vector.size, 0))
+        return NULL;
+    Cell** buf = vec_buf(v);
+    __builtin_prefetch(&buf[idx], 0, 3);
+    return buf[idx];
+}
+
+Cell* cell_vector_set(Cell* v, uint32_t idx, Cell* val) {
+    assert(v->type == CELL_VECTOR);
+    if (__builtin_expect(idx >= v->data.vector.size, 0))
+        return NULL;
+    Cell** buf = vec_buf(v);
+    __builtin_prefetch(&buf[idx], 1, 3);
+    Cell* old = buf[idx];
+    buf[idx] = val;
+    cell_retain(val);
+    /* Return old value — caller inherits the vector's reference */
+    return old;
+}
+
+void cell_vector_push(Cell* v, Cell* val) {
+    assert(v->type == CELL_VECTOR);
+    if (__builtin_expect(v->data.vector.size == v->data.vector.capacity, 0)) {
+        vector_grow(v);
+    }
+    Cell** buf = vec_buf(v);
+    uint32_t idx = v->data.vector.size;
+    __builtin_prefetch(&buf[idx], 1, 3);
+    buf[idx] = val;
+    cell_retain(val);
+    v->data.vector.size++;
+}
+
+Cell* cell_vector_pop(Cell* v) {
+    assert(v->type == CELL_VECTOR);
+    if (v->data.vector.size == 0) return NULL;
+    v->data.vector.size--;
+    Cell** buf = vec_buf(v);
+    Cell* val = buf[v->data.vector.size];
+    buf[v->data.vector.size] = NULL;
+    /* Caller inherits the vector's reference — no release here */
+    return val;
+}
+
+uint32_t cell_vector_size(Cell* v) {
+    assert(v->type == CELL_VECTOR);
+    return v->data.vector.size;
+}
+
+Cell* cell_vector_to_list(Cell* v) {
+    assert(v->type == CELL_VECTOR);
+    uint32_t sz = v->data.vector.size;
+    Cell** buf = vec_buf(v);
+    /* Build list back-to-front for correct order */
+    Cell* result = cell_nil();
+    for (uint32_t i = sz; i > 0; i--) {
+        /* Prefetch 8 elements ahead for sequential traversal */
+        if (i > 8) __builtin_prefetch(&buf[i - 9], 0, 3);
+        Cell* pair = cell_cons(buf[i - 1], result);
+        cell_release(result);
+        result = pair;
+    }
+    return result;
+}
+
+Cell* cell_vector_slice(Cell* v, uint32_t start, uint32_t end) {
+    assert(v->type == CELL_VECTOR);
+    /* Clamp bounds */
+    if (start > v->data.vector.size) start = v->data.vector.size;
+    if (end > v->data.vector.size) end = v->data.vector.size;
+    if (end < start) end = start;
+    uint32_t len = end - start;
+
+    Cell* result = cell_vector_new(len);
+    Cell** src = vec_buf(v);
+    Cell** dst = vec_buf(result);
+
+    for (uint32_t i = 0; i < len; i++) {
+        dst[i] = src[start + i];
+        cell_retain(dst[i]);
+    }
+    result->data.vector.size = len;
+    return result;
 }

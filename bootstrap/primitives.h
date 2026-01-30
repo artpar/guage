@@ -186,6 +186,19 @@ Cell* prim_buffer_to_list(Cell* args);      /* ◈⊙ - bytes as list */
 Cell* prim_buffer_to_string(Cell* args);    /* ◈≈ - interpret as UTF-8 */
 Cell* prim_buffer_from_string(Cell* args);  /* ≈◈ - string to buffer */
 
+/* Vector primitives (Day 114 — HFT-grade dynamic array with SBO) */
+Cell* prim_vector_new(Cell* args);         /* ⟦⟧ - create vector */
+Cell* prim_vector_get(Cell* args);         /* ⟦→ - get at index */
+Cell* prim_vector_set(Cell* args);         /* ⟦← - set at index (mutates) */
+Cell* prim_vector_push(Cell* args);        /* ⟦⊕ - push back (mutates) */
+Cell* prim_vector_pop(Cell* args);         /* ⟦⊖ - pop back */
+Cell* prim_vector_size(Cell* args);        /* ⟦# - size */
+Cell* prim_vector_is(Cell* args);          /* ⟦? - type predicate */
+Cell* prim_vector_to_list(Cell* args);     /* ⟦⊙ - to cons list */
+Cell* prim_vector_empty(Cell* args);       /* ⟦∅? - empty predicate */
+Cell* prim_vector_slice(Cell* args);       /* ⟦⊞ - slice [start,end) */
+Cell* prim_vector_map(Cell* args);         /* ⟦↦ - map fn over vector */
+
 /* Primitive documentation structure */
 typedef struct {
     const char* description;     /* What this primitive does */

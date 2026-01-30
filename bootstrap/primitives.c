@@ -917,6 +917,9 @@ Cell* prim_typeof(Cell* args) {
     if (cell_is_buffer(val)) {
         return cell_symbol(":buffer");
     }
+    if (cell_is_vector(val)) {
+        return cell_symbol(":vector");
+    }
 
     return cell_symbol(":unknown");
 }
@@ -1718,6 +1721,8 @@ Cell* prim_type_of(Cell* args) {
     else if (cell_is_hashmap(value)) type_name = "hashmap";
     else if (cell_is_hashset(value)) type_name = "set";
     else if (cell_is_deque(value)) type_name = "deque";
+    else if (cell_is_buffer(value)) type_name = "buffer";
+    else if (cell_is_vector(value)) type_name = "vector";
 
     return cell_symbol(type_name);
 }
@@ -8676,6 +8681,171 @@ Cell* prim_buffer_from_string(Cell* args) {
     return cell_buffer_from_string(cell_get_string(s));
 }
 
+/* ============ Vector (⟦⟧) - Day 114 ============ */
+
+/* Helper: call a 1-arg function for vec-map */
+static Cell* vec_call_fn(EvalContext* ctx, Cell* fn, Cell* arg) {
+    static int vec_call_counter = 0;
+    char fn_name[64], arg_name[64];
+    snprintf(fn_name, sizeof(fn_name), "__vec_fn_%d", vec_call_counter);
+    snprintf(arg_name, sizeof(arg_name), "__vec_arg_%d", vec_call_counter);
+    vec_call_counter++;
+
+    eval_define(ctx, fn_name, fn);
+    eval_define(ctx, arg_name, arg);
+
+    Cell* fn_sym = cell_symbol(fn_name);
+    Cell* arg_sym = cell_symbol(arg_name);
+    Cell* call_expr = cell_cons(fn_sym, cell_cons(arg_sym, cell_nil()));
+    cell_release(fn_sym);
+    cell_release(arg_sym);
+
+    Cell* result = eval(ctx, call_expr);
+    cell_release(call_expr);
+    return result;
+}
+
+/* ⟦⟧ - create vector */
+Cell* prim_vector_new(Cell* args) {
+    Cell* v = cell_vector_new(4);  /* SBO capacity */
+    Cell* cur = args;
+    while (cur && !cell_is_nil(cur)) {
+        if (!cell_is_pair(cur)) break;
+        Cell* val = cell_car(cur);
+        cell_vector_push(v, val);
+        cur = cell_cdr(cur);
+    }
+    return v;
+}
+
+/* ⟦→ - get at index */
+Cell* prim_vector_get(Cell* args) {
+    Cell* v = arg1(args);
+    if (!cell_is_vector(v))
+        return cell_error("⟦→ requires vector", v);
+    Cell* idx_cell = arg2(args);
+    if (!cell_is_number(idx_cell))
+        return cell_error("⟦→ index must be number", idx_cell);
+    double n = cell_get_number(idx_cell);
+    uint32_t idx = (uint32_t)n;
+    if (n < 0 || n != idx)
+        return cell_error("index-out-of-bounds", idx_cell);
+    Cell* val = cell_vector_get(v, idx);
+    if (!val) return cell_error("index-out-of-bounds", idx_cell);
+    cell_retain(val);
+    return val;
+}
+
+/* ⟦← - set at index (mutates), returns old value */
+Cell* prim_vector_set(Cell* args) {
+    Cell* v = arg1(args);
+    if (!cell_is_vector(v))
+        return cell_error("⟦← requires vector", v);
+    Cell* idx_cell = arg2(args);
+    Cell* val = arg3(args);
+    if (!cell_is_number(idx_cell))
+        return cell_error("⟦← index must be number", idx_cell);
+    double n = cell_get_number(idx_cell);
+    uint32_t idx = (uint32_t)n;
+    if (n < 0 || n != idx)
+        return cell_error("index-out-of-bounds", idx_cell);
+    Cell* old = cell_vector_set(v, idx, val);
+    if (!old) return cell_error("index-out-of-bounds", idx_cell);
+    return old;
+}
+
+/* ⟦⊕ - push back (mutates) */
+Cell* prim_vector_push(Cell* args) {
+    Cell* v = arg1(args);
+    if (!cell_is_vector(v))
+        return cell_error("⟦⊕ requires vector", v);
+    Cell* val = arg2(args);
+    cell_vector_push(v, val);
+    return cell_bool(true);
+}
+
+/* ⟦⊖ - pop back */
+Cell* prim_vector_pop(Cell* args) {
+    Cell* v = arg1(args);
+    if (!cell_is_vector(v))
+        return cell_error("⟦⊖ requires vector", v);
+    Cell* val = cell_vector_pop(v);
+    if (!val) return cell_error("vector-empty", v);
+    return val;
+}
+
+/* ⟦# - size */
+Cell* prim_vector_size(Cell* args) {
+    Cell* v = arg1(args);
+    if (!cell_is_vector(v))
+        return cell_error("⟦# requires vector", v);
+    return cell_number((double)cell_vector_size(v));
+}
+
+/* ⟦? - type predicate */
+Cell* prim_vector_is(Cell* args) {
+    Cell* val = arg1(args);
+    return cell_bool(cell_is_vector(val));
+}
+
+/* ⟦⊙ - to cons list */
+Cell* prim_vector_to_list(Cell* args) {
+    Cell* v = arg1(args);
+    if (!cell_is_vector(v))
+        return cell_error("⟦⊙ requires vector", v);
+    return cell_vector_to_list(v);
+}
+
+/* ⟦∅? - empty predicate */
+Cell* prim_vector_empty(Cell* args) {
+    Cell* v = arg1(args);
+    if (!cell_is_vector(v))
+        return cell_error("⟦∅? requires vector", v);
+    return cell_bool(cell_vector_size(v) == 0);
+}
+
+/* ⟦⊞ - slice [start, end) → new vector */
+Cell* prim_vector_slice(Cell* args) {
+    Cell* v = arg1(args);
+    if (!cell_is_vector(v))
+        return cell_error("⟦⊞ requires vector", v);
+    Cell* start_cell = arg2(args);
+    Cell* end_cell = arg3(args);
+    if (!cell_is_number(start_cell) || !cell_is_number(end_cell))
+        return cell_error("⟦⊞ indices must be numbers", start_cell);
+    uint32_t start = (uint32_t)cell_get_number(start_cell);
+    uint32_t end = (uint32_t)cell_get_number(end_cell);
+    return cell_vector_slice(v, start, end);
+}
+
+/* ⟦↦ - map fn over vector → new vector */
+Cell* prim_vector_map(Cell* args) {
+    Cell* v = arg1(args);
+    Cell* fn = arg2(args);
+    if (!cell_is_vector(v))
+        return cell_error("⟦↦ requires vector", v);
+    if (!cell_is_lambda(fn) && fn->type != CELL_BUILTIN)
+        return cell_error("⟦↦ requires function", fn);
+
+    EvalContext* ctx = eval_get_current_context();
+    if (!ctx) return cell_error("no-context", cell_nil());
+
+    uint32_t sz = cell_vector_size(v);
+    Cell* result = cell_vector_new(sz);
+    Cell** src = (v->data.vector.capacity <= 4) ? v->data.vector.sbo : v->data.vector.heap;
+
+    for (uint32_t i = 0; i < sz; i++) {
+        Cell* mapped = vec_call_fn(ctx, fn, src[i]);
+        if (cell_is_error(mapped)) {
+            cell_release(result);
+            return mapped;
+        }
+        cell_vector_push(result, mapped);
+        cell_release(mapped);
+    }
+    return result;
+}
+
 /* Primitive table - PURE SYMBOLS ONLY
  * EVERY primitive MUST have documentation */
 static Primitive primitives[] = {
@@ -9054,6 +9224,19 @@ static Primitive primitives[] = {
     {"◈⊙", prim_buffer_to_list, 1, {"All bytes as list of numbers", "◈ → [ℕ]"}},
     {"◈≈", prim_buffer_to_string, 1, {"Interpret as UTF-8 string", "◈ → string"}},
     {"≈◈", prim_buffer_from_string, 1, {"String to byte buffer", "string → ◈"}},
+
+    /* Vector (Day 114 — HFT-grade dynamic array with SBO + 1.5x growth) */
+    {"⟦⟧", prim_vector_new, -1, {"Create vector from values", "α... → ⟦⟧"}},
+    {"⟦→", prim_vector_get, 2, {"Get element at index", "⟦⟧ → ℕ → α"}},
+    {"⟦←", prim_vector_set, 3, {"Set element at index (mutates)", "⟦⟧ → ℕ → α → α"}},
+    {"⟦⊕", prim_vector_push, 2, {"Push element to back (mutates)", "⟦⟧ → α → #t"}},
+    {"⟦⊖", prim_vector_pop, 1, {"Pop element from back", "⟦⟧ → α"}},
+    {"⟦#", prim_vector_size, 1, {"Get vector size", "⟦⟧ → ℕ"}},
+    {"⟦?", prim_vector_is, 1, {"Test if value is vector", "α → 𝔹"}},
+    {"⟦⊙", prim_vector_to_list, 1, {"All elements as cons list", "⟦⟧ → [α]"}},
+    {"⟦∅?", prim_vector_empty, 1, {"Test if vector is empty", "⟦⟧ → 𝔹"}},
+    {"⟦⊞", prim_vector_slice, 3, {"Slice [start,end) → new vector", "⟦⟧ → ℕ → ℕ → ⟦⟧"}},
+    {"⟦↦", prim_vector_map, 2, {"Map function over vector → new", "⟦⟧ → (α → β) → ⟦⟧"}},
 
     {NULL, NULL, 0, {NULL, NULL}}
 };
