@@ -1,0 +1,48 @@
+; Test: Deque (⊟) — DPDK-grade cache-optimized circular buffer
+; Day 111
+
+(⊨ (⌜ :deque-new-empty) #t (∧ (≡ (⊟# (⊟)) #0) (⊟∅? (⊟))))
+
+(⊨ (⌜ :deque-new-from-values) #3 (⊟# (⊟ #1 #2 #3)))
+
+(≔ d1 (⊟))
+(⊟▷ d1 #1)
+(⊟▷ d1 #2)
+(⊟▷ d1 #3)
+(⊨ (⌜ :deque-push-pop-back) #t
+  (∧ (≡ (⊟▷⊖ d1) #3) (∧ (≡ (⊟▷⊖ d1) #2) (≡ (⊟▷⊖ d1) #1))))
+
+(≔ d2 (⊟))
+(⊟◁ d2 #1)
+(⊟◁ d2 #2)
+(⊟◁ d2 #3)
+(⊨ (⌜ :deque-push-pop-front) #t
+  (∧ (≡ (⊟◁⊖ d2) #3) (∧ (≡ (⊟◁⊖ d2) #2) (≡ (⊟◁⊖ d2) #1))))
+
+(≔ d3 (⊟))
+(⊟▷ d3 #1)
+(⊟▷ d3 #2)
+(⊟▷ d3 #3)
+(⊨ (⌜ :deque-fifo-queue) #t
+  (∧ (≡ (⊟◁⊖ d3) #1) (∧ (≡ (⊟◁⊖ d3) #2) (≡ (⊟◁⊖ d3) #3))))
+
+(≔ d4 (⊟ #10 #20 #30))
+(⊨ (⌜ :deque-peek-no-remove) #t
+  (∧ (≡ (⊟◁? d4) #10) (∧ (≡ (⊟▷? d4) #30) (≡ (⊟# d4) #3))))
+
+(≔ d5 (⊟))
+(⊨ (⌜ :deque-empty-predicate) #t (⊟∅? d5))
+(⊟▷ d5 #1)
+(⊨ (⌜ :deque-empty-after-push) #f (⊟∅? d5))
+(⊟◁⊖ d5)
+(⊨ (⌜ :deque-empty-after-pop-all) #t (⊟∅? d5))
+
+(≔ d6 (⊟ #1 #2 #3))
+(≔ lst (⊟⊙ d6))
+(⊨ (⌜ :deque-to-list) #t
+  (∧ (≡ (◁ lst) #1) (∧ (≡ (◁ (▷ lst)) #2) (≡ (◁ (▷ (▷ lst))) #3))))
+
+(⊨ (⌜ :deque-type-predicate) #t (∧ (⊟? (⊟)) (¬ (⊟? #42))))
+
+(⊨ (⌜ :deque-pop-empty-error) #t
+  (∧ (⚠? (⊟◁⊖ (⊟))) (⚠? (⊟▷⊖ (⊟)))))

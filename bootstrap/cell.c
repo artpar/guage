@@ -264,6 +264,17 @@ void cell_release(Cell* c) {
                 free(c->data.hashset.elements);
                 break;
             }
+            case CELL_DEQUE: {
+                uint32_t dsz = c->data.deque.tail - c->data.deque.head;
+                uint32_t dcap = c->data.deque.capacity;
+                for (uint32_t di = 0; di < dsz; di++) {
+                    uint32_t didx = (c->data.deque.head + di) & (dcap - 1);
+                    if (c->data.deque.buffer[didx])
+                        cell_release(c->data.deque.buffer[didx]);
+                }
+                free(c->data.deque.buffer);
+                break;
+            }
             default:
                 break;
         }
@@ -661,6 +672,17 @@ bool cell_equal(Cell* a, Cell* b) {
             /* Set equality: same size and every element of a is in b */
             if (a->data.hashset.size != b->data.hashset.size) return false;
             return cell_hashset_subset(a, b);
+        case CELL_DEQUE: {
+            uint32_t asz = a->data.deque.tail - a->data.deque.head;
+            uint32_t bsz = b->data.deque.tail - b->data.deque.head;
+            if (asz != bsz) return false;
+            for (uint32_t i = 0; i < asz; i++) {
+                Cell* ae = a->data.deque.buffer[(a->data.deque.head + i) & (a->data.deque.capacity - 1)];
+                Cell* be = b->data.deque.buffer[(b->data.deque.head + i) & (b->data.deque.capacity - 1)];
+                if (!cell_equal(ae, be)) return false;
+            }
+            return true;
+        }
         case CELL_LAMBDA:
         case CELL_BUILTIN:
         case CELL_ERROR:
@@ -783,6 +805,9 @@ void cell_print(Cell* c) {
             break;
         case CELL_SET:
             printf("⊍[%u]", c->data.hashset.size);
+            break;
+        case CELL_DEQUE:
+            printf("⊟[%u]", c->data.deque.tail - c->data.deque.head);
             break;
     }
 }
@@ -1447,4 +1472,157 @@ bool cell_hashset_subset(Cell* s1, Cell* s2) {
         }
     }
     return true;
+}
+
+/* =========================================================================
+ * Deque — DPDK-grade cache-optimized circular buffer
+ *
+ * Power-of-2 capacity with bitmask indexing (branchless wraparound).
+ * Virtual indices: head/tail are monotonically increasing uint32_t.
+ * Size = tail - head (works via unsigned overflow).
+ * Cache-line aligned buffer (64 bytes).
+ * Software prefetch hints on push/pop.
+ * ========================================================================= */
+
+#define DEQUE_MIN_CAP 8
+#define DEQUE_IDX(virt, cap) ((virt) & ((cap) - 1))
+
+bool cell_is_deque(Cell* c) {
+    return c && c->type == CELL_DEQUE;
+}
+
+Cell* cell_deque_new(uint32_t initial_cap) {
+    if (initial_cap < DEQUE_MIN_CAP) initial_cap = DEQUE_MIN_CAP;
+    /* Round up to power of 2 */
+    uint32_t cap = DEQUE_MIN_CAP;
+    while (cap < initial_cap) cap <<= 1;
+
+    Cell* c = cell_alloc(CELL_DEQUE);
+    c->data.deque.capacity = cap;
+    c->data.deque.head = 0;
+    c->data.deque.tail = 0;
+    c->data.deque.buffer = (Cell**)aligned_alloc(64, cap * sizeof(Cell*));
+    memset(c->data.deque.buffer, 0, cap * sizeof(Cell*));
+    return c;
+}
+
+/* Internal: grow deque to 2x capacity, unwrapping ring into linear order */
+static void deque_grow(Cell* d) {
+    uint32_t old_cap = d->data.deque.capacity;
+    uint32_t new_cap = old_cap * 2;
+    uint32_t size = d->data.deque.tail - d->data.deque.head;
+
+    Cell** new_buf = (Cell**)aligned_alloc(64, new_cap * sizeof(Cell*));
+    memset(new_buf, 0, new_cap * sizeof(Cell*));
+
+    /* Unwrap ring into linear at new_buf[0..size-1] */
+    uint32_t head_idx = DEQUE_IDX(d->data.deque.head, old_cap);
+    uint32_t tail_idx = DEQUE_IDX(d->data.deque.tail, old_cap);
+
+    if (size == 0) {
+        /* Empty — nothing to copy */
+    } else if (head_idx < tail_idx) {
+        /* Contiguous: single memcpy */
+        memcpy(new_buf, d->data.deque.buffer + head_idx, size * sizeof(Cell*));
+    } else {
+        /* Wrapped: two memcpys */
+        uint32_t first_chunk = old_cap - head_idx;
+        memcpy(new_buf, d->data.deque.buffer + head_idx, first_chunk * sizeof(Cell*));
+        memcpy(new_buf + first_chunk, d->data.deque.buffer, tail_idx * sizeof(Cell*));
+    }
+
+    free(d->data.deque.buffer);
+    d->data.deque.buffer = new_buf;
+    d->data.deque.capacity = new_cap;
+    d->data.deque.head = 0;
+    d->data.deque.tail = size;
+}
+
+void cell_deque_push_front(Cell* d, Cell* val) {
+    assert(d->type == CELL_DEQUE);
+    uint32_t size = d->data.deque.tail - d->data.deque.head;
+    if (__builtin_expect(size == d->data.deque.capacity, 0)) {
+        deque_grow(d);
+    }
+    d->data.deque.head--;
+    uint32_t idx = DEQUE_IDX(d->data.deque.head, d->data.deque.capacity);
+    __builtin_prefetch(&d->data.deque.buffer[idx], 1, 3);
+    d->data.deque.buffer[idx] = val;
+    cell_retain(val);
+}
+
+void cell_deque_push_back(Cell* d, Cell* val) {
+    assert(d->type == CELL_DEQUE);
+    uint32_t size = d->data.deque.tail - d->data.deque.head;
+    if (__builtin_expect(size == d->data.deque.capacity, 0)) {
+        deque_grow(d);
+    }
+    uint32_t idx = DEQUE_IDX(d->data.deque.tail, d->data.deque.capacity);
+    __builtin_prefetch(&d->data.deque.buffer[idx], 1, 3);
+    d->data.deque.buffer[idx] = val;
+    cell_retain(val);
+    d->data.deque.tail++;
+}
+
+Cell* cell_deque_pop_front(Cell* d) {
+    assert(d->type == CELL_DEQUE);
+    uint32_t size = d->data.deque.tail - d->data.deque.head;
+    if (size == 0) return NULL;
+    uint32_t idx = DEQUE_IDX(d->data.deque.head, d->data.deque.capacity);
+    __builtin_prefetch(&d->data.deque.buffer[idx], 0, 3);
+    Cell* val = d->data.deque.buffer[idx];
+    d->data.deque.buffer[idx] = NULL;
+    d->data.deque.head++;
+    /* Caller inherits the buffer's reference — no release here */
+    return val;
+}
+
+Cell* cell_deque_pop_back(Cell* d) {
+    assert(d->type == CELL_DEQUE);
+    uint32_t size = d->data.deque.tail - d->data.deque.head;
+    if (size == 0) return NULL;
+    d->data.deque.tail--;
+    uint32_t idx = DEQUE_IDX(d->data.deque.tail, d->data.deque.capacity);
+    __builtin_prefetch(&d->data.deque.buffer[idx], 0, 3);
+    Cell* val = d->data.deque.buffer[idx];
+    d->data.deque.buffer[idx] = NULL;
+    /* Caller inherits the buffer's reference — no release here */
+    return val;
+}
+
+Cell* cell_deque_peek_front(Cell* d) {
+    assert(d->type == CELL_DEQUE);
+    uint32_t size = d->data.deque.tail - d->data.deque.head;
+    if (size == 0) return NULL;
+    uint32_t idx = DEQUE_IDX(d->data.deque.head, d->data.deque.capacity);
+    return d->data.deque.buffer[idx];
+}
+
+Cell* cell_deque_peek_back(Cell* d) {
+    assert(d->type == CELL_DEQUE);
+    uint32_t size = d->data.deque.tail - d->data.deque.head;
+    if (size == 0) return NULL;
+    uint32_t idx = DEQUE_IDX(d->data.deque.tail - 1, d->data.deque.capacity);
+    return d->data.deque.buffer[idx];
+}
+
+uint32_t cell_deque_size(Cell* d) {
+    assert(d->type == CELL_DEQUE);
+    return d->data.deque.tail - d->data.deque.head;
+}
+
+Cell* cell_deque_to_list(Cell* d) {
+    assert(d->type == CELL_DEQUE);
+    uint32_t size = d->data.deque.tail - d->data.deque.head;
+    uint32_t cap = d->data.deque.capacity;
+    /* Build list back-to-front so cons produces front-to-back order */
+    Cell* result = cell_nil();
+    for (uint32_t i = size; i > 0; i--) {
+        uint32_t idx = DEQUE_IDX(d->data.deque.head + i - 1, cap);
+        Cell* elem = d->data.deque.buffer[idx];
+        Cell* pair = cell_cons(elem, result);
+        cell_release(result);
+        result = pair;
+    }
+    return result;
 }

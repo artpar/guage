@@ -911,6 +911,9 @@ Cell* prim_typeof(Cell* args) {
     if (cell_is_hashset(val)) {
         return cell_symbol(":set");
     }
+    if (cell_is_deque(val)) {
+        return cell_symbol(":deque");
+    }
 
     return cell_symbol(":unknown");
 }
@@ -1711,6 +1714,7 @@ Cell* prim_type_of(Cell* args) {
     else if (cell_is_weak_ref(value)) type_name = "weak-ref";
     else if (cell_is_hashmap(value)) type_name = "hashmap";
     else if (cell_is_hashset(value)) type_name = "set";
+    else if (cell_is_deque(value)) type_name = "deque";
 
     return cell_symbol(type_name);
 }
@@ -8429,6 +8433,101 @@ Cell* prim_set_subset(Cell* args) {
     return cell_bool(cell_hashset_subset(s1, s2));
 }
 
+/* ===== Deque Primitives (Day 111) ===== */
+
+Cell* prim_deque_new(Cell* args) {
+    /* (⊟) → empty deque, (⊟ v1 v2 ...) → deque from values (push_back order) */
+    Cell* d = cell_deque_new(8);
+    Cell* cur = args;
+    while (cur && !cell_is_nil(cur) && cell_is_pair(cur)) {
+        Cell* val = cell_car(cur);
+        cell_deque_push_back(d, val);
+        cur = cell_cdr(cur);
+    }
+    return d;
+}
+
+Cell* prim_deque_push_front(Cell* args) {
+    Cell* d = arg1(args);
+    Cell* val = arg2(args);
+    if (!cell_is_deque(d))
+        return cell_error("⊟◁ requires deque as first arg", d);
+    cell_deque_push_front(d, val);
+    return cell_bool(true);
+}
+
+Cell* prim_deque_push_back(Cell* args) {
+    Cell* d = arg1(args);
+    Cell* val = arg2(args);
+    if (!cell_is_deque(d))
+        return cell_error("⊟▷ requires deque as first arg", d);
+    cell_deque_push_back(d, val);
+    return cell_bool(true);
+}
+
+Cell* prim_deque_pop_front(Cell* args) {
+    Cell* d = arg1(args);
+    if (!cell_is_deque(d))
+        return cell_error("⊟◁⊖ requires deque", d);
+    Cell* val = cell_deque_pop_front(d);
+    if (!val) return cell_error("deque-empty", cell_nil());
+    return val;
+}
+
+Cell* prim_deque_pop_back(Cell* args) {
+    Cell* d = arg1(args);
+    if (!cell_is_deque(d))
+        return cell_error("⊟▷⊖ requires deque", d);
+    Cell* val = cell_deque_pop_back(d);
+    if (!val) return cell_error("deque-empty", cell_nil());
+    return val;
+}
+
+Cell* prim_deque_peek_front(Cell* args) {
+    Cell* d = arg1(args);
+    if (!cell_is_deque(d))
+        return cell_error("⊟◁? requires deque", d);
+    Cell* val = cell_deque_peek_front(d);
+    if (!val) return cell_nil();
+    cell_retain(val);
+    return val;
+}
+
+Cell* prim_deque_peek_back(Cell* args) {
+    Cell* d = arg1(args);
+    if (!cell_is_deque(d))
+        return cell_error("⊟▷? requires deque", d);
+    Cell* val = cell_deque_peek_back(d);
+    if (!val) return cell_nil();
+    cell_retain(val);
+    return val;
+}
+
+Cell* prim_deque_size(Cell* args) {
+    Cell* d = arg1(args);
+    if (!cell_is_deque(d))
+        return cell_error("⊟# requires deque", d);
+    return cell_number((double)cell_deque_size(d));
+}
+
+Cell* prim_deque_is(Cell* args) {
+    return cell_bool(cell_is_deque(arg1(args)));
+}
+
+Cell* prim_deque_to_list(Cell* args) {
+    Cell* d = arg1(args);
+    if (!cell_is_deque(d))
+        return cell_error("⊟⊙ requires deque", d);
+    return cell_deque_to_list(d);
+}
+
+Cell* prim_deque_empty(Cell* args) {
+    Cell* d = arg1(args);
+    if (!cell_is_deque(d))
+        return cell_error("⊟∅? requires deque", d);
+    return cell_bool(cell_deque_size(d) == 0);
+}
+
 /* Primitive table - PURE SYMBOLS ONLY
  * EVERY primitive MUST have documentation */
 static Primitive primitives[] = {
@@ -8781,6 +8880,19 @@ static Primitive primitives[] = {
     {"⊍∩", prim_set_intersection, 2, {"Intersection of two sets", "⊍ → ⊍ → ⊍"}},
     {"⊍∖", prim_set_difference, 2, {"Difference of two sets (s1 - s2)", "⊍ → ⊍ → ⊍"}},
     {"⊍⊆", prim_set_subset, 2, {"Test if s1 is subset of s2", "⊍ → ⊍ → 𝔹"}},
+
+    /* Deque (DPDK-grade cache-optimized circular buffer) */
+    {"⊟", prim_deque_new, -1, {"Create deque from values", "α... → ⊟"}},
+    {"⊟◁", prim_deque_push_front, 2, {"Push to front (mutates)", "⊟ → α → #t"}},
+    {"⊟▷", prim_deque_push_back, 2, {"Push to back (mutates)", "⊟ → α → #t"}},
+    {"⊟◁⊖", prim_deque_pop_front, 1, {"Pop from front", "⊟ → α|⚠"}},
+    {"⊟▷⊖", prim_deque_pop_back, 1, {"Pop from back", "⊟ → α|⚠"}},
+    {"⊟◁?", prim_deque_peek_front, 1, {"Peek front without removing", "⊟ → α|∅"}},
+    {"⊟▷?", prim_deque_peek_back, 1, {"Peek back without removing", "⊟ → α|∅"}},
+    {"⊟#", prim_deque_size, 1, {"Get deque size", "⊟ → ℕ"}},
+    {"⊟?", prim_deque_is, 1, {"Test if value is deque", "α → 𝔹"}},
+    {"⊟⊙", prim_deque_to_list, 1, {"All elements front-to-back as list", "⊟ → [α]"}},
+    {"⊟∅?", prim_deque_empty, 1, {"Test if deque is empty", "⊟ → 𝔹"}},
 
     {NULL, NULL, 0, {NULL, NULL}}
 };

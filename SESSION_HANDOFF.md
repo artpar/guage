@@ -1,11 +1,52 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-01-30 (Day 110 COMPLETE)
+Updated: 2026-01-30 (Day 111 COMPLETE)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 110 - First-Class HashSet (2026-01-30)
+# Session Handoff: Day 111 - First-Class Deque (2026-01-30)
+
+## Day 111 Progress - Deque (`⊟`) — DPDK-Grade Cache-Optimized Circular Buffer
+
+**RESULT:** 109/109 test files passing (100%), 12 new tests (Deque)
+
+### New Feature: First-Class Deque (⊟) — DPDK-Grade Design
+
+Production-grade deque using DPDK rte_ring approach: branchless O(1) push/pop at both ends via power-of-2 bitmask indexing, virtual indices with unsigned overflow arithmetic, cache-line aligned buffer, and software prefetch hints.
+
+**New Cell Type:** `CELL_DEQUE` (enum 18) — printed as `⊟[N]`
+
+**New Primitives (11):**
+- `⊟` (deque-new, variadic) — `(⊟)` → empty deque, `(⊟ v1 v2 ...)` → deque from values
+- `⊟◁` (deque-push-front) — `(⊟◁ d val)` → `#t`, mutates
+- `⊟▷` (deque-push-back) — `(⊟▷ d val)` → `#t`, mutates
+- `⊟◁⊖` (deque-pop-front) — `(⊟◁⊖ d)` → value or `⚠` if empty
+- `⊟▷⊖` (deque-pop-back) — `(⊟▷⊖ d)` → value or `⚠` if empty
+- `⊟◁?` (deque-peek-front) — `(⊟◁? d)` → value or `∅` if empty
+- `⊟▷?` (deque-peek-back) — `(⊟▷? d)` → value or `∅` if empty
+- `⊟#` (deque-size) — O(1) via `tail - head` (no memory access)
+- `⊟?` (deque-is) — Type predicate
+- `⊟⊙` (deque-to-list) — All elements front-to-back as cons list
+- `⊟∅?` (deque-empty) — `(head == tail)` branchless
+
+**Architecture:**
+- **Power-of-2 capacity + bitmask**: `idx & (cap - 1)` — single AND instruction, no expensive `%` operator
+- **Virtual indices**: `head`/`tail` are monotonically increasing `uint32_t`, size = `tail - head` (works via unsigned overflow)
+- **Cache-line aligned**: `aligned_alloc(64, ...)` — buffer starts on cache line boundary
+- **Software prefetch**: `__builtin_prefetch()` on push/pop — warms L1 cache before access
+- **Branch prediction hints**: `__builtin_expect(size == capacity, 0)` — resize path marked cold
+- **Growth**: 2x with ring unwrap (at most 2 memcpy calls)
+- **Initial capacity**: 8 elements = 64 bytes = one cache line
+
+**Files Modified (4) + 1 New:**
+- `bootstrap/cell.h` — `CELL_DEQUE` in enum, `deque` struct in union, 10 function declarations
+- `bootstrap/cell.c` — Constructor, grow, push/pop/peek front/back, size, to_list, release/print/equal (~200 lines)
+- `bootstrap/primitives.h` — 11 deque primitive declarations
+- `bootstrap/primitives.c` — 11 primitive implementations + table entries + typeof updates
+- `bootstrap/tests/test_deque.test` (NEW) — 12 tests
+
+---
 
 ## Day 110 Progress - HashSet (`⊍`) — Boost-Style Groups-of-15 + Overflow Bloom Byte
 

@@ -160,6 +160,19 @@ Cell* prim_set_intersection(Cell* args);  /* ⊍∩ - intersection */
 Cell* prim_set_difference(Cell* args);    /* ⊍∖ - difference */
 Cell* prim_set_subset(Cell* args);        /* ⊍⊆ - subset test */
 
+/* Deque primitives (Day 111 — DPDK-grade cache-optimized circular buffer) */
+Cell* prim_deque_new(Cell* args);          /* ⊟ - create deque */
+Cell* prim_deque_push_front(Cell* args);   /* ⊟◁ - push front */
+Cell* prim_deque_push_back(Cell* args);    /* ⊟▷ - push back */
+Cell* prim_deque_pop_front(Cell* args);    /* ⊟◁⊖ - pop front */
+Cell* prim_deque_pop_back(Cell* args);     /* ⊟▷⊖ - pop back */
+Cell* prim_deque_peek_front(Cell* args);   /* ⊟◁? - peek front */
+Cell* prim_deque_peek_back(Cell* args);    /* ⊟▷? - peek back */
+Cell* prim_deque_size(Cell* args);         /* ⊟# - size */
+Cell* prim_deque_is(Cell* args);           /* ⊟? - type predicate */
+Cell* prim_deque_to_list(Cell* args);      /* ⊟⊙ - to list */
+Cell* prim_deque_empty(Cell* args);        /* ⊟∅? - empty predicate */
+
 /* Primitive documentation structure */
 typedef struct {
     const char* description;     /* What this primitive does */

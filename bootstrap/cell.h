@@ -30,7 +30,8 @@ typedef enum {
     CELL_BOX,            /* □ - mutable reference */
     CELL_WEAK_REF,       /* ◇ - weak reference */
     CELL_HASHMAP,        /* ⊞ - hash map (Swiss Table) */
-    CELL_SET             /* ⊡ - hash set (Boost-style groups-of-15 + overflow Bloom byte) */
+    CELL_SET,            /* ⊡ - hash set (Boost-style groups-of-15 + overflow Bloom byte) */
+    CELL_DEQUE           /* ⊟ - deque (DPDK-grade cache-optimized circular buffer) */
 } CellType;
 
 /* Linear Type Flags */
@@ -162,6 +163,12 @@ struct Cell {
             uint32_t n_groups;    /* Power of 2 */
             uint32_t ml_left;     /* Remaining inserts before rehash */
         } hashset;
+        struct {
+            Cell** buffer;        /* Cache-line aligned (64-byte) circular buffer */
+            uint32_t head;        /* Virtual read index (monotonic, wraps via overflow) */
+            uint32_t tail;        /* Virtual write index (monotonic, wraps via overflow) */
+            uint32_t capacity;    /* Always power of 2 (min 8) */
+        } deque;
     } data;
 };
 
@@ -253,6 +260,18 @@ Cell* cell_hashset_union(Cell* s1, Cell* s2);
 Cell* cell_hashset_intersection(Cell* s1, Cell* s2);
 Cell* cell_hashset_difference(Cell* s1, Cell* s2);
 bool cell_hashset_subset(Cell* s1, Cell* s2);
+
+/* Deque operations (DPDK-grade cache-optimized circular buffer) */
+Cell* cell_deque_new(uint32_t initial_cap);
+bool cell_is_deque(Cell* c);
+void cell_deque_push_front(Cell* d, Cell* val);
+void cell_deque_push_back(Cell* d, Cell* val);
+Cell* cell_deque_pop_front(Cell* d);
+Cell* cell_deque_pop_back(Cell* d);
+Cell* cell_deque_peek_front(Cell* d);
+Cell* cell_deque_peek_back(Cell* d);
+uint32_t cell_deque_size(Cell* d);
+Cell* cell_deque_to_list(Cell* d);
 
 /* Error accessors */
 const char* cell_error_message(Cell* c);
