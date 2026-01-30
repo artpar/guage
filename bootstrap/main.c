@@ -1,7 +1,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifndef _WIN32
 #include <unistd.h>
+#else
+#define isatty(fd) 0
+#define fileno _fileno
+#endif
 #include "cell.h"
 #include "siphash.h"
 #include "primitives.h"

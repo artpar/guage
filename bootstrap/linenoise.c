@@ -103,6 +103,65 @@
  *
  */
 
+#ifdef _WIN32
+/* Windows: linenoise is not supported, provide fgets-based stubs */
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+#include "linenoise.h"
+
+#define LINENOISE_MAX_LINE 4096
+
+char *linenoiseEditMore = "If you see this, you are misusing the API: when linenoiseEditFeed() is called, if it returns linenoiseEditMore the user is yet editing the line. See the README file for more information.";
+
+static linenoiseCompletionCallback *completionCallback = NULL;
+static linenoiseHintsCallback *hintsCallback = NULL;
+static linenoiseFreeHintsCallback *freeHintsCallback = NULL;
+
+char *linenoise(const char *prompt) {
+    char buf[LINENOISE_MAX_LINE];
+    printf("%s", prompt);
+    fflush(stdout);
+    if (fgets(buf, LINENOISE_MAX_LINE, stdin) == NULL) return NULL;
+    size_t len = strlen(buf);
+    while (len && (buf[len-1] == '\n' || buf[len-1] == '\r')) {
+        len--;
+        buf[len] = '\0';
+    }
+    char *copy = malloc(len + 1);
+    if (!copy) return NULL;
+    memcpy(copy, buf, len + 1);
+    return copy;
+}
+
+void linenoiseFree(void *ptr) {
+    if (ptr == linenoiseEditMore) return;
+    free(ptr);
+}
+
+int linenoiseHistoryAdd(const char *line) { (void)line; return 0; }
+int linenoiseHistorySetMaxLen(int len) { (void)len; return 0; }
+int linenoiseHistorySave(const char *filename) { (void)filename; return 0; }
+int linenoiseHistoryLoad(const char *filename) { (void)filename; return 0; }
+void linenoiseSetCompletionCallback(linenoiseCompletionCallback *fn) { completionCallback = fn; (void)completionCallback; }
+void linenoiseSetHintsCallback(linenoiseHintsCallback *fn) { hintsCallback = fn; (void)hintsCallback; }
+void linenoiseSetFreeHintsCallback(linenoiseFreeHintsCallback *fn) { freeHintsCallback = fn; (void)freeHintsCallback; }
+void linenoiseAddCompletion(linenoiseCompletions *lc, const char *str) { (void)lc; (void)str; }
+void linenoiseClearScreen(void) {}
+void linenoiseSetMultiLine(int ml) { (void)ml; }
+void linenoisePrintKeyCodes(void) {}
+void linenoiseMaskModeEnable(void) {}
+void linenoiseMaskModeDisable(void) {}
+int linenoiseEditStart(struct linenoiseState *l, int stdin_fd, int stdout_fd, char *buf, size_t buflen, const char *prompt) {
+    (void)l; (void)stdin_fd; (void)stdout_fd; (void)buf; (void)buflen; (void)prompt; return -1;
+}
+char *linenoiseEditFeed(struct linenoiseState *l) { (void)l; return NULL; }
+void linenoiseEditStop(struct linenoiseState *l) { (void)l; }
+void linenoiseHide(struct linenoiseState *l) { (void)l; }
+void linenoiseShow(struct linenoiseState *l) { (void)l; }
+
+#else /* !_WIN32 — full POSIX implementation */
+
 #include <termios.h>
 #include <unistd.h>
 #include <stdlib.h>
@@ -1760,3 +1819,5 @@ int linenoiseHistoryLoad(const char *filename) {
     fclose(fp);
     return 0;
 }
+
+#endif /* !_WIN32 */

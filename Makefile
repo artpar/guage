@@ -8,9 +8,19 @@ STDLIB_DIR = $(BOOTSTRAP_DIR)/stdlib
 TESTS_DIR = $(BOOTSTRAP_DIR)/tests
 
 # Build configuration
-CC = gcc
+CC ?= gcc
 CFLAGS = -Wall -Wextra -std=c11 -g -O2 -fno-omit-frame-pointer
-LDFLAGS = -Wl,-stack_size,0x2000000  # 32MB stack (increased from default 8MB)
+
+# Platform-specific linker flags
+# Allow full override via command line (e.g., make LDFLAGS="")
+UNAME_S := $(shell uname -s 2>/dev/null || echo Windows)
+ifeq ($(UNAME_S),Darwin)
+    LDFLAGS ?= -Wl,-stack_size,0x2000000
+else ifeq ($(UNAME_S),Linux)
+    LDFLAGS ?= -static
+else
+    LDFLAGS ?=
+endif
 
 # Source files (all in bootstrap/)
 SOURCES = cell.c primitives.c debruijn.c debug.c eval.c cfg.c dfg.c \
