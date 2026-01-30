@@ -3,6 +3,19 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "span.h"
+
+/* Branch prediction hints */
+#if defined(__GNUC__) || defined(__clang__)
+#define UNLIKELY(x) __builtin_expect(!!(x), 0)
+#define LIKELY(x)   __builtin_expect(!!(x), 1)
+#else
+#define UNLIKELY(x) (x)
+#define LIKELY(x)   (x)
+#endif
+
+/* Error return trace capacity (ring buffer of byte positions) */
+#define ERROR_TRACE_CAP 32
 
 /* Core Cell Structure
  * Everything in Guage is either an Atom or a Cell ⟨a b⟩
@@ -131,6 +144,9 @@ struct Cell {
     /* GC mark bit */
     bool marked;
 
+    /* Source location (8 bytes) — every cell knows where it came from */
+    Span span;
+
     /* Data */
     union {
         AtomData atom;
@@ -146,8 +162,13 @@ struct Cell {
             int source_line;            /* Line number in source - Day 27 */
         } lambda;
         struct {
-            const char* message;  /* Error message */
+            const char* message;  /* Error type/message (interned symbol string) */
             Cell* data;           /* Associated data */
+            Span error_span;      /* WHERE error was created (8 bytes) */
+            Cell* cause;          /* Wrapped cause (error chain, like Rust anyhow) */
+            uint16_t error_code;  /* Interned error ID (u16 index for O(1) compare) */
+            uint16_t trace_len;   /* Number of return trace entries */
+            uint32_t* return_trace; /* Zig-style error return trace (ring buffer of byte positions) */
         } error;
         struct {
             StructKind kind;      /* LEAF, NODE, or GRAPH */
@@ -253,6 +274,8 @@ Cell* cell_cons(Cell* car, Cell* cdr);
 Cell* cell_lambda(Cell* env, Cell* body, int arity, const char* source_module, int source_line);
 Cell* cell_builtin(void* fn);
 Cell* cell_error(const char* message, Cell* data);
+Cell* cell_error_at(const char* message, Cell* data, Span span);
+Cell* cell_error_wrap(const char* context_msg, Cell* data, Cell* cause, Span span);
 Cell* cell_struct(StructKind kind, Cell* type_tag, Cell* variant, Cell* fields);
 Cell* cell_graph(GraphType graph_type, Cell* nodes, Cell* edges, Cell* metadata);
 Cell* cell_actor(int actor_id);
@@ -291,7 +314,10 @@ bool cell_is_nil(Cell* c);
 bool cell_is_pair(Cell* c);
 bool cell_is_lambda(Cell* c);
 bool cell_is_atom(Cell* c);
-bool cell_is_error(Cell* c);
+/* Inline for performance — this is the hottest check in the evaluator */
+static inline bool cell_is_error(Cell* c) {
+    return c && c->type == CELL_ERROR;
+}
 bool cell_is_struct(Cell* c);
 bool cell_is_graph(Cell* c);
 bool cell_is_actor(Cell* c);
@@ -439,6 +465,31 @@ int cell_compare(Cell* a, Cell* b);
 /* Error accessors */
 const char* cell_error_message(Cell* c);
 Cell* cell_error_data(Cell* c);
+Cell* cell_error_cause(Cell* c);
+Cell* cell_error_root_cause(Cell* c);
+uint16_t cell_error_code(Cell* c);
+Span cell_error_span(Cell* c);
+uint16_t cell_error_trace_len(Cell* c);
+uint32_t* cell_error_return_trace(Cell* c);
+
+/* Stamp a position into an error's return trace (Zig model) */
+void error_stamp_return(Cell* err, uint32_t pos);
+
+/* Check if error or any cause in chain matches a type (by interned string) */
+bool cell_error_chain_matches(Cell* err, const char* error_type);
+
+/* Sentinel (immortal) pre-allocated errors — refcount = UINT32_MAX */
+extern Cell* ERR_DIV_BY_ZERO;
+extern Cell* ERR_UNDEFINED_VAR;
+extern Cell* ERR_TYPE_MISMATCH;
+extern Cell* ERR_ARITY_MISMATCH;
+extern Cell* ERR_NOT_A_FUNCTION;
+extern Cell* ERR_NOT_A_PAIR;
+extern Cell* ERR_NOT_A_NUMBER;
+extern Cell* ERR_INDEX_OUT_OF_BOUNDS;
+extern Cell* ERR_NO_MATCH;
+extern Cell* ERR_STACK_OVERFLOW;
+void error_sentinels_init(void);
 
 /* Equality */
 bool cell_equal(Cell* a, Cell* b);

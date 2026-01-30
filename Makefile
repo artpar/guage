@@ -23,9 +23,9 @@ else
 endif
 
 # Source files (all in bootstrap/)
-SOURCES = cell.c intern.c primitives.c debruijn.c debug.c eval.c cfg.c dfg.c \
+SOURCES = cell.c intern.c span.c primitives.c debruijn.c debug.c eval.c cfg.c dfg.c \
           pattern.c pattern_check.c type.c testgen.c module.c macro.c \
-          fiber.c actor.c channel.c linenoise.c main.c
+          fiber.c actor.c channel.c linenoise.c diagnostic.c main.c
 OBJECTS = $(SOURCES:.c=.o)
 EXECUTABLE = guage
 
@@ -204,7 +204,10 @@ help:
 # Dependencies (auto-generated from bootstrap/Makefile)
 # ============================================================================
 
-$(BOOTSTRAP_DIR)/cell.o: $(BOOTSTRAP_DIR)/cell.c $(BOOTSTRAP_DIR)/cell.h
+$(BOOTSTRAP_DIR)/span.o: $(BOOTSTRAP_DIR)/span.c $(BOOTSTRAP_DIR)/span.h
+$(BOOTSTRAP_DIR)/diagnostic.o: $(BOOTSTRAP_DIR)/diagnostic.c $(BOOTSTRAP_DIR)/diagnostic.h \
+                                $(BOOTSTRAP_DIR)/span.h $(BOOTSTRAP_DIR)/cell.h
+$(BOOTSTRAP_DIR)/cell.o: $(BOOTSTRAP_DIR)/cell.c $(BOOTSTRAP_DIR)/cell.h $(BOOTSTRAP_DIR)/span.h
 $(BOOTSTRAP_DIR)/primitives.o: $(BOOTSTRAP_DIR)/primitives.c $(BOOTSTRAP_DIR)/primitives.h \
                                 $(BOOTSTRAP_DIR)/cell.h $(BOOTSTRAP_DIR)/pattern.h \
                                 $(BOOTSTRAP_DIR)/type.h $(BOOTSTRAP_DIR)/testgen.h \
@@ -245,6 +248,6 @@ $(BOOTSTRAP_DIR)/channel.o: $(BOOTSTRAP_DIR)/channel.c $(BOOTSTRAP_DIR)/channel.
                               $(BOOTSTRAP_DIR)/cell.h
 $(BOOTSTRAP_DIR)/linenoise.o: $(BOOTSTRAP_DIR)/linenoise.c $(BOOTSTRAP_DIR)/linenoise.h
 $(BOOTSTRAP_DIR)/main.o: $(BOOTSTRAP_DIR)/main.c $(BOOTSTRAP_DIR)/cell.h \
-                          $(BOOTSTRAP_DIR)/primitives.h $(BOOTSTRAP_DIR)/eval.h \
-                          $(BOOTSTRAP_DIR)/debug.h $(BOOTSTRAP_DIR)/module.h \
-                          $(BOOTSTRAP_DIR)/linenoise.h
+                          $(BOOTSTRAP_DIR)/span.h $(BOOTSTRAP_DIR)/primitives.h \
+                          $(BOOTSTRAP_DIR)/eval.h $(BOOTSTRAP_DIR)/debug.h \
+                          $(BOOTSTRAP_DIR)/module.h $(BOOTSTRAP_DIR)/linenoise.h

@@ -10,14 +10,14 @@
 ; Test file port write and read
 (≔ test-path "/tmp/guage-posix-test.txt")
 (≔ wp (⊞⊳ test-path :textual-output))
-(⊨ "port write" #17 (⊞→ wp "hello from guage\n"))
-(⊨ "port flush" #t (⊞⊙ wp))
+(⊨ "port write" #17 (⊞⊳→ wp "hello from guage\n"))
+(⊨ "port flush" #t (⊞⊳⊙ wp))
 (⊨ "port close" #t (⊞× wp))
 
 (≔ rp (⊞⊳ test-path :textual-input))
-(⊨ "port read line" "hello from guage" (⊞← rp))
+(⊨ "port read line" "hello from guage" (⊞⊳← rp))
 ; After reading the only line, do one more read to trigger EOF
-(⊞← rp)
+(⊞⊳← rp)
 (⊨ "port eof after read" #t (⊞∅? rp))
 (⊨ "port close read" #t (⊞× rp))
 
@@ -43,14 +43,14 @@
 
 ; Test rename
 (≔ wp2 (⊞⊳ "/tmp/guage-rename-src.txt" :textual-output))
-(⊞→ wp2 "rename test")
+(⊞⊳→ wp2 "rename test")
 (⊞× wp2)
 (⊨ "rename" #t (≋⇔ "/tmp/guage-rename-src.txt" "/tmp/guage-rename-dst.txt"))
 (≋⊖ "/tmp/guage-rename-dst.txt")
 
 ; Test symlink + readlink
 (≔ wp3 (⊞⊳ "/tmp/guage-link-target.txt" :textual-output))
-(⊞→ wp3 "target")
+(⊞⊳→ wp3 "target")
 (⊞× wp3)
 (⊨ "symlink" #t (≋⊕→ "/tmp/guage-link-target.txt" "/tmp/guage-test-link"))
 (⊨ "readlink" "/tmp/guage-link-target.txt" (≋→ "/tmp/guage-test-link"))

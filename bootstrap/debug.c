@@ -46,25 +46,48 @@ void debug_pop_frame(DebugContext* ctx) {
     free(frame);
 }
 
-/* Print stack trace */
+/* Print stack trace — enhanced with file/line and box-drawing */
 void debug_print_stack(DebugContext* ctx) {
-    printf("\n⟳ Call Stack:\n");
+    fprintf(stderr, "\n  Call stack (most recent first):\n");
 
     StackFrame* frame = ctx->stack;
     int depth = 0;
 
+    /* Count frames for box drawing */
+    StackFrame* counter = ctx->stack;
+    int total = 0;
+    while (counter) { total++; counter = counter->parent; }
+
     while (frame != NULL) {
-        printf("  %d. %s(", depth, frame->function_name);
+        /* Box drawing connector */
+        const char* connector;
+        if (depth == 0 && frame->parent == NULL) {
+            connector = "─";  /* Single frame */
+        } else if (depth == 0) {
+            connector = "┌";  /* Top */
+        } else if (frame->parent == NULL) {
+            connector = "└";  /* Bottom */
+        } else {
+            connector = "├";  /* Middle */
+        }
+
+        fprintf(stderr, "  %s─ %s(", connector, frame->function_name);
         if (frame->args) {
             cell_print(frame->args);
         }
-        printf(")\n");
+        fprintf(stderr, ")");
+
+        /* Show file:line if available */
+        if (frame->file) {
+            fprintf(stderr, "  %s:%d", frame->file, frame->line);
+        }
+        fprintf(stderr, "\n");
 
         frame = frame->parent;
         depth++;
     }
 
     if (depth == 0) {
-        printf("  (empty)\n");
+        fprintf(stderr, "  (empty)\n");
     }
 }

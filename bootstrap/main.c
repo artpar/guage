@@ -8,12 +8,14 @@
 #define fileno _fileno
 #endif
 #include "cell.h"
+#include "span.h"
 #include "intern.h"
 #include "siphash.h"
 #include "primitives.h"
 #include "eval.h"
 #include "module.h"
 #include "linenoise.h"
+#include "diagnostic.h"
 
 /* Evaluator uses goto-based tail call optimization (TCO) */
 
@@ -26,7 +28,13 @@ typedef struct {
     int pos;
     int line;      /* Current line number (1-based) */
     int column;    /* Current column number (1-based) */
+    uint32_t file_base; /* Base offset in SourceMap global byte space */
 } Parser;
+
+/* Get current global byte position for span construction */
+static inline BytePos parser_pos(Parser* p) {
+    return p->file_base + (uint32_t)p->pos;
+}
 
 static void skip_whitespace(Parser* p) {
     while (1) {
@@ -64,6 +72,8 @@ static void skip_whitespace(Parser* p) {
 static Cell* parse_expr(Parser* p);
 
 static Cell* parse_list(Parser* p) {
+    BytePos lo = parser_pos(p);
+
     /* Skip '(' */
     p->pos++;
     p->column++;
@@ -73,7 +83,9 @@ static Cell* parse_list(Parser* p) {
     if (p->input[p->pos] == ')') {
         p->pos++;
         p->column++;
-        return cell_nil();
+        Cell* nil = cell_nil();
+        nil->span = span_new(lo, parser_pos(p));
+        return nil;
     }
 
     /* Parse elements */
@@ -100,10 +112,13 @@ static Cell* parse_list(Parser* p) {
         p->column++;
     }
 
+    /* Stamp span on the list head */
+    result->span = span_new(lo, parser_pos(p));
     return result;
 }
 
 static Cell* parse_number(Parser* p) {
+    BytePos lo = parser_pos(p);
     double value = 0;
     int is_negative = 0;
 
@@ -136,10 +151,13 @@ static Cell* parse_number(Parser* p) {
 
     if (is_negative) value = -value;
 
-    return cell_number(value);
+    Cell* c = cell_number(value);
+    c->span = span_new(lo, parser_pos(p));
+    return c;
 }
 
 static Cell* parse_symbol(Parser* p) {
+    BytePos lo = parser_pos(p);
     char buffer[256];
     int i = 0;
 
@@ -158,10 +176,13 @@ static Cell* parse_symbol(Parser* p) {
     }
     buffer[i] = '\0';
 
-    return cell_symbol(buffer);
+    Cell* c = cell_symbol(buffer);
+    c->span = span_new(lo, parser_pos(p));
+    return c;
 }
 
 static Cell* parse_string(Parser* p) {
+    BytePos lo = parser_pos(p);
     /* Skip opening quote */
     p->pos++;
     p->column++;
@@ -201,7 +222,9 @@ static Cell* parse_string(Parser* p) {
         p->column++;
     }
 
-    return cell_string(buffer);
+    Cell* c = cell_string(buffer);
+    c->span = span_new(lo, parser_pos(p));
+    return c;
 }
 
 static Cell* parse_expr(Parser* p) {
@@ -224,22 +247,30 @@ static Cell* parse_expr(Parser* p) {
 
     /* Number or Boolean with # prefix */
     if (p->input[p->pos] == '#') {
+        BytePos lo = parser_pos(p);
         p->pos++;
         p->column++;
         /* Boolean */
         if (p->input[p->pos] == 't') {
             p->pos++;
             p->column++;
-            return cell_bool(true);
+            Cell* c = cell_bool(true);
+            c->span = span_new(lo, parser_pos(p));
+            return c;
         } else if (p->input[p->pos] == 'f') {
             p->pos++;
             p->column++;
-            return cell_bool(false);
+            Cell* c = cell_bool(false);
+            c->span = span_new(lo, parser_pos(p));
+            return c;
         }
-        /* Number with # prefix */
+        /* Number with # prefix — lo already captured before '#' */
         else if ((p->input[p->pos] >= '0' && p->input[p->pos] <= '9') ||
                  (p->input[p->pos] == '-' && p->input[p->pos + 1] >= '0' && p->input[p->pos + 1] <= '9')) {
-            return parse_number(p);
+            Cell* c = parse_number(p);
+            /* Override span to include the '#' prefix */
+            c->span = span_new(lo, parser_pos(p));
+            return c;
         }
         /* Invalid # syntax - backtrack */
         p->pos--;
@@ -257,7 +288,12 @@ static Cell* parse_expr(Parser* p) {
 }
 
 Cell* parse(const char* input) {
-    Parser p = {input, 0, 1, 1};  /* pos=0, line=1, column=1 */
+    /* Register input with SourceMap if available */
+    uint32_t file_base = 0;
+    if (g_source_map) {
+        file_base = srcmap_add_file(g_source_map, "<repl>", input, (uint32_t)strlen(input));
+    }
+    Parser p = {input, 0, 1, 1, file_base};
     return parse_expr(&p);
 }
 
@@ -668,9 +704,13 @@ void repl(void) {
             /* Evaluate */
             Cell* result = eval(ctx, expr);
 
-            /* Print result */
-            cell_print(result);
-            printf("\n");
+            /* Print result — use diagnostic renderer for errors */
+            if (cell_is_error(result) && g_source_map) {
+                diag_render_error(g_source_map, result, stderr);
+            } else {
+                cell_print(result);
+                printf("\n");
+            }
 
             /* Add to history (only for interactive mode) */
             if (is_interactive) {
@@ -726,6 +766,16 @@ int main(int argc, char** argv) {
     guage_siphash_init();
     intern_init();
     intern_preload();
+
+    /* Initialize global SourceMap for span tracking */
+    g_source_map = srcmap_new();
+
+    /* Initialize sentinel (immortal) error cells */
+    error_sentinels_init();
+
     repl();
+
+    srcmap_free(g_source_map);
+    g_source_map = NULL;
     return 0;
 }

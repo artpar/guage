@@ -1,0 +1,62 @@
+; === Error Diagnostics Test Suite ===
+; Tests for SOTA error handling: spans, chains, propagation, sentinels
+
+; --- Basic error creation ---
+(⊨ (⌜ :error-creation) #t (⚠? (⚠ :test-error #0)))
+(⊨ (⌜ :error-type) :test-error (⚠⊙ (⚠ :test-error #0)))
+(⊨ (⌜ :error-data) #0 (⚠→ (⚠ :test-error #0)))
+
+; --- Error propagation with ⚡? ---
+(⊨ (⌜ :try-prop-success) #3 (⚡? (⊕ #1 #2)))
+(⊨ (⌜ :try-prop-error) #t (⚠? (⚡? (⊘ #1 #0))))
+
+; --- Error wrapping with ⚡⊕ ---
+(⊨ (⌜ :wrap-passthrough) #42 (⚡⊕ #42 :context))
+(⊨ (⌜ :wrap-error) #t (⚠? (⚡⊕ (⚠ :inner #0) :outer)))
+(⊨ (⌜ :wrap-type) :outer (⚠⊙ (⚡⊕ (⚠ :inner #0) :outer)))
+
+; --- Error cause chain ---
+(≔ wrapped-err (⚡⊕ (⚠ :inner-error #1) :outer-error))
+(⊨ (⌜ :cause-exists) #t (⚠? (⚠⊸ wrapped-err)))
+(⊨ (⌜ :cause-type) :inner-error (⚠⊙ (⚠⊸ wrapped-err)))
+(⊨ (⌜ :root-cause) :inner-error (⚠⊙ (⚠⊸* wrapped-err)))
+
+; --- Error chain matching ---
+(⊨ (⌜ :chain-match-direct) #t (⚠⊙? (⚠ :test #0) :test))
+(⊨ (⌜ :chain-match-no) #f (⚠⊙? (⚠ :test #0) :other))
+(⊨ (⌜ :chain-match-wrapped) #t (⚠⊙? wrapped-err :inner-error))
+(⊨ (⌜ :chain-match-outer) #t (⚠⊙? wrapped-err :outer-error))
+(⊨ (⌜ :chain-non-error) #f (⚠⊙? #42 :test))
+
+; --- Cause of simple error (no cause) ---
+(⊨ (⌜ :no-cause) ∅ (⚠⊸ (⚠ :simple #0)))
+
+; --- Return trace ---
+(⊨ (⌜ :trace-empty) ∅ (⚠⟲ (⚠ :fresh #0)))
+
+; --- Error in lambda with ⚡? propagation ---
+(≔ safe-div (λ (x y) (⚡? (⊘ x y))))
+(⊨ (⌜ :safe-div-ok) #5 (safe-div #10 #2))
+(⊨ (⌜ :safe-div-err) #t (⚠? (safe-div #10 #0)))
+
+; --- Nested error wrapping ---
+(≔ inner (⚠ :level-1 #1))
+(≔ mid (⚡⊕ inner :level-2))
+(≔ outer (⚡⊕ mid :level-3))
+(⊨ (⌜ :nested-outer-type) :level-3 (⚠⊙ outer))
+(⊨ (⌜ :nested-root) :level-1 (⚠⊙ (⚠⊸* outer)))
+(⊨ (⌜ :nested-chain-l1) #t (⚠⊙? outer :level-1))
+(⊨ (⌜ :nested-chain-l2) #t (⚠⊙? outer :level-2))
+(⊨ (⌜ :nested-chain-l3) #t (⚠⊙? outer :level-3))
+
+; --- Sentinel errors are valid errors ---
+(⊨ (⌜ :div-by-zero-is-error) #t (⚠? (⊘ #1 #0)))
+
+; --- Error type of div-by-zero ---
+(≔ dz-err (⚡⊕ (⊘ #1 #0) :wrapped-div))
+(⊨ (⌜ :dz-wrapped) :wrapped-div (⚠⊙ dz-err))
+
+; --- ⚡? in sequence ---
+(≔ chain-ops (λ (x)
+  (⚡? (⊗ (⚡? (⊕ x #1)) #2))))
+(⊨ (⌜ :chain-ops-ok) #22 (chain-ops #10))

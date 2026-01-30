@@ -1,0 +1,192 @@
+;;; Day 123: First-Class Test Runner — Trie-Backed Registry
+;;; Tests: Result accumulation, counting, reset, trie registration,
+;;;        registry runner, HashMap results, SortedMap timing,
+;;;        tag filtering, iterator pipelines.
+;;; Uses ⊢ (assert) for state checks to avoid polluting test runner state.
+
+;;; ═══════════════════════════════════════════
+;;; Section 1: Result Accumulation via ⊨
+;;; ═══════════════════════════════════════════
+
+(⊨⊜∅)
+
+;; Run a passing test — ⊨ stores result
+(⊨ (⌜ :accum:pass1) #1 #1)
+
+;; Use ⊢ to check state without polluting results
+(⊢ (⟨⟩? (⊨⊜)) :accum-results-exist)
+
+;; Head of results is a HashMap
+(⊢ (⊞? (◁ (⊨⊜))) :accum-result-is-hashmap)
+
+;; Result has correct :name
+(⊢ (≡ (⊞→ (◁ (⊨⊜)) :name) :accum:pass1) :accum-result-has-name)
+
+;; Result has :status :pass
+(⊢ (≡ (⊞→ (◁ (⊨⊜)) :status) :pass) :accum-result-status-pass)
+
+;; :elapsed is a number
+(⊢ (ℕ? (⊞→ (◁ (⊨⊜)) :elapsed)) :accum-result-has-elapsed)
+
+;;; ═══════════════════════════════════════════
+;;; Section 2: Count Tracking via ⊨⊜#
+;;; ═══════════════════════════════════════════
+
+(⊨⊜∅)
+(⊨ (⌜ :count:test1) #1 #1)
+(⊨ (⌜ :count:test2) #2 #2)
+(⊨ (⌜ :count:test3) #3 #3)
+
+(≔ counts (⊨⊜#))
+(⊢ (≡ (◁ counts) #3) :count-pass-is-3)
+(⊢ (≡ (◁ (▷ counts)) #0) :count-fail-is-0)
+(⊢ (≡ (◁ (▷ (▷ counts))) #3) :count-total-is-3)
+
+;;; ═══════════════════════════════════════════
+;;; Section 3: Reset via ⊨⊜∅
+;;; ═══════════════════════════════════════════
+
+(⊨⊜∅)
+(≔ counts-after-reset (⊨⊜#))
+
+(⊢ (≡ (◁ counts-after-reset) #0) :reset-pass-zero)
+(⊢ (≡ (◁ (▷ counts-after-reset)) #0) :reset-fail-zero)
+(⊢ (≡ (◁ (▷ (▷ counts-after-reset))) #0) :reset-total-zero)
+(⊢ (∅? (⊨⊜)) :reset-results-nil)
+
+;;; ═══════════════════════════════════════════
+;;; Section 4: Trie Registration via ⊨⊕⊙
+;;; ═══════════════════════════════════════════
+
+(⊨⊜∅)
+
+;; Register tests
+(⊢ (⊨⊕⊙ :math:add:basic (λ () (⊨ (⌜ :math:add:basic) #5 (⊕ #2 #3)))) :reg-returns-true)
+(⊨⊕⊙ :math:add:zero (λ () (⊨ (⌜ :math:add:zero) #0 (⊕ #0 #0))))
+(⊢ (⊨⊕⊙ :math:mul:basic (λ () (⊨ (⌜ :math:mul:basic) #6 (⊗ #2 #3))) :fast :pure) :reg-with-tags)
+(⊨⊕⊙ :string:concat (λ () (⊨ (⌜ :string:concat) "ab" (≈⊕ "a" "b"))))
+
+;;; ═══════════════════════════════════════════
+;;; Section 5: Run Registry via ⊨⊕!
+;;; ═══════════════════════════════════════════
+
+(⊨⊜∅)
+(≔ all-results (⊨⊕!))
+
+(⊢ (⊞? all-results) :run-result-is-hashmap)
+(⊢ (≡ (⊞→ all-results :total) #4) :run-total-count)
+(⊢ (≡ (⊞→ all-results :passed) #4) :run-all-passed)
+(⊢ (≡ (⊞→ all-results :failed) #0) :run-zero-failures)
+(⊢ (ℕ? (⊞→ all-results :elapsed)) :run-elapsed-is-number)
+
+;;; ═══════════════════════════════════════════
+;;; Section 6: Prefix Filtering via ⊨⊕!
+;;; ═══════════════════════════════════════════
+
+(⊨⊜∅)
+(≔ math-results (⊨⊕! :math))
+
+(⊢ (≡ (⊞→ math-results :total) #3) :prefix-math-total)
+(⊢ (≡ (⊞→ math-results :passed) #3) :prefix-math-all-passed)
+
+(⊨⊜∅)
+(≔ str-results (⊨⊕! :string))
+(⊢ (≡ (⊞→ str-results :total) #1) :prefix-string-total)
+
+;;; ═══════════════════════════════════════════
+;;; Section 7: Results are HashMaps
+;;; ═══════════════════════════════════════════
+
+(≔ result-list (⊞→ math-results :results))
+
+(⊢ (⟨⟩? result-list) :hashmap-results-is-list)
+(⊢ (⊞? (◁ result-list)) :hashmap-first-is-hashmap)
+
+(≔ first-result (◁ result-list))
+(⊢ (⊞∋ first-result :name) :hashmap-has-name)
+(⊢ (⊞∋ first-result :status) :hashmap-has-status)
+(⊢ (⊞∋ first-result :elapsed) :hashmap-has-elapsed)
+(⊢ (≡ (⊞→ first-result :status) :pass) :hashmap-status-is-pass)
+
+;;; ═══════════════════════════════════════════
+;;; Section 8: Timing is SortedMap
+;;; ═══════════════════════════════════════════
+
+(≔ timing (⊞→ math-results :timing))
+
+(⊢ (⋔? timing) :timing-is-sorted-map)
+(⊢ (> (⋔# timing) #0) :timing-has-entries)
+
+(≔ slowest (⋔▷ timing))
+(⊢ (⟨⟩? slowest) :timing-slowest-is-pair)
+(⊢ (ℕ? (◁ slowest)) :timing-slowest-key-is-number)
+
+;;; ═══════════════════════════════════════════
+;;; Section 9: Iterator Pipeline on Results
+;;; ═══════════════════════════════════════════
+
+(≔ results-iter (⊣ (⊞→ math-results :results)))
+(⊢ (⊣? results-iter) :iter-is-iterator)
+
+;; Filter for :pass status
+(≔ pass-iter (⊣⊲ results-iter (λ (r) (≡ (⊞→ r :status) :pass))))
+(⊢ (⊣? pass-iter) :iter-filter-is-iterator)
+
+;; Collect filtered results
+(≔ pass-list (⊣⊕ pass-iter))
+(⊢ (⟨⟩? pass-list) :iter-collected-is-list)
+
+;; Map to extract names
+(≔ name-iter (⊣↦ (⊣ (⊞→ math-results :results)) (λ (r) (⊞→ r :name))))
+(≔ name-list (⊣⊕ name-iter))
+(⊢ (⟨⟩? name-list) :iter-map-extracts-names)
+(⊢ (:? (◁ name-list)) :iter-names-are-symbols)
+
+;;; ═══════════════════════════════════════════
+;;; Section 10: Tag Filtering
+;;; ═══════════════════════════════════════════
+
+(⊨⊕⊙ :tagged:fast-test (λ () (⊨ (⌜ :tagged:fast-test) #1 #1)) :fast)
+(⊨⊕⊙ :tagged:slow-test (λ () (⊨ (⌜ :tagged:slow-test) #2 #2)) :slow)
+(⊨⊕⊙ :tagged:fast-pure (λ () (⊨ (⌜ :tagged:fast-pure) #3 #3)) :fast :pure)
+
+;; Run :tagged with tag :fast
+(⊨⊜∅)
+(≔ fast-results (⊨⊕! :tagged :fast))
+(⊢ (≡ (⊞→ fast-results :total) #2) :tag-fast-count)
+
+;; Run :tagged with tag :slow
+(⊨⊜∅)
+(≔ slow-results (⊨⊕! :tagged :slow))
+(⊢ (≡ (⊞→ slow-results :total) #1) :tag-slow-count)
+
+;; Run :tagged with tag :pure
+(⊨⊜∅)
+(≔ pure-results (⊨⊕! :tagged :pure))
+(⊢ (≡ (⊞→ pure-results :total) #1) :tag-pure-count)
+
+;;; ═══════════════════════════════════════════
+;;; Section 11: Failing Test Results
+;;; ═══════════════════════════════════════════
+
+;; Register a test that returns an error (simulates failure without printing ✗ FAIL)
+(⊨⊕⊙ :fail:intentional (λ () (⚠ :intentional-fail #0)))
+
+(⊨⊜∅)
+(≔ fail-results (⊨⊕! :fail))
+
+(⊢ (≡ (⊞→ fail-results :failed) #1) :fail-has-failure)
+(⊢ (⟨⟩? (⊞→ fail-results :failures)) :fail-failures-list)
+(⊢ (≡ (⊞→ (◁ (⊞→ fail-results :failures)) :status) :fail) :fail-failure-status)
+
+;;; ═══════════════════════════════════════════
+;;; Section 12: Multiple Resets are Idempotent
+;;; ═══════════════════════════════════════════
+
+(⊨⊜∅)
+(⊨⊜∅)
+(⊨⊜∅)
+
+(⊢ (∅? (⊨⊜)) :reset-triple-ok)
+(≔ triple-counts (⊨⊜#))
+(⊢ (≡ (◁ triple-counts) #0) :reset-triple-pass-zero)

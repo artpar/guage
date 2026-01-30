@@ -192,7 +192,7 @@ static void extract_dependencies(Cell* expr, SymbolSet* params, DepList* deps) {
     }
 
     /* Errors - might contain dependencies */
-    if (cell_is_error(expr)) {
+    if (UNLIKELY(cell_is_error(expr))) {
         Cell* error_data = cell_error_data(expr);
         if (error_data) {
             extract_dependencies(error_data, params, deps);
@@ -885,8 +885,8 @@ static Cell* eval_quasiquote(EvalContext* ctx, Cell* env, Cell* expr) {
                 /* Evaluate the unquoted expression */
                 Cell* rest = cell_cdr(expr);
                 if (cell_is_nil(rest)) {
-                    return cell_error("quasiquote-error",
-                        cell_symbol("unquote-requires-argument"));
+                    return cell_error_at("quasiquote-error",
+                        cell_symbol("unquote-requires-argument"), expr->span);
                 }
                 Cell* unquoted_expr = cell_car(rest);
                 return eval_internal(ctx, env, unquoted_expr);
@@ -983,7 +983,8 @@ tail_call:  /* TCO: loop back here instead of recursive call */
         if (cell_is_symbol(first) && macro_is_macro_call(expr)) {
             /* This is a macro call - expand it */
             Cell* expanded = macro_expand(expr, ctx);
-            if (cell_is_error(expanded)) {
+            if (UNLIKELY(cell_is_error(expanded))) {
+                error_stamp_return(expanded, expr->span.inline_span.lo);
                 return expanded;
             }
             /* Evaluate the expanded code - TAIL CALL */
@@ -1036,7 +1037,7 @@ tail_call:  /* TCO: loop back here instead of recursive call */
         Cell* value = eval_lookup(ctx, name);
         if (value == NULL) {
             Cell* var_name = cell_symbol(name);
-            Cell* result = cell_error("undefined-variable", var_name);
+            Cell* result = cell_error_at("undefined-variable", var_name, expr->span);
             cell_release(var_name);
             return result;
         }
@@ -1072,7 +1073,7 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                 Cell* clauses = cell_cdr(rest);
 
                 if (!cell_is_symbol(name)) {
-                    return cell_error("macro-name-not-symbol", name);
+                    return cell_error_at("macro-name-not-symbol", name, expr->span);
                 }
                 const char* name_str = cell_get_symbol(name);
 
@@ -1102,7 +1103,7 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                     Cell* body = cell_car(cell_cdr(cell_cdr(rest)));
 
                     if (!cell_is_symbol(name)) {
-                        return cell_error("macro-name-not-symbol", name);
+                        return cell_error_at("macro-name-not-symbol", name, expr->span);
                     }
                     const char* name_str = cell_get_symbol(name);
 
@@ -1156,12 +1157,13 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                 Cell* type_expr = cell_car(cell_cdr(rest));
 
                 if (!cell_is_symbol(name)) {
-                    return cell_error("∈ requires symbol as first argument", name);
+                    return cell_error_at("∈ requires symbol as first argument", name, expr->span);
                 }
 
                 /* Evaluate the type expression */
                 Cell* type = eval_internal(ctx, env, type_expr);
-                if (cell_is_error(type)) {
+                if (UNLIKELY(cell_is_error(type))) {
+                    error_stamp_return(type, expr->span.inline_span.lo);
                     return type;
                 }
 
@@ -1181,7 +1183,7 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                 Cell* name = cell_car(rest);
 
                 if (!cell_is_symbol(name)) {
-                    return cell_error("∈? requires symbol", name);
+                    return cell_error_at("∈? requires symbol", name, expr->span);
                 }
 
                 /* Query from type annotation registry */
@@ -1199,7 +1201,7 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                 Cell* name = cell_car(rest);
 
                 if (!cell_is_symbol(name)) {
-                    return cell_error("∈✓ requires symbol", name);
+                    return cell_error_at("∈✓ requires symbol", name, expr->span);
                 }
 
                 /* Validate binding against declared type */
@@ -1266,7 +1268,7 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                 Cell* arg_exprs = cell_cdr(rest);
 
                 if (!cell_is_symbol(fn_name)) {
-                    return cell_error("∈⊢ requires symbol as first argument", fn_name);
+                    return cell_error_at("∈⊢ requires symbol as first argument", fn_name, expr->span);
                 }
 
                 /* Evaluate the arguments (build list in reverse, then reverse) */
@@ -1274,8 +1276,9 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                 Cell* current = arg_exprs;
                 while (cell_is_pair(current)) {
                     Cell* arg = eval_internal(ctx, env, cell_car(current));
-                    if (cell_is_error(arg)) {
+                    if (UNLIKELY(cell_is_error(arg))) {
                         cell_release(eval_args_rev);
+                        error_stamp_return(arg, expr->span.inline_span.lo);
                         return arg;
                     }
                     eval_args_rev = cell_cons(arg, eval_args_rev);
@@ -1388,12 +1391,14 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                         Cell* else_type = eval_internal(ctx, env, else_wrapped);
                         cell_release(else_wrapped);
 
-                        if (cell_is_error(then_type)) {
+                        if (UNLIKELY(cell_is_error(then_type))) {
                             cell_release(else_type);
+                            error_stamp_return(then_type, expr->span.inline_span.lo);
                             return then_type;
                         }
-                        if (cell_is_error(else_type)) {
+                        if (UNLIKELY(cell_is_error(else_type))) {
                             cell_release(then_type);
+                            error_stamp_return(else_type, expr->span.inline_span.lo);
                             return else_type;
                         }
 
@@ -1431,7 +1436,8 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                         Cell* body_type = eval_internal(ctx, env, body_wrapped);
                         cell_release(body_wrapped);
 
-                        if (cell_is_error(body_type)) {
+                        if (UNLIKELY(cell_is_error(body_type))) {
+                            error_stamp_return(body_type, expr->span.inline_span.lo);
                             return body_type;
                         }
 
@@ -1524,7 +1530,8 @@ tail_call:  /* TCO: loop back here instead of recursive call */
 
                 /* Fallback: evaluate and infer */
                 Cell* evaled = eval_internal(ctx, env, expr);
-                if (cell_is_error(evaled)) {
+                if (UNLIKELY(cell_is_error(evaled))) {
+                    error_stamp_return(evaled, expr->span.inline_span.lo);
                     return evaled;
                 }
                 Cell* infer_args = cell_cons(evaled, cell_nil());
@@ -1563,7 +1570,8 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                 /* Expand macros in body BEFORE De Bruijn conversion */
                 /* This ensures macro templates with lambdas work correctly */
                 Cell* expanded_body = macro_expand(body_expr, ctx);
-                if (cell_is_error(expanded_body)) {
+                if (UNLIKELY(cell_is_error(expanded_body))) {
+                    error_stamp_return(expanded_body, expr->span.inline_span.lo);
                     return expanded_body;
                 }
                 /* macro_expand may return the same pointer without retaining;
@@ -1620,7 +1628,7 @@ tail_call:  /* TCO: loop back here instead of recursive call */
             /* ⪢ - sequencing: evaluate all, return last (Day 107) */
             if (id == SYM_ID_SEQUENCE) {
                 if (!cell_is_pair(rest)) {
-                    return cell_error("⪢ requires at least one expression", expr);
+                    return cell_error_at("⪢ requires at least one expression", expr, expr->span);
                 }
                 Cell* current = rest;
                 while (cell_is_pair(current)) {
@@ -1632,13 +1640,14 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                     }
                     /* Intermediate expression: eval and discard */
                     Cell* intermediate = eval_internal(ctx, env, cell_car(current));
-                    if (cell_is_error(intermediate)) {
+                    if (UNLIKELY(cell_is_error(intermediate))) {
+                        error_stamp_return(intermediate, expr->span.inline_span.lo);
                         return intermediate;
                     }
                     cell_release(intermediate);
                     current = next;
                 }
-                return cell_error("⪢ unexpected end", expr);
+                return cell_error_at("⪢ unexpected end", expr, expr->span);
             }
 
             /* ∧ - short-circuit AND (special form) */
@@ -1646,7 +1655,10 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                 Cell* a_expr = cell_car(rest);
                 Cell* b_expr = cell_car(cell_cdr(rest));
                 Cell* a_val = eval_internal(ctx, env, a_expr);
-                if (cell_is_error(a_val)) return a_val;
+                if (UNLIKELY(cell_is_error(a_val))) {
+                    error_stamp_return(a_val, expr->span.inline_span.lo);
+                    return a_val;
+                }
                 if (cell_is_bool(a_val) && !cell_get_bool(a_val)) {
                     return a_val;  /* #f — short circuit, don't eval b */
                 }
@@ -1661,7 +1673,10 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                 Cell* a_expr = cell_car(rest);
                 Cell* b_expr = cell_car(cell_cdr(rest));
                 Cell* a_val = eval_internal(ctx, env, a_expr);
-                if (cell_is_error(a_val)) return a_val;
+                if (UNLIKELY(cell_is_error(a_val))) {
+                    error_stamp_return(a_val, expr->span.inline_span.lo);
+                    return a_val;
+                }
                 if (cell_is_bool(a_val) && cell_get_bool(a_val)) {
                     return a_val;  /* #t — short circuit, don't eval b */
                 }
@@ -1669,6 +1684,17 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                 /* a was falsy, result is b (tail position) */
                 expr = b_expr;
                 goto tail_call;
+            }
+
+            /* ⚡? - error auto-propagation (Rust ? operator) */
+            if (id == SYM_ID_TRY_PROP) {
+                Cell* inner_expr = cell_car(rest);
+                Cell* val = eval_internal(ctx, env, inner_expr);
+                if (UNLIKELY(cell_is_error(val))) {
+                    error_stamp_return(val, expr->span.inline_span.lo);
+                    return val;  /* Propagate error to caller */
+                }
+                return val;  /* Unwrap: return value as-is */
             }
 
             /* ∇ - pattern match (special form) */
@@ -1699,7 +1725,7 @@ tail_call:  /* TCO: loop back here instead of recursive call */
             if (id == SYM_ID_EFFECT_DEF) {
                 Cell* name = cell_car(rest);
                 if (!cell_is_symbol(name)) {
-                    return cell_error("effect-declare-requires-symbol", name);
+                    return cell_error_at("effect-declare-requires-symbol", name, expr->span);
                 }
                 const char* effect_name = cell_get_symbol(name);
 
@@ -1710,7 +1736,7 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                     Cell* op = cell_car(op_rest);
                     if (!cell_is_symbol(op)) {
                         cell_release(ops);
-                        return cell_error("effect-op-requires-symbol", op);
+                        return cell_error_at("effect-op-requires-symbol", op, expr->span);
                     }
                     cell_retain(op);
                     ops = cell_cons(op, ops);
@@ -1729,7 +1755,7 @@ tail_call:  /* TCO: loop back here instead of recursive call */
             if (id == SYM_ID_EFFECT_Q) {
                 Cell* name = cell_car(rest);
                 if (!cell_is_symbol(name)) {
-                    return cell_error("effect-query-requires-symbol", name);
+                    return cell_error_at("effect-query-requires-symbol", name, expr->span);
                 }
                 return cell_bool(eval_has_effect(ctx, cell_get_symbol(name)));
             }
@@ -1741,11 +1767,11 @@ tail_call:  /* TCO: loop back here instead of recursive call */
             if (id == SYM_ID_EFFECT_GET) {
                 Cell* name = cell_car(rest);
                 if (!cell_is_symbol(name)) {
-                    return cell_error("effect-ops-requires-symbol", name);
+                    return cell_error_at("effect-ops-requires-symbol", name, expr->span);
                 }
                 Cell* ops = eval_lookup_effect(ctx, cell_get_symbol(name));
                 if (!ops) {
-                    return cell_error("undeclared-effect", name);
+                    return cell_error_at("undeclared-effect", name, expr->span);
                 }
                 return ops;
             }
@@ -1771,12 +1797,12 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                 while (cell_is_pair(spec_iter)) {
                     Cell* spec = cell_car(spec_iter);
                     if (!cell_is_pair(spec)) {
-                        return cell_error("effect-handler-requires-list", spec);
+                        return cell_error_at("effect-handler-requires-list", spec, expr->span);
                     }
 
                     Cell* effect_name_cell = cell_car(spec);
                     if (!cell_is_symbol(effect_name_cell)) {
-                        return cell_error("effect-handler-requires-effect-name", effect_name_cell);
+                        return cell_error_at("effect-handler-requires-effect-name", effect_name_cell, expr->span);
                     }
 
                     const char* eff_name = cell_get_symbol(effect_name_cell);
@@ -1788,7 +1814,7 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                         Cell* op_spec = cell_car(op_iter);
                         if (!cell_is_pair(op_spec)) {
                             cell_release(handlers_alist);
-                            return cell_error("effect-op-handler-requires-list", op_spec);
+                            return cell_error_at("effect-op-handler-requires-list", op_spec, expr->span);
                         }
 
                         Cell* op_name = cell_car(op_spec);
@@ -1796,13 +1822,14 @@ tail_call:  /* TCO: loop back here instead of recursive call */
 
                         if (!cell_is_symbol(op_name)) {
                             cell_release(handlers_alist);
-                            return cell_error("effect-op-requires-symbol", op_name);
+                            return cell_error_at("effect-op-requires-symbol", op_name, expr->span);
                         }
 
                         /* Evaluate the handler expression to get a function */
                         Cell* handler_fn = eval_internal(ctx, env, handler_expr);
-                        if (cell_is_error(handler_fn)) {
+                        if (UNLIKELY(cell_is_error(handler_fn))) {
                             cell_release(handlers_alist);
+                            error_stamp_return(handler_fn, expr->span.inline_span.lo);
                             return handler_fn;
                         }
 
@@ -1816,7 +1843,7 @@ tail_call:  /* TCO: loop back here instead of recursive call */
 
                     if (frame_count >= 16) {
                         cell_release(handlers_alist);
-                        return cell_error("too-many-effect-handlers", cell_number(16));
+                        return cell_error_at("too-many-effect-handlers", cell_number(16), expr->span);
                     }
 
                     frames[frame_count].effect_name = eff_name;
@@ -1869,12 +1896,12 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                 while (cell_is_pair(spec_iter)) {
                     Cell* spec = cell_car(spec_iter);
                     if (!cell_is_pair(spec)) {
-                        return cell_error("effect-handler-requires-list", spec);
+                        return cell_error_at("effect-handler-requires-list", spec, expr->span);
                     }
 
                     Cell* effect_name_cell = cell_car(spec);
                     if (!cell_is_symbol(effect_name_cell)) {
-                        return cell_error("effect-handler-requires-effect-name", effect_name_cell);
+                        return cell_error_at("effect-handler-requires-effect-name", effect_name_cell, expr->span);
                     }
 
                     const char* eff_name = cell_get_symbol(effect_name_cell);
@@ -1886,7 +1913,7 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                         Cell* op_spec = cell_car(op_iter);
                         if (!cell_is_pair(op_spec)) {
                             cell_release(handlers_alist);
-                            return cell_error("effect-op-handler-requires-list", op_spec);
+                            return cell_error_at("effect-op-handler-requires-list", op_spec, expr->span);
                         }
 
                         Cell* op_name = cell_car(op_spec);
@@ -1894,12 +1921,13 @@ tail_call:  /* TCO: loop back here instead of recursive call */
 
                         if (!cell_is_symbol(op_name)) {
                             cell_release(handlers_alist);
-                            return cell_error("effect-op-requires-symbol", op_name);
+                            return cell_error_at("effect-op-requires-symbol", op_name, expr->span);
                         }
 
                         Cell* handler_fn = eval_internal(ctx, env, handler_expr);
-                        if (cell_is_error(handler_fn)) {
+                        if (UNLIKELY(cell_is_error(handler_fn))) {
                             cell_release(handlers_alist);
+                            error_stamp_return(handler_fn, expr->span.inline_span.lo);
                             return handler_fn;
                         }
 
@@ -1912,7 +1940,7 @@ tail_call:  /* TCO: loop back here instead of recursive call */
 
                     if (frame_count >= 16) {
                         cell_release(handlers_alist);
-                        return cell_error("too-many-effect-handlers", cell_number(16));
+                        return cell_error_at("too-many-effect-handlers", cell_number(16), expr->span);
                     }
 
                     frames[frame_count].effect_name = eff_name;
@@ -1950,7 +1978,7 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                 while (fiber->state == FIBER_SUSPENDED) {
                     if (fiber->is_shift_yield) {
                         /* Shift yield — not expected in ⟪↺⟫ context */
-                        result = cell_error("shift-in-effect-handler", cell_nil());
+                        result = cell_error_at("shift-in-effect-handler", cell_nil(), expr->span);
                         break;
                     }
 
@@ -2023,7 +2051,7 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                             continue;
                         }
 
-                        result = cell_error("unhandled-resumable-op", cell_symbol(perf_op));
+                        result = cell_error_at("unhandled-resumable-op", cell_symbol(perf_op), expr->span);
                         break;
                     }
 
@@ -2063,7 +2091,7 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                         handler_result = eval_internal(ctx, new_env, lambda_body);
                         cell_release(new_env);
                     } else {
-                        handler_result = cell_error("handler-not-callable", handler_fn);
+                        handler_result = cell_error_at("handler-not-callable", handler_fn, expr->span);
                     }
 
                     cell_release(handler_fn);
@@ -2123,7 +2151,7 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                     cell_release(frames[i].handlers);
                 }
 
-                return result ? result : cell_error("fiber-error", cell_nil());
+                return result ? result : cell_error_at("fiber-error", cell_nil(), expr->span);
             }
 
             /* ↯ - perform effect operation
@@ -2138,10 +2166,10 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                 Cell* arg_exprs = cell_cdr(cell_cdr(rest));
 
                 if (!cell_is_symbol(effect_name_cell)) {
-                    return cell_error("perform-requires-effect-symbol", effect_name_cell);
+                    return cell_error_at("perform-requires-effect-symbol", effect_name_cell, expr->span);
                 }
                 if (!cell_is_symbol(op_name_cell)) {
-                    return cell_error("perform-requires-op-symbol", op_name_cell);
+                    return cell_error_at("perform-requires-op-symbol", op_name_cell, expr->span);
                 }
 
                 const char* eff_name = cell_get_symbol(effect_name_cell);
@@ -2150,7 +2178,7 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                 /* Find handler on the dynamic stack */
                 EffectFrame* frame = effect_find_handler(eff_name);
                 if (!frame) {
-                    return cell_error("unhandled-effect", effect_name_cell);
+                    return cell_error_at("unhandled-effect", effect_name_cell, expr->span);
                 }
 
                 /* ===== RESUMABLE PATH (fiber-based) ===== */
@@ -2163,8 +2191,9 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                     Cell* arg_iter = arg_exprs;
                     while (cell_is_pair(arg_iter)) {
                         Cell* arg_val = eval_internal(ctx, env, cell_car(arg_iter));
-                        if (cell_is_error(arg_val)) {
+                        if (UNLIKELY(cell_is_error(arg_val))) {
                             cell_release(args);
+                            error_stamp_return(arg_val, expr->span.inline_span.lo);
                             return arg_val;
                         }
                         Cell* new_pair = cell_cons(arg_val, cell_nil());
@@ -2219,7 +2248,7 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                 }
 
                 if (!handler_fn) {
-                    return cell_error("unhandled-operation", op_name_cell);
+                    return cell_error_at("unhandled-operation", op_name_cell, expr->span);
                 }
 
                 /* Evaluate argument expressions */
@@ -2228,8 +2257,9 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                 Cell* arg_iter = arg_exprs;
                 while (cell_is_pair(arg_iter)) {
                     Cell* arg_val = eval_internal(ctx, env, cell_car(arg_iter));
-                    if (cell_is_error(arg_val)) {
+                    if (UNLIKELY(cell_is_error(arg_val))) {
                         cell_release(args);
+                        error_stamp_return(arg_val, expr->span.inline_span.lo);
                         return arg_val;
                     }
                     Cell* new_pair = cell_cons(arg_val, cell_nil());
@@ -2273,7 +2303,7 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                         Cell* data = cell_cons(expected, cell_cons(actual, cell_nil()));
                         cell_release(expected);
                         cell_release(actual);
-                        return cell_error("handler-arity-mismatch", data);
+                        return cell_error_at("handler-arity-mismatch", data, expr->span);
                     }
 
                     cell_retain(fn_body);
@@ -2297,7 +2327,7 @@ tail_call:  /* TCO: loop back here instead of recursive call */
 
                 cell_release(handler_fn);
                 cell_release(args);
-                return cell_error("handler-not-a-function", handler_fn);
+                return cell_error_at("handler-not-a-function", handler_fn, expr->span);
             }
 
             /* ⟪⊸⟫ - reset/prompt (delimited continuation delimiter)
@@ -2324,7 +2354,7 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                     /* Shift yield — call shift handler with k */
                     Cell* shift_handler = fiber->shift_handler;
                     if (!shift_handler) {
-                        result = cell_error("shift-no-handler", cell_nil());
+                        result = cell_error_at("shift-no-handler", cell_nil(), expr->span);
                         break;
                     }
 
@@ -2351,7 +2381,7 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                         handler_result = eval_internal(ctx, new_env, lambda_body);
                         cell_release(new_env);
                     } else {
-                        handler_result = cell_error("shift-handler-not-callable", shift_handler);
+                        handler_result = cell_error_at("shift-handler-not-callable", shift_handler, expr->span);
                     }
 
                     cell_release(shift_handler);
@@ -2392,7 +2422,7 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                 fiber_set_current(prev_fiber);
                 fiber_destroy(fiber);
 
-                return result ? result : cell_error("reset-error", cell_nil());
+                return result ? result : cell_error_at("reset-error", cell_nil(), expr->span);
             }
 
             /* ⊸ - shift/control (capture delimited continuation)
@@ -2403,12 +2433,13 @@ tail_call:  /* TCO: loop back here instead of recursive call */
             if (id == SYM_ID_PIPE) {
                 Fiber* fiber = fiber_current();
                 if (!fiber) {
-                    return cell_error("shift-outside-reset", cell_nil());
+                    return cell_error_at("shift-outside-reset", cell_nil(), expr->span);
                 }
 
                 /* Evaluate handler function */
                 Cell* handler_fn = eval_internal(ctx, env, cell_car(rest));
-                if (cell_is_error(handler_fn)) {
+                if (UNLIKELY(cell_is_error(handler_fn))) {
+                    error_stamp_return(handler_fn, expr->span.inline_span.lo);
                     return handler_fn;
                 }
 
@@ -2441,7 +2472,7 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                 fn = eval_lookup(ctx, fn_name);
                 if (fn == NULL) {
                     Cell* var_name = cell_symbol(fn_name);
-                    Cell* result = cell_error("undefined-variable", var_name);
+                    Cell* result = cell_error_at("undefined-variable", var_name, expr->span);
                     cell_release(var_name);
                     Cell* args = eval_list(ctx, env, rest);
                     cell_release(args);
@@ -2482,7 +2513,7 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                 cell_release(actual);
                 cell_release(fn);
                 cell_release(args);
-                return cell_error("arity-mismatch", data);
+                return cell_error_at("arity-mismatch", data, expr->span);
             }
 
             /* Retain body before releasing fn (body points into fn) */
@@ -2513,14 +2544,14 @@ tail_call:  /* TCO: loop back here instead of recursive call */
         /* Not a function */
         cell_release(args);
         cell_retain(fn);
-        Cell* result = cell_error("not-a-function", fn);
+        Cell* result = cell_error_at("not-a-function", fn, expr->span);
         cell_release(fn);
         return result;
     }
 
     /* Unknown expression */
     cell_retain(expr);
-    return cell_error("eval-error", expr);
+    return cell_error_at("eval-error", expr, expr->span);
 }
 
 /* Public eval interface */
@@ -2715,17 +2746,17 @@ Cell* prim_fiber_resume_k(Cell* args) {
     int frame_count = g_handling_frame_count;
 
     if (!fiber) {
-        return cell_error("resume-k-no-fiber", cell_nil());
+        return cell_error_at("resume-k-no-fiber", cell_nil(), SPAN_NONE);
     }
 
     /* One-shot enforcement */
     if (fiber->k_used) {
-        return cell_error("one-shot-continuation-already-used", cell_nil());
+        return cell_error_at("one-shot-continuation-already-used", cell_nil(), SPAN_NONE);
     }
     fiber->k_used = true;
 
     if (fiber->state != FIBER_SUSPENDED) {
-        return cell_error("resume-k-fiber-not-suspended", cell_nil());
+        return cell_error_at("resume-k-fiber-not-suspended", cell_nil(), SPAN_NONE);
     }
 
     /* Get the resume value */
@@ -2762,7 +2793,7 @@ Cell* prim_fiber_resume_k(Cell* args) {
         }
 
         if (!handler_fn) {
-            return cell_error("unhandled-resumable-op", cell_symbol(perf_op));
+            return cell_error_at("unhandled-resumable-op", cell_symbol(perf_op), SPAN_NONE);
         }
 
         /* Reset k_used for new perform, build new k */
@@ -2795,7 +2826,7 @@ Cell* prim_fiber_resume_k(Cell* args) {
             handler_result = eval_internal(eval_ctx, new_env, lambda_body);
             cell_release(new_env);
         } else {
-            handler_result = cell_error("handler-not-callable", handler_fn);
+            handler_result = cell_error_at("handler-not-callable", handler_fn, SPAN_NONE);
         }
 
         cell_release(handler_fn);
@@ -2837,5 +2868,5 @@ Cell* prim_fiber_resume_k(Cell* args) {
         return cell_nil();
     }
 
-    return cell_error("resume-k-unexpected-state", cell_nil());
+    return cell_error_at("resume-k-unexpected-state", cell_nil(), SPAN_NONE);
 }

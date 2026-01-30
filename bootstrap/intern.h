@@ -34,7 +34,8 @@
 #define SYM_ID_UNQUOTE_ALT   27
 #define SYM_ID_AND            28
 #define SYM_ID_OR             29
-#define MAX_SPECIAL_FORM_ID   29
+#define SYM_ID_TRY_PROP       30
+#define MAX_SPECIAL_FORM_ID   30
 
 /* Intern result — returned by intern() */
 typedef struct {

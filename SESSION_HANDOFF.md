@@ -1,11 +1,105 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-01-30 (Day 122 COMPLETE)
+Updated: 2026-01-31 (Day 124 COMPLETE)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 122 - Complete String SDK (2026-01-30)
+# Session Handoff: Day 124 - First-Class Test Runner (2026-01-31)
+
+## Day 124 Progress - First-Class Test Runner + ART Trie Bug Fix
+
+**RESULT:** 122 test files (122 passing, 0 failures), 6 new test runner primitives, trie-backed registry with prefix/tag filtering, ART long-prefix bug fix, stdlib/test.scm
+
+### Changes:
+
+1. **Modified `prim_test_case` (⊨)** — Now records `clock_gettime` timing around `cell_equal`, builds HashMap result with `:name`, `:status`, `:expected`, `:actual`, `:elapsed`, `:suite`. Accumulates to global `g_test_results` cons list and increments `g_pass_count`/`g_fail_count`.
+
+2. **6 new C primitives:**
+   - `⊨⊕⊙` — Register test in global trie registry with optional tags. Builds `⊞{:fn λ, :tags ⊍{...}}` entry. Maintains inverted tag index in secondary trie.
+   - `⊨⊕!` — Run registered tests. Supports prefix filtering via trie prefix query and tag filtering via hashset membership. Returns rich HashMap with `:passed`, `:failed`, `:total`, `:elapsed`, `:results`, `:timing` (SortedMap), `:failures`.
+   - `⊨⊜` — Return accumulated test results list (cons list of HashMaps).
+   - `⊨⊜∅` — Clear all test state (results, counters, current suite).
+   - `⊨⊜#` — Return `(pass fail total)` as cons triple.
+   - `⊨⊜×` — Print final report and exit with status code (0=all pass, 1=failures).
+
+3. **ART Trie bug fix (cell.c)** — Fixed `art_search`, `art_insert_recursive`, `art_delete_recursive`, and `art_find_prefix_node` to use `hdr->full_prefix_len` instead of `hdr->prefix_len` after successful prefix match. The old code only skipped up to `ART_MAX_PREFIX` (8) bytes, causing lookups to fail for keys sharing prefixes longer than 8 bytes (e.g., `:math:add:basic` vs `:math:add:zero`).
+
+4. **Duplicate primitive detection** — Added O(n²) duplicate name check in `primitives_init()`. Aborts with clear error message if any two primitives share the same symbol name.
+
+5. **stdlib/test.scm** — Test runner macros and utilities: `⊨⊕:concat`, `⊨⊕:register-one`, iterator-based result filtering (`⊨⊕⊲`, `⊨⊕⊲:failures`, `⊨⊕⊲:passes`, `⊨⊕⊲:names`), top-N slowest via SortedMap (`⊨⊕⋔`, `⊨⊕⋔:slowest`), tag grouping (`⊨⊕⊍:by-tag`), parallel runner (`⊨⊕‖`), summary/exit helpers.
+
+6. **test_test_runner.test** — 12 sections, ~50 assertions covering: result accumulation, count tracking, reset, trie registration, run registry, prefix filtering, HashMap results, SortedMap timing, iterator pipelines, tag filtering, failing test results, multiple resets.
+
+### Files Created (2):
+- **NEW** `bootstrap/stdlib/test.scm` — Test runner stdlib (~130 lines)
+- **NEW** `bootstrap/tests/test_test_runner.test` — Test runner tests (~190 lines)
+
+### Files Modified (4):
+- `bootstrap/primitives.h` — 6 new function declarations
+- `bootstrap/primitives.c` — Global state, modified prim_test_case, 6 new primitives, duplicate detection
+- `bootstrap/cell.c` — ART trie fix (4 locations: search, insert, delete, prefix_find)
+- `SPEC.md` — Testing section updated from 7 to 13 primitives
+
+### Primitive Count: 438 (432 prior + 6 test runner)
+### Test Files: 122 (122 passing, 0 failures)
+
+---
+
+## Day 123 Progress - SOTA Error Diagnostics & Error Handling (Rust/Zig/Elm Combined)
+
+**RESULT:** 122 test files (121 passing, 1 pre-existing timeout), 5 new error chain primitives + 1 new special form (⚡?), complete diagnostic infrastructure with 8-byte spans, cause chains, return traces, diagnostic renderer, and sentinel errors
+
+### Changes:
+
+1. **span.h / span.c** — 8-byte Rust-style Span system. Inline-or-intern encoding (>99% inline). SourceMap with lazy line/column resolution via binary search over line tables. Supports file registration, span creation, resolution to file:line:col.
+
+2. **Diagnostic engine (diagnostic.h / diagnostic.c)** — Rust/Elm hybrid renderer. Multi-span diagnostics with primary (^^^) and secondary (---) underlines. "Did you mean?" Levenshtein fuzzy matching for undefined variables. JSON/LSP-compatible output. FixIt suggestions. Source context snippets with line numbers. Return trace rendering.
+
+3. **Extended error struct in cell.h/cell.c** — Errors now carry: source span (8 bytes), cause chain (Rust anyhow), return trace ring buffer (Zig model, 32-entry × 4 bytes), interned u16 error code for O(1) type comparison. `cell_error_at()` and `cell_error_wrap()` constructors.
+
+4. **⚡? special form (SYM_ID_TRY_PROP=30)** — Rust `?` operator for Guage. Evaluates expression; if error, stamps return trace and propagates; if value, returns unwrapped. Zero cost on happy path.
+
+5. **5 new error chain primitives:**
+   - `⚡⊕` — Wrap error with context symbol, pass non-errors through
+   - `⚠⊸` — Get error cause (next in chain, or ∅)
+   - `⚠⊸*` — Get root cause (deepest error in chain)
+   - `⚠⟲` — Get return trace as list of byte positions
+   - `⚠⊙?` — Check if any error in chain matches type (walks full chain)
+
+6. **10 sentinel (immortal) errors** — Pre-allocated with refcount=UINT32_MAX for div-by-zero, undefined-variable, type-mismatch, arity-mismatch, not-a-function, not-a-pair, not-a-number, index-out-of-bounds, no-match, stack-overflow. Zero malloc on error path.
+
+7. **UNLIKELY/LIKELY branch prediction** — All ~64 `cell_is_error()` checks in eval.c and ~29 in primitives.c wrapped with `UNLIKELY()`. Error-handling code pushed to cold sections.
+
+8. **49 eval.c error sites** converted from `cell_error()` → `cell_error_at()` with `expr->span`. 16 error propagation sites stamped with `error_stamp_return()`.
+
+9. **REPL integration** — Errors display via diagnostic renderer with source snippets, underlines, cause chains, and return traces on stderr.
+
+10. **Enhanced stack traces** — Box-drawing characters (┌├└), file:line display.
+
+### Files Created (4):
+- **NEW** `bootstrap/span.h` — Span, SourceMap, SourceFile, SpanData types (~150 lines)
+- **NEW** `bootstrap/span.c` — SourceMap impl, span resolution, line table binary search (~300 lines)
+- **NEW** `bootstrap/diagnostic.h` — Diagnostic, DiagSpan, FixIt types (~80 lines)
+- **NEW** `bootstrap/diagnostic.c` — Terminal + JSON rendering, Levenshtein, "did you mean?" (~500 lines)
+
+### Files Modified (10):
+- `bootstrap/cell.h` — Span in Cell, extended error struct, UNLIKELY/LIKELY macros, inline cell_is_error, sentinel externs
+- `bootstrap/cell.c` — cell_error_at(), cell_error_wrap(), error release frees trace/cause, sentinel init, immortal retain/release
+- `bootstrap/eval.c` — 49 cell_error→cell_error_at, 17 UNLIKELY wraps, 16 error_stamp_return, ⚡? special form
+- `bootstrap/primitives.h` — 5 new error chain primitive declarations
+- `bootstrap/primitives.c` — 5 new primitives, 23 UNLIKELY wraps, SourceMap registration in prim_load
+- `bootstrap/intern.h` — SYM_ID_TRY_PROP=30, MAX_SPECIAL_FORM_ID=30
+- `bootstrap/intern.c` — ⚡? pre-intern entry
+- `bootstrap/main.c` — SourceMap init, sentinel init, diagnostic.h include, REPL diagnostic rendering
+- `bootstrap/debug.c` — Enhanced stack trace with box-drawing and file:line
+- `bootstrap/tests/test_error_diagnostics.test` — 31 new tests
+
+### Primitive Count: 432 (427 prior + 5 error chain)
+### Special Forms: 31 (30 prior + ⚡?)
+### Test Files: 122 (121 passing, 1 pre-existing test_test_runner timeout)
+
+---
 
 ## Day 122 Progress - HFT-Grade Complete String SDK (SIMD-Accelerated)
 
@@ -1160,10 +1254,10 @@ Replaced replay-based resumable effects with real delimited continuations using 
 ## Current Status
 
 **System State:**
-- **Primitives:** 251 total (235 + 16 Iterator)
-- **Special Forms:** Added ⪢ (sequencing)
-- **Cell Types:** 24 total (through CELL_ITERATOR)
-- **Tests:** 116/116 test files passing (100%)
+- **Primitives:** 438 total (432 prior + 6 test runner)
+- **Special Forms:** 31 (including ⚡?)
+- **Cell Types:** 26 total (through CELL_DIR)
+- **Tests:** 122/122 test files passing (100%)
 - **Build:** Clean, O2 optimized, 32MB stack
 
 **Core Capabilities:**
@@ -1312,5 +1406,5 @@ bootstrap/tests/             # Test suite (88 test files)
 
 ---
 
-**Last Updated:** 2026-01-30 (Day 118 complete)
-**Next Session:** Day 119 - Continue data structures or new domain
+**Last Updated:** 2026-01-31 (Day 124 complete)
+**Next Session:** Day 125 - Continue stdlib or new domain

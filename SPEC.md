@@ -31,10 +31,10 @@ Everything is a **Cell**:
 
 **See:** `KEYWORDS.md` for complete specification.
 
-## Runtime Primitives (407 Total)
+## Runtime Primitives (432 Total)
 
-**Status:** 177 primitives implemented and stable (105/105 test files passing)
-**Note:** All primitives fully working including graph algorithms, actors, channels, supervision, supervisors, registry, timers, GenServer, process dictionary, task async/await, mutable references, and sequencing
+**Status:** 182 primitives implemented and stable (121/122 test files passing)
+**Note:** All primitives fully working including graph algorithms, actors, channels, supervision, supervisors, registry, timers, GenServer, process dictionary, task async/await, mutable references, sequencing, and SOTA error diagnostics
 
 ### Core Lambda Calculus (3) ✅
 | Symbol | Type | Meaning | Status |
@@ -526,15 +526,52 @@ Warnings are non-fatal and do not stop execution.
 runtime checking. Type inference (`∈⍜`, `∈⍜⊕`, `∈⍜*`) enables static analysis.
 See `test_type_inference.test`, `test_type_validation.test`.
 
-### Debug & Error Handling (6) ✅
+### Debug & Error Handling (12) ✅
 | Symbol | Type | Meaning | Status |
 |--------|------|---------|--------|
-| `⚠` | `:symbol → α → ⚠` | Create error value | ✅ DONE |
+| `⚠` | `:symbol → α → ⚠` | Create error value (with source span) | ✅ DONE |
 | `⚠?` | `α → 𝔹` | Test if error | ✅ DONE |
-| `⚠⊙` | `⚠ → :symbol` | Get error type | ✅ DONE |
+| `⚠⊙` | `⚠ → :symbol` | Get error type (interned u16 code) | ✅ DONE |
 | `⚠→` | `⚠ → α` | Get error data | ✅ DONE |
+| `⚡?` | `expr → α \| ⚠` | Auto-propagate errors (Rust `?` operator, special form) | ✅ DONE (Day 123) |
+| `⚡⊕` | `α → :symbol → α \| ⚠` | Wrap error with context, pass through non-errors | ✅ DONE (Day 123) |
+| `⚠⊸` | `⚠ → ⚠ \| ∅` | Get error cause (next in chain) | ✅ DONE (Day 123) |
+| `⚠⊸*` | `⚠ → ⚠` | Get root cause (deepest in chain) | ✅ DONE (Day 123) |
+| `⚠⟲` | `⚠ → [ℕ]` | Get error return trace as list of byte positions | ✅ DONE (Day 123) |
+| `⚠⊙?` | `⚠ → :symbol → 𝔹` | Check if any error in chain matches type | ✅ DONE (Day 123) |
 | `⊢` | `𝔹 → :symbol → 𝔹 \| ⚠` | Assert condition | ✅ DONE |
 | `⟲` | `α → α` | Trace (debug print) | ✅ DONE |
+
+**Error Diagnostics System (Day 123):**
+
+Every Cell carries an 8-byte **Span** (Rust-style inline-or-intern encoding) tracking its exact source location (start + end byte offset, macro context). Errors carry:
+- **Source span**: Where the error was created
+- **Cause chain**: Linked list of wrapped errors (Rust anyhow model)
+- **Return trace**: Ring buffer of byte positions showing propagation path (Zig model)
+- **Interned error code**: u16 for O(1) type comparison
+
+**Diagnostic renderer** (Rust/Elm hybrid) produces source-context errors with underlines, FixIt suggestions, "Did you mean?" fuzzy matching (Levenshtein), and JSON/LSP output.
+
+**10 sentinel (immortal) errors** pre-allocated with `refcount=UINT32_MAX`: div-by-zero, undefined-variable, type-mismatch, arity-mismatch, not-a-function, not-a-pair, not-a-number, index-out-of-bounds, no-match, stack-overflow.
+
+```scheme
+; ⚡? — Auto-propagation (like Rust ?)
+(≔ process (λ (data)
+  (≔ parsed (⚡? (parse data)))        ; propagates parse errors
+  (≔ validated (⚡? (validate parsed))) ; propagates validation errors
+  (transform validated)))
+
+; ⚡⊕ — Error context wrapping
+(⚡⊕ (⊘ #1 #0) :computation-failed)
+; → ⚠:computation-failed caused by ⚠:div-by-zero
+
+; ⚠⊸ / ⚠⊸* — Cause chain navigation
+(⚠⊸ wrapped-err)   ; → inner cause error (or ∅)
+(⚠⊸* wrapped-err)  ; → root cause (deepest)
+
+; ⚠⊙? — Chain matching (walks entire chain)
+(⚠⊙? wrapped-err :div-by-zero)  ; → #t (found in chain)
+```
 
 ### Self-Introspection (2) ✅
 | Symbol | Type | Meaning | Status |
@@ -542,11 +579,17 @@ See `test_type_inference.test`, `test_type_validation.test`.
 | `⧉` | `λ → ℕ` | Get arity of lambda | ✅ DONE |
 | `⊛` | `λ → expression` | Get source code | ✅ DONE |
 
-### Testing (7) ✅
+### Testing (13) ✅
 | Symbol | Type | Meaning | Status |
 |--------|------|---------|--------|
 | `≟` | `α → α → 𝔹` | Deep equality test | ✅ DONE |
-| `⊨` | `:symbol → α → α → 𝔹 \| ⚠` | Test case | ✅ DONE |
+| `⊨` | `:symbol → α → α → 𝔹 \| ⚠` | Test case (with timing + result accumulation) | ✅ DONE |
+| `⊨⊕⊙` | `:symbol → λ → [tags...] → 𝔹` | Register test in trie registry | ✅ DONE |
+| `⊨⊕!` | `[:symbol [:symbol]] → ⊞` | Run registered tests (optional prefix + tag filter) | ✅ DONE |
+| `⊨⊜` | `() → [⊞]` | Return accumulated test results list | ✅ DONE |
+| `⊨⊜∅` | `() → 𝔹` | Clear all test state (results + counters) | ✅ DONE |
+| `⊨⊜#` | `() → ⟨ℕ ℕ ℕ⟩` | Return pass/fail/total counts | ✅ DONE |
+| `⊨⊜×` | `() → ⊥` | Exit with test status code (0=pass, 1=fail) | ✅ DONE |
 | `gen-int` | `ℕ → ℕ → ℕ` | Random integer in range | ✅ DONE |
 | `gen-bool` | `() → 𝔹` | Random boolean | ✅ DONE |
 | `gen-symbol` | `[α] → α` | Random symbol from list | ✅ DONE |
@@ -1744,9 +1787,22 @@ Full pattern matching with guards, as-patterns, or-patterns, and view patterns. 
 (⚡∅ (⊘ #6 #2))                 ; → #3 (success)
 (⚡∅ (⊘ #1 #0))                 ; → ∅ (error ignored)
 
-;; ⚡? (error-type?) - Check if error has specific type
-(⚡? (⊘ #1 #0) :div-by-zero)    ; → #t (error type matches)
-(⚡? #42 :any)                   ; → #f (not an error)
+;; ⚡? (auto-propagate) - Return value or propagate error (special form)
+(⚡? (⊘ #6 #2))                 ; → #3 (success, unwrapped)
+(⚡? (⊘ #1 #0))                 ; → ⚠:div-by-zero (propagated to caller)
+
+;; ⚡⊕ (wrap-error) - Wrap error with context, pass non-errors through
+(⚡⊕ (⊘ #1 #0) :context)        ; → ⚠:context (wrapping ⚠:div-by-zero)
+(⚡⊕ #42 :context)               ; → #42 (non-error passed through)
+
+;; ⚠⊸ (error-cause) - Get cause in error chain
+(⚠⊸ wrapped-err)                ; → inner cause error (or ∅)
+
+;; ⚠⊸* (root-cause) - Get deepest error in chain
+(⚠⊸* wrapped-err)               ; → root cause error
+
+;; ⚠⊙? (chain-match) - Check if chain contains error type
+(⚠⊙? wrapped-err :div-by-zero)  ; → #t (found in chain)
 
 ;; ⚡⊙ (error-data) - Extract error data safely
 (⚡⊙ (⚠ :not-found "key"))      ; → "key"

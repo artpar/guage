@@ -127,9 +127,37 @@ Cell* cell_builtin(void* fn) {
 
 Cell* cell_error(const char* message, Cell* data) {
     Cell* c = cell_alloc(CELL_ERROR);
-    c->data.error.message = strdup(message);
+    InternResult r = intern(message);
+    c->data.error.message = r.canonical;   /* Interned — no strdup needed */
+    c->data.error.error_code = r.id;       /* u16 for O(1) comparison */
     c->data.error.data = data;
+    c->data.error.error_span = SPAN_NONE;
+    c->data.error.cause = NULL;
+    c->data.error.return_trace = NULL;
+    c->data.error.trace_len = 0;
     if (data) cell_retain(data);
+    return c;
+}
+
+Cell* cell_error_at(const char* message, Cell* data, Span span) {
+    Cell* c = cell_alloc(CELL_ERROR);
+    InternResult r = intern(message);
+    c->data.error.message = r.canonical;
+    c->data.error.error_code = r.id;
+    c->data.error.data = data;
+    c->data.error.error_span = span;
+    c->data.error.cause = NULL;
+    c->data.error.return_trace = NULL;
+    c->data.error.trace_len = 0;
+    c->span = span;  /* Also stamp on the cell itself */
+    if (data) cell_retain(data);
+    return c;
+}
+
+Cell* cell_error_wrap(const char* context_msg, Cell* data, Cell* cause, Span span) {
+    Cell* c = cell_error_at(context_msg, data, span);
+    c->data.error.cause = cause;
+    if (cause) cell_retain(cause);
     return c;
 }
 
@@ -243,11 +271,13 @@ Cell* cell_cdr(Cell* c) {
 /* Reference counting */
 void cell_retain(Cell* c) {
     if (c == NULL) return;
+    if (c->refcount == UINT32_MAX) return;  /* Immortal sentinel */
     c->refcount++;
 }
 
 void cell_release(Cell* c) {
     if (c == NULL) return;
+    if (c->refcount == UINT32_MAX) return;  /* Immortal sentinel */
 
     assert(c->refcount > 0);
     c->refcount--;
@@ -273,8 +303,10 @@ void cell_release(Cell* c) {
                 free((void*)c->data.atom.string);
                 break;
             case CELL_ERROR:
-                free((void*)c->data.error.message);
+                /* message is interned — immortal, no free */
                 cell_release(c->data.error.data);
+                if (c->data.error.cause) cell_release(c->data.error.cause);
+                free(c->data.error.return_trace);  /* NULL-safe */
                 break;
             case CELL_STRUCT:
                 cell_release(c->data.structure.type_tag);
@@ -529,9 +561,7 @@ bool cell_is_atom(Cell* c) {
                  c->type == CELL_ATOM_NIL);
 }
 
-bool cell_is_error(Cell* c) {
-    return c && c->type == CELL_ERROR;
-}
+/* cell_is_error is now inline in cell.h */
 
 bool cell_is_struct(Cell* c) {
     return c && c->type == CELL_STRUCT;
@@ -617,6 +647,95 @@ const char* cell_error_message(Cell* c) {
 Cell* cell_error_data(Cell* c) {
     assert(c->type == CELL_ERROR);
     return c->data.error.data;
+}
+
+Cell* cell_error_cause(Cell* c) {
+    assert(c->type == CELL_ERROR);
+    return c->data.error.cause;
+}
+
+Cell* cell_error_root_cause(Cell* c) {
+    assert(c->type == CELL_ERROR);
+    Cell* e = c;
+    while (e && cell_is_error(e) && e->data.error.cause) {
+        e = e->data.error.cause;
+    }
+    return e;
+}
+
+uint16_t cell_error_code(Cell* c) {
+    assert(c->type == CELL_ERROR);
+    return c->data.error.error_code;
+}
+
+Span cell_error_span(Cell* c) {
+    assert(c->type == CELL_ERROR);
+    return c->data.error.error_span;
+}
+
+uint16_t cell_error_trace_len(Cell* c) {
+    assert(c->type == CELL_ERROR);
+    return c->data.error.trace_len;
+}
+
+uint32_t* cell_error_return_trace(Cell* c) {
+    assert(c->type == CELL_ERROR);
+    return c->data.error.return_trace;
+}
+
+/* Stamp a position into an error's return trace (Zig model) */
+void error_stamp_return(Cell* err, uint32_t pos) {
+    if (!err || err->type != CELL_ERROR || pos == 0) return;
+    if (err->data.error.return_trace == NULL) {
+        err->data.error.return_trace = (uint32_t*)malloc(ERROR_TRACE_CAP * sizeof(uint32_t));
+        err->data.error.trace_len = 0;
+    }
+    uint32_t idx = err->data.error.trace_len % ERROR_TRACE_CAP;
+    err->data.error.return_trace[idx] = pos;
+    err->data.error.trace_len++;
+}
+
+/* Check if error or any cause in chain matches a type */
+bool cell_error_chain_matches(Cell* err, const char* error_type) {
+    InternResult r = intern(error_type);
+    Cell* e = err;
+    while (e && cell_is_error(e)) {
+        if (e->data.error.error_code == r.id) return true;
+        e = e->data.error.cause;
+    }
+    return false;
+}
+
+/* === Sentinel (Immortal) Errors === */
+
+Cell* ERR_DIV_BY_ZERO = NULL;
+Cell* ERR_UNDEFINED_VAR = NULL;
+Cell* ERR_TYPE_MISMATCH = NULL;
+Cell* ERR_ARITY_MISMATCH = NULL;
+Cell* ERR_NOT_A_FUNCTION = NULL;
+Cell* ERR_NOT_A_PAIR = NULL;
+Cell* ERR_NOT_A_NUMBER = NULL;
+Cell* ERR_INDEX_OUT_OF_BOUNDS = NULL;
+Cell* ERR_NO_MATCH = NULL;
+Cell* ERR_STACK_OVERFLOW = NULL;
+
+static Cell* make_sentinel_error(const char* message) {
+    Cell* c = cell_error(message, cell_nil());
+    c->refcount = UINT32_MAX;  /* Immortal: retain/release are no-ops */
+    return c;
+}
+
+void error_sentinels_init(void) {
+    ERR_DIV_BY_ZERO        = make_sentinel_error("div-by-zero");
+    ERR_UNDEFINED_VAR      = make_sentinel_error("undefined-variable");
+    ERR_TYPE_MISMATCH      = make_sentinel_error("type-mismatch");
+    ERR_ARITY_MISMATCH     = make_sentinel_error("arity-mismatch");
+    ERR_NOT_A_FUNCTION     = make_sentinel_error("not-a-function");
+    ERR_NOT_A_PAIR         = make_sentinel_error("not-a-pair");
+    ERR_NOT_A_NUMBER       = make_sentinel_error("not-a-number");
+    ERR_INDEX_OUT_OF_BOUNDS = make_sentinel_error("index-out-of-bounds");
+    ERR_NO_MATCH           = make_sentinel_error("no-match");
+    ERR_STACK_OVERFLOW     = make_sentinel_error("stack-overflow");
 }
 
 /* Structure accessors */
@@ -930,6 +1049,10 @@ void cell_print(Cell* c) {
             if (c->data.error.data && !cell_is_nil(c->data.error.data)) {
                 printf(":");
                 cell_print(c->data.error.data);
+            }
+            if (c->data.error.cause) {
+                printf(" → ");
+                cell_print(c->data.error.cause);
             }
             break;
         case CELL_STRUCT:
@@ -3687,7 +3810,7 @@ static ARTLeaf* art_search(void* root, const uint8_t* key, uint32_t key_len) {
             uint32_t prefix_match = art_check_prefix(node, key, key_len, depth);
             if (prefix_match != hdr->prefix_len)
                 return NULL;
-            depth += hdr->prefix_len;
+            depth += hdr->full_prefix_len;
         }
 
         if (depth >= key_len) return NULL;
@@ -3791,7 +3914,7 @@ static int art_insert_recursive(void* node, void** ref,
             *ref = nref;
             return 1;
         }
-        depth += hdr->prefix_len;
+        depth += hdr->full_prefix_len;
     }
 
     /* Determine next byte */
@@ -3833,7 +3956,7 @@ static Cell* art_delete_recursive(void* node, void** ref,
         uint32_t prefix_match = art_check_prefix(node, key, key_len, depth);
         if (prefix_match != hdr->prefix_len)
             return NULL;
-        depth += hdr->prefix_len;
+        depth += hdr->full_prefix_len;
     }
 
     uint8_t byte = (depth < key_len) ? key[depth] : 0;
@@ -3944,7 +4067,7 @@ static void* art_find_prefix_node(void* root, const uint8_t* prefix, uint32_t pr
                 if (hdr->prefix[i] != prefix[depth + i])
                     return NULL;
             }
-            depth += hdr->prefix_len;
+            depth += hdr->full_prefix_len;
             if (depth >= prefix_len) return node;
         }
 

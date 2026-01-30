@@ -47,6 +47,14 @@ Cell* prim_gt(Cell* args);        /* > - greater than */
 Cell* prim_le(Cell* args);        /* ≤ - less than or equal */
 Cell* prim_ge(Cell* args);        /* ≥ - greater than or equal */
 
+/* Test Runner primitives (Day 123) */
+Cell* prim_test_register(Cell* args);      /* ⊨⊕⊙ - register test in trie */
+Cell* prim_test_run_registry(Cell* args);  /* ⊨⊕! - run registered tests */
+Cell* prim_test_results(Cell* args);       /* ⊨⊜ - return accumulated results */
+Cell* prim_test_reset(Cell* args);         /* ⊨⊜∅ - clear test state */
+Cell* prim_test_count(Cell* args);         /* ⊨⊜# - return pass/fail/total */
+Cell* prim_test_exit(Cell* args);          /* ⊨⊜× - exit with status code */
+
 /* Property-Based Testing Generators */
 Cell* prim_gen_int(Cell* args);        /* gen-int - random integer in range */
 Cell* prim_gen_bool(Cell* args);       /* gen-bool - random boolean */
@@ -368,6 +376,13 @@ Cell* prim_exit_process(Cell* args);     /* ⊙⊘ - exit */
 Cell* prim_current_second(Cell* args);   /* ⊙⏱≈ - seconds since epoch */
 Cell* prim_jiffy(Cell* args);            /* ⊙⏱⊕# - high-res counter */
 Cell* prim_jps(Cell* args);              /* ⊙⏱⊕≈ - jiffies per second */
+
+/* Error chain primitives */
+Cell* prim_error_wrap(Cell* args);       /* ⚡⊕ - wrap error with context */
+Cell* prim_error_cause(Cell* args);      /* ⚠⊸ - get error cause */
+Cell* prim_error_root_cause(Cell* args); /* ⚠⊸* - get root cause */
+Cell* prim_error_trace(Cell* args);      /* ⚠⟲ - get return trace as list */
+Cell* prim_error_chain_match(Cell* args);/* ⚠⊙? - check if error chain matches type */
 
 /* Primitive documentation structure */
 typedef struct {

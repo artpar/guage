@@ -65,6 +65,14 @@ static Cell* arg4(Cell* args) {
     return cell_car(rest);
 }
 
+/* ═══ Test Runner Global State ═══ */
+static Cell* g_test_results = NULL;    /* Accumulated test results (cons list of ⊞ HashMaps) */
+static int   g_pass_count = 0;        /* Tests passed */
+static int   g_fail_count = 0;        /* Tests failed */
+static Cell* g_test_registry = NULL;  /* ⊮ Trie: name → ⊞{:fn λ, :tags ⊍{...}} */
+static Cell* g_tag_registry = NULL;   /* ⊮ Trie: "tag:name" → #t (inverted index) */
+static Cell* g_current_suite = NULL;  /* Current suite name for auto-prefixing */
+
 /* Core Lambda Calculus */
 
 /* ⟨ ⟩ - construct cell */
@@ -1683,6 +1691,90 @@ Cell* prim_error_data(Cell* args) {
     return cell_error_data(val);
 }
 
+/* ⚡⊕ - wrap error with context (pass through non-errors) */
+Cell* prim_error_wrap(Cell* args) {
+    Cell* val = arg1(args);
+    Cell* context_sym = arg2(args);
+
+    /* Non-error: pass through unchanged */
+    if (!cell_is_error(val)) {
+        cell_retain(val);
+        return val;
+    }
+
+    /* Error: wrap with context */
+    const char* ctx_name = cell_is_symbol(context_sym) ?
+        cell_get_symbol(context_sym) : "wrapped-error";
+    Cell* data = (args && cell_cdr(args) && cell_cdr(cell_cdr(args)) &&
+                  !cell_is_nil(cell_cdr(cell_cdr(args)))) ?
+        cell_car(cell_cdr(cell_cdr(args))) : cell_nil();
+    return cell_error_wrap(ctx_name, data, val, val->span);
+}
+
+/* ⚠⊸ - get error cause */
+Cell* prim_error_cause(Cell* args) {
+    Cell* val = arg1(args);
+    if (!cell_is_error(val)) {
+        return cell_error("not-an-error", val);
+    }
+    Cell* cause = cell_error_cause(val);
+    if (cause) {
+        cell_retain(cause);
+        return cause;
+    }
+    return cell_nil();
+}
+
+/* ⚠⊸* - get root cause */
+Cell* prim_error_root_cause(Cell* args) {
+    Cell* val = arg1(args);
+    if (!cell_is_error(val)) {
+        return cell_error("not-an-error", val);
+    }
+    Cell* root = cell_error_root_cause(val);
+    cell_retain(root);
+    return root;
+}
+
+/* ⚠⟲ - get return trace as list of byte positions */
+Cell* prim_error_trace(Cell* args) {
+    Cell* val = arg1(args);
+    if (!cell_is_error(val)) {
+        return cell_error("not-an-error", val);
+    }
+    uint16_t len = cell_error_trace_len(val);
+    const uint32_t* trace = cell_error_return_trace(val);
+    if (!trace || len == 0) {
+        return cell_nil();
+    }
+    /* Build list of positions (most recent first) */
+    Cell* result = cell_nil();
+    uint16_t actual_len = len < ERROR_TRACE_CAP ? len : ERROR_TRACE_CAP;
+    for (int i = actual_len - 1; i >= 0; i--) {
+        uint32_t idx = (len <= ERROR_TRACE_CAP) ? (uint32_t)i : ((len - ERROR_TRACE_CAP + i) % ERROR_TRACE_CAP);
+        Cell* pos = cell_number((double)trace[idx]);
+        Cell* pair = cell_cons(pos, result);
+        cell_release(pos);
+        cell_release(result);
+        result = pair;
+    }
+    return result;
+}
+
+/* ⚠⊙? - check if error or any cause in chain matches type */
+Cell* prim_error_chain_match(Cell* args) {
+    Cell* val = arg1(args);
+    Cell* type_sym = arg2(args);
+    if (!cell_is_error(val)) {
+        return cell_bool(false);
+    }
+    if (!cell_is_symbol(type_sym)) {
+        return cell_error("type-symbol-expected", type_sym);
+    }
+    const char* type_name = cell_get_symbol(type_sym);
+    return cell_bool(cell_error_chain_matches(val, type_name));
+}
+
 /* ⊢ - assert */
 Cell* prim_assert(Cell* args) {
     Cell* condition = arg1(args);
@@ -1827,19 +1919,29 @@ Cell* prim_deep_equal(Cell* args) {
     return cell_bool(cell_equal(a, b));
 }
 
-/* ⊨ - test-case */
+/* ⊨ - test-case (with timing + result accumulation) */
 Cell* prim_test_case(Cell* args) {
     Cell* name = arg1(args);
     Cell* expected = arg2(args);
     Cell* actual = cell_is_pair(cell_cdr(cell_cdr(args))) ?
         cell_car(cell_cdr(cell_cdr(args))) : cell_nil();
 
+    /* Timing */
+    struct timespec t0, t1;
+    clock_gettime(CLOCK_MONOTONIC, &t0);
+
+    bool passed = cell_equal(expected, actual);
+
+    clock_gettime(CLOCK_MONOTONIC, &t1);
+    double elapsed_us = (t1.tv_sec - t0.tv_sec) * 1e6 + (t1.tv_nsec - t0.tv_nsec) / 1e3;
+
+    /* Print (backward compatible) */
     printf("⊨ Test: ");
     cell_print(name);
 
-    if (cell_equal(expected, actual)) {
+    if (passed) {
         printf(" ✓ PASS\n");
-        return cell_bool(true);
+        g_pass_count++;
     } else {
         printf(" ✗ FAIL\n");
         printf("  Expected: ");
@@ -1847,6 +1949,34 @@ Cell* prim_test_case(Cell* args) {
         printf("\n  Actual:   ");
         cell_print(actual);
         printf("\n");
+        g_fail_count++;
+    }
+
+    /* Build result HashMap: ⊞{:name :status :expected :actual :elapsed} */
+    Cell* result_map = cell_hashmap_new(8);
+    cell_retain(name);
+    cell_hashmap_put(result_map, cell_symbol(":name"), name);
+    cell_hashmap_put(result_map, cell_symbol(":status"),
+                     passed ? cell_symbol(":pass") : cell_symbol(":fail"));
+    cell_retain(expected);
+    cell_hashmap_put(result_map, cell_symbol(":expected"), expected);
+    cell_retain(actual);
+    cell_hashmap_put(result_map, cell_symbol(":actual"), actual);
+    cell_hashmap_put(result_map, cell_symbol(":elapsed"), cell_number(elapsed_us));
+    if (g_current_suite) {
+        cell_retain(g_current_suite);
+        cell_hashmap_put(result_map, cell_symbol(":suite"), g_current_suite);
+    }
+
+    /* Accumulate into g_test_results */
+    cell_retain(result_map);
+    Cell* new_cons = cell_cons(result_map, g_test_results ? g_test_results : cell_nil());
+    g_test_results = new_cons;
+    cell_retain(g_test_results);
+
+    if (passed) {
+        return cell_bool(true);
+    } else {
         return cell_error("test-failed", name);
     }
 }
@@ -2033,6 +2163,267 @@ Cell* prim_test_property(Cell* args) {
         cell_release(failing_input);
         return error;
     }
+}
+
+/* ═══ Test Runner Primitives ═══ */
+
+/* ⊨⊕⊙ — Register test in global trie
+ * (⊨⊕⊙ :name (λ () ...))          — register test
+ * (⊨⊕⊙ :name (λ () ...) :tag1 :tag2) — register with tags
+ */
+Cell* prim_test_register(Cell* args) {
+    Cell* name = arg1(args);
+    Cell* fn = arg2(args);
+
+    if (!cell_is_symbol(name)) {
+        return cell_error("⊨⊕⊙: name must be a symbol", name);
+    }
+    if (!cell_is_lambda(fn)) {
+        return cell_error("⊨⊕⊙: second arg must be a lambda", fn);
+    }
+
+    /* Lazily create the global test registry trie */
+    if (!g_test_registry) {
+        g_test_registry = cell_trie_new();
+        cell_retain(g_test_registry);
+    }
+    if (!g_tag_registry) {
+        g_tag_registry = cell_trie_new();
+        cell_retain(g_tag_registry);
+    }
+
+    /* Collect tags from remaining args */
+    Cell* tags = cell_hashset_new(4);
+    Cell* rest = cell_cdr(cell_cdr(args));
+    while (cell_is_pair(rest)) {
+        Cell* tag = cell_car(rest);
+        if (cell_is_symbol(tag)) {
+            cell_retain(tag);
+            cell_hashset_add(tags, tag);
+
+            /* Also insert into tag trie: "tag:name" → #t */
+            const char* tag_str = cell_get_symbol(tag);
+            const char* name_str = cell_get_symbol(name);
+            size_t key_len = strlen(tag_str) + 1 + strlen(name_str) + 1;
+            char* tag_key = malloc(key_len);
+            snprintf(tag_key, key_len, "%s:%s", tag_str, name_str);
+            Cell* tag_key_sym = cell_symbol(tag_key);
+            free(tag_key);
+            cell_trie_put(g_tag_registry, tag_key_sym, cell_bool(true));
+        }
+        rest = cell_cdr(rest);
+    }
+
+    /* Build entry: ⊞{:fn λ, :tags ⊍{...}} */
+    Cell* entry = cell_hashmap_new(4);
+    cell_retain(fn);
+    cell_hashmap_put(entry, cell_symbol(":fn"), fn);
+    cell_hashmap_put(entry, cell_symbol(":tags"), tags);
+
+    /* Insert into trie: name → entry */
+    cell_retain(name);
+    cell_retain(entry);
+    cell_trie_put(g_test_registry, name, entry);
+
+    return cell_bool(true);
+}
+
+/* ⊨⊕! — Run registered tests, return rich results
+ * (⊨⊕!)              — run all
+ * (⊨⊕! :prefix)      — run tests with prefix
+ * (⊨⊕! :prefix :tag) — run prefix filtered by tag
+ */
+Cell* prim_test_run_registry(Cell* args) {
+    if (!g_test_registry) {
+        return cell_error("⊨⊕!: no tests registered", cell_nil());
+    }
+
+    EvalContext* ctx = eval_get_current_context();
+    if (!ctx) {
+        return cell_error("⊨⊕!: no eval context", cell_nil());
+    }
+
+    /* Determine prefix filter */
+    Cell* prefix = NULL;
+    Cell* tag_filter = NULL;
+    if (cell_is_pair(args) && !cell_is_nil(cell_car(args))) {
+        prefix = cell_car(args);
+        /* Check for tag filter */
+        if (cell_is_pair(cell_cdr(args)) && !cell_is_nil(cell_car(cell_cdr(args)))) {
+            tag_filter = cell_car(cell_cdr(args));
+        }
+    }
+
+    /* Get test keys - prefix query or all */
+    Cell* test_keys;
+    if (prefix && cell_is_symbol(prefix)) {
+        test_keys = cell_trie_prefix_keys(g_test_registry, prefix);
+    } else {
+        test_keys = cell_trie_keys(g_test_registry);
+    }
+
+    /* Iterate over test keys and run each */
+    int passed = 0, failed = 0, total = 0;
+    Cell* results_list = cell_nil();
+    Cell* timing_map = cell_sorted_map_new();
+    cell_retain(timing_map);
+    Cell* failures_list = cell_nil();
+
+    struct timespec suite_t0, suite_t1;
+    clock_gettime(CLOCK_MONOTONIC, &suite_t0);
+
+    Cell* current = test_keys;
+    while (cell_is_pair(current)) {
+        Cell* key = cell_car(current);
+        Cell* entry = cell_trie_get(g_test_registry, key);
+
+        if (!entry || cell_is_nil(entry)) {
+            current = cell_cdr(current);
+            continue;
+        }
+
+        /* Tag filtering: skip if tag doesn't match */
+        if (tag_filter && cell_is_symbol(tag_filter)) {
+            Cell* tags = cell_hashmap_get(entry, cell_symbol(":tags"));
+            if (tags && cell_is_hashset(tags)) {
+                if (!cell_hashset_has(tags, tag_filter)) {
+                    current = cell_cdr(current);
+                    continue;
+                }
+            } else {
+                current = cell_cdr(current);
+                continue;
+            }
+        }
+
+        Cell* fn = cell_hashmap_get(entry, cell_symbol(":fn"));
+        if (!fn || !cell_is_lambda(fn)) {
+            current = cell_cdr(current);
+            continue;
+        }
+
+        total++;
+
+        /* Time the test execution */
+        struct timespec t0, t1;
+        clock_gettime(CLOCK_MONOTONIC, &t0);
+
+        /* Call the test lambda: (fn) — zero args */
+        Cell* call_env = fn->data.lambda.env;
+        Cell* body = fn->data.lambda.body;
+        Cell* result = eval_internal(ctx, call_env, body);
+
+        clock_gettime(CLOCK_MONOTONIC, &t1);
+        double elapsed_us = (t1.tv_sec - t0.tv_sec) * 1e6 + (t1.tv_nsec - t0.tv_nsec) / 1e3;
+
+        /* Determine pass/fail */
+        bool test_passed = !cell_is_error(result);
+
+        /* Build result HashMap */
+        Cell* res_map = cell_hashmap_new(8);
+        cell_retain(key);
+        cell_hashmap_put(res_map, cell_symbol(":name"), key);
+        cell_hashmap_put(res_map, cell_symbol(":status"),
+                         test_passed ? cell_symbol(":pass") : cell_symbol(":fail"));
+        cell_hashmap_put(res_map, cell_symbol(":elapsed"), cell_number(elapsed_us));
+        cell_retain(result);
+        cell_hashmap_put(res_map, cell_symbol(":result"), result);
+
+        /* Insert elapsed → name into SortedMap for timing index */
+        cell_retain(key);
+        cell_sorted_map_put(timing_map, cell_number(elapsed_us), key);
+
+        /* Accumulate */
+        cell_retain(res_map);
+        results_list = cell_cons(res_map, results_list);
+
+        if (test_passed) {
+            passed++;
+        } else {
+            failed++;
+            cell_retain(res_map);
+            failures_list = cell_cons(res_map, failures_list);
+        }
+
+        cell_release(result);
+        current = cell_cdr(current);
+    }
+
+    clock_gettime(CLOCK_MONOTONIC, &suite_t1);
+    double total_elapsed = (suite_t1.tv_sec - suite_t0.tv_sec) * 1e6 +
+                           (suite_t1.tv_nsec - suite_t0.tv_nsec) / 1e3;
+
+    /* Print summary */
+    printf("\n═══ Test Summary ═══\n");
+    printf("Passed: %d  Failed: %d  Total: %d\n", passed, failed, total);
+    if (total_elapsed > 1000.0) {
+        printf("Time: %.1fms\n", total_elapsed / 1000.0);
+    } else {
+        printf("Time: %.0fµs\n", total_elapsed);
+    }
+    /* Print slowest test */
+    Cell* slowest = cell_sorted_map_max(timing_map);
+    if (slowest && cell_is_pair(slowest)) {
+        printf("Slowest: ");
+        cell_print(cell_cdr(slowest));
+        printf(" (%.0fµs)\n", cell_get_number(cell_car(slowest)));
+    }
+
+    /* Build return HashMap */
+    Cell* ret = cell_hashmap_new(8);
+    cell_hashmap_put(ret, cell_symbol(":passed"), cell_number(passed));
+    cell_hashmap_put(ret, cell_symbol(":failed"), cell_number(failed));
+    cell_hashmap_put(ret, cell_symbol(":total"), cell_number(total));
+    cell_hashmap_put(ret, cell_symbol(":elapsed"), cell_number(total_elapsed));
+    cell_hashmap_put(ret, cell_symbol(":results"), results_list);
+    cell_hashmap_put(ret, cell_symbol(":timing"), timing_map);
+    cell_hashmap_put(ret, cell_symbol(":failures"), failures_list);
+
+    return ret;
+}
+
+/* ⊨⊜ — Return accumulated test results list */
+Cell* prim_test_results(Cell* args) {
+    (void)args;
+    if (!g_test_results) return cell_nil();
+    cell_retain(g_test_results);
+    return g_test_results;
+}
+
+/* ⊨⊜∅ — Clear all test state */
+Cell* prim_test_reset(Cell* args) {
+    (void)args;
+    if (g_test_results) {
+        cell_release(g_test_results);
+        g_test_results = NULL;
+    }
+    g_pass_count = 0;
+    g_fail_count = 0;
+    if (g_current_suite) {
+        cell_release(g_current_suite);
+        g_current_suite = NULL;
+    }
+    return cell_bool(true);
+}
+
+/* ⊨⊜# — Return pass/fail/total as cons triple */
+Cell* prim_test_count(Cell* args) {
+    (void)args;
+    int total = g_pass_count + g_fail_count;
+    return cell_cons(cell_number(g_pass_count),
+           cell_cons(cell_number(g_fail_count),
+           cell_cons(cell_number(total), cell_nil())));
+}
+
+/* ⊨⊜× — Exit with status code (0 if all pass, 1 if any fail) */
+Cell* prim_test_exit(Cell* args) {
+    (void)args;
+    int code = (g_fail_count > 0) ? 1 : 0;
+    printf("\n═══ Final Test Report ═══\n");
+    printf("Passed: %d  Failed: %d  Total: %d\n",
+           g_pass_count, g_fail_count, g_pass_count + g_fail_count);
+    exit(code);
+    return cell_nil(); /* unreachable */
 }
 
 /* Effect primitives
@@ -7093,6 +7484,11 @@ Cell* prim_load(Cell* args) {
     buffer[bytes_read] = '\0';
     fclose(file);
 
+    /* Register file with SourceMap for diagnostic span resolution */
+    if (g_source_map) {
+        srcmap_add_file(g_source_map, filename, buffer, bytes_read);
+    }
+
     /* Register module and set as currently loading */
     module_registry_add(filename);
 
@@ -10662,7 +11058,7 @@ Cell* prim_file_space(Cell* args) {
     Cell* fields = cell_nil();
     fields = cell_cons(cell_cons(cell_symbol("available"), cell_number((double)(st.f_bavail * st.f_frsize))), fields);
     fields = cell_cons(cell_cons(cell_symbol("free"), cell_number((double)(st.f_bfree * st.f_frsize))), fields);
-    fields = cell_cons(cell_cons(cell_symbol("total"), cell_number((double)(st.f_blocks * st.f_frsize))), fields);
+    fields = cell_cons(cell_cons(cell_symbol(":total"), cell_number((double)(st.f_blocks * st.f_frsize))), fields);
 
     return cell_struct(STRUCT_LEAF, cell_symbol("file-space"), cell_nil(), fields);
 }
@@ -10797,7 +11193,7 @@ Cell* prim_user_info(Cell* args) {
     fields = cell_cons(cell_cons(cell_symbol("home"), cell_string(pw->pw_dir)), fields);
     fields = cell_cons(cell_cons(cell_symbol("gid"), cell_number((double)pw->pw_gid)), fields);
     fields = cell_cons(cell_cons(cell_symbol("uid"), cell_number((double)pw->pw_uid)), fields);
-    fields = cell_cons(cell_cons(cell_symbol("name"), cell_string(pw->pw_name)), fields);
+    fields = cell_cons(cell_cons(cell_symbol(":name"), cell_string(pw->pw_name)), fields);
 
     return cell_struct(STRUCT_LEAF, cell_symbol("user-info"), cell_nil(), fields);
 }
@@ -10826,7 +11222,7 @@ Cell* prim_group_info(Cell* args) {
     Cell* fields = cell_nil();
     fields = cell_cons(cell_cons(cell_symbol("members"), members), fields);
     fields = cell_cons(cell_cons(cell_symbol("gid"), cell_number((double)gr->gr_gid)), fields);
-    fields = cell_cons(cell_cons(cell_symbol("name"), cell_string(gr->gr_name)), fields);
+    fields = cell_cons(cell_cons(cell_symbol(":name"), cell_string(gr->gr_name)), fields);
 
     return cell_struct(STRUCT_LEAF, cell_symbol("group-info"), cell_nil(), fields);
 }
@@ -11043,6 +11439,11 @@ static Primitive primitives[] = {
     {"⚠?", prim_is_error, 1, {"Test if value is an error", "α → 𝔹"}},
     {"⚠⊙", prim_error_type, 1, {"Get error type as symbol", "⚠ → :symbol"}},
     {"⚠→", prim_error_data, 1, {"Get error data", "⚠ → α"}},
+    {"⚡⊕", prim_error_wrap, -1, {"Wrap error with context, pass through non-errors", "α → :symbol → α | ⚠"}},
+    {"⚠⊸", prim_error_cause, 1, {"Get error cause (next in chain)", "⚠ → ⚠ | ∅"}},
+    {"⚠⊸*", prim_error_root_cause, 1, {"Get root cause (deepest in chain)", "⚠ → ⚠"}},
+    {"⚠⟲", prim_error_trace, 1, {"Get error return trace as list of positions", "⚠ → [ℕ]"}},
+    {"⚠⊙?", prim_error_chain_match, 2, {"Check if error chain contains type", "⚠ → :symbol → 𝔹"}},
     {"⊢", prim_assert, 2, {"Assert condition is true, error otherwise", "𝔹 → :symbol → 𝔹 | ⚠"}},
     {"⟲", prim_trace, 1, {"Print value for debugging and return it", "α → α"}},
 
@@ -11059,6 +11460,14 @@ static Primitive primitives[] = {
     /* Testing */
     {"≟", prim_deep_equal, 2, {"Deep equality test (recursive)", "α → α → 𝔹"}},
     {"⊨", prim_test_case, 3, {"Run test case: name, expected, actual", ":symbol → α → α → 𝔹 | ⚠"}},
+
+    /* Test Runner (Day 123) */
+    {"⊨⊕⊙", prim_test_register, -1, {"Register test in global trie registry", ":symbol → λ → [tags...] → 𝔹"}},
+    {"⊨⊕!", prim_test_run_registry, -1, {"Run registered tests (optional prefix + tag filter)", "[:symbol [:symbol]] → ⊞"}},
+    {"⊨⊜", prim_test_results, 0, {"Return accumulated test results list", "() → [⊞]"}},
+    {"⊨⊜∅", prim_test_reset, 0, {"Clear all test state (results + counters)", "() → 𝔹"}},
+    {"⊨⊜#", prim_test_count, 0, {"Return pass/fail/total as list", "() → ⟨ℕ ℕ ℕ⟩"}},
+    {"⊨⊜×", prim_test_exit, 0, {"Exit with test status code (0=pass, 1=fail)", "() → ⊥"}},
 
     /* Property-Based Testing */
     {"gen-int", prim_gen_int, 2, {"Generate random integer in range [low, high]", "ℕ → ℕ → ℕ"}},
@@ -11435,14 +11844,14 @@ static Primitive primitives[] = {
     /* §3.2 I/O Ports (SRFI-170) */
     {"⊞⊳", prim_port_open, 2, {"Open file as port", "≈ → :symbol → ⊞"}},
     {"⊞⊳#", prim_fd_to_port, 2, {"Wrap fd as port", "ℕ → :symbol → ⊞"}},
-    {"⊞←", prim_port_read_line, 1, {"Read line from port", "⊞ → ≈"}},
+    {"⊞⊳←", prim_port_read_line, 1, {"Read line from port", "⊞ → ≈"}},
     {"⊞←◈", prim_port_read_bytes, 2, {"Read N bytes from port", "⊞ → ℕ → ◈"}},
     {"⊞←*", prim_port_read_all, 1, {"Read all remaining from port", "⊞ → ≈"}},
-    {"⊞→", prim_port_write, 2, {"Write string to port", "⊞ → ≈ → ℕ"}},
+    {"⊞⊳→", prim_port_write, 2, {"Write string to port", "⊞ → ≈ → ℕ"}},
     {"⊞→◈", prim_port_write_bytes, 2, {"Write bytes to port", "⊞ → ◈ → ℕ"}},
     {"⊞×", prim_port_close, 1, {"Close port", "⊞ → 𝔹"}},
     {"⊞∅?", prim_port_eof, 1, {"Test if port at EOF", "⊞ → 𝔹"}},
-    {"⊞⊙", prim_port_flush, 1, {"Flush port output", "⊞ → 𝔹"}},
+    {"⊞⊳⊙", prim_port_flush, 1, {"Flush port output", "⊞ → 𝔹"}},
     {"⊞⊳₀", prim_port_stdin, 0, {"Get stdin port", "→ ⊞"}},
     {"⊞⊲₀", prim_port_stdout, 0, {"Get stdout port", "→ ⊞"}},
     {"⊞⊲₁", prim_port_stderr, 0, {"Get stderr port", "→ ⊞"}},
@@ -11455,7 +11864,7 @@ static Primitive primitives[] = {
     {"≋⊙⊕≔", prim_chown, 3, {"Set file owner", "≈ → ℕ → ℕ → 𝔹"}},
     {"≋⏱≔", prim_utimes, 3, {"Set file times", "≈ → ℕ → ℕ → 𝔹"}},
     {"≋⊂", prim_truncate, 2, {"Truncate file", "≈ → ℕ → 𝔹"}},
-    {"≋⊕", prim_link, 2, {"Create hard link", "≈ → ≈ → 𝔹"}},
+    {"≋⊕⊝", prim_link, 2, {"Create hard link", "≈ → ≈ → 𝔹"}},
     {"≋⊕→", prim_symlink, 2, {"Create symbolic link", "≈ → ≈ → 𝔹"}},
     {"≋→", prim_readlink, 1, {"Read symbolic link target", "≈ → ≈"}},
     {"≋⊙⊕⊞", prim_mkfifo, 2, {"Create FIFO", "≈ → ℕ → 𝔹"}},
@@ -11522,6 +11931,18 @@ const Primitive* primitive_lookup_by_name(const char* name) {
 /* Initialize primitive environment */
 Cell* primitives_init(void) {
     Cell* env = cell_nil();
+
+    /* Panic on duplicate primitive names — no silent shadowing */
+    for (int i = 0; primitives[i].name != NULL; i++) {
+        for (int j = i + 1; primitives[j].name != NULL; j++) {
+            if (strcmp(primitives[i].name, primitives[j].name) == 0) {
+                fprintf(stderr,
+                    "FATAL: Duplicate primitive symbol \"%s\" registered at indices %d and %d\n",
+                    primitives[i].name, i, j);
+                abort();
+            }
+        }
+    }
 
     /* Build environment as association list */
     for (int i = 0; primitives[i].name != NULL; i++) {

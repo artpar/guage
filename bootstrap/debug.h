@@ -41,13 +41,7 @@ void debug_pop_frame(DebugContext* ctx);
 /* Print stack trace */
 void debug_print_stack(DebugContext* ctx);
 
-/* Check if value is an error */
-bool cell_is_error(Cell* c);
-
-/* Get error message */
-const char* cell_error_message(Cell* c);
-
-/* Get error data */
-Cell* cell_error_data(Cell* c);
+/* cell_is_error is now inline in cell.h */
+/* cell_error_message and cell_error_data declared in cell.h */
 
 #endif /* GUAGE_DEBUG_H */
