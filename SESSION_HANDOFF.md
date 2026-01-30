@@ -1,11 +1,47 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-01-30 (Day 104 COMPLETE)
+Updated: 2026-01-30 (Day 105 COMPLETE)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 104 - DynamicSupervisor (2026-01-30)
+# Session Handoff: Day 105 - Flow (2026-01-30)
+
+## Day 105 Progress - Flow (`⟳⊸`, `⟳⊸↦`, `⟳⊸⊲`, `⟳⊸⊕`, `⟳⊸⊙`, `⟳⊸!`)
+
+**RESULT:** 103/103 test files passing (100%), 10 new tests (Flow)
+
+### New Feature: Flow — Lazy Computation Pipelines
+
+Flow provides lazy, composable data processing pipelines. Steps accumulate without executing until `⟳⊸!` (run) is called. Supports map, filter, reduce, and side-effect (each) operations that can be chained in any order.
+
+**New Primitives (6):**
+- `⟳⊸` (flow-from) — Create flow from list: `(⟳⊸ list)` → flow-id
+- `⟳⊸↦` (flow-map) — Add map step: `(⟳⊸↦ flow-id fn)` → flow-id
+- `⟳⊸⊲` (flow-filter) — Add filter step: `(⟳⊸⊲ flow-id pred)` → flow-id
+- `⟳⊸⊕` (flow-reduce) — Add reduce step: `(⟳⊸⊕ flow-id init fn)` → flow-id
+- `⟳⊸⊙` (flow-each) — Add side-effect step: `(⟳⊸⊙ flow-id fn)` → flow-id
+- `⟳⊸!` (flow-run) — Execute flow pipeline: `(⟳⊸! flow-id)` → result
+
+**Semantics:**
+- Flows are lazy — steps accumulate until `⟳⊸!` executes the pipeline
+- Map applies function to each element, produces new list
+- Filter keeps elements where predicate returns truthy
+- Reduce folds with init value and 2-arg function, produces single value
+- Each calls function for side-effects, produces `∅`
+- Steps chain in order: map→filter→reduce composes naturally
+- Empty list source produces empty results
+- `⟳∅` (reset) clears all flows for test isolation
+
+**Files Modified (3):**
+- `bootstrap/actor.h` — Flow struct, FlowStep struct, FlowStepType enum, MAX_FLOWS/MAX_FLOW_STEPS, flow API declarations
+- `bootstrap/actor.c` — Flow implementation (global array), flow_create/lookup/add_step/reset_all; actor_reset_all calls flow_reset_all
+- `bootstrap/primitives.c` — 6 new primitive functions + flow_call_fn1/flow_call_fn2 helpers + registration
+
+**New Test File (1):**
+- `bootstrap/tests/test_flow.test` — 10 tests: flow-from-list, flow-map-basic, flow-filter-basic, flow-map-filter-chain, flow-reduce-sum, flow-each-basic, flow-empty-list, flow-map-filter-reduce, flow-multiple-maps, flow-filter-none-match
+
+---
 
 ## Day 104 Progress - DynamicSupervisor (`⟳⊛⊹`, `⟳⊛⊹⊕`, `⟳⊛⊹⊖`, `⟳⊛⊹?`, `⟳⊛⊹#`)
 
@@ -575,8 +611,8 @@ Replaced replay-based resumable effects with real delimited continuations using 
 ## Current Status
 
 **System State:**
-- **Primitives:** 199 total (194 + 5 DynamicSupervisor)
-- **Tests:** 102/102 test files passing (100%)
+- **Primitives:** 205 total (199 + 6 Flow)
+- **Tests:** 103/103 test files passing (100%)
 - **Build:** Clean, O2 optimized, 32MB stack
 
 **Core Capabilities:**
@@ -600,6 +636,7 @@ Replaced replay-based resumable effects with real delimited continuations using 
 - Agent (⟳⊶, ⟳⊶?, ⟳⊶!, ⟳⊶⊕, ⟳⊶×) — functional state wrapper
 - GenStage (⟳⊵, ⟳⊵⊕, ⟳⊵→, ⟳⊵⊙, ⟳⊵?, ⟳⊵×) — producer-consumer pipelines
 - DynamicSupervisor (⟳⊛⊹, ⟳⊛⊹⊕, ⟳⊛⊹⊖, ⟳⊛⊹?, ⟳⊛⊹#) — on-demand child spawning with restart types
+- Flow (⟳⊸, ⟳⊸↦, ⟳⊸⊲, ⟳⊸⊕, ⟳⊸⊙, ⟳⊸!) — lazy computation pipelines
 - Module system (⋘ load, ⌂⊚ info)
 - Structures (⊙ leaf, ⊚ node/ADT)
 - Pattern matching (∇) with guards, as-patterns, or-patterns, view patterns
@@ -616,6 +653,7 @@ Replaced replay-based resumable effects with real delimited continuations using 
 
 | Day | Feature | Tests |
 |-----|---------|-------|
+| 105 | Flow (⟳⊸, ⟳⊸↦, ⟳⊸⊲, ⟳⊸⊕, ⟳⊸⊙, ⟳⊸!) — lazy computation pipelines | 103/103 (100%), 10 new tests |
 | 104 | DynamicSupervisor (⟳⊛⊹, ⟳⊛⊹⊕, ⟳⊛⊹⊖, ⟳⊛⊹?, ⟳⊛⊹#) — on-demand child spawning | 102/102 (100%), 10 new tests |
 | 103 | GenStage (⟳⊵, ⟳⊵⊕, ⟳⊵→, ⟳⊵⊙, ⟳⊵?, ⟳⊵×) — producer-consumer pipelines | 101/101 (100%), 10 new tests |
 | 102 | Agent (⟳⊶, ⟳⊶?, ⟳⊶!, ⟳⊶⊕, ⟳⊶×) — functional state wrapper | 100/100 (100%), 10 new tests |
@@ -698,5 +736,5 @@ bootstrap/tests/             # Test suite (88 test files)
 
 ---
 
-**Last Updated:** 2026-01-30 (Day 104 complete)
-**Next Session:** Day 105 - Flow (computation graphs), or new domain
+**Last Updated:** 2026-01-30 (Day 105 complete)
+**Next Session:** Day 106 - Registry (named flow pipelines), or new domain

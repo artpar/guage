@@ -991,6 +991,9 @@ void actor_reset_all(void) {
 
     /* Reset stages */
     stage_reset_all();
+
+    /* Reset flows */
+    flow_reset_all();
 }
 
 /* ============ Application ============ */
@@ -1257,4 +1260,66 @@ void stage_reset_all(void) {
     }
     g_stage_count = 0;
     g_next_stage_id = 0;
+}
+
+/* ============ Flow (lazy computation pipelines) ============ */
+
+static Flow g_flows[MAX_FLOWS];
+static int g_flow_count = 0;
+static int g_next_flow_id = 0;
+
+int flow_create(Cell* source) {
+    if (g_flow_count >= MAX_FLOWS) return -1;
+    for (int i = 0; i < MAX_FLOWS; i++) {
+        if (!g_flows[i].active) {
+            g_flows[i].id = g_next_flow_id++;
+            g_flows[i].source = source;
+            if (source) cell_retain(source);
+            g_flows[i].step_count = 0;
+            g_flows[i].active = true;
+            g_flow_count++;
+            return g_flows[i].id;
+        }
+    }
+    return -1;
+}
+
+Flow* flow_lookup(int id) {
+    for (int i = 0; i < MAX_FLOWS; i++) {
+        if (g_flows[i].active && g_flows[i].id == id) {
+            return &g_flows[i];
+        }
+    }
+    return NULL;
+}
+
+int flow_add_step(int id, FlowStepType type, Cell* fn, Cell* init) {
+    Flow* f = flow_lookup(id);
+    if (!f) return -1;
+    if (f->step_count >= MAX_FLOW_STEPS) return -2;
+    int idx = f->step_count++;
+    f->steps[idx].type = type;
+    f->steps[idx].fn = fn;
+    if (fn) cell_retain(fn);
+    f->steps[idx].init = init;
+    if (init) cell_retain(init);
+    return 0;
+}
+
+void flow_reset_all(void) {
+    for (int i = 0; i < MAX_FLOWS; i++) {
+        if (g_flows[i].active) {
+            if (g_flows[i].source) cell_release(g_flows[i].source);
+            for (int j = 0; j < g_flows[i].step_count; j++) {
+                if (g_flows[i].steps[j].fn) cell_release(g_flows[i].steps[j].fn);
+                if (g_flows[i].steps[j].init) cell_release(g_flows[i].steps[j].init);
+            }
+        }
+        g_flows[i].active = false;
+        g_flows[i].source = NULL;
+        g_flows[i].step_count = 0;
+        g_flows[i].id = 0;
+    }
+    g_flow_count = 0;
+    g_next_flow_id = 0;
 }

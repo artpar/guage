@@ -1,0 +1,79 @@
+; Day 105: Flow — Lazy computation pipelines
+; Primitives: ⟳⊸, ⟳⊸↦, ⟳⊸⊲, ⟳⊸⊕, ⟳⊸⊙, ⟳⊸!
+
+;;; Test 1: flow-from-list — create flow from a list
+(≔ f1 (⟳⊸ (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅)))))
+(⊨ (⌜ :flow-from-list)
+  (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅)))
+  (⟳⊸! f1))
+
+;;; Test 2: flow-map-basic — map doubles each element
+(≔ f2 (⟳⊸ (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅)))))
+(⟳⊸↦ f2 (λ (x) (⊗ x #2)))
+(⊨ (⌜ :flow-map-basic)
+  (⟨⟩ #2 (⟨⟩ #4 (⟨⟩ #6 ∅)))
+  (⟳⊸! f2))
+
+;;; Test 3: flow-filter-basic — filter even numbers
+(≔ f3 (⟳⊸ (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 (⟨⟩ #4 ∅)))))
+(⟳⊸⊲ f3 (λ (x) (≡ (⊖ x (⊗ (⊘ x #2) #2)) #0)))
+(⊨ (⌜ :flow-filter-basic)
+  (⟨⟩ #2 (⟨⟩ #4 ∅))
+  (⟳⊸! f3))
+
+;;; Test 4: flow-map-filter-chain — chain map then filter
+(≔ f4 (⟳⊸ (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 (⟨⟩ #4 ∅)))))
+(⟳⊸↦ f4 (λ (x) (⊗ x #10)))
+(⟳⊸⊲ f4 (λ (x) (> x #25)))
+(⊨ (⌜ :flow-map-filter-chain)
+  (⟨⟩ #30 (⟨⟩ #40 ∅))
+  (⟳⊸! f4))
+
+;;; Test 5: flow-reduce-sum — reduce to sum
+(≔ f5 (⟳⊸ (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 (⟨⟩ #4 ∅)))))
+(⟳⊸⊕ f5 #0 (λ (acc x) (⊕ acc x)))
+(⊨ (⌜ :flow-reduce-sum)
+  #10
+  (⟳⊸! f5))
+
+;;; Test 6: flow-each-basic — side-effect collects via agent
+(⟳∅)
+(≔ ag (⟳⊶ (λ () ∅)))
+(≔ f6 (⟳⊸ (⟨⟩ #10 (⟨⟩ #20 (⟨⟩ #30 ∅)))))
+(⟳⊸⊙ f6 (λ (x) (⟳⊶! ag (λ (s) (⟨⟩ x s)))))
+(≔ r6 (⟳⊸! f6))
+(⊨ (⌜ :flow-each-basic)
+  #t
+  (∧ (≡ r6 ∅)
+      (≡ (⟳⊶? ag (λ (s) s)) (⟨⟩ #30 (⟨⟩ #20 (⟨⟩ #10 ∅))))))
+
+;;; Test 7: flow-empty-list — flow from empty list
+(≔ f7 (⟳⊸ ∅))
+(⟳⊸↦ f7 (λ (x) (⊗ x #2)))
+(⊨ (⌜ :flow-empty-list)
+  ∅
+  (⟳⊸! f7))
+
+;;; Test 8: flow-map-filter-reduce — full pipeline
+(≔ f8 (⟳⊸ (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 (⟨⟩ #4 (⟨⟩ #5 ∅))))))
+(⟳⊸↦ f8 (λ (x) (⊗ x #3)))
+(⟳⊸⊲ f8 (λ (x) (> x #6)))
+(⟳⊸⊕ f8 #0 (λ (acc x) (⊕ acc x)))
+(⊨ (⌜ :flow-map-filter-reduce)
+  #36
+  (⟳⊸! f8))
+
+;;; Test 9: flow-multiple-maps — chain multiple maps
+(≔ f9 (⟳⊸ (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅))))
+(⟳⊸↦ f9 (λ (x) (⊕ x #10)))
+(⟳⊸↦ f9 (λ (x) (⊗ x #2)))
+(⊨ (⌜ :flow-multiple-maps)
+  (⟨⟩ #22 (⟨⟩ #24 (⟨⟩ #26 ∅)))
+  (⟳⊸! f9))
+
+;;; Test 10: flow-filter-none-match — filter removes all
+(≔ f10 (⟳⊸ (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅))))
+(⟳⊸⊲ f10 (λ (x) (> x #100)))
+(⊨ (⌜ :flow-filter-none-match)
+  ∅
+  (⟳⊸! f10))

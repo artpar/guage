@@ -3857,6 +3857,248 @@ Cell* prim_stage_stop(Cell* args) {
     return state;
 }
 
+/* ============ Flow Primitives (lazy computation pipelines) ============ */
+
+static Cell* flow_call_fn1(EvalContext* ctx, Cell* fn, Cell* arg_val) {
+    static int flow_call1_counter = 0;
+    char fn_name[64], a_name[64];
+    snprintf(fn_name, sizeof(fn_name), "__flow_fn1_%d", flow_call1_counter);
+    snprintf(a_name, sizeof(a_name), "__flow_a1_%d", flow_call1_counter);
+    flow_call1_counter++;
+
+    eval_define(ctx, fn_name, fn);
+    eval_define(ctx, a_name, arg_val);
+
+    Cell* fn_sym = cell_symbol(fn_name);
+    Cell* a_sym = cell_symbol(a_name);
+    Cell* call_expr = cell_cons(fn_sym, cell_cons(a_sym, cell_nil()));
+    cell_release(fn_sym);
+    cell_release(a_sym);
+
+    Cell* result = eval(ctx, call_expr);
+    cell_release(call_expr);
+    return result;
+}
+
+static Cell* flow_call_fn2(EvalContext* ctx, Cell* fn, Cell* arg1_val, Cell* arg2_val) {
+    static int flow_call2_counter = 0;
+    char fn_name[64], a1_name[64], a2_name[64];
+    snprintf(fn_name, sizeof(fn_name), "__flow_fn2_%d", flow_call2_counter);
+    snprintf(a1_name, sizeof(a1_name), "__flow_a2a_%d", flow_call2_counter);
+    snprintf(a2_name, sizeof(a2_name), "__flow_a2b_%d", flow_call2_counter);
+    flow_call2_counter++;
+
+    eval_define(ctx, fn_name, fn);
+    eval_define(ctx, a1_name, arg1_val);
+    eval_define(ctx, a2_name, arg2_val);
+
+    Cell* fn_sym = cell_symbol(fn_name);
+    Cell* a1_sym = cell_symbol(a1_name);
+    Cell* a2_sym = cell_symbol(a2_name);
+    Cell* call_expr = cell_cons(fn_sym, cell_cons(a1_sym, cell_cons(a2_sym, cell_nil())));
+    cell_release(fn_sym);
+    cell_release(a1_sym);
+    cell_release(a2_sym);
+
+    Cell* result = eval(ctx, call_expr);
+    cell_release(call_expr);
+    return result;
+}
+
+/* ⟳⊸ - flow-from
+ * (⟳⊸ list) → flow-id */
+Cell* prim_flow_from(Cell* args) {
+    Cell* source = arg1(args);
+    int id = flow_create(source);
+    if (id < 0) {
+        return cell_error("flow-limit", cell_nil());
+    }
+    return cell_number(id);
+}
+
+/* ⟳⊸↦ - flow-map
+ * (⟳⊸↦ flow-id fn) → flow-id */
+Cell* prim_flow_map(Cell* args) {
+    Cell* id_cell = arg1(args);
+    Cell* fn = arg2(args);
+
+    if (!cell_is_number(id_cell)) return cell_error("flow-id-not-number", id_cell);
+    if (!cell_is_lambda(fn)) return cell_error("flow-fn-not-lambda", fn);
+
+    int id = (int)cell_get_number(id_cell);
+    int rc = flow_add_step(id, FLOW_MAP, fn, NULL);
+    if (rc == -1) return cell_error("flow-not-found", id_cell);
+    if (rc == -2) return cell_error("flow-steps-full", id_cell);
+    return cell_number(id);
+}
+
+/* ⟳⊸⊲ - flow-filter
+ * (⟳⊸⊲ flow-id pred) → flow-id */
+Cell* prim_flow_filter(Cell* args) {
+    Cell* id_cell = arg1(args);
+    Cell* fn = arg2(args);
+
+    if (!cell_is_number(id_cell)) return cell_error("flow-id-not-number", id_cell);
+    if (!cell_is_lambda(fn)) return cell_error("flow-fn-not-lambda", fn);
+
+    int id = (int)cell_get_number(id_cell);
+    int rc = flow_add_step(id, FLOW_FILTER, fn, NULL);
+    if (rc == -1) return cell_error("flow-not-found", id_cell);
+    if (rc == -2) return cell_error("flow-steps-full", id_cell);
+    return cell_number(id);
+}
+
+/* ⟳⊸⊕ - flow-reduce
+ * (⟳⊸⊕ flow-id init fn) → flow-id */
+Cell* prim_flow_reduce(Cell* args) {
+    Cell* id_cell = arg1(args);
+    Cell* init = arg2(args);
+    Cell* fn = arg3(args);
+
+    if (!cell_is_number(id_cell)) return cell_error("flow-id-not-number", id_cell);
+    if (!cell_is_lambda(fn)) return cell_error("flow-fn-not-lambda", fn);
+
+    int id = (int)cell_get_number(id_cell);
+    int rc = flow_add_step(id, FLOW_REDUCE, fn, init);
+    if (rc == -1) return cell_error("flow-not-found", id_cell);
+    if (rc == -2) return cell_error("flow-steps-full", id_cell);
+    return cell_number(id);
+}
+
+/* ⟳⊸⊙ - flow-each
+ * (⟳⊸⊙ flow-id fn) → flow-id */
+Cell* prim_flow_each(Cell* args) {
+    Cell* id_cell = arg1(args);
+    Cell* fn = arg2(args);
+
+    if (!cell_is_number(id_cell)) return cell_error("flow-id-not-number", id_cell);
+    if (!cell_is_lambda(fn)) return cell_error("flow-fn-not-lambda", fn);
+
+    int id = (int)cell_get_number(id_cell);
+    int rc = flow_add_step(id, FLOW_EACH, fn, NULL);
+    if (rc == -1) return cell_error("flow-not-found", id_cell);
+    if (rc == -2) return cell_error("flow-steps-full", id_cell);
+    return cell_number(id);
+}
+
+/* ⟳⊸! - flow-run
+ * (⟳⊸! flow-id) → result
+ * Executes the lazy pipeline. Steps are applied in order.
+ * Map/filter produce lists, reduce produces a single value, each produces ∅. */
+Cell* prim_flow_run(Cell* args) {
+    Cell* id_cell = arg1(args);
+
+    if (!cell_is_number(id_cell)) return cell_error("flow-id-not-number", id_cell);
+
+    int id = (int)cell_get_number(id_cell);
+    Flow* f = flow_lookup(id);
+    if (!f) return cell_error("flow-not-found", id_cell);
+
+    EvalContext* ctx = eval_get_current_context();
+
+    /* Start with source list as current data */
+    Cell* data = f->source;
+    if (data) cell_retain(data);
+
+    for (int s = 0; s < f->step_count; s++) {
+        FlowStep* step = &f->steps[s];
+
+        switch (step->type) {
+        case FLOW_MAP: {
+            /* Apply fn to each element, build new list (reverse then reverse) */
+            Cell* rev = cell_nil();
+            Cell* cur = data;
+            while (cur && !cell_is_nil(cur) && cell_is_pair(cur)) {
+                Cell* elem = cell_car(cur);
+                Cell* mapped = flow_call_fn1(ctx, step->fn, elem);
+                Cell* node = cell_cons(mapped, rev);
+                cell_release(mapped);
+                cell_release(rev);
+                rev = node;
+                cur = cell_cdr(cur);
+            }
+            /* Reverse to restore order */
+            Cell* result = cell_nil();
+            cur = rev;
+            while (cur && !cell_is_nil(cur) && cell_is_pair(cur)) {
+                Cell* elem = cell_car(cur);
+                Cell* node = cell_cons(elem, result);
+                cell_release(result);
+                result = node;
+                cur = cell_cdr(cur);
+            }
+            cell_release(rev);
+            if (data) cell_release(data);
+            data = result;
+            break;
+        }
+        case FLOW_FILTER: {
+            /* Keep elements where fn returns truthy (reverse then reverse) */
+            Cell* rev = cell_nil();
+            Cell* cur = data;
+            while (cur && !cell_is_nil(cur) && cell_is_pair(cur)) {
+                Cell* elem = cell_car(cur);
+                Cell* test = flow_call_fn1(ctx, step->fn, elem);
+                bool keep = !cell_is_nil(test) && !(cell_is_bool(test) && !cell_get_bool(test));
+                cell_release(test);
+                if (keep) {
+                    Cell* node = cell_cons(elem, rev);
+                    cell_release(rev);
+                    rev = node;
+                }
+                cur = cell_cdr(cur);
+            }
+            /* Reverse to restore order */
+            Cell* result = cell_nil();
+            cur = rev;
+            while (cur && !cell_is_nil(cur) && cell_is_pair(cur)) {
+                Cell* elem = cell_car(cur);
+                Cell* node = cell_cons(elem, result);
+                cell_release(result);
+                result = node;
+                cur = cell_cdr(cur);
+            }
+            cell_release(rev);
+            if (data) cell_release(data);
+            data = result;
+            break;
+        }
+        case FLOW_REDUCE: {
+            /* Fold with init and 2-arg fn */
+            Cell* acc = step->init;
+            cell_retain(acc);
+
+            Cell* cur = data;
+            while (cur && !cell_is_nil(cur) && cell_is_pair(cur)) {
+                Cell* elem = cell_car(cur);
+                Cell* new_acc = flow_call_fn2(ctx, step->fn, acc, elem);
+                cell_release(acc);
+                acc = new_acc;
+                cur = cell_cdr(cur);
+            }
+            if (data) cell_release(data);
+            data = acc;
+            break;
+        }
+        case FLOW_EACH: {
+            /* Call fn for side-effect on each element, result is ∅ */
+            Cell* cur = data;
+            while (cur && !cell_is_nil(cur) && cell_is_pair(cur)) {
+                Cell* elem = cell_car(cur);
+                Cell* r = flow_call_fn1(ctx, step->fn, elem);
+                cell_release(r);
+                cur = cell_cdr(cur);
+            }
+            if (data) cell_release(data);
+            data = cell_nil();
+            break;
+        }
+        }
+    }
+
+    return data ? data : cell_nil();
+}
+
 /* ============ Channel Primitives ============ */
 
 /* ⟿⊚ - create channel
@@ -7964,6 +8206,14 @@ static Primitive primitives[] = {
     {"⟳⊵⊙", prim_stage_dispatch, 2, {"Dispatch events to subscribers", "ℕ → [α] → ℕ"}},
     {"⟳⊵?", prim_stage_info, 1, {"Get stage info (mode state)", "ℕ → ⟨:mode α⟩"}},
     {"⟳⊵×", prim_stage_stop, 1, {"Stop stage, return final state", "ℕ → α"}},
+
+    /* Flow primitives (lazy computation pipelines) */
+    {"⟳⊸", prim_flow_from, 1, {"Create flow from list", "[α] → ℕ"}},
+    {"⟳⊸↦", prim_flow_map, 2, {"Add map step to flow", "ℕ → λ → ℕ"}},
+    {"⟳⊸⊲", prim_flow_filter, 2, {"Add filter step to flow", "ℕ → λ → ℕ"}},
+    {"⟳⊸⊕", prim_flow_reduce, 3, {"Add reduce step to flow", "ℕ → α → λ → ℕ"}},
+    {"⟳⊸⊙", prim_flow_each, 2, {"Add each step to flow", "ℕ → λ → ℕ"}},
+    {"⟳⊸!", prim_flow_run, 1, {"Execute flow pipeline", "ℕ → α"}},
 
     /* Channel primitives */
     {"⟿⊚", prim_chan_create, -1, {"Create channel (optional capacity)", "() → ⟿ | ℕ → ⟿"}},

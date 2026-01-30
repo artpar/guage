@@ -199,4 +199,34 @@ int        stage_subscribe(int consumer_id, int producer_id);  /* 0=ok, -1=not f
 int        stage_stop(int id);           /* 0=ok, -1=not found */
 void       stage_reset_all(void);
 
+/* Flow - lazy computation pipelines */
+#define MAX_FLOWS 64
+#define MAX_FLOW_STEPS 32
+
+typedef enum {
+    FLOW_MAP,
+    FLOW_FILTER,
+    FLOW_REDUCE,
+    FLOW_EACH
+} FlowStepType;
+
+typedef struct FlowStep {
+    FlowStepType type;
+    Cell* fn;           /* transformation function */
+    Cell* init;         /* initial value (for reduce only) */
+} FlowStep;
+
+typedef struct Flow {
+    int id;
+    Cell* source;                      /* source list */
+    FlowStep steps[MAX_FLOW_STEPS];
+    int step_count;
+    bool active;
+} Flow;
+
+int    flow_create(Cell* source);      /* returns id or -1 */
+Flow*  flow_lookup(int id);
+int    flow_add_step(int id, FlowStepType type, Cell* fn, Cell* init);  /* 0=ok, -1=not found, -2=full */
+void   flow_reset_all(void);
+
 #endif /* GUAGE_ACTOR_H */
