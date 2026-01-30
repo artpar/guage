@@ -116,6 +116,13 @@ void actor_destroy(Actor* actor) {
         }
     }
 
+    /* Release process dictionary entries */
+    for (int i = 0; i < actor->dict_count; i++) {
+        if (actor->dict_keys[i]) cell_release(actor->dict_keys[i]);
+        if (actor->dict_values[i]) cell_release(actor->dict_values[i]);
+    }
+    actor->dict_count = 0;
+
     if (actor->result) {
         cell_release(actor->result);
     }

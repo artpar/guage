@@ -14,6 +14,7 @@
 #define SUP_MAX_RESTARTS 5
 #define MAX_REGISTRY 256
 #define MAX_TIMERS 256
+#define MAX_DICT_ENTRIES 256
 
 /* Actor - a fiber with a mailbox */
 typedef struct Actor {
@@ -29,6 +30,11 @@ typedef struct Actor {
     int monitors[MAX_MONITORS]; /* Actor IDs monitoring this actor */
     int monitor_count;
     bool trap_exit;             /* Convert exit signals to messages */
+
+    /* Process dictionary (per-actor key-value store) */
+    Cell* dict_keys[MAX_DICT_ENTRIES];
+    Cell* dict_values[MAX_DICT_ENTRIES];
+    int dict_count;
 } Actor;
 
 /* Lifecycle */

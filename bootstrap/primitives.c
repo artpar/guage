@@ -2719,6 +2719,119 @@ Cell* prim_timer_active(Cell* args) {
     return cell_bool(timer_active(tid));
 }
 
+/* ============ Process Dictionary Primitives ============ */
+
+/* ⟳⊔⊕ - put key-value in current actor's dictionary
+ * (⟳⊔⊕ key value) → old-value or ∅ */
+Cell* prim_proc_dict_put(Cell* args) {
+    Actor* actor = actor_current();
+    if (!actor) {
+        return cell_error("not-in-actor", cell_nil());
+    }
+    if (!args || cell_is_nil(args)) {
+        return cell_error("proc-dict-put-args", cell_nil());
+    }
+    Cell* key = cell_car(args);
+    Cell* rest = cell_cdr(args);
+    if (!rest || cell_is_nil(rest)) {
+        return cell_error("proc-dict-put-no-value", cell_nil());
+    }
+    Cell* value = cell_car(rest);
+
+    /* Search for existing key */
+    for (int i = 0; i < actor->dict_count; i++) {
+        if (cell_equal(actor->dict_keys[i], key)) {
+            Cell* old = actor->dict_values[i];
+            cell_retain(value);
+            actor->dict_values[i] = value;
+            /* old already has a ref from the dict, return it to caller */
+            return old;
+        }
+    }
+
+    /* New entry */
+    if (actor->dict_count >= MAX_DICT_ENTRIES) {
+        return cell_error("proc-dict-full", cell_nil());
+    }
+    cell_retain(key);
+    cell_retain(value);
+    actor->dict_keys[actor->dict_count] = key;
+    actor->dict_values[actor->dict_count] = value;
+    actor->dict_count++;
+    return cell_nil();
+}
+
+/* ⟳⊔? - get value from current actor's dictionary
+ * (⟳⊔? key) → value or ∅ */
+Cell* prim_proc_dict_get(Cell* args) {
+    Actor* actor = actor_current();
+    if (!actor) {
+        return cell_error("not-in-actor", cell_nil());
+    }
+    if (!args || cell_is_nil(args)) {
+        return cell_error("proc-dict-get-args", cell_nil());
+    }
+    Cell* key = cell_car(args);
+
+    for (int i = 0; i < actor->dict_count; i++) {
+        if (cell_equal(actor->dict_keys[i], key)) {
+            Cell* val = actor->dict_values[i];
+            cell_retain(val);
+            return val;
+        }
+    }
+    return cell_nil();
+}
+
+/* ⟳⊔⊖ - erase key from current actor's dictionary
+ * (⟳⊔⊖ key) → old-value or ∅ */
+Cell* prim_proc_dict_erase(Cell* args) {
+    Actor* actor = actor_current();
+    if (!actor) {
+        return cell_error("not-in-actor", cell_nil());
+    }
+    if (!args || cell_is_nil(args)) {
+        return cell_error("proc-dict-erase-args", cell_nil());
+    }
+    Cell* key = cell_car(args);
+
+    for (int i = 0; i < actor->dict_count; i++) {
+        if (cell_equal(actor->dict_keys[i], key)) {
+            Cell* old_val = actor->dict_values[i];
+            cell_release(actor->dict_keys[i]);
+            /* Move last entry into this slot */
+            actor->dict_count--;
+            if (i < actor->dict_count) {
+                actor->dict_keys[i] = actor->dict_keys[actor->dict_count];
+                actor->dict_values[i] = actor->dict_values[actor->dict_count];
+            }
+            /* old_val already has ref from dict, return to caller */
+            return old_val;
+        }
+    }
+    return cell_nil();
+}
+
+/* ⟳⊔* - get all entries from current actor's dictionary
+ * (⟳⊔*) → list of ⟨key value⟩ pairs */
+Cell* prim_proc_dict_all(Cell* args) {
+    (void)args;
+    Actor* actor = actor_current();
+    if (!actor) {
+        return cell_error("not-in-actor", cell_nil());
+    }
+
+    Cell* list = cell_nil();
+    for (int i = actor->dict_count - 1; i >= 0; i--) {
+        Cell* pair = cell_cons(actor->dict_keys[i], actor->dict_values[i]);
+        Cell* new_list = cell_cons(pair, list);
+        cell_release(pair);
+        cell_release(list);
+        list = new_list;
+    }
+    return list;
+}
+
 /* ============ Channel Primitives ============ */
 
 /* ⟿⊚ - create channel
@@ -6776,6 +6889,12 @@ static Primitive primitives[] = {
     {"⟳⏱", prim_timer_send_after, 3, {"Send message after N ticks", "ℕ → ⟳ → α → ℕ"}},
     {"⟳⏱×", prim_timer_cancel, 1, {"Cancel a pending timer", "ℕ → #t | ⚠"}},
     {"⟳⏱?", prim_timer_active, 1, {"Check if timer is active", "ℕ → #t | #f"}},
+
+    /* Process Dictionary primitives */
+    {"⟳⊔⊕", prim_proc_dict_put, 2, {"Store key-value in actor dict", "α → β → β | ∅"}},
+    {"⟳⊔?", prim_proc_dict_get, 1, {"Lookup key in actor dict", "α → β | ∅"}},
+    {"⟳⊔⊖", prim_proc_dict_erase, 1, {"Remove key from actor dict", "α → β | ∅"}},
+    {"⟳⊔*", prim_proc_dict_all, 0, {"List all actor dict entries", "() → [⟨α β⟩]"}},
 
     /* Channel primitives */
     {"⟿⊚", prim_chan_create, -1, {"Create channel (optional capacity)", "() → ⟿ | ℕ → ⟿"}},

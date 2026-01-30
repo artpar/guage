@@ -1,11 +1,43 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-01-30 (Day 97 COMPLETE)
+Updated: 2026-01-30 (Day 98 COMPLETE)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 97 - GenServer / Call-Reply (2026-01-30)
+# Session Handoff: Day 98 - Process Dictionary (2026-01-30)
+
+## Day 98 Progress - Process Dictionary (`⟳⊔⊕`, `⟳⊔?`, `⟳⊔⊖`, `⟳⊔*`)
+
+**RESULT:** 96/96 test files passing (100%), 10 new tests (process dictionary)
+
+### New Feature: Process Dictionary — Per-Actor Key-Value State
+
+Erlang-style process dictionary — a per-actor key-value store accessible only from within that actor's context. Enables stateful GenServer patterns without relying solely on closures.
+
+**New Primitives (4):**
+- `⟳⊔⊕` (put) — Store key-value in actor dict: `(⟳⊔⊕ key value)` → old-value or `∅`
+- `⟳⊔?` (get) — Lookup key in actor dict: `(⟳⊔? key)` → value or `∅`
+- `⟳⊔⊖` (erase) — Remove key from actor dict: `(⟳⊔⊖ key)` → old-value or `∅`
+- `⟳⊔*` (get-all) — List all dict entries: `(⟳⊔*)` → list of `⟨key value⟩` pairs
+
+**Semantics:**
+- Keys can be any value (symbols, numbers, etc.), compared with `cell_equal`
+- Per-actor isolation — each actor has its own dictionary, no cross-actor access
+- Calling outside actor context returns `⚠ :not-in-actor`
+- Auto-cleared when actor is destroyed (keys/values released)
+- `⟳∅` (reset) clears all dicts via existing actor destroy path
+- Linear scan for key lookup (fine for <=256 entries)
+
+**Files Modified (3):**
+- `bootstrap/actor.h` — Added `MAX_DICT_ENTRIES`, dict fields to `Actor` struct
+- `bootstrap/actor.c` — Release dict entries in `actor_destroy`
+- `bootstrap/primitives.c` — 4 new primitive functions + registration in table
+
+**New Test File (1):**
+- `bootstrap/tests/test_proc_dict.test` — 10 tests: put-get-basic, put-overwrite, get-missing, erase-basic, erase-missing, get-all, multiple-keys, not-in-actor, isolation, genserver-state
+
+---
 
 ## Day 97 Progress - GenServer (`⟳⇅`, `⟳⇅!`)
 

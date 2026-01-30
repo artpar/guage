@@ -1,0 +1,108 @@
+; Day 98: Process Dictionary tests — ⟳⊔⊕, ⟳⊔?, ⟳⊔⊖, ⟳⊔*
+
+; Reset state
+(⟳∅)
+
+; === put-get-basic ===
+; Store and retrieve a value
+(⟳∅)
+(≔ a1 (⟳ (λ (self)
+  (≫ (⟳⊔⊕ :name :alice) (λ (_)
+    (⟳⊔? :name))))))
+(⟳! #10)
+(⊨ (⌜ :put-get-basic) :alice (⟳→ a1))
+
+; === put-overwrite ===
+; Overwriting returns old value
+(⟳∅)
+(≔ a2 (⟳ (λ (self)
+  (≫ (⟳⊔⊕ :x #10) (λ (_)
+    (⟳⊔⊕ :x #20))))))
+(⟳! #10)
+(⊨ (⌜ :put-overwrite) #10 (⟳→ a2))
+
+; === get-missing ===
+; Lookup missing key returns ∅
+(⟳∅)
+(≔ a3 (⟳ (λ (self)
+  (⟳⊔? :nonexistent))))
+(⟳! #10)
+(⊨ (⌜ :get-missing) ∅ (⟳→ a3))
+
+; === erase-basic ===
+; Erase returns old value
+(⟳∅)
+(≔ a4 (⟳ (λ (self)
+  (≫ (⟳⊔⊕ :key #42) (λ (_)
+    (⟳⊔⊖ :key))))))
+(⟳! #10)
+(⊨ (⌜ :erase-basic) #42 (⟳→ a4))
+
+; === erase-missing ===
+; Erase missing key returns ∅
+(⟳∅)
+(≔ a5 (⟳ (λ (self)
+  (⟳⊔⊖ :ghost))))
+(⟳! #10)
+(⊨ (⌜ :erase-missing) ∅ (⟳→ a5))
+
+; === get-all ===
+; List all entries as pairs — verify it's a 2-element list
+(⟳∅)
+(≔ a6 (⟳ (λ (self)
+  (≫ (⟳⊔⊕ :a #1) (λ (_)
+    (≫ (⟳⊔⊕ :b #2) (λ (_)
+      (⟳⊔*))))))))
+(⟳! #10)
+; get-all returns list of pairs; check non-nil and second element exists
+(≔ all-entries (⟳→ a6))
+(⊨ (⌜ :get-all) #t (¬ (≡ all-entries ∅)))
+
+; === multiple-keys ===
+; Store several key-value pairs and retrieve each
+(⟳∅)
+(≔ a7 (⟳ (λ (self)
+  (≫ (⟳⊔⊕ :x #1) (λ (_)
+    (≫ (⟳⊔⊕ :y #2) (λ (_)
+      (≫ (⟳⊔⊕ :z #3) (λ (_)
+        (⟨⟩ (⟳⊔? :x) (⟨⟩ (⟳⊔? :y) (⟳⊔? :z))))))))))))
+(⟳! #10)
+(⊨ (⌜ :multiple-keys) (⟨⟩ #1 (⟨⟩ #2 #3)) (⟳→ a7))
+
+; === not-in-actor ===
+; Calling outside actor returns error
+(⟳∅)
+(⊨ (⌜ :not-in-actor) #t (⚠? (⟳⊔⊕ :k :v)))
+
+; === isolation ===
+; Two actors have separate dicts
+(⟳∅)
+(≔ actor-a (⟳ (λ (self)
+  (≫ (⟳⊔⊕ :shared #100) (λ (_)
+    (≫ (←?) (λ (_)
+      (⟳⊔? :shared))))))))
+(≔ actor-b (⟳ (λ (self)
+  (≫ (⟳⊔⊕ :shared #999) (λ (_)
+    (→! actor-a :go))))))
+(⟳! #20)
+; actor-a stored 100, actor-b stored 999 under same key
+; actor-a should still see 100
+(⊨ (⌜ :isolation) #100 (⟳→ actor-a))
+
+; === genserver-state ===
+; GenServer using dict for mutable state (counter)
+(⟳∅)
+(≔ counter-server (⟳ (λ (self)
+  (≫ (⟳⊔⊕ :count #0) (λ (_)
+    (≫ (←?) (λ (msg1)
+      (≫ (⟳⊔⊕ :count (⊕ (⟳⊔? :count) #1)) (λ (_)
+        (≫ (⟳⇅! (◁ (▷ msg1)) (⟳⊔? :count)) (λ (_)
+          (≫ (←?) (λ (msg2)
+            (≫ (⟳⊔⊕ :count (⊕ (⟳⊔? :count) #1)) (λ (_)
+              (⟳⇅! (◁ (▷ msg2)) (⟳⊔? :count)))))))))))))))))
+(≔ client (⟳ (λ (self)
+  (≫ (⟳⇅ counter-server :inc) (λ (r1)
+    (≫ (⟳⇅ counter-server :inc) (λ (r2)
+      (⟨⟩ r1 r2))))))))
+(⟳! #50)
+(⊨ (⌜ :genserver-state) (⟨⟩ #1 #2) (⟳→ client))

@@ -31,10 +31,10 @@ Everything is a **Cell**:
 
 **See:** `KEYWORDS.md` for complete specification.
 
-## Runtime Primitives (167 Total)
+## Runtime Primitives (171 Total)
 
-**Status:** 167 primitives implemented and stable (95/95 test files passing)
-**Note:** All primitives fully working including graph algorithms, actors, channels, supervision, supervisors, registry, timers, and GenServer
+**Status:** 171 primitives implemented and stable (96/96 test files passing)
+**Note:** All primitives fully working including graph algorithms, actors, channels, supervision, supervisors, registry, timers, GenServer, and process dictionary
 
 ### Core Lambda Calculus (3) ✅
 | Symbol | Type | Meaning | Status |
@@ -706,6 +706,16 @@ Timers schedule message delivery to an actor after N scheduler ticks. The schedu
 | `⟳⇅!` | `⟳ → α → ∅` | Reply to caller | ✅ |
 
 Synchronous call-reply pattern. `⟳⇅` sends `⟨:call caller-actor request⟩` to target and yields until reply. Server extracts caller with `(◁ (▷ msg))`, request with `(◁ (▷ (▷ msg)))`, and replies via `⟳⇅!`.
+
+### Process Dictionary (4) ✅
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `⟳⊔⊕` | `α → β → β \| ∅` | Store key-value in actor dict (returns old value) | ✅ |
+| `⟳⊔?` | `α → β \| ∅` | Lookup key in actor dict | ✅ |
+| `⟳⊔⊖` | `α → β \| ∅` | Remove key from actor dict (returns old value) | ✅ |
+| `⟳⊔*` | `() → [⟨α β⟩]` | List all actor dict entries | ✅ |
+
+Per-actor key-value store (Erlang `put/get/erase` equivalent). Keys compared with `cell_equal`. Per-actor isolation — no cross-actor access. Calling outside actor context returns `⚠ :not-in-actor`. Auto-cleared when actor is destroyed.
 
 ### Documentation (10) ✅
 | Symbol | Type | Meaning | Status |
