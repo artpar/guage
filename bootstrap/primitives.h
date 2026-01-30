@@ -199,6 +199,35 @@ Cell* prim_vector_empty(Cell* args);       /* ⟦∅? - empty predicate */
 Cell* prim_vector_slice(Cell* args);       /* ⟦⊞ - slice [start,end) */
 Cell* prim_vector_map(Cell* args);         /* ⟦↦ - map fn over vector */
 
+/* Heap primitives (Day 115 — 4-ary min-heap priority queue) */
+Cell* prim_heap_new(Cell* args);
+Cell* prim_heap_push(Cell* args);
+Cell* prim_heap_pop(Cell* args);
+Cell* prim_heap_peek(Cell* args);
+Cell* prim_heap_size(Cell* args);
+Cell* prim_heap_is(Cell* args);
+Cell* prim_heap_empty(Cell* args);
+Cell* prim_heap_to_list(Cell* args);
+Cell* prim_heap_merge(Cell* args);
+
+/* Sorted Map primitives (Day 116 — Algorithmica-grade SIMD B-tree) */
+Cell* prim_sorted_map_new(Cell* args);
+Cell* prim_sorted_map_get(Cell* args);
+Cell* prim_sorted_map_put(Cell* args);
+Cell* prim_sorted_map_del(Cell* args);
+Cell* prim_sorted_map_is(Cell* args);
+Cell* prim_sorted_map_has(Cell* args);
+Cell* prim_sorted_map_size(Cell* args);
+Cell* prim_sorted_map_keys(Cell* args);
+Cell* prim_sorted_map_vals(Cell* args);
+Cell* prim_sorted_map_entries(Cell* args);
+Cell* prim_sorted_map_merge(Cell* args);
+Cell* prim_sorted_map_min(Cell* args);
+Cell* prim_sorted_map_max(Cell* args);
+Cell* prim_sorted_map_range(Cell* args);
+Cell* prim_sorted_map_floor(Cell* args);
+Cell* prim_sorted_map_ceiling(Cell* args);
+
 /* Primitive documentation structure */
 typedef struct {
     const char* description;     /* What this primitive does */

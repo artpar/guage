@@ -923,6 +923,9 @@ Cell* prim_typeof(Cell* args) {
     if (cell_is_heap(val)) {
         return cell_symbol(":heap");
     }
+    if (cell_is_sorted_map(val)) {
+        return cell_symbol(":sorted-map");
+    }
 
     return cell_symbol(":unknown");
 }
@@ -8934,6 +8937,161 @@ Cell* prim_heap_merge(Cell* args) {
     return cell_heap_merge(h1, h2);
 }
 
+/* ===== Sorted Map primitives (Day 116) ===== */
+
+/* ⋔ - create sorted map (empty or from ⟨k v⟩ pairs) */
+Cell* prim_sorted_map_new(Cell* args) {
+    Cell* m = cell_sorted_map_new();
+    /* Variadic: process ⟨k v⟩ pair arguments */
+    Cell* cur = args;
+    while (cur && cell_is_pair(cur)) {
+        Cell* pair = cell_car(cur);
+        if (cell_is_pair(pair)) {
+            Cell* k = cell_car(pair);
+            Cell* v = cell_cdr(pair);
+            cell_sorted_map_put(m, k, v);
+        }
+        cur = cell_cdr(cur);
+    }
+    return m;
+}
+
+/* ⋔→ - get value by key */
+Cell* prim_sorted_map_get(Cell* args) {
+    Cell* m = arg1(args);
+    if (!cell_is_sorted_map(m))
+        return cell_error("⋔→ requires sorted-map", m);
+    Cell* key = arg2(args);
+    Cell* val = cell_sorted_map_get(m, key);
+    return val ? val : cell_nil();
+}
+
+/* ⋔← - put key-value, returns ∅ */
+Cell* prim_sorted_map_put(Cell* args) {
+    Cell* m = arg1(args);
+    if (!cell_is_sorted_map(m))
+        return cell_error("⋔← requires sorted-map", m);
+    Cell* key = arg2(args);
+    Cell* val = arg3(args);
+    cell_sorted_map_put(m, key, val);
+    return cell_nil();
+}
+
+/* ⋔⊖ - delete key, returns old value or ∅ */
+Cell* prim_sorted_map_del(Cell* args) {
+    Cell* m = arg1(args);
+    if (!cell_is_sorted_map(m))
+        return cell_error("⋔⊖ requires sorted-map", m);
+    Cell* key = arg2(args);
+    Cell* old = cell_sorted_map_del(m, key);
+    return old ? old : cell_nil();
+}
+
+/* ⋔? - type predicate */
+Cell* prim_sorted_map_is(Cell* args) {
+    return cell_bool(cell_is_sorted_map(arg1(args)));
+}
+
+/* ⋔∋ - has key */
+Cell* prim_sorted_map_has(Cell* args) {
+    Cell* m = arg1(args);
+    if (!cell_is_sorted_map(m))
+        return cell_error("⋔∋ requires sorted-map", m);
+    Cell* key = arg2(args);
+    return cell_bool(cell_sorted_map_has(m, key));
+}
+
+/* ⋔# - size */
+Cell* prim_sorted_map_size(Cell* args) {
+    Cell* m = arg1(args);
+    if (!cell_is_sorted_map(m))
+        return cell_error("⋔# requires sorted-map", m);
+    return cell_number((double)cell_sorted_map_size(m));
+}
+
+/* ⋔⊙ - keys (sorted) */
+Cell* prim_sorted_map_keys(Cell* args) {
+    Cell* m = arg1(args);
+    if (!cell_is_sorted_map(m))
+        return cell_error("⋔⊙ requires sorted-map", m);
+    return cell_sorted_map_keys(m);
+}
+
+/* ⋔⊗ - values (key-sorted order) */
+Cell* prim_sorted_map_vals(Cell* args) {
+    Cell* m = arg1(args);
+    if (!cell_is_sorted_map(m))
+        return cell_error("⋔⊗ requires sorted-map", m);
+    return cell_sorted_map_values(m);
+}
+
+/* ⋔* - entries as ⟨k v⟩ pairs */
+Cell* prim_sorted_map_entries(Cell* args) {
+    Cell* m = arg1(args);
+    if (!cell_is_sorted_map(m))
+        return cell_error("⋔* requires sorted-map", m);
+    return cell_sorted_map_entries(m);
+}
+
+/* ⋔⊕ - merge two sorted maps (m2 wins conflicts) */
+Cell* prim_sorted_map_merge(Cell* args) {
+    Cell* m1 = arg1(args);
+    Cell* m2 = arg2(args);
+    if (!cell_is_sorted_map(m1))
+        return cell_error("⋔⊕ first arg must be sorted-map", m1);
+    if (!cell_is_sorted_map(m2))
+        return cell_error("⋔⊕ second arg must be sorted-map", m2);
+    return cell_sorted_map_merge(m1, m2);
+}
+
+/* ⋔◁ - min entry → ⟨k v⟩ or ∅ */
+Cell* prim_sorted_map_min(Cell* args) {
+    Cell* m = arg1(args);
+    if (!cell_is_sorted_map(m))
+        return cell_error("⋔◁ requires sorted-map", m);
+    Cell* result = cell_sorted_map_min(m);
+    return result ? result : cell_nil();
+}
+
+/* ⋔▷ - max entry → ⟨k v⟩ or ∅ */
+Cell* prim_sorted_map_max(Cell* args) {
+    Cell* m = arg1(args);
+    if (!cell_is_sorted_map(m))
+        return cell_error("⋔▷ requires sorted-map", m);
+    Cell* result = cell_sorted_map_max(m);
+    return result ? result : cell_nil();
+}
+
+/* ⋔⊂ - range [lo, hi] → list of ⟨k v⟩ */
+Cell* prim_sorted_map_range(Cell* args) {
+    Cell* m = arg1(args);
+    if (!cell_is_sorted_map(m))
+        return cell_error("⋔⊂ requires sorted-map", m);
+    Cell* lo = arg2(args);
+    Cell* hi = arg3(args);
+    return cell_sorted_map_range(m, lo, hi);
+}
+
+/* ⋔≤ - floor: greatest key ≤ query → ⟨k v⟩ or ∅ */
+Cell* prim_sorted_map_floor(Cell* args) {
+    Cell* m = arg1(args);
+    if (!cell_is_sorted_map(m))
+        return cell_error("⋔≤ requires sorted-map", m);
+    Cell* key = arg2(args);
+    Cell* result = cell_sorted_map_floor(m, key);
+    return result ? result : cell_nil();
+}
+
+/* ⋔≥ - ceiling: least key ≥ query → ⟨k v⟩ or ∅ */
+Cell* prim_sorted_map_ceiling(Cell* args) {
+    Cell* m = arg1(args);
+    if (!cell_is_sorted_map(m))
+        return cell_error("⋔≥ requires sorted-map", m);
+    Cell* key = arg2(args);
+    Cell* result = cell_sorted_map_ceiling(m, key);
+    return result ? result : cell_nil();
+}
+
 /* Primitive table - PURE SYMBOLS ONLY
  * EVERY primitive MUST have documentation */
 static Primitive primitives[] = {
@@ -9336,6 +9494,24 @@ static Primitive primitives[] = {
     {"△∅?", prim_heap_empty, 1, {"Test if heap is empty", "△ → 𝔹"}},
     {"△⊙", prim_heap_to_list, 1, {"All elements as sorted ⟨k v⟩ list", "△ → [⟨ℕ α⟩]"}},
     {"△⊕*", prim_heap_merge, 2, {"Merge two heaps → new heap", "△ → △ → △"}},
+
+    /* Sorted Map (Day 116 — Algorithmica-grade SIMD B-tree) */
+    {"⋔", prim_sorted_map_new, -1, {"Create sorted map from ⟨k v⟩ pairs", "⟨k v⟩... → ⋔"}},
+    {"⋔→", prim_sorted_map_get, 2, {"Get value by key or ∅", "⋔ → α → β"}},
+    {"⋔←", prim_sorted_map_put, 3, {"Put key-value (mutates)", "⋔ → α → β → ∅"}},
+    {"⋔⊖", prim_sorted_map_del, 2, {"Delete key → old value or ∅", "⋔ → α → β"}},
+    {"⋔?", prim_sorted_map_is, 1, {"Test if value is sorted-map", "α → 𝔹"}},
+    {"⋔∋", prim_sorted_map_has, 2, {"Test if key exists", "⋔ → α → 𝔹"}},
+    {"⋔#", prim_sorted_map_size, 1, {"Get size", "⋔ → ℕ"}},
+    {"⋔⊙", prim_sorted_map_keys, 1, {"All keys in sorted order", "⋔ → [α]"}},
+    {"⋔⊗", prim_sorted_map_vals, 1, {"All values in key-sorted order", "⋔ → [β]"}},
+    {"⋔*", prim_sorted_map_entries, 1, {"All ⟨k v⟩ pairs in sorted order", "⋔ → [⟨α β⟩]"}},
+    {"⋔⊕", prim_sorted_map_merge, 2, {"Merge two sorted maps (m2 wins)", "⋔ → ⋔ → ⋔"}},
+    {"⋔◁", prim_sorted_map_min, 1, {"Min entry → ⟨k v⟩ or ∅", "⋔ → ⟨α β⟩"}},
+    {"⋔▷", prim_sorted_map_max, 1, {"Max entry → ⟨k v⟩ or ∅", "⋔ → ⟨α β⟩"}},
+    {"⋔⊂", prim_sorted_map_range, 3, {"Range [lo,hi] → ⟨k v⟩ list", "⋔ → α → α → [⟨α β⟩]"}},
+    {"⋔≤", prim_sorted_map_floor, 2, {"Greatest key ≤ query → ⟨k v⟩", "⋔ → α → ⟨α β⟩"}},
+    {"⋔≥", prim_sorted_map_ceiling, 2, {"Least key ≥ query → ⟨k v⟩", "⋔ → α → ⟨α β⟩"}},
 
     {NULL, NULL, 0, {NULL, NULL}}
 };

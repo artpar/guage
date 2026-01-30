@@ -1,0 +1,69 @@
+; Test: Sorted Map (⋔) — SIMD B-Tree
+; Day 116
+
+; 1. Create + size — empty map
+(⊨ (⌜ :smap-new-empty) #0 (⋔# (⋔)))
+
+; 2. Create from pairs + get
+(≔ sm1 (⋔ (⟨⟩ :a #1) (⟨⟩ :b #2) (⟨⟩ :c #3)))
+(⊨ (⌜ :smap-from-pairs-size) #3 (⋔# sm1))
+(⊨ (⌜ :smap-get-a) #1 (⋔→ sm1 :a))
+(⊨ (⌜ :smap-get-b) #2 (⋔→ sm1 :b))
+(⊨ (⌜ :smap-get-c) #3 (⋔→ sm1 :c))
+(⊨ (⌜ :smap-get-missing) ∅ (⋔→ sm1 :z))
+
+; 3. Put + overwrite + has
+(≔ sm2 (⋔))
+(⋔← sm2 :x #10)
+(⋔← sm2 :y #20)
+(⊨ (⌜ :smap-put-size) #2 (⋔# sm2))
+(⊨ (⌜ :smap-has-yes) #t (⋔∋ sm2 :x))
+(⊨ (⌜ :smap-has-no) #f (⋔∋ sm2 :z))
+(⋔← sm2 :x #99)
+(⊨ (⌜ :smap-overwrite) #99 (⋔→ sm2 :x))
+(⊨ (⌜ :smap-overwrite-size) #2 (⋔# sm2))
+
+; 4. Delete
+(≔ sm3 (⋔ (⟨⟩ :a #1) (⟨⟩ :b #2) (⟨⟩ :c #3)))
+(⋔⊖ sm3 :b)
+(⊨ (⌜ :smap-del-size) #2 (⋔# sm3))
+(⊨ (⌜ :smap-del-missing) ∅ (⋔→ sm3 :b))
+(⊨ (⌜ :smap-del-other-intact) #1 (⋔→ sm3 :a))
+
+; 5. Type predicate
+(⊨ (⌜ :smap-type-yes) #t (⋔? (⋔)))
+(⊨ (⌜ :smap-type-no) #f (⋔? #42))
+
+; 6. Keys sorted order — insert :c :a :b, verify keys returns (:a :b :c)
+(≔ sm4 (⋔ (⟨⟩ :c #3) (⟨⟩ :a #1) (⟨⟩ :b #2)))
+(≔ ks (⋔⊙ sm4))
+(⊨ (⌜ :smap-keys-first) :a (◁ ks))
+(⊨ (⌜ :smap-keys-second) :b (◁ (▷ ks)))
+(⊨ (⌜ :smap-keys-third) :c (◁ (▷ (▷ ks))))
+
+; 7. Min/max
+(≔ sm5 (⋔ (⟨⟩ #3 :three) (⟨⟩ #1 :one) (⟨⟩ #5 :five)))
+(⊨ (⌜ :smap-min-key) #1 (◁ (⋔◁ sm5)))
+(⊨ (⌜ :smap-min-val) :one (▷ (⋔◁ sm5)))
+(⊨ (⌜ :smap-max-key) #5 (◁ (⋔▷ sm5)))
+(⊨ (⌜ :smap-max-val) :five (▷ (⋔▷ sm5)))
+
+; 8. Range query — {1,2,3,4,5} range [2,4]
+(≔ sm6 (⋔ (⟨⟩ #1 :a) (⟨⟩ #2 :b) (⟨⟩ #3 :c) (⟨⟩ #4 :d) (⟨⟩ #5 :e)))
+(≔ rng (⋔⊂ sm6 #2 #4))
+(⊨ (⌜ :smap-range-first-key) #2 (◁ (◁ rng)))
+(⊨ (⌜ :smap-range-last-key) #4 (◁ (◁ (▷ (▷ rng)))))
+
+; 9. Floor/ceiling — {10, 20, 30}, query 25
+(≔ sm7 (⋔ (⟨⟩ #10 :ten) (⟨⟩ #20 :twenty) (⟨⟩ #30 :thirty)))
+(⊨ (⌜ :smap-floor-25) #20 (◁ (⋔≤ sm7 #25)))
+(⊨ (⌜ :smap-ceiling-25) #30 (◁ (⋔≥ sm7 #25)))
+
+; 10. Merge — m2 wins on conflict
+(≔ sma (⋔ (⟨⟩ :a #1) (⟨⟩ :b #2)))
+(≔ smb (⋔ (⟨⟩ :b #99) (⟨⟩ :c #3)))
+(≔ smm (⋔⊕ sma smb))
+(⊨ (⌜ :smap-merge-size) #3 (⋔# smm))
+(⊨ (⌜ :smap-merge-conflict) #99 (⋔→ smm :b))
+(⊨ (⌜ :smap-merge-a) #1 (⋔→ smm :a))
+(⊨ (⌜ :smap-merge-c) #3 (⋔→ smm :c))

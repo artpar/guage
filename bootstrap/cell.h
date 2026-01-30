@@ -34,7 +34,8 @@ typedef enum {
     CELL_DEQUE,          /* ⊟ - deque (DPDK-grade cache-optimized circular buffer) */
     CELL_BUFFER,         /* ◈ - byte buffer (cache-line aligned raw bytes) */
     CELL_VECTOR,         /* ⟦⟧ - dynamic array (SBO + 1.5x growth + cache-line aligned) */
-    CELL_HEAP            /* △ - priority queue (4-ary min-heap, SoA, cache-line aligned) */
+    CELL_HEAP,           /* △ - priority queue (4-ary min-heap, SoA, cache-line aligned) */
+    CELL_SORTED_MAP      /* ⋔ - sorted map (Algorithmica-grade SIMD B-tree) */
 } CellType;
 
 /* Linear Type Flags */
@@ -194,6 +195,14 @@ struct Cell {
             uint32_t size;        /* Element count */
             uint32_t capacity;    /* Power-of-2 capacity (min 16) */
         } pq;
+        struct {
+            void*    node_pool;   /* NodePool* (opaque, defined in cell.c) */
+            uint32_t root_idx;    /* Root node index in pool */
+            uint32_t first_leaf;  /* Leftmost leaf index (O(1) min) */
+            uint32_t last_leaf;   /* Rightmost leaf index (O(1) max) */
+            uint32_t size;        /* Total entries */
+            uint8_t  height;      /* Tree height (for search loop bound) */
+        } sorted_map;
     } data;
 };
 
@@ -332,6 +341,27 @@ Cell* cell_heap_peek(Cell* h);
 uint32_t cell_heap_size(Cell* h);
 Cell* cell_heap_to_list(Cell* h);
 Cell* cell_heap_merge(Cell* h1, Cell* h2);
+
+/* Sorted Map operations (Algorithmica-grade SIMD B-tree) */
+Cell* cell_sorted_map_new(void);
+bool cell_is_sorted_map(Cell* c);
+Cell* cell_sorted_map_get(Cell* m, Cell* key);
+Cell* cell_sorted_map_put(Cell* m, Cell* key, Cell* value);
+Cell* cell_sorted_map_del(Cell* m, Cell* key);
+bool cell_sorted_map_has(Cell* m, Cell* key);
+uint32_t cell_sorted_map_size(Cell* m);
+Cell* cell_sorted_map_keys(Cell* m);
+Cell* cell_sorted_map_values(Cell* m);
+Cell* cell_sorted_map_entries(Cell* m);
+Cell* cell_sorted_map_merge(Cell* m1, Cell* m2);
+Cell* cell_sorted_map_min(Cell* m);
+Cell* cell_sorted_map_max(Cell* m);
+Cell* cell_sorted_map_range(Cell* m, Cell* lo, Cell* hi);
+Cell* cell_sorted_map_floor(Cell* m, Cell* key);
+Cell* cell_sorted_map_ceiling(Cell* m, Cell* key);
+
+/* Total ordering for all Cell types (Erlang term ordering) */
+int cell_compare(Cell* a, Cell* b);
 
 /* Error accessors */
 const char* cell_error_message(Cell* c);

@@ -2,10 +2,39 @@
 #include "intern.h"
 #include "siphash.h"
 #include "swisstable.h"
+#include "btree_simd.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
+
+/* === Sorted Map B-tree types (forward declarations for release/print/hash) === */
+
+#define SM_NIL UINT32_MAX
+#define SM_POOL_INIT 64
+
+typedef struct {
+    uint64_t sort_keys[BTREE_B];
+    Cell*    keys[BTREE_B];
+    Cell*    values[BTREE_B];
+    uint32_t children[BTREE_B + 1];
+    uint32_t next_leaf;
+    uint32_t prev_leaf;
+    uint8_t  n_keys;
+    uint8_t  is_leaf;
+} SMNode;
+
+typedef struct {
+    SMNode*  nodes;
+    uint32_t capacity;
+    uint32_t used;
+    uint32_t* free_list;
+    uint32_t free_count;
+    uint32_t free_cap;
+} SMPool;
+
+/* Forward declaration */
+static void sm_pool_destroy_impl(SMPool* p);
 
 /* Cell allocation */
 static Cell* cell_alloc(CellType type) {
@@ -305,6 +334,23 @@ void cell_release(Cell* c) {
                 }
                 free(c->data.pq.keys);
                 free(c->data.pq.vals);
+                break;
+            }
+            case CELL_SORTED_MAP: {
+                SMPool* pool = (SMPool*)c->data.sorted_map.node_pool;
+                if (pool) {
+                    /* Release all keys and values in leaf nodes */
+                    uint32_t leaf = c->data.sorted_map.first_leaf;
+                    while (leaf != SM_NIL) {
+                        SMNode* node = &pool->nodes[leaf];
+                        for (uint8_t i = 0; i < node->n_keys; i++) {
+                            if (node->keys[i]) cell_release(node->keys[i]);
+                            if (node->values[i]) cell_release(node->values[i]);
+                        }
+                        leaf = node->next_leaf;
+                    }
+                    sm_pool_destroy_impl(pool);
+                }
                 break;
             }
             default:
@@ -736,6 +782,9 @@ bool cell_equal(Cell* a, Cell* b) {
         case CELL_HEAP:
             /* Identity only — heap ordering makes structural comparison meaningless */
             return false;
+        case CELL_SORTED_MAP:
+            /* Identity only — structural comparison too expensive */
+            return false;
         case CELL_LAMBDA:
         case CELL_BUILTIN:
         case CELL_ERROR:
@@ -871,6 +920,9 @@ void cell_print(Cell* c) {
         case CELL_HEAP:
             printf("△[%u]", c->data.pq.size);
             break;
+        case CELL_SORTED_MAP:
+            printf("⋔[%u]", c->data.sorted_map.size);
+            break;
     }
 }
 
@@ -920,6 +972,12 @@ uint64_t cell_hash(Cell* c) {
                 hh ^= cell_hash(c->data.pq.vals[hi]) * 0x9E3779B97F4A7C15ULL + (hh << 12) + (hh >> 4);
             }
             return hh;
+        }
+        case CELL_SORTED_MAP: {
+            uint64_t smh = 0xDEF0ull;
+            uint32_t sz = c->data.sorted_map.size;
+            smh ^= guage_siphash(&sz, sizeof(sz));
+            return smh;
         }
         default: {
             /* Lambda, error, actor, box, etc. — hash pointer */
@@ -2183,4 +2241,854 @@ Cell* cell_heap_merge(Cell* h1, Cell* h2) {
         cell_heap_push(result, h2->data.pq.keys[i], h2->data.pq.vals[i]);
     }
     return result;
+}
+
+/* ===== Sorted Map (⋔) — Algorithmica-Grade SIMD B-Tree ===== */
+/* SMNode and SMPool types defined at top of file (needed by release/print/hash) */
+
+static SMPool* sm_pool_new(void) {
+    SMPool* p = (SMPool*)malloc(sizeof(SMPool));
+    p->capacity = SM_POOL_INIT;
+    p->used = 0;
+    p->nodes = (SMNode*)aligned_alloc(64, SM_POOL_INIT * sizeof(SMNode));
+    memset(p->nodes, 0, SM_POOL_INIT * sizeof(SMNode));
+    p->free_list = (uint32_t*)malloc(SM_POOL_INIT * sizeof(uint32_t));
+    p->free_count = 0;
+    p->free_cap = SM_POOL_INIT;
+    return p;
+}
+
+static void sm_pool_grow(SMPool* p) {
+    uint32_t new_cap = p->capacity * 2;
+    SMNode* new_nodes = (SMNode*)aligned_alloc(64, new_cap * sizeof(SMNode));
+    memcpy(new_nodes, p->nodes, p->capacity * sizeof(SMNode));
+    memset(new_nodes + p->capacity, 0, (new_cap - p->capacity) * sizeof(SMNode));
+    free(p->nodes);
+    p->nodes = new_nodes;
+    /* Grow free list too */
+    uint32_t* new_fl = (uint32_t*)realloc(p->free_list, new_cap * sizeof(uint32_t));
+    p->free_list = new_fl;
+    p->free_cap = new_cap;
+    p->capacity = new_cap;
+}
+
+static uint32_t sm_pool_alloc(SMPool* p) {
+    uint32_t idx;
+    if (p->free_count > 0) {
+        idx = p->free_list[--p->free_count];
+    } else {
+        if (p->used >= p->capacity) {
+            sm_pool_grow(p);
+        }
+        idx = p->used++;
+    }
+    memset(&p->nodes[idx], 0, sizeof(SMNode));
+    /* Fill sort_keys with UINT64_MAX so unused slots don't affect rank */
+    memset(p->nodes[idx].sort_keys, 0xFF, sizeof(p->nodes[idx].sort_keys));
+    for (int i = 0; i <= BTREE_B; i++) p->nodes[idx].children[i] = SM_NIL;
+    p->nodes[idx].next_leaf = SM_NIL;
+    p->nodes[idx].prev_leaf = SM_NIL;
+    return idx;
+}
+
+static void sm_pool_free(SMPool* p, uint32_t idx) {
+    if (p->free_count >= p->free_cap) {
+        uint32_t new_cap = p->free_cap * 2;
+        p->free_list = (uint32_t*)realloc(p->free_list, new_cap * sizeof(uint32_t));
+        p->free_cap = new_cap;
+    }
+    p->free_list[p->free_count++] = idx;
+}
+
+static void sm_pool_destroy_impl(SMPool* p) {
+    free(p->nodes);
+    free(p->free_list);
+    free(p);
+}
+
+/* === cell_compare: total ordering (Erlang term ordering) === */
+/* nil < bool (#f < #t) < number < symbol < string < pair < everything else */
+
+int cell_compare(Cell* a, Cell* b) {
+    if (a == b) return 0;
+    if (!a) return -1;
+    if (!b) return 1;
+
+    /* Type ordering */
+    static const int type_order[] = {
+        [CELL_ATOM_NIL] = 0,
+        [CELL_ATOM_BOOL] = 1,
+        [CELL_ATOM_NUMBER] = 2,
+        [CELL_ATOM_SYMBOL] = 3,
+        [CELL_ATOM_STRING] = 4,
+        [CELL_PAIR] = 5,
+        [CELL_LAMBDA] = 6,
+        [CELL_BUILTIN] = 7,
+        [CELL_ERROR] = 8,
+        [CELL_STRUCT] = 9,
+        [CELL_GRAPH] = 10,
+        [CELL_ACTOR] = 11,
+        [CELL_CHANNEL] = 12,
+        [CELL_BOX] = 13,
+        [CELL_WEAK_REF] = 14,
+        [CELL_HASHMAP] = 15,
+        [CELL_SET] = 16,
+        [CELL_DEQUE] = 17,
+        [CELL_BUFFER] = 18,
+        [CELL_VECTOR] = 19,
+        [CELL_HEAP] = 20,
+        [CELL_SORTED_MAP] = 21,
+    };
+
+    int ta = type_order[a->type];
+    int tb = type_order[b->type];
+    if (ta != tb) return (ta < tb) ? -1 : 1;
+
+    /* Same type — compare within type */
+    switch (a->type) {
+        case CELL_ATOM_NIL: return 0;
+        case CELL_ATOM_BOOL: {
+            int va = a->data.atom.boolean ? 1 : 0;
+            int vb = b->data.atom.boolean ? 1 : 0;
+            return (va < vb) ? -1 : (va > vb) ? 1 : 0;
+        }
+        case CELL_ATOM_NUMBER: {
+            double da = a->data.atom.number;
+            double db = b->data.atom.number;
+            return (da < db) ? -1 : (da > db) ? 1 : 0;
+        }
+        case CELL_ATOM_SYMBOL: {
+            return strcmp(a->data.atom.symbol, b->data.atom.symbol);
+        }
+        case CELL_ATOM_STRING: {
+            return strcmp(a->data.atom.string, b->data.atom.string);
+        }
+        case CELL_PAIR: {
+            int c = cell_compare(a->data.pair.car, b->data.pair.car);
+            if (c != 0) return c;
+            return cell_compare(a->data.pair.cdr, b->data.pair.cdr);
+        }
+        default: {
+            /* Pointer-based ordering for remaining types */
+            uintptr_t pa = (uintptr_t)a;
+            uintptr_t pb = (uintptr_t)b;
+            return (pa < pb) ? -1 : (pa > pb) ? 1 : 0;
+        }
+    }
+}
+
+/* === Sort-key extraction: Cell* → uint64_t === */
+
+static uint64_t cell_sort_key(Cell* c) {
+    if (!c) return 0;
+    uint64_t tag = (uint64_t)c->type << 60;
+    switch (c->type) {
+        case CELL_ATOM_NIL:    return tag;
+        case CELL_ATOM_BOOL:   return tag | (uint64_t)c->data.atom.boolean;
+        case CELL_ATOM_NUMBER: return tag | (double_to_sortkey(c->data.atom.number) >> 4);
+        case CELL_ATOM_SYMBOL: {
+            uint64_t prefix = 0;
+            const char* s = c->data.atom.symbol;
+            for (int i = 0; i < 7 && s[i]; i++)
+                prefix |= (uint64_t)(uint8_t)s[i] << (48 - i * 8);
+            return tag | prefix;
+        }
+        case CELL_ATOM_STRING: {
+            uint64_t prefix = 0;
+            const char* s = c->data.atom.string;
+            for (int i = 0; i < 7 && s[i]; i++)
+                prefix |= (uint64_t)(uint8_t)s[i] << (48 - i * 8);
+            return tag | prefix;
+        }
+        default: return tag | (uint64_t)(uintptr_t)c;
+    }
+}
+
+/* === B-tree search === */
+
+/* Find position of key in node (returns index where key should be).
+ * If exact match found, *found is set to 1 and index points to the match. */
+static unsigned sm_node_find(SMPool* pool, uint32_t node_idx,
+                              uint64_t sk, Cell* key, int* found) {
+    SMNode* node = &pool->nodes[node_idx];
+    *found = 0;
+    unsigned pos = sm_rank16(sk, node->sort_keys);
+    /* Check for exact match at pos-1 (rank gives count of keys < query) */
+    /* We need to check pos-1 and pos for sort_key ties */
+    for (unsigned i = (pos > 0 ? pos - 1 : 0); i < node->n_keys; i++) {
+        if (node->sort_keys[i] > sk) break;
+        if (node->sort_keys[i] == sk && cell_compare(node->keys[i], key) == 0) {
+            *found = 1;
+            return i;
+        }
+    }
+    return pos;
+}
+
+/* Search for key in B-tree, returns leaf node index and position.
+ * If found, *found=1 and returned position is the key's index in the leaf. */
+static uint32_t sm_search(SMPool* pool, uint32_t root, uint8_t height,
+                           uint64_t sk, Cell* key, unsigned* pos, int* found) {
+    uint32_t cur = root;
+    *found = 0;
+    for (uint8_t h = 0; h < height; h++) {
+        SMNode* node = &pool->nodes[cur];
+        unsigned rank = sm_rank16(sk, node->sort_keys);
+        /* Check exact match in sort keys for early exit on internal nodes */
+        for (unsigned i = (rank > 0 ? rank - 1 : 0); i < node->n_keys; i++) {
+            if (node->sort_keys[i] > sk) break;
+            if (node->sort_keys[i] == sk && cell_compare(node->keys[i], key) == 0) {
+                rank = i;
+                break;
+            }
+        }
+        /* Prefetch next child */
+        uint32_t child = node->children[rank];
+        if (child != SM_NIL) {
+            __builtin_prefetch(&pool->nodes[child].sort_keys, 0, 3);
+        }
+        cur = child;
+    }
+    /* Now at leaf level */
+    *pos = sm_node_find(pool, cur, sk, key, found);
+    return cur;
+}
+
+/* === B-tree split === */
+
+/* Split a full node into two, returning the median key/value and new node index */
+static void sm_split(SMPool* pool, uint32_t node_idx, uint32_t* new_idx,
+                      Cell** median_key, Cell** median_val, uint64_t* median_sk) {
+    SMNode* node = &pool->nodes[node_idx];
+    uint8_t mid = BTREE_B / 2;  /* 8 */
+
+    *new_idx = sm_pool_alloc(pool);
+    /* Re-fetch pointers after possible realloc */
+    node = &pool->nodes[node_idx];
+    SMNode* new_node = &pool->nodes[*new_idx];
+    new_node->is_leaf = node->is_leaf;
+
+    *median_key = node->keys[mid];
+    *median_sk = node->sort_keys[mid];
+    if (node->is_leaf) {
+        *median_val = node->values[mid];
+    } else {
+        *median_val = NULL;
+    }
+
+    /* Copy upper half to new node */
+    uint8_t right_start = mid + 1;
+    uint8_t right_count = node->n_keys - right_start;
+    for (uint8_t i = 0; i < right_count; i++) {
+        new_node->sort_keys[i] = node->sort_keys[right_start + i];
+        new_node->keys[i] = node->keys[right_start + i];
+        if (node->is_leaf) {
+            new_node->values[i] = node->values[right_start + i];
+        }
+    }
+    if (!node->is_leaf) {
+        for (uint8_t i = 0; i <= right_count; i++) {
+            new_node->children[i] = node->children[right_start + i];
+        }
+    }
+    new_node->n_keys = right_count;
+    node->n_keys = mid;
+
+    /* Maintain leaf chain */
+    if (node->is_leaf) {
+        new_node->next_leaf = node->next_leaf;
+        new_node->prev_leaf = node_idx;
+        if (node->next_leaf != SM_NIL) {
+            pool->nodes[node->next_leaf].prev_leaf = *new_idx;
+        }
+        node->next_leaf = *new_idx;
+    }
+}
+
+/* Insert into a non-full node (recursive) */
+static void sm_insert_nonfull(SMPool* pool, uint32_t node_idx,
+                               Cell* key, Cell* value, uint64_t sk,
+                               uint32_t* first_leaf, uint32_t* last_leaf);
+
+/* Insert key-value into leaf node at position pos, shifting right */
+static void sm_leaf_insert_at(SMNode* node, unsigned pos,
+                               Cell* key, Cell* value, uint64_t sk) {
+    /* Shift right */
+    for (int i = (int)node->n_keys - 1; i >= (int)pos; i--) {
+        node->sort_keys[i + 1] = node->sort_keys[i];
+        node->keys[i + 1] = node->keys[i];
+        node->values[i + 1] = node->values[i];
+    }
+    node->sort_keys[pos] = sk;
+    node->keys[pos] = key;
+    node->values[pos] = value;
+    cell_retain(key);
+    cell_retain(value);
+    node->n_keys++;
+}
+
+/* Insert into internal node at position pos, with child split */
+static void sm_internal_insert_at(SMNode* node, unsigned pos,
+                                    Cell* key, uint64_t sk, uint32_t right_child) {
+    /* Shift right */
+    for (int i = (int)node->n_keys - 1; i >= (int)pos; i--) {
+        node->sort_keys[i + 1] = node->sort_keys[i];
+        node->keys[i + 1] = node->keys[i];
+        node->children[i + 2] = node->children[i + 1];
+    }
+    node->sort_keys[pos] = sk;
+    node->keys[pos] = key;
+    node->children[pos + 1] = right_child;
+    node->n_keys++;
+}
+
+static void sm_insert_nonfull(SMPool* pool, uint32_t node_idx,
+                               Cell* key, Cell* value, uint64_t sk,
+                               uint32_t* first_leaf, uint32_t* last_leaf) {
+    SMNode* node = &pool->nodes[node_idx];
+
+    if (node->is_leaf) {
+        /* Find position and check for duplicate */
+        int found = 0;
+        unsigned pos = sm_node_find(pool, node_idx, sk, key, &found);
+        if (found) {
+            /* Overwrite value — release old, retain new */
+            node = &pool->nodes[node_idx]; /* re-fetch */
+            Cell* old_val = node->values[pos];
+            node->values[pos] = value;
+            cell_retain(value);
+            cell_release(old_val);
+            return;
+        }
+        sm_leaf_insert_at(node, pos, key, value, sk);
+    } else {
+        /* Internal node — find child */
+        unsigned pos = sm_rank16(sk, node->sort_keys);
+        /* Check for existing key in internal node (sort key ties) */
+        for (unsigned i = (pos > 0 ? pos - 1 : 0); i < node->n_keys; i++) {
+            if (node->sort_keys[i] > sk) break;
+            if (node->sort_keys[i] == sk && cell_compare(node->keys[i], key) == 0) {
+                /* Key exists — for B-tree we only store keys in leaves for simplicity */
+                /* Since our B-tree puts all data in leaves, go to child anyway */
+                break;
+            }
+        }
+        uint32_t child_idx = node->children[pos];
+        SMNode* child = &pool->nodes[child_idx];
+        if (child->n_keys == BTREE_B) {
+            /* Child is full — split it */
+            uint32_t new_idx;
+            Cell* med_key;
+            Cell* med_val;
+            uint64_t med_sk;
+            sm_split(pool, child_idx, &new_idx, &med_key, &med_val, &med_sk);
+            /* Re-fetch after potential realloc */
+            node = &pool->nodes[node_idx];
+            /* Insert median into this node */
+            sm_internal_insert_at(node, pos, med_key, med_sk, new_idx);
+            /* Update leaf chain boundaries */
+            if (pool->nodes[new_idx].is_leaf && pool->nodes[new_idx].next_leaf == SM_NIL) {
+                *last_leaf = new_idx;
+            }
+            /* Decide which child to recurse into */
+            if (sk > med_sk || (sk == med_sk && cell_compare(key, med_key) > 0)) {
+                child_idx = new_idx;
+            }
+        }
+        sm_insert_nonfull(pool, child_idx, key, value, sk, first_leaf, last_leaf);
+    }
+}
+
+/* === Public API === */
+
+bool cell_is_sorted_map(Cell* c) {
+    return c && c->type == CELL_SORTED_MAP;
+}
+
+Cell* cell_sorted_map_new(void) {
+    Cell* c = cell_alloc(CELL_SORTED_MAP);
+    SMPool* pool = sm_pool_new();
+    /* Create initial empty leaf as root */
+    uint32_t root = sm_pool_alloc(pool);
+    pool->nodes[root].is_leaf = 1;
+
+    c->data.sorted_map.node_pool = pool;
+    c->data.sorted_map.root_idx = root;
+    c->data.sorted_map.first_leaf = root;
+    c->data.sorted_map.last_leaf = root;
+    c->data.sorted_map.size = 0;
+    c->data.sorted_map.height = 0;
+    return c;
+}
+
+Cell* cell_sorted_map_put(Cell* m, Cell* key, Cell* value) {
+    assert(m->type == CELL_SORTED_MAP);
+    SMPool* pool = (SMPool*)m->data.sorted_map.node_pool;
+    uint64_t sk = cell_sort_key(key);
+    uint32_t root = m->data.sorted_map.root_idx;
+
+    /* Check if root is full */
+    if (pool->nodes[root].n_keys == BTREE_B) {
+        /* Split root — create new root */
+        uint32_t old_root = root;
+        uint32_t new_root = sm_pool_alloc(pool);
+        uint32_t new_child;
+        Cell* med_key;
+        Cell* med_val;
+        uint64_t med_sk;
+        sm_split(pool, old_root, &new_child, &med_key, &med_val, &med_sk);
+        /* Re-fetch after potential realloc */
+        SMNode* nr = &pool->nodes[new_root];
+        nr->is_leaf = 0;
+        nr->n_keys = 1;
+        nr->sort_keys[0] = med_sk;
+        nr->keys[0] = med_key;
+        nr->children[0] = old_root;
+        nr->children[1] = new_child;
+        for (int i = 2; i <= BTREE_B; i++) nr->children[i] = SM_NIL;
+        nr->next_leaf = SM_NIL;
+        nr->prev_leaf = SM_NIL;
+        m->data.sorted_map.root_idx = new_root;
+        m->data.sorted_map.height++;
+        /* Update leaf chain boundaries */
+        if (pool->nodes[new_child].is_leaf && pool->nodes[new_child].next_leaf == SM_NIL) {
+            m->data.sorted_map.last_leaf = new_child;
+        }
+        root = new_root;
+    }
+
+    /* Check for existing key to determine if this is an insert or update */
+    uint32_t old_size = m->data.sorted_map.size;
+    sm_insert_nonfull(pool, root, key, value, sk,
+                      &m->data.sorted_map.first_leaf,
+                      &m->data.sorted_map.last_leaf);
+
+    /* Count: did we actually insert (not just overwrite)? */
+    /* Re-count by searching — simpler than tracking in insert */
+    /* Actually, check if the size should increment by searching first */
+    /* For efficiency, we search before insert to know if it's new */
+    /* But we already inserted. Let's just use a search to verify. */
+    /* Simpler approach: track insert vs overwrite via return value from search */
+
+    /* Recount: walk leaves to get exact count */
+    /* Even simpler: we know old_size, search for key, if it existed it's overwrite */
+    unsigned pos;
+    int found;
+    sm_search(pool, m->data.sorted_map.root_idx, m->data.sorted_map.height,
+              sk, key, &pos, &found);
+    if (found) {
+        /* Key exists in tree — was it there before? */
+        /* We always increment and let overwrite path not increment */
+        /* Actually this is after insert, key will always be found now */
+        /* Track by checking if old_size == current count */
+    }
+    /* Simple approach: just recount leaves */
+    uint32_t count = 0;
+    uint32_t leaf = m->data.sorted_map.first_leaf;
+    while (leaf != SM_NIL) {
+        count += pool->nodes[leaf].n_keys;
+        leaf = pool->nodes[leaf].next_leaf;
+    }
+    Cell* old_val = NULL;
+    if (count == old_size) {
+        /* Was an overwrite — but we already handled value swap in insert */
+        /* Return the old value? We don't have it anymore. Return nil as "existed" marker */
+        old_val = cell_nil();  /* Marker: key existed */
+    } else {
+        m->data.sorted_map.size = count;
+        old_val = NULL;  /* New key inserted */
+    }
+
+    /* Update first/last leaf caches */
+    leaf = m->data.sorted_map.root_idx;
+    while (!pool->nodes[leaf].is_leaf) {
+        leaf = pool->nodes[leaf].children[0];
+    }
+    m->data.sorted_map.first_leaf = leaf;
+
+    leaf = m->data.sorted_map.root_idx;
+    while (!pool->nodes[leaf].is_leaf) {
+        SMNode* n = &pool->nodes[leaf];
+        leaf = n->children[n->n_keys];
+    }
+    m->data.sorted_map.last_leaf = leaf;
+
+    return old_val ? old_val : cell_nil();
+}
+
+Cell* cell_sorted_map_get(Cell* m, Cell* key) {
+    assert(m->type == CELL_SORTED_MAP);
+    SMPool* pool = (SMPool*)m->data.sorted_map.node_pool;
+    uint64_t sk = cell_sort_key(key);
+    unsigned pos;
+    int found;
+    uint32_t leaf = sm_search(pool, m->data.sorted_map.root_idx,
+                               m->data.sorted_map.height, sk, key, &pos, &found);
+    if (found) {
+        Cell* val = pool->nodes[leaf].values[pos];
+        cell_retain(val);
+        return val;
+    }
+    return NULL; /* Not found */
+}
+
+bool cell_sorted_map_has(Cell* m, Cell* key) {
+    assert(m->type == CELL_SORTED_MAP);
+    SMPool* pool = (SMPool*)m->data.sorted_map.node_pool;
+    uint64_t sk = cell_sort_key(key);
+    unsigned pos;
+    int found;
+    sm_search(pool, m->data.sorted_map.root_idx,
+              m->data.sorted_map.height, sk, key, &pos, &found);
+    return found != 0;
+}
+
+uint32_t cell_sorted_map_size(Cell* m) {
+    assert(m->type == CELL_SORTED_MAP);
+    return m->data.sorted_map.size;
+}
+
+/* Delete: remove key, returns old value or NULL */
+Cell* cell_sorted_map_del(Cell* m, Cell* key) {
+    assert(m->type == CELL_SORTED_MAP);
+    SMPool* pool = (SMPool*)m->data.sorted_map.node_pool;
+    uint64_t sk = cell_sort_key(key);
+    unsigned pos;
+    int found;
+    uint32_t leaf = sm_search(pool, m->data.sorted_map.root_idx,
+                               m->data.sorted_map.height, sk, key, &pos, &found);
+    if (!found) return NULL;
+
+    SMNode* node = &pool->nodes[leaf];
+    Cell* old_val = node->values[pos];
+    Cell* old_key = node->keys[pos];
+    /* Shift left */
+    for (unsigned i = pos; i < (unsigned)node->n_keys - 1; i++) {
+        node->sort_keys[i] = node->sort_keys[i + 1];
+        node->keys[i] = node->keys[i + 1];
+        node->values[i] = node->values[i + 1];
+    }
+    node->n_keys--;
+    /* Clear the freed slot */
+    node->sort_keys[node->n_keys] = UINT64_MAX;
+    node->keys[node->n_keys] = NULL;
+    node->values[node->n_keys] = NULL;
+    m->data.sorted_map.size--;
+    cell_release(old_key);
+    /* old_val returned to caller — caller gets the reference */
+
+    /* If leaf is empty and it's not the root, we should remove it from the chain.
+     * For simplicity (and since rebalancing is complex), we leave empty leaves
+     * in place — they'll be garbage when the tree is freed. */
+    if (node->n_keys == 0 && m->data.sorted_map.size > 0) {
+        /* Unlink from leaf chain */
+        if (node->prev_leaf != SM_NIL)
+            pool->nodes[node->prev_leaf].next_leaf = node->next_leaf;
+        if (node->next_leaf != SM_NIL)
+            pool->nodes[node->next_leaf].prev_leaf = node->prev_leaf;
+        if (m->data.sorted_map.first_leaf == leaf)
+            m->data.sorted_map.first_leaf = node->next_leaf;
+        if (m->data.sorted_map.last_leaf == leaf)
+            m->data.sorted_map.last_leaf = node->prev_leaf;
+        sm_pool_free(pool, leaf);
+    }
+
+    return old_val;
+}
+
+/* Keys: return sorted list of all keys via leaf chain walk */
+Cell* cell_sorted_map_keys(Cell* m) {
+    assert(m->type == CELL_SORTED_MAP);
+    SMPool* pool = (SMPool*)m->data.sorted_map.node_pool;
+    /* Build list in reverse, then reverse */
+    Cell* result = cell_nil();
+    uint32_t leaf = m->data.sorted_map.last_leaf;
+    while (leaf != SM_NIL) {
+        SMNode* node = &pool->nodes[leaf];
+        for (int i = (int)node->n_keys - 1; i >= 0; i--) {
+            Cell* k = node->keys[i];
+            cell_retain(k);
+            Cell* pair = cell_cons(k, result);
+            cell_release(k);
+            cell_release(result);
+            result = pair;
+        }
+        leaf = node->prev_leaf;
+    }
+    return result;
+}
+
+/* Values: return list of values in key-sorted order */
+Cell* cell_sorted_map_values(Cell* m) {
+    assert(m->type == CELL_SORTED_MAP);
+    SMPool* pool = (SMPool*)m->data.sorted_map.node_pool;
+    Cell* result = cell_nil();
+    uint32_t leaf = m->data.sorted_map.last_leaf;
+    while (leaf != SM_NIL) {
+        SMNode* node = &pool->nodes[leaf];
+        for (int i = (int)node->n_keys - 1; i >= 0; i--) {
+            Cell* v = node->values[i];
+            cell_retain(v);
+            Cell* pair = cell_cons(v, result);
+            cell_release(v);
+            cell_release(result);
+            result = pair;
+        }
+        leaf = node->prev_leaf;
+    }
+    return result;
+}
+
+/* Entries: return list of ⟨key value⟩ pairs in sorted order */
+Cell* cell_sorted_map_entries(Cell* m) {
+    assert(m->type == CELL_SORTED_MAP);
+    SMPool* pool = (SMPool*)m->data.sorted_map.node_pool;
+    Cell* result = cell_nil();
+    uint32_t leaf = m->data.sorted_map.last_leaf;
+    while (leaf != SM_NIL) {
+        SMNode* node = &pool->nodes[leaf];
+        for (int i = (int)node->n_keys - 1; i >= 0; i--) {
+            Cell* k = node->keys[i];
+            Cell* v = node->values[i];
+            cell_retain(k);
+            cell_retain(v);
+            Cell* kv = cell_cons(k, v);
+            cell_release(k);
+            cell_release(v);
+            Cell* pair = cell_cons(kv, result);
+            cell_release(kv);
+            cell_release(result);
+            result = pair;
+        }
+        leaf = node->prev_leaf;
+    }
+    return result;
+}
+
+/* Merge: build new sorted map from both m1 and m2 (m2 wins on conflict) */
+Cell* cell_sorted_map_merge(Cell* m1, Cell* m2) {
+    assert(m1->type == CELL_SORTED_MAP);
+    assert(m2->type == CELL_SORTED_MAP);
+    Cell* result = cell_sorted_map_new();
+    SMPool* p1 = (SMPool*)m1->data.sorted_map.node_pool;
+    SMPool* p2 = (SMPool*)m2->data.sorted_map.node_pool;
+
+    /* Insert all from m1 */
+    uint32_t leaf = m1->data.sorted_map.first_leaf;
+    while (leaf != SM_NIL) {
+        SMNode* node = &p1->nodes[leaf];
+        for (uint8_t i = 0; i < node->n_keys; i++) {
+            cell_sorted_map_put(result, node->keys[i], node->values[i]);
+        }
+        leaf = node->next_leaf;
+    }
+    /* Insert all from m2 (overwrites m1 on conflict) */
+    leaf = m2->data.sorted_map.first_leaf;
+    while (leaf != SM_NIL) {
+        SMNode* node = &p2->nodes[leaf];
+        for (uint8_t i = 0; i < node->n_keys; i++) {
+            cell_sorted_map_put(result, node->keys[i], node->values[i]);
+        }
+        leaf = node->next_leaf;
+    }
+    return result;
+}
+
+/* Min: O(1) via first_leaf cache */
+Cell* cell_sorted_map_min(Cell* m) {
+    assert(m->type == CELL_SORTED_MAP);
+    if (m->data.sorted_map.size == 0) return NULL;
+    SMPool* pool = (SMPool*)m->data.sorted_map.node_pool;
+    SMNode* node = &pool->nodes[m->data.sorted_map.first_leaf];
+    if (node->n_keys == 0) return NULL;
+    Cell* k = node->keys[0];
+    Cell* v = node->values[0];
+    cell_retain(k);
+    cell_retain(v);
+    Cell* pair = cell_cons(k, v);
+    cell_release(k);
+    cell_release(v);
+    return pair;
+}
+
+/* Max: O(1) via last_leaf cache */
+Cell* cell_sorted_map_max(Cell* m) {
+    assert(m->type == CELL_SORTED_MAP);
+    if (m->data.sorted_map.size == 0) return NULL;
+    SMPool* pool = (SMPool*)m->data.sorted_map.node_pool;
+    SMNode* node = &pool->nodes[m->data.sorted_map.last_leaf];
+    if (node->n_keys == 0) return NULL;
+    uint8_t last = node->n_keys - 1;
+    Cell* k = node->keys[last];
+    Cell* v = node->values[last];
+    cell_retain(k);
+    cell_retain(v);
+    Cell* pair = cell_cons(k, v);
+    cell_release(k);
+    cell_release(v);
+    return pair;
+}
+
+/* Range: return entries where lo <= key <= hi */
+Cell* cell_sorted_map_range(Cell* m, Cell* lo, Cell* hi) {
+    assert(m->type == CELL_SORTED_MAP);
+    SMPool* pool = (SMPool*)m->data.sorted_map.node_pool;
+    if (m->data.sorted_map.size == 0) return cell_nil();
+
+    /* Find starting leaf via search for lo */
+    uint64_t lo_sk = cell_sort_key(lo);
+    unsigned start_pos;
+    int found;
+    uint32_t start_leaf = sm_search(pool, m->data.sorted_map.root_idx,
+                                     m->data.sorted_map.height, lo_sk, lo, &start_pos, &found);
+
+    /* Collect entries in [lo, hi] into array */
+    Cell** items = (Cell**)malloc(16 * sizeof(Cell*));
+    uint32_t item_count = 0;
+    uint32_t item_cap = 16;
+    int first = 1;
+
+    uint32_t leaf = start_leaf;
+    while (leaf != SM_NIL) {
+        SMNode* nd = &pool->nodes[leaf];
+        unsigned begin = first ? start_pos : 0;
+        first = 0;
+        for (unsigned i = begin; i < nd->n_keys; i++) {
+            Cell* k = nd->keys[i];
+            if (cell_compare(k, hi) > 0) goto range_done;
+            if (cell_compare(k, lo) >= 0) {
+                Cell* v = nd->values[i];
+                cell_retain(k);
+                cell_retain(v);
+                Cell* kv = cell_cons(k, v);
+                cell_release(k);
+                cell_release(v);
+                if (item_count >= item_cap) {
+                    item_cap *= 2;
+                    items = (Cell**)realloc(items, item_cap * sizeof(Cell*));
+                }
+                items[item_count++] = kv;
+            }
+        }
+        leaf = nd->next_leaf;
+    }
+range_done:;
+    /* Build list from items array (reverse to get sorted order) */
+    Cell* result = cell_nil();
+    for (int i = (int)item_count - 1; i >= 0; i--) {
+        Cell* nd = cell_cons(items[i], result);
+        cell_release(items[i]);
+        cell_release(result);
+        result = nd;
+    }
+    free(items);
+    return result;
+}
+
+/* Floor: greatest key <= query */
+Cell* cell_sorted_map_floor(Cell* m, Cell* key) {
+    assert(m->type == CELL_SORTED_MAP);
+    SMPool* pool = (SMPool*)m->data.sorted_map.node_pool;
+    if (m->data.sorted_map.size == 0) return NULL;
+
+    uint64_t sk = cell_sort_key(key);
+    unsigned pos;
+    int found;
+    uint32_t leaf = sm_search(pool, m->data.sorted_map.root_idx,
+                               m->data.sorted_map.height, sk, key, &pos, &found);
+    SMNode* node = &pool->nodes[leaf];
+
+    if (found) {
+        /* Exact match */
+        Cell* k = node->keys[pos];
+        Cell* v = node->values[pos];
+        cell_retain(k);
+        cell_retain(v);
+        Cell* pair = cell_cons(k, v);
+        cell_release(k);
+        cell_release(v);
+        return pair;
+    }
+
+    /* pos is where key would be inserted — floor is at pos-1 */
+    if (pos > 0) {
+        Cell* k = node->keys[pos - 1];
+        Cell* v = node->values[pos - 1];
+        cell_retain(k);
+        cell_retain(v);
+        Cell* pair = cell_cons(k, v);
+        cell_release(k);
+        cell_release(v);
+        return pair;
+    }
+
+    /* Need to go to previous leaf */
+    if (node->prev_leaf != SM_NIL) {
+        SMNode* prev = &pool->nodes[node->prev_leaf];
+        if (prev->n_keys > 0) {
+            uint8_t last = prev->n_keys - 1;
+            Cell* k = prev->keys[last];
+            Cell* v = prev->values[last];
+            cell_retain(k);
+            cell_retain(v);
+            Cell* pair = cell_cons(k, v);
+            cell_release(k);
+            cell_release(v);
+            return pair;
+        }
+    }
+    return NULL; /* No floor exists */
+}
+
+/* Ceiling: least key >= query */
+Cell* cell_sorted_map_ceiling(Cell* m, Cell* key) {
+    assert(m->type == CELL_SORTED_MAP);
+    SMPool* pool = (SMPool*)m->data.sorted_map.node_pool;
+    if (m->data.sorted_map.size == 0) return NULL;
+
+    uint64_t sk = cell_sort_key(key);
+    unsigned pos;
+    int found;
+    uint32_t leaf = sm_search(pool, m->data.sorted_map.root_idx,
+                               m->data.sorted_map.height, sk, key, &pos, &found);
+    SMNode* node = &pool->nodes[leaf];
+
+    if (found) {
+        Cell* k = node->keys[pos];
+        Cell* v = node->values[pos];
+        cell_retain(k);
+        cell_retain(v);
+        Cell* pair = cell_cons(k, v);
+        cell_release(k);
+        cell_release(v);
+        return pair;
+    }
+
+    /* pos is insertion point — ceiling is at pos */
+    if (pos < node->n_keys) {
+        Cell* k = node->keys[pos];
+        Cell* v = node->values[pos];
+        cell_retain(k);
+        cell_retain(v);
+        Cell* pair = cell_cons(k, v);
+        cell_release(k);
+        cell_release(v);
+        return pair;
+    }
+
+    /* Need to go to next leaf */
+    if (node->next_leaf != SM_NIL) {
+        SMNode* next = &pool->nodes[node->next_leaf];
+        if (next->n_keys > 0) {
+            Cell* k = next->keys[0];
+            Cell* v = next->values[0];
+            cell_retain(k);
+            cell_retain(v);
+            Cell* pair = cell_cons(k, v);
+            cell_release(k);
+            cell_release(v);
+            return pair;
+        }
+    }
+    return NULL;
 }
