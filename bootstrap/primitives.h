@@ -401,6 +401,72 @@ Cell* prim_ffi_str_to_ptr(Cell* args);  /* ⌁→≈ - string to strdup'd ptr */
 Cell* prim_ffi_read_buf(Cell* args);    /* ⌁◈→ - read N bytes from ptr */
 Cell* prim_ffi_buf_to_ptr(Cell* args);  /* ⌁→◈ - buffer to malloc'd ptr */
 
+/* Networking primitives (Day 126 — HFT-grade io_uring/kqueue/IOCP) */
+
+/* Socket lifecycle (5) */
+Cell* prim_net_socket(Cell* args);      /* ⊸⊕ - create socket */
+Cell* prim_net_close(Cell* args);       /* ⊸× - close socket */
+Cell* prim_net_shutdown(Cell* args);    /* ⊸×→ - shutdown socket */
+Cell* prim_net_socketpair(Cell* args);  /* ⊸⊕⊞ - connected pair */
+Cell* prim_net_is_socket(Cell* args);   /* ⊸? - socket predicate */
+
+/* Address construction (3) */
+Cell* prim_net_addr(Cell* args);        /* ⊸⊙ - IPv4 address */
+Cell* prim_net_addr6(Cell* args);       /* ⊸⊙₆ - IPv6 address */
+Cell* prim_net_addr_unix(Cell* args);   /* ⊸⊙⊘ - Unix domain address */
+
+/* Synchronous client/server (5) */
+Cell* prim_net_connect(Cell* args);     /* ⊸→⊕ - sync connect */
+Cell* prim_net_bind(Cell* args);        /* ⊸←≔ - bind to address */
+Cell* prim_net_listen(Cell* args);      /* ⊸←⊕ - listen(backlog) */
+Cell* prim_net_accept(Cell* args);      /* ⊸← - sync accept */
+Cell* prim_net_resolve(Cell* args);     /* ⊸⊙→ - DNS resolve */
+
+/* Synchronous I/O (4) */
+Cell* prim_net_send(Cell* args);        /* ⊸→ - send data */
+Cell* prim_net_recv(Cell* args);        /* ⊸←◈ - receive data */
+Cell* prim_net_sendto(Cell* args);      /* ⊸→⊙ - UDP sendto */
+Cell* prim_net_recvfrom(Cell* args);    /* ⊸←⊙ - UDP recvfrom */
+
+/* Socket options (3) */
+Cell* prim_net_setsockopt(Cell* args);  /* ⊸≔ - set socket option */
+Cell* prim_net_getsockopt(Cell* args);  /* ⊸≔→ - get socket option */
+Cell* prim_net_peername(Cell* args);    /* ⊸# - getpeername */
+
+/* Event ring lifecycle (3) */
+Cell* prim_ring_create(Cell* args);     /* ⊸⊚⊕ - create ring */
+Cell* prim_ring_destroy(Cell* args);    /* ⊸⊚× - destroy ring */
+Cell* prim_ring_is(Cell* args);         /* ⊸⊚? - ring predicate */
+
+/* Buffer pool (4) */
+Cell* prim_ring_buf_create(Cell* args); /* ⊸⊚◈⊕ - create buffer pool */
+Cell* prim_ring_buf_destroy(Cell* args);/* ⊸⊚◈× - destroy buffer pool */
+Cell* prim_ring_buf_get(Cell* args);    /* ⊸⊚◈→ - get buffer by ID */
+Cell* prim_ring_buf_return(Cell* args); /* ⊸⊚◈← - return buffer */
+
+/* Async ring operations (8) */
+Cell* prim_ring_accept(Cell* args);     /* ⊸⊚← - async accept */
+Cell* prim_ring_recv(Cell* args);       /* ⊸⊚←◈ - async recv */
+Cell* prim_ring_send(Cell* args);       /* ⊸⊚→ - async send */
+Cell* prim_ring_send_zc(Cell* args);    /* ⊸⊚→∅ - zero-copy send */
+Cell* prim_ring_connect(Cell* args);    /* ⊸⊚→⊕ - async connect */
+Cell* prim_ring_close(Cell* args);      /* ⊸⊚→× - async close */
+Cell* prim_ring_submit(Cell* args);     /* ⊸⊚! - flush submissions */
+Cell* prim_ring_complete(Cell* args);   /* ⊸⊚⊲ - harvest completions */
+
+/* Refinement Type primitives (Day 127 — HFT-grade gradual dependent types) */
+Cell* prim_refine_def(Cell* args);        /* ∈⊡ - define refinement type (special form) */
+Cell* prim_refine_check(Cell* args);      /* ∈⊡? - check value against refinement */
+Cell* prim_refine_assert(Cell* args);     /* ∈⊡! - assert value satisfies refinement */
+Cell* prim_refine_base(Cell* args);       /* ∈⊡⊙ - get base type of refinement */
+Cell* prim_refine_pred(Cell* args);       /* ∈⊡→ - get predicate lambda */
+Cell* prim_refine_constraint(Cell* args); /* ∈⊡⊢ - get constraint tree as value */
+Cell* prim_refine_intersect(Cell* args);  /* ∈⊡∧ - intersect two refinements */
+Cell* prim_refine_union(Cell* args);      /* ∈⊡∨ - union two refinements */
+Cell* prim_refine_list(Cell* args);       /* ∈⊡∀ - list all refinements */
+Cell* prim_refine_find(Cell* args);       /* ∈⊡∈ - find matching refinement */
+Cell* prim_refine_subtype(Cell* args);    /* ∈⊡⊆ - refinement subtype check */
+
 /* Primitive documentation structure */
 typedef struct {
     const char* description;     /* What this primitive does */

@@ -30,6 +30,9 @@
 #include <limits.h>
 #include <dlfcn.h>
 #include "ffi_jit.h"
+#include "ring.h"
+#include "siphash.h"
+#include "intern.h"
 
 /* Helper: get first argument */
 static Cell* arg1(Cell* args) {
@@ -11607,6 +11610,1564 @@ Cell* prim_ffi_buf_to_ptr(Cell* args) {
     return cell_ffi_ptr(copy, free, "buffer");
 }
 
+/* ════════════════════════════════════════════════════════════════
+ * Networking primitives (Day 126 — HFT-grade event ring + sockets)
+ * ════════════════════════════════════════════════════════════════ */
+
+/* ── Ring finalizers ──────────────────────────────────────── */
+
+static void ring_finalizer(void* ptr) {
+    EventRing* ring = (EventRing*)ptr;
+    ring_destroy(ring);
+    free(ring);
+}
+
+static void bufring_finalizer(void* ptr) {
+    BufferRing* br = (BufferRing*)ptr;
+    ring_buf_destroy(br);
+    free(br);
+}
+
+/* ── Socket lifecycle ─────────────────────────────────────── */
+
+/* ⊸⊕ - create socket: domain type proto → fd|⚠ */
+Cell* prim_net_socket(Cell* args) {
+    Cell* dom_sym = arg1(args);
+    Cell* typ_sym = arg2(args);
+    Cell* proto   = arg3(args);
+    if (!cell_is_symbol(dom_sym)) return cell_error("⊸⊕: domain must be symbol", dom_sym);
+    if (!cell_is_symbol(typ_sym)) return cell_error("⊸⊕: type must be symbol", typ_sym);
+    if (!cell_is_number(proto))   return cell_error("⊸⊕: proto must be number", proto);
+
+    const char* dom_s = cell_get_symbol(dom_sym);
+    const char* typ_s = cell_get_symbol(typ_sym);
+
+    int domain = AF_INET;
+    if (strcmp(dom_s, ":inet") == 0 || strcmp(dom_s, ":inet4") == 0) domain = AF_INET;
+    else if (strcmp(dom_s, ":inet6") == 0) domain = AF_INET6;
+    else if (strcmp(dom_s, ":unix") == 0 || strcmp(dom_s, ":local") == 0) domain = AF_UNIX;
+    else return cell_error("⊸⊕: unknown domain", dom_sym);
+
+    int type = SOCK_STREAM;
+    if (strcmp(typ_s, ":stream") == 0) type = SOCK_STREAM;
+    else if (strcmp(typ_s, ":dgram") == 0) type = SOCK_DGRAM;
+    else return cell_error("⊸⊕: unknown type", typ_sym);
+
+    int fd = socket(domain, type, (int)cell_get_number(proto));
+    if (fd < 0) return cell_error("⊸⊕: socket failed", cell_number(errno));
+    return cell_number(fd);
+}
+
+/* ⊸× - close socket */
+Cell* prim_net_close(Cell* args) {
+    Cell* fd_cell = arg1(args);
+    if (!cell_is_number(fd_cell)) return cell_error("⊸×: fd must be number", fd_cell);
+    int fd = (int)cell_get_number(fd_cell);
+    if (close(fd) < 0) return cell_error("⊸×: close failed", cell_number(errno));
+    return cell_bool(true);
+}
+
+/* ⊸×→ - shutdown socket */
+Cell* prim_net_shutdown(Cell* args) {
+    Cell* fd_cell = arg1(args);
+    Cell* how_sym = arg2(args);
+    if (!cell_is_number(fd_cell)) return cell_error("⊸×→: fd must be number", fd_cell);
+    if (!cell_is_symbol(how_sym)) return cell_error("⊸×→: how must be symbol", how_sym);
+
+    int fd = (int)cell_get_number(fd_cell);
+    const char* how_s = cell_get_symbol(how_sym);
+    int how = SHUT_RDWR;
+    if (strcmp(how_s, ":rd") == 0) how = SHUT_RD;
+    else if (strcmp(how_s, ":wr") == 0) how = SHUT_WR;
+    else if (strcmp(how_s, ":rdwr") == 0) how = SHUT_RDWR;
+
+    if (shutdown(fd, how) < 0) return cell_error("⊸×→: shutdown failed", cell_number(errno));
+    return cell_bool(true);
+}
+
+/* ⊸⊕⊞ - socketpair */
+Cell* prim_net_socketpair(Cell* args) {
+    Cell* dom_sym = arg1(args);
+    Cell* typ_sym = arg2(args);
+    if (!cell_is_symbol(dom_sym)) return cell_error("⊸⊕⊞: domain must be symbol", dom_sym);
+    if (!cell_is_symbol(typ_sym)) return cell_error("⊸⊕⊞: type must be symbol", typ_sym);
+
+    const char* dom_s = cell_get_symbol(dom_sym);
+    const char* typ_s = cell_get_symbol(typ_sym);
+
+    int domain = AF_UNIX;
+    if (strcmp(dom_s, ":unix") == 0 || strcmp(dom_s, ":local") == 0) domain = AF_UNIX;
+    else return cell_error("⊸⊕⊞: socketpair only supports :unix domain", dom_sym);
+
+    int type = SOCK_STREAM;
+    if (strcmp(typ_s, ":stream") == 0) type = SOCK_STREAM;
+    else if (strcmp(typ_s, ":dgram") == 0) type = SOCK_DGRAM;
+
+    int fds[2];
+    if (socketpair(domain, type, 0, fds) < 0)
+        return cell_error("⊸⊕⊞: socketpair failed", cell_number(errno));
+    return cell_cons(cell_number(fds[0]), cell_number(fds[1]));
+}
+
+/* ⊸? - is socket predicate */
+Cell* prim_net_is_socket(Cell* args) {
+    Cell* fd_cell = arg1(args);
+    if (!cell_is_number(fd_cell)) return cell_bool(false);
+    int fd = (int)cell_get_number(fd_cell);
+    struct stat st;
+    if (fstat(fd, &st) < 0) return cell_bool(false);
+    return cell_bool(S_ISSOCK(st.st_mode));
+}
+
+/* ── Address construction ─────────────────────────────────── */
+
+/* ⊸⊙ - IPv4 address: host port → buffer|⚠ */
+Cell* prim_net_addr(Cell* args) {
+    Cell* host = arg1(args);
+    Cell* port = arg2(args);
+    if (!cell_is_string(host)) return cell_error("⊸⊙: host must be string", host);
+    if (!cell_is_number(port)) return cell_error("⊸⊙: port must be number", port);
+
+    struct sockaddr_in addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons((uint16_t)cell_get_number(port));
+    if (inet_pton(AF_INET, cell_get_string(host), &addr.sin_addr) != 1)
+        return cell_error("⊸⊙: invalid IPv4 address", host);
+
+    Cell* buf = cell_buffer_new(sizeof(addr));
+    memcpy(buf->data.buffer.bytes, &addr, sizeof(addr));
+    buf->data.buffer.size = sizeof(addr);
+    return buf;
+}
+
+/* ⊸⊙₆ - IPv6 address */
+Cell* prim_net_addr6(Cell* args) {
+    Cell* host = arg1(args);
+    Cell* port = arg2(args);
+    if (!cell_is_string(host)) return cell_error("⊸⊙₆: host must be string", host);
+    if (!cell_is_number(port)) return cell_error("⊸⊙₆: port must be number", port);
+
+    struct sockaddr_in6 addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sin6_family = AF_INET6;
+    addr.sin6_port = htons((uint16_t)cell_get_number(port));
+    if (inet_pton(AF_INET6, cell_get_string(host), &addr.sin6_addr) != 1)
+        return cell_error("⊸⊙₆: invalid IPv6 address", host);
+
+    Cell* buf = cell_buffer_new(sizeof(addr));
+    memcpy(buf->data.buffer.bytes, &addr, sizeof(addr));
+    buf->data.buffer.size = sizeof(addr);
+    return buf;
+}
+
+/* ⊸⊙⊘ - Unix domain address */
+Cell* prim_net_addr_unix(Cell* args) {
+    Cell* path = arg1(args);
+    if (!cell_is_string(path)) return cell_error("⊸⊙⊘: path must be string", path);
+
+    struct sockaddr_un addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sun_family = AF_UNIX;
+    const char* p = cell_get_string(path);
+    if (strlen(p) >= sizeof(addr.sun_path))
+        return cell_error("⊸⊙⊘: path too long", path);
+    strncpy(addr.sun_path, p, sizeof(addr.sun_path) - 1);
+
+    size_t len = offsetof(struct sockaddr_un, sun_path) + strlen(addr.sun_path) + 1;
+    Cell* buf = cell_buffer_new((uint32_t)len);
+    memcpy(buf->data.buffer.bytes, &addr, len);
+    buf->data.buffer.size = (uint32_t)len;
+    return buf;
+}
+
+/* ── Synchronous client/server ────────────────────────────── */
+
+/* ⊸→⊕ - connect: fd addr → #t|⚠ */
+Cell* prim_net_connect(Cell* args) {
+    Cell* fd_cell = arg1(args);
+    Cell* addr_buf = arg2(args);
+    if (!cell_is_number(fd_cell)) return cell_error("⊸→⊕: fd must be number", fd_cell);
+    if (!cell_is_buffer(addr_buf)) return cell_error("⊸→⊕: addr must be buffer", addr_buf);
+
+    int fd = (int)cell_get_number(fd_cell);
+    struct sockaddr* sa = (struct sockaddr*)addr_buf->data.buffer.bytes;
+    socklen_t len = cell_buffer_size(addr_buf);
+
+    if (connect(fd, sa, len) < 0)
+        return cell_error("⊸→⊕: connect failed", cell_number(errno));
+    return cell_bool(true);
+}
+
+/* ⊸←≔ - bind: fd addr → #t|⚠ */
+Cell* prim_net_bind(Cell* args) {
+    Cell* fd_cell = arg1(args);
+    Cell* addr_buf = arg2(args);
+    if (!cell_is_number(fd_cell)) return cell_error("⊸←≔: fd must be number", fd_cell);
+    if (!cell_is_buffer(addr_buf)) return cell_error("⊸←≔: addr must be buffer", addr_buf);
+
+    int fd = (int)cell_get_number(fd_cell);
+    struct sockaddr* sa = (struct sockaddr*)addr_buf->data.buffer.bytes;
+    socklen_t len = cell_buffer_size(addr_buf);
+
+    if (bind(fd, sa, len) < 0)
+        return cell_error("⊸←≔: bind failed", cell_number(errno));
+    return cell_bool(true);
+}
+
+/* ⊸←⊕ - listen: fd backlog → #t|⚠ */
+Cell* prim_net_listen(Cell* args) {
+    Cell* fd_cell = arg1(args);
+    Cell* backlog  = arg2(args);
+    if (!cell_is_number(fd_cell)) return cell_error("⊸←⊕: fd must be number", fd_cell);
+    if (!cell_is_number(backlog))  return cell_error("⊸←⊕: backlog must be number", backlog);
+
+    int fd = (int)cell_get_number(fd_cell);
+    if (listen(fd, (int)cell_get_number(backlog)) < 0)
+        return cell_error("⊸←⊕: listen failed", cell_number(errno));
+    return cell_bool(true);
+}
+
+/* ⊸← - accept: fd → ⟨client-fd addr⟩|⚠ */
+Cell* prim_net_accept(Cell* args) {
+    Cell* fd_cell = arg1(args);
+    if (!cell_is_number(fd_cell)) return cell_error("⊸←: fd must be number", fd_cell);
+
+    int fd = (int)cell_get_number(fd_cell);
+    struct sockaddr_storage sa;
+    socklen_t salen = sizeof(sa);
+    int client = accept(fd, (struct sockaddr*)&sa, &salen);
+    if (client < 0)
+        return cell_error("⊸←: accept failed", cell_number(errno));
+
+    Cell* addr = cell_buffer_new(salen);
+    memcpy(addr->data.buffer.bytes, &sa, salen);
+    addr->data.buffer.size = salen;
+    return cell_cons(cell_number(client), addr);
+}
+
+/* ⊸⊙→ - resolve: host service → [addr]|⚠ */
+Cell* prim_net_resolve(Cell* args) {
+    Cell* host = arg1(args);
+    Cell* svc  = arg2(args);
+    if (!cell_is_string(host)) return cell_error("⊸⊙→: host must be string", host);
+
+    const char* service = NULL;
+    if (cell_is_string(svc)) service = cell_get_string(svc);
+
+    struct addrinfo hints, *res, *p;
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+
+    int rc = getaddrinfo(cell_get_string(host), service, &hints, &res);
+    if (rc != 0)
+        return cell_error("⊸⊙→: resolve failed", cell_string(gai_strerror(rc)));
+
+    Cell* list = cell_nil();
+    for (p = res; p; p = p->ai_next) {
+        Cell* buf = cell_buffer_new((uint32_t)p->ai_addrlen);
+        memcpy(buf->data.buffer.bytes, p->ai_addr, p->ai_addrlen);
+        buf->data.buffer.size = (uint32_t)p->ai_addrlen;
+        list = cell_cons(buf, list);
+    }
+    freeaddrinfo(res);
+    return list;
+}
+
+/* ── Synchronous I/O ──────────────────────────────────────── */
+
+/* ⊸→ - send: fd buf flags → bytes|⚠ */
+Cell* prim_net_send(Cell* args) {
+    Cell* fd_cell = arg1(args);
+    Cell* buf     = arg2(args);
+    Cell* fl      = arg3(args);
+    if (!cell_is_number(fd_cell)) return cell_error("⊸→: fd must be number", fd_cell);
+    if (!cell_is_buffer(buf))     return cell_error("⊸→: buf must be buffer", buf);
+    if (!cell_is_number(fl))      return cell_error("⊸→: flags must be number", fl);
+
+    int fd = (int)cell_get_number(fd_cell);
+    ssize_t n = send(fd, buf->data.buffer.bytes, cell_buffer_size(buf), (int)cell_get_number(fl));
+    if (n < 0) return cell_error("⊸→: send failed", cell_number(errno));
+    return cell_number(n);
+}
+
+/* ⊸←◈ - recv: fd maxlen flags → buffer|⚠ */
+Cell* prim_net_recv(Cell* args) {
+    Cell* fd_cell = arg1(args);
+    Cell* maxlen  = arg2(args);
+    Cell* fl      = arg3(args);
+    if (!cell_is_number(fd_cell)) return cell_error("⊸←◈: fd must be number", fd_cell);
+    if (!cell_is_number(maxlen))  return cell_error("⊸←◈: maxlen must be number", maxlen);
+    if (!cell_is_number(fl))      return cell_error("⊸←◈: flags must be number", fl);
+
+    int fd = (int)cell_get_number(fd_cell);
+    uint32_t len = (uint32_t)cell_get_number(maxlen);
+    Cell* buf = cell_buffer_new(len);
+
+    ssize_t n = recv(fd, buf->data.buffer.bytes, len, (int)cell_get_number(fl));
+    if (n < 0) {
+        cell_release(buf);
+        return cell_error("⊸←◈: recv failed", cell_number(errno));
+    }
+    buf->data.buffer.size = (uint32_t)n;
+    return buf;
+}
+
+/* ⊸→⊙ - sendto: fd buf flags addr → bytes|⚠ */
+Cell* prim_net_sendto(Cell* args) {
+    Cell* fd_cell = arg1(args);
+    Cell* buf     = arg2(args);
+    Cell* fl      = arg3(args);
+    Cell* addr    = arg4(args);
+    if (!cell_is_number(fd_cell)) return cell_error("⊸→⊙: fd must be number", fd_cell);
+    if (!cell_is_buffer(buf))     return cell_error("⊸→⊙: buf must be buffer", buf);
+    if (!cell_is_number(fl))      return cell_error("⊸→⊙: flags must be number", fl);
+    if (!cell_is_buffer(addr))    return cell_error("⊸→⊙: addr must be buffer", addr);
+
+    int fd = (int)cell_get_number(fd_cell);
+    ssize_t n = sendto(fd, buf->data.buffer.bytes, cell_buffer_size(buf),
+                       (int)cell_get_number(fl),
+                       (struct sockaddr*)addr->data.buffer.bytes,
+                       cell_buffer_size(addr));
+    if (n < 0) return cell_error("⊸→⊙: sendto failed", cell_number(errno));
+    return cell_number(n);
+}
+
+/* ⊸←⊙ - recvfrom: fd maxlen flags → ⟨buf addr⟩|⚠ */
+Cell* prim_net_recvfrom(Cell* args) {
+    Cell* fd_cell = arg1(args);
+    Cell* maxlen  = arg2(args);
+    Cell* fl      = arg3(args);
+    if (!cell_is_number(fd_cell)) return cell_error("⊸←⊙: fd must be number", fd_cell);
+    if (!cell_is_number(maxlen))  return cell_error("⊸←⊙: maxlen must be number", maxlen);
+    if (!cell_is_number(fl))      return cell_error("⊸←⊙: flags must be number", fl);
+
+    int fd = (int)cell_get_number(fd_cell);
+    uint32_t len = (uint32_t)cell_get_number(maxlen);
+    Cell* buf = cell_buffer_new(len);
+
+    struct sockaddr_storage sa;
+    socklen_t salen = sizeof(sa);
+    ssize_t n = recvfrom(fd, buf->data.buffer.bytes, len,
+                         (int)cell_get_number(fl),
+                         (struct sockaddr*)&sa, &salen);
+    if (n < 0) {
+        cell_release(buf);
+        return cell_error("⊸←⊙: recvfrom failed", cell_number(errno));
+    }
+    buf->data.buffer.size = (uint32_t)n;
+
+    Cell* addr = cell_buffer_new(salen);
+    memcpy(addr->data.buffer.bytes, &sa, salen);
+    addr->data.buffer.size = salen;
+    return cell_cons(buf, addr);
+}
+
+/* ── Socket options ───────────────────────────────────────── */
+
+/* ⊸≔ - setsockopt: fd sym val → #t|⚠ */
+Cell* prim_net_setsockopt(Cell* args) {
+    Cell* fd_cell = arg1(args);
+    Cell* opt_sym = arg2(args);
+    Cell* val     = arg3(args);
+    if (!cell_is_number(fd_cell)) return cell_error("⊸≔: fd must be number", fd_cell);
+    if (!cell_is_symbol(opt_sym)) return cell_error("⊸≔: option must be symbol", opt_sym);
+
+    int fd = (int)cell_get_number(fd_cell);
+    const char* opt = cell_get_symbol(opt_sym);
+
+    int level = SOL_SOCKET;
+    int optname = 0;
+    int intval = cell_is_number(val) ? (int)cell_get_number(val) :
+                 (cell_is_bool(val) ? (cell_get_bool(val) ? 1 : 0) : 0);
+
+    if (strcmp(opt, ":reuse-addr") == 0) { optname = SO_REUSEADDR; }
+    else if (strcmp(opt, ":reuse-port") == 0) {
+#ifdef SO_REUSEPORT
+        optname = SO_REUSEPORT;
+#else
+        return cell_bool(true); /* no-op */
+#endif
+    }
+    else if (strcmp(opt, ":keepalive") == 0) { optname = SO_KEEPALIVE; }
+    else if (strcmp(opt, ":rcvbuf") == 0)    { optname = SO_RCVBUF; }
+    else if (strcmp(opt, ":sndbuf") == 0)    { optname = SO_SNDBUF; }
+    else if (strcmp(opt, ":nodelay") == 0)   { level = IPPROTO_TCP; optname = TCP_NODELAY; }
+    else if (strcmp(opt, ":nonblock") == 0) {
+        int flags = fcntl(fd, F_GETFL, 0);
+        if (intval) flags |= O_NONBLOCK; else flags &= ~O_NONBLOCK;
+        if (fcntl(fd, F_SETFL, flags) < 0)
+            return cell_error("⊸≔: fcntl failed", cell_number(errno));
+        return cell_bool(true);
+    }
+    else if (strcmp(opt, ":busy-poll") == 0) {
+#ifdef SO_BUSY_POLL
+        optname = SO_BUSY_POLL;
+#else
+        return cell_bool(true); /* no-op on macOS */
+#endif
+    }
+    else if (strcmp(opt, ":prefer-busy-poll") == 0) {
+#ifdef SO_PREFER_BUSY_POLL
+        optname = SO_PREFER_BUSY_POLL;
+#else
+        return cell_bool(true);
+#endif
+    }
+    else return cell_error("⊸≔: unknown option", opt_sym);
+
+    if (setsockopt(fd, level, optname, &intval, sizeof(intval)) < 0)
+        return cell_error("⊸≔: setsockopt failed", cell_number(errno));
+    return cell_bool(true);
+}
+
+/* ⊸≔→ - getsockopt: fd sym → val|⚠ */
+Cell* prim_net_getsockopt(Cell* args) {
+    Cell* fd_cell = arg1(args);
+    Cell* opt_sym = arg2(args);
+    if (!cell_is_number(fd_cell)) return cell_error("⊸≔→: fd must be number", fd_cell);
+    if (!cell_is_symbol(opt_sym)) return cell_error("⊸≔→: option must be symbol", opt_sym);
+
+    int fd = (int)cell_get_number(fd_cell);
+    const char* opt = cell_get_symbol(opt_sym);
+
+    int level = SOL_SOCKET;
+    int optname = 0;
+
+    if (strcmp(opt, ":reuse-addr") == 0)      optname = SO_REUSEADDR;
+    else if (strcmp(opt, ":keepalive") == 0)   optname = SO_KEEPALIVE;
+    else if (strcmp(opt, ":rcvbuf") == 0)      optname = SO_RCVBUF;
+    else if (strcmp(opt, ":sndbuf") == 0)      optname = SO_SNDBUF;
+    else if (strcmp(opt, ":nodelay") == 0)   { level = IPPROTO_TCP; optname = TCP_NODELAY; }
+    else if (strcmp(opt, ":error") == 0)       optname = SO_ERROR;
+    else return cell_error("⊸≔→: unknown option", opt_sym);
+
+    int intval = 0;
+    socklen_t len = sizeof(intval);
+    if (getsockopt(fd, level, optname, &intval, &len) < 0)
+        return cell_error("⊸≔→: getsockopt failed", cell_number(errno));
+    return cell_number(intval);
+}
+
+/* ⊸# - getpeername: fd → addr|⚠ */
+Cell* prim_net_peername(Cell* args) {
+    Cell* fd_cell = arg1(args);
+    if (!cell_is_number(fd_cell)) return cell_error("⊸#: fd must be number", fd_cell);
+
+    int fd = (int)cell_get_number(fd_cell);
+    struct sockaddr_storage sa;
+    socklen_t salen = sizeof(sa);
+    if (getpeername(fd, (struct sockaddr*)&sa, &salen) < 0)
+        return cell_error("⊸#: getpeername failed", cell_number(errno));
+
+    Cell* buf = cell_buffer_new(salen);
+    memcpy(buf->data.buffer.bytes, &sa, salen);
+    buf->data.buffer.size = salen;
+    return buf;
+}
+
+/* ── Event ring lifecycle ─────────────────────────────────── */
+
+/* ⊸⊚⊕ - create ring: sq_entries → ring|⚠ */
+Cell* prim_ring_create(Cell* args) {
+    Cell* entries = arg1(args);
+    if (!cell_is_number(entries)) return cell_error("⊸⊚⊕: entries must be number", entries);
+
+    EventRing* ring = calloc(1, sizeof(EventRing));
+    int rc = ring_init(ring, (uint32_t)cell_get_number(entries));
+    if (rc < 0) {
+        free(ring);
+        return cell_error("⊸⊚⊕: ring init failed", cell_number(-rc));
+    }
+    return cell_ffi_ptr(ring, ring_finalizer, "ring");
+}
+
+/* ⊸⊚× - destroy ring */
+Cell* prim_ring_destroy(Cell* args) {
+    Cell* r = arg1(args);
+    if (!cell_is_ffi_ptr(r) || !cell_ffi_ptr_tag(r) ||
+        strcmp(cell_ffi_ptr_tag(r), "ring") != 0)
+        return cell_error("⊸⊚×: expected ring", r);
+    EventRing* ring = (EventRing*)cell_ffi_ptr_get(r);
+    ring_destroy(ring);
+    /* Mark as destroyed so finalizer doesn't double-free */
+    r->data.ffi_ptr.finalizer = NULL;
+    free(ring);
+    r->data.ffi_ptr.ptr = NULL;
+    return cell_nil();
+}
+
+/* ⊸⊚? - ring predicate */
+Cell* prim_ring_is(Cell* args) {
+    Cell* v = arg1(args);
+    return cell_bool(cell_is_ffi_ptr(v) && cell_ffi_ptr_tag(v) &&
+                     strcmp(cell_ffi_ptr_tag(v), "ring") == 0);
+}
+
+/* ── Buffer pool ──────────────────────────────────────────── */
+
+static uint16_t g_next_group_id = 1;
+
+/* ⊸⊚◈⊕ - create buffer pool: ring count buf_size → bufring|⚠ */
+Cell* prim_ring_buf_create(Cell* args) {
+    Cell* r     = arg1(args);
+    Cell* count = arg2(args);
+    Cell* bsize = arg3(args);
+    if (!cell_is_ffi_ptr(r) || !cell_ffi_ptr_tag(r) ||
+        strcmp(cell_ffi_ptr_tag(r), "ring") != 0)
+        return cell_error("⊸⊚◈⊕: expected ring", r);
+    if (!cell_is_number(count)) return cell_error("⊸⊚◈⊕: count must be number", count);
+    if (!cell_is_number(bsize)) return cell_error("⊸⊚◈⊕: buf_size must be number", bsize);
+
+    EventRing* ring = (EventRing*)cell_ffi_ptr_get(r);
+    BufferRing* br = calloc(1, sizeof(BufferRing));
+    uint16_t gid = g_next_group_id++;
+
+    int rc = ring_buf_init(ring, br, gid,
+                           (uint32_t)cell_get_number(count),
+                           (uint32_t)cell_get_number(bsize));
+    if (rc < 0) {
+        free(br);
+        return cell_error("⊸⊚◈⊕: buffer pool init failed", cell_number(-rc));
+    }
+    return cell_ffi_ptr(br, bufring_finalizer, "bufring");
+}
+
+/* ⊸⊚◈× - destroy buffer pool */
+Cell* prim_ring_buf_destroy(Cell* args) {
+    Cell* b = arg1(args);
+    if (!cell_is_ffi_ptr(b) || !cell_ffi_ptr_tag(b) ||
+        strcmp(cell_ffi_ptr_tag(b), "bufring") != 0)
+        return cell_error("⊸⊚◈×: expected bufring", b);
+    BufferRing* br = (BufferRing*)cell_ffi_ptr_get(b);
+    ring_buf_destroy(br);
+    b->data.ffi_ptr.finalizer = NULL;
+    free(br);
+    b->data.ffi_ptr.ptr = NULL;
+    return cell_nil();
+}
+
+/* ⊸⊚◈→ - get buffer by ID: bufring id → buffer */
+Cell* prim_ring_buf_get(Cell* args) {
+    Cell* b  = arg1(args);
+    Cell* id = arg2(args);
+    if (!cell_is_ffi_ptr(b) || !cell_ffi_ptr_tag(b) ||
+        strcmp(cell_ffi_ptr_tag(b), "bufring") != 0)
+        return cell_error("⊸⊚◈→: expected bufring", b);
+    if (!cell_is_number(id)) return cell_error("⊸⊚◈→: id must be number", id);
+
+    BufferRing* br = (BufferRing*)cell_ffi_ptr_get(b);
+    uint16_t bid = (uint16_t)cell_get_number(id);
+    uint8_t* ptr = ring_buf_get(br, bid);
+    if (!ptr) return cell_error("⊸⊚◈→: invalid buffer id", id);
+
+    /* Return a buffer cell with a copy of the data */
+    Cell* buf = cell_buffer_new(br->buf_size);
+    memcpy(buf->data.buffer.bytes, ptr, br->buf_size);
+    buf->data.buffer.size = br->buf_size;
+    return buf;
+}
+
+/* ⊸⊚◈← - return buffer to pool */
+Cell* prim_ring_buf_return(Cell* args) {
+    Cell* b  = arg1(args);
+    Cell* id = arg2(args);
+    if (!cell_is_ffi_ptr(b) || !cell_ffi_ptr_tag(b) ||
+        strcmp(cell_ffi_ptr_tag(b), "bufring") != 0)
+        return cell_error("⊸⊚◈←: expected bufring", b);
+    if (!cell_is_number(id)) return cell_error("⊸⊚◈←: id must be number", id);
+
+    BufferRing* br = (BufferRing*)cell_ffi_ptr_get(b);
+    ring_buf_return(br, (uint16_t)cell_get_number(id));
+    return cell_nil();
+}
+
+/* ── Async ring operations ────────────────────────────────── */
+
+static EventRing* get_ring(Cell* r, const char* name) {
+    if (!cell_is_ffi_ptr(r) || !cell_ffi_ptr_tag(r) ||
+        strcmp(cell_ffi_ptr_tag(r), "ring") != 0) return NULL;
+    return (EventRing*)cell_ffi_ptr_get(r);
+}
+
+/* ⊸⊚← - ring accept: ring fd user_data → #t|⚠ */
+Cell* prim_ring_accept(Cell* args) {
+    Cell* r  = arg1(args);
+    Cell* fd = arg2(args);
+    Cell* ud = arg3(args);
+    EventRing* ring = get_ring(r, "⊸⊚←");
+    if (!ring) return cell_error("⊸⊚←: expected ring", r);
+    if (!cell_is_number(fd)) return cell_error("⊸⊚←: fd must be number", fd);
+    if (!cell_is_number(ud)) return cell_error("⊸⊚←: user_data must be number", ud);
+
+    int rc = ring_prep_accept(ring, (int)cell_get_number(fd),
+                              (uint32_t)cell_get_number(ud), true);
+    if (rc < 0) return cell_error("⊸⊚←: prep_accept failed", cell_number(-rc));
+    return cell_bool(true);
+}
+
+/* ⊸⊚←◈ - ring recv: ring fd bufpool user_data → #t|⚠ */
+Cell* prim_ring_recv(Cell* args) {
+    Cell* r   = arg1(args);
+    Cell* fd  = arg2(args);
+    Cell* bp  = arg3(args);
+    Cell* ud  = arg4(args);
+    EventRing* ring = get_ring(r, "⊸⊚←◈");
+    if (!ring) return cell_error("⊸⊚←◈: expected ring", r);
+    if (!cell_is_number(fd)) return cell_error("⊸⊚←◈: fd must be number", fd);
+    if (!cell_is_number(ud)) return cell_error("⊸⊚←◈: user_data must be number", ud);
+
+    if (cell_is_ffi_ptr(bp) && cell_ffi_ptr_tag(bp) &&
+        strcmp(cell_ffi_ptr_tag(bp), "bufring") == 0) {
+        /* Provided buffer recv */
+        BufferRing* br = (BufferRing*)cell_ffi_ptr_get(bp);
+        int rc = ring_prep_recv_provided(ring, (int)cell_get_number(fd),
+                                         br->group_id,
+                                         (uint32_t)cell_get_number(ud), true);
+        if (rc < 0) return cell_error("⊸⊚←◈: prep_recv_provided failed", cell_number(-rc));
+    } else {
+        /* No buffer pool — use a temp buffer */
+        static uint8_t temp_buf[65536];
+        int rc = ring_prep_recv(ring, (int)cell_get_number(fd),
+                                temp_buf, sizeof(temp_buf),
+                                (uint32_t)cell_get_number(ud), 0);
+        if (rc < 0) return cell_error("⊸⊚←◈: prep_recv failed", cell_number(-rc));
+    }
+    return cell_bool(true);
+}
+
+/* ⊸⊚→ - ring send: ring fd buf user_data → #t|⚠ */
+Cell* prim_ring_send(Cell* args) {
+    Cell* r   = arg1(args);
+    Cell* fd  = arg2(args);
+    Cell* buf = arg3(args);
+    Cell* ud  = arg4(args);
+    EventRing* ring = get_ring(r, "⊸⊚→");
+    if (!ring) return cell_error("⊸⊚→: expected ring", r);
+    if (!cell_is_number(fd))  return cell_error("⊸⊚→: fd must be number", fd);
+    if (!cell_is_buffer(buf)) return cell_error("⊸⊚→: buf must be buffer", buf);
+    if (!cell_is_number(ud))  return cell_error("⊸⊚→: user_data must be number", ud);
+
+    int rc = ring_prep_send(ring, (int)cell_get_number(fd),
+                            buf->data.buffer.bytes, cell_buffer_size(buf),
+                            (uint32_t)cell_get_number(ud), 0);
+    if (rc < 0) return cell_error("⊸⊚→: prep_send failed", cell_number(-rc));
+    return cell_bool(true);
+}
+
+/* ⊸⊚→∅ - zero-copy send: ring fd buf user_data → #t|⚠ */
+Cell* prim_ring_send_zc(Cell* args) {
+    Cell* r   = arg1(args);
+    Cell* fd  = arg2(args);
+    Cell* buf = arg3(args);
+    Cell* ud  = arg4(args);
+    EventRing* ring = get_ring(r, "⊸⊚→∅");
+    if (!ring) return cell_error("⊸⊚→∅: expected ring", r);
+    if (!cell_is_number(fd))  return cell_error("⊸⊚→∅: fd must be number", fd);
+    if (!cell_is_buffer(buf)) return cell_error("⊸⊚→∅: buf must be buffer", buf);
+    if (!cell_is_number(ud))  return cell_error("⊸⊚→∅: user_data must be number", ud);
+
+    int rc = ring_prep_send_zc(ring, (int)cell_get_number(fd),
+                               buf->data.buffer.bytes, cell_buffer_size(buf),
+                               (uint32_t)cell_get_number(ud));
+    if (rc < 0) return cell_error("⊸⊚→∅: prep_send_zc failed", cell_number(-rc));
+    return cell_bool(true);
+}
+
+/* ⊸⊚→⊕ - ring connect: ring fd addr user_data → #t|⚠ */
+Cell* prim_ring_connect(Cell* args) {
+    Cell* r    = arg1(args);
+    Cell* fd   = arg2(args);
+    Cell* addr = arg3(args);
+    Cell* ud   = arg4(args);
+    EventRing* ring = get_ring(r, "⊸⊚→⊕");
+    if (!ring) return cell_error("⊸⊚→⊕: expected ring", r);
+    if (!cell_is_number(fd))   return cell_error("⊸⊚→⊕: fd must be number", fd);
+    if (!cell_is_buffer(addr)) return cell_error("⊸⊚→⊕: addr must be buffer", addr);
+    if (!cell_is_number(ud))   return cell_error("⊸⊚→⊕: user_data must be number", ud);
+
+    int rc = ring_prep_connect(ring, (int)cell_get_number(fd),
+                               (struct sockaddr*)addr->data.buffer.bytes,
+                               cell_buffer_size(addr),
+                               (uint32_t)cell_get_number(ud));
+    if (rc < 0) return cell_error("⊸⊚→⊕: prep_connect failed", cell_number(-rc));
+    return cell_bool(true);
+}
+
+/* ⊸⊚→× - ring close: ring fd user_data → #t|⚠ */
+Cell* prim_ring_close(Cell* args) {
+    Cell* r  = arg1(args);
+    Cell* fd = arg2(args);
+    Cell* ud = arg3(args);
+    EventRing* ring = get_ring(r, "⊸⊚→×");
+    if (!ring) return cell_error("⊸⊚→×: expected ring", r);
+    if (!cell_is_number(fd)) return cell_error("⊸⊚→×: fd must be number", fd);
+    if (!cell_is_number(ud)) return cell_error("⊸⊚→×: user_data must be number", ud);
+
+    int rc = ring_prep_close(ring, (int)cell_get_number(fd),
+                             (uint32_t)cell_get_number(ud));
+    if (rc < 0) return cell_error("⊸⊚→×: prep_close failed", cell_number(-rc));
+    return cell_bool(true);
+}
+
+/* ⊸⊚! - submit pending: ring → count|⚠ */
+Cell* prim_ring_submit(Cell* args) {
+    Cell* r = arg1(args);
+    EventRing* ring = get_ring(r, "⊸⊚!");
+    if (!ring) return cell_error("⊸⊚!: expected ring", r);
+
+    int rc = ring_submit(ring);
+    if (rc < 0) return cell_error("⊸⊚!: submit failed", cell_number(-rc));
+    return cell_number(rc);
+}
+
+/* ⊸⊚⊲ - complete: ring wait_min timeout_ms → [⊞]|⚠ */
+Cell* prim_ring_complete(Cell* args) {
+    Cell* r   = arg1(args);
+    Cell* wm  = arg2(args);
+    Cell* tms = arg3(args);
+    EventRing* ring = get_ring(r, "⊸⊚⊲");
+    if (!ring) return cell_error("⊸⊚⊲: expected ring", r);
+    if (!cell_is_number(wm))  return cell_error("⊸⊚⊲: wait_min must be number", wm);
+    if (!cell_is_number(tms)) return cell_error("⊸⊚⊲: timeout_ms must be number", tms);
+
+    RingCQE cqes[64];
+    int count = ring_complete(ring, cqes, 64,
+                              (uint32_t)cell_get_number(wm),
+                              (uint32_t)cell_get_number(tms));
+    if (count < 0) return cell_error("⊸⊚⊲: complete failed", cell_number(-count));
+
+    /* Build list of HashMaps */
+    static const char* op_names[] = {
+        "accept", "recv", "send", "connect", "close", "recv-zc", "send-zc"
+    };
+
+    Cell* list = cell_nil();
+    for (int i = count - 1; i >= 0; i--) {
+        Cell* map = cell_hashmap_new(16);
+        cell_hashmap_put(map, cell_symbol("result"), cell_number(cqes[i].result));
+        cell_hashmap_put(map, cell_symbol("user-data"), cell_number(cqes[i].user_data));
+        cell_hashmap_put(map, cell_symbol("buffer-id"), cell_number(cqes[i].buffer_id));
+        cell_hashmap_put(map, cell_symbol("more"),
+                         cell_bool((cqes[i].flags & RING_CQE_F_MORE) != 0));
+
+        const char* opn = (cqes[i].op_type < 7) ? op_names[cqes[i].op_type] : "unknown";
+        cell_hashmap_put(map, cell_symbol("op"), cell_symbol(opn));
+
+        list = cell_cons(map, list);
+    }
+    return list;
+}
+
+/* ===== Refinement Type Primitives (Day 127 — HFT-grade gradual dependent types) ===== */
+
+/* --- Constraint Tree (Tier 1 structured predicates) --- */
+
+typedef enum {
+    RCON_GT, RCON_GE, RCON_LT, RCON_LE,   /* >  ≥  <  ≤ */
+    RCON_EQ, RCON_NE,                       /* ≡  ≢ */
+    RCON_AND, RCON_OR, RCON_NOT,            /* ∧  ∨  ¬ */
+    RCON_MOD_EQ,                            /* (≡ (% x k) v) */
+    RCON_RANGE,                             /* (∧ (≥ x lo) (≤ x hi)) fused */
+    RCON_PRED,                              /* arbitrary lambda fallback */
+} RConKind;
+
+typedef struct RConstraint {
+    RConKind kind;
+    union {
+        struct { double operand; }                          cmp;
+        struct { struct RConstraint* l; struct RConstraint* r; } binary;
+        struct { struct RConstraint* inner; }               unary;
+        struct { int64_t divisor; int64_t remainder; }      mod_eq;
+        struct { double lo; double hi; }                    range;
+        struct { Cell* lambda; }                            pred;
+    };
+} RConstraint;
+
+static RConstraint* rcon_new_cmp(RConKind kind, double operand) {
+    RConstraint* c = malloc(sizeof(RConstraint));
+    c->kind = kind;
+    c->cmp.operand = operand;
+    return c;
+}
+
+static RConstraint* rcon_new_binary(RConKind kind, RConstraint* l, RConstraint* r) {
+    RConstraint* c = malloc(sizeof(RConstraint));
+    c->kind = kind;
+    c->binary.l = l;
+    c->binary.r = r;
+    return c;
+}
+
+static RConstraint* rcon_new_not(RConstraint* inner) {
+    RConstraint* c = malloc(sizeof(RConstraint));
+    c->kind = RCON_NOT;
+    c->unary.inner = inner;
+    return c;
+}
+
+static RConstraint* rcon_new_mod_eq(int64_t divisor, int64_t remainder) {
+    RConstraint* c = malloc(sizeof(RConstraint));
+    c->kind = RCON_MOD_EQ;
+    c->mod_eq.divisor = divisor;
+    c->mod_eq.remainder = remainder;
+    return c;
+}
+
+static RConstraint* rcon_new_range(double lo, double hi) {
+    RConstraint* c = malloc(sizeof(RConstraint));
+    c->kind = RCON_RANGE;
+    c->range.lo = lo;
+    c->range.hi = hi;
+    return c;
+}
+
+static RConstraint* rcon_new_pred(Cell* lambda) {
+    RConstraint* c = malloc(sizeof(RConstraint));
+    c->kind = RCON_PRED;
+    c->pred.lambda = lambda;
+    cell_retain(lambda);
+    return c;
+}
+
+static void rcon_free(RConstraint* c) {
+    if (!c) return;
+    switch (c->kind) {
+        case RCON_AND: case RCON_OR:
+            rcon_free(c->binary.l);
+            rcon_free(c->binary.r);
+            break;
+        case RCON_NOT:
+            rcon_free(c->unary.inner);
+            break;
+        case RCON_PRED:
+            cell_release(c->pred.lambda);
+            break;
+        default: break;
+    }
+    free(c);
+}
+
+/* Evaluate constraint tree against a numeric value */
+static bool rcon_eval_num(RConstraint* c, double v) {
+    switch (c->kind) {
+        case RCON_GT: return v > c->cmp.operand;
+        case RCON_GE: return v >= c->cmp.operand;
+        case RCON_LT: return v < c->cmp.operand;
+        case RCON_LE: return v <= c->cmp.operand;
+        case RCON_EQ: return v == c->cmp.operand;
+        case RCON_NE: return v != c->cmp.operand;
+        case RCON_AND: return rcon_eval_num(c->binary.l, v) && rcon_eval_num(c->binary.r, v);
+        case RCON_OR:  return rcon_eval_num(c->binary.l, v) || rcon_eval_num(c->binary.r, v);
+        case RCON_NOT: return !rcon_eval_num(c->unary.inner, v);
+        case RCON_MOD_EQ: return ((int64_t)v % c->mod_eq.divisor) == c->mod_eq.remainder;
+        case RCON_RANGE: return v >= c->range.lo && v <= c->range.hi;
+        case RCON_PRED: return false; /* can't eval lambda in numeric path */
+    }
+    return false;
+}
+
+/* Evaluate constraint against any Cell value (Tier 1) */
+static bool rcon_eval(RConstraint* c, Cell* val) {
+    if (c->kind == RCON_PRED) {
+        /* Tier 2 fallback — handled by caller */
+        return false;
+    }
+    if (c->kind == RCON_AND) return rcon_eval(c->binary.l, val) && rcon_eval(c->binary.r, val);
+    if (c->kind == RCON_OR) return rcon_eval(c->binary.l, val) || rcon_eval(c->binary.r, val);
+    if (c->kind == RCON_NOT) return !rcon_eval(c->unary.inner, val);
+
+    /* All remaining constraint kinds require a number */
+    if (!cell_is_number(val)) return false;
+    return rcon_eval_num(c, cell_get_number(val));
+}
+
+/* Convert constraint tree to Guage value for introspection */
+static Cell* rcon_to_cell(RConstraint* c) {
+    if (!c) return cell_nil();
+    switch (c->kind) {
+        case RCON_GT: return cell_cons(cell_symbol(">"), cell_cons(cell_number(c->cmp.operand), cell_nil()));
+        case RCON_GE: return cell_cons(cell_symbol("≥"), cell_cons(cell_number(c->cmp.operand), cell_nil()));
+        case RCON_LT: return cell_cons(cell_symbol("<"), cell_cons(cell_number(c->cmp.operand), cell_nil()));
+        case RCON_LE: return cell_cons(cell_symbol("≤"), cell_cons(cell_number(c->cmp.operand), cell_nil()));
+        case RCON_EQ: return cell_cons(cell_symbol("≡"), cell_cons(cell_number(c->cmp.operand), cell_nil()));
+        case RCON_NE: return cell_cons(cell_symbol("≢"), cell_cons(cell_number(c->cmp.operand), cell_nil()));
+        case RCON_AND: return cell_cons(cell_symbol("∧"), cell_cons(rcon_to_cell(c->binary.l), cell_cons(rcon_to_cell(c->binary.r), cell_nil())));
+        case RCON_OR:  return cell_cons(cell_symbol("∨"), cell_cons(rcon_to_cell(c->binary.l), cell_cons(rcon_to_cell(c->binary.r), cell_nil())));
+        case RCON_NOT: return cell_cons(cell_symbol("¬"), cell_cons(rcon_to_cell(c->unary.inner), cell_nil()));
+        case RCON_MOD_EQ: return cell_cons(cell_symbol("%≡"), cell_cons(cell_number((double)c->mod_eq.divisor), cell_cons(cell_number((double)c->mod_eq.remainder), cell_nil())));
+        case RCON_RANGE: return cell_cons(cell_symbol("∈[]"), cell_cons(cell_number(c->range.lo), cell_cons(cell_number(c->range.hi), cell_nil())));
+        case RCON_PRED: { cell_retain(c->pred.lambda); return c->pred.lambda; }
+    }
+    return cell_nil();
+}
+
+/* --- Compiled Predicate Templates (Tier 0) --- */
+
+typedef struct {
+    bool (*fn)(Cell*, double, double);
+    double op1;
+    double op2;
+} CompiledPred;
+
+static bool tpl_gt(Cell* v, double op, double _u) { (void)_u; return cell_is_number(v) && cell_get_number(v) > op; }
+static bool tpl_ge(Cell* v, double op, double _u) { (void)_u; return cell_is_number(v) && cell_get_number(v) >= op; }
+static bool tpl_lt(Cell* v, double op, double _u) { (void)_u; return cell_is_number(v) && cell_get_number(v) < op; }
+static bool tpl_le(Cell* v, double op, double _u) { (void)_u; return cell_is_number(v) && cell_get_number(v) <= op; }
+static bool tpl_eq(Cell* v, double op, double _u) { (void)_u; return cell_is_number(v) && cell_get_number(v) == op; }
+static bool tpl_ne(Cell* v, double op, double _u) { (void)_u; return cell_is_number(v) && cell_get_number(v) != op; }
+static bool tpl_range(Cell* v, double lo, double hi) {
+    if (!cell_is_number(v)) return false;
+    double n = cell_get_number(v);
+    return n >= lo && n <= hi;
+}
+static bool tpl_mod_eq(Cell* v, double div, double rem) {
+    if (!cell_is_number(v)) return false;
+    return ((int64_t)cell_get_number(v) % (int64_t)div) == (int64_t)rem;
+}
+
+/* Try to compile a constraint tree to Tier 0 template */
+static bool compiled_pred_try(RConstraint* c, CompiledPred* out) {
+    if (!c) return false;
+    switch (c->kind) {
+        case RCON_GT: out->fn = tpl_gt; out->op1 = c->cmp.operand; out->op2 = 0; return true;
+        case RCON_GE: out->fn = tpl_ge; out->op1 = c->cmp.operand; out->op2 = 0; return true;
+        case RCON_LT: out->fn = tpl_lt; out->op1 = c->cmp.operand; out->op2 = 0; return true;
+        case RCON_LE: out->fn = tpl_le; out->op1 = c->cmp.operand; out->op2 = 0; return true;
+        case RCON_EQ: out->fn = tpl_eq; out->op1 = c->cmp.operand; out->op2 = 0; return true;
+        case RCON_NE: out->fn = tpl_ne; out->op1 = c->cmp.operand; out->op2 = 0; return true;
+        case RCON_RANGE: out->fn = tpl_range; out->op1 = c->range.lo; out->op2 = c->range.hi; return true;
+        case RCON_MOD_EQ: out->fn = tpl_mod_eq; out->op1 = (double)c->mod_eq.divisor; out->op2 = (double)c->mod_eq.remainder; return true;
+        default: return false;
+    }
+}
+
+/* --- Refinement Definition Storage --- */
+
+typedef struct RefinementDef {
+    Cell*           name;       /* Interned symbol (:Positive, :Even, etc.) */
+    Cell*           base_type;  /* Existing type struct (ℤ, 𝕊, etc.) */
+    RConstraint*    constraint; /* Tier 1 constraint tree (owned, NULL if not extractable) */
+    CompiledPred    compiled;   /* Tier 0 compiled check */
+    bool            has_compiled; /* Whether Tier 0 is available */
+    Cell*           lambda;     /* Tier 2 fallback lambda (always present) */
+    uint16_t        name_id;    /* Intern ID for O(1) identity */
+    /* For composed refinements (∈⊡∧, ∈⊡∨): parent names */
+    Cell*           parent1;    /* NULL for base refinements */
+    Cell*           parent2;    /* NULL for base refinements */
+    bool            is_and;     /* true = AND, false = OR (for composed) */
+    struct RefinementDef* next; /* Linked list for iteration */
+} RefinementDef;
+
+/* Registry: simple hash table (interned name_id → RefinementDef*) */
+#define REFINE_REG_CAP 256
+static RefinementDef* refine_registry[REFINE_REG_CAP];
+static uint32_t refine_count = 0;
+static RefinementDef* refine_list_head = NULL; /* for iteration */
+
+static RefinementDef* refine_lookup_by_name(Cell* name_sym) {
+    if (!cell_is_symbol(name_sym)) return NULL;
+    uint16_t id = cell_get_symbol_id(name_sym);
+    uint32_t idx = id & (REFINE_REG_CAP - 1);
+    RefinementDef* d = refine_registry[idx];
+    while (d) {
+        if (d->name_id == id) return d;
+        /* linear chain for collisions */
+        idx = (idx + 1) & (REFINE_REG_CAP - 1);
+        d = refine_registry[idx];
+    }
+    return NULL;
+}
+
+/* refine_lookup_by_str — available for future use by type system integration */
+/*
+static RefinementDef* refine_lookup_by_str(const char* name) {
+    Cell* sym = cell_symbol(name);
+    RefinementDef* result = refine_lookup_by_name(sym);
+    cell_release(sym);
+    return result;
+}
+*/
+
+static void refine_register(RefinementDef* def) {
+    uint32_t idx = def->name_id & (REFINE_REG_CAP - 1);
+    while (refine_registry[idx] != NULL) {
+        if (refine_registry[idx]->name_id == def->name_id) {
+            /* Replace existing */
+            /* Free old constraint */
+            rcon_free(refine_registry[idx]->constraint);
+            cell_release(refine_registry[idx]->lambda);
+            cell_release(refine_registry[idx]->base_type);
+            cell_release(refine_registry[idx]->name);
+            /* Copy new data into existing slot */
+            *refine_registry[idx] = *def;
+            free(def);
+            return;
+        }
+        idx = (idx + 1) & (REFINE_REG_CAP - 1);
+    }
+    refine_registry[idx] = def;
+    def->next = refine_list_head;
+    refine_list_head = def;
+    refine_count++;
+}
+
+/* --- Predicate Result Cache (bounded Swiss Table) --- */
+
+#define PRED_CACHE_CAP 4096
+#define PRED_CACHE_MASK (PRED_CACHE_CAP - 1)
+
+typedef struct {
+    uint64_t key;  /* siphash(name_id || cell_hash(value)) */
+    bool result;
+    bool occupied;
+} PredCacheEntry;
+
+static PredCacheEntry pred_cache[PRED_CACHE_CAP];
+
+static uint64_t pred_cache_key(uint16_t name_id, Cell* val) {
+    uint64_t vh = cell_hash(val);
+    uint64_t combined[2] = { (uint64_t)name_id, vh };
+    return guage_siphash(combined, sizeof(combined));
+}
+
+static int pred_cache_lookup(uint16_t name_id, Cell* val) {
+    uint64_t key = pred_cache_key(name_id, val);
+    uint32_t idx = (uint32_t)(key & PRED_CACHE_MASK);
+    if (pred_cache[idx].occupied && pred_cache[idx].key == key) {
+        return pred_cache[idx].result ? 1 : 0;
+    }
+    return -1; /* miss */
+}
+
+static void pred_cache_store(uint16_t name_id, Cell* val, bool result) {
+    uint64_t key = pred_cache_key(name_id, val);
+    uint32_t idx = (uint32_t)(key & PRED_CACHE_MASK);
+    pred_cache[idx].key = key;
+    pred_cache[idx].result = result;
+    pred_cache[idx].occupied = true;
+}
+
+/* --- Constraint Extraction from Lambda AST --- */
+
+/* Check if a cell is a De Bruijn index 0 reference (the lambda parameter) */
+/* After De Bruijn conversion, parameter x becomes bare cell_number(0).
+ * Number literals #N become (⌜ N) — quoted to distinguish from indices. */
+static bool is_debruijn_0(Cell* c) {
+    return cell_is_number(c) && cell_get_number(c) == 0.0;
+}
+
+/* Unwrap a quoted number literal (⌜ N) → N as double. Returns false if not a quoted number. */
+static bool unwrap_quoted_number(Cell* c, double* out) {
+    if (!cell_is_pair(c)) return false;
+    Cell* q = cell_car(c);
+    if (!cell_is_symbol(q) || q->sym_id != SYM_ID_QUOTE) return false;
+    Cell* val = cell_car(cell_cdr(c));
+    if (!cell_is_number(val)) return false;
+    *out = cell_get_number(val);
+    return true;
+}
+
+/* Try to extract a constraint tree from a lambda body expression.
+ * The body is the raw AST of the lambda, using De Bruijn index 0 for the parameter.
+ * Returns NULL if extraction fails (falls back to Tier 2). */
+static RConstraint* extract_constraint(Cell* body) {
+    if (!cell_is_pair(body)) return NULL;
+
+    Cell* op = cell_car(body);
+    Cell* rest = cell_cdr(body);
+    if (!cell_is_symbol(op) || !cell_is_pair(rest)) return NULL;
+
+    const char* op_name = cell_get_symbol(op);
+
+    /* Binary comparison: (> x #N), (≥ x #N), etc.
+     * In De Bruijn form: (> (:__indexed__ 0) #N)
+     * OR possibly: (> x #N) where x is a named parameter not yet converted */
+    Cell* lhs = cell_car(rest);
+    Cell* rhs_list = cell_cdr(rest);
+
+    /* Check for (∧ L R) */
+    if (strcmp(op_name, "∧") == 0 || strcmp(op_name, "∧") == 0) {
+        if (!cell_is_pair(rhs_list)) return NULL;
+        Cell* rhs = cell_car(rhs_list);
+        RConstraint* left = extract_constraint(lhs);
+        RConstraint* right = extract_constraint(rhs);
+        if (left && right) {
+            /* Try to fuse into RANGE: (∧ (≥ x lo) (≤ x hi)) */
+            if (left->kind == RCON_GE && right->kind == RCON_LE) {
+                double lo = left->cmp.operand;
+                double hi = right->cmp.operand;
+                rcon_free(left);
+                rcon_free(right);
+                return rcon_new_range(lo, hi);
+            }
+            return rcon_new_binary(RCON_AND, left, right);
+        }
+        if (left) rcon_free(left);
+        if (right) rcon_free(right);
+        return NULL;
+    }
+
+    /* Check for (∨ L R) */
+    if (strcmp(op_name, "∨") == 0) {
+        if (!cell_is_pair(rhs_list)) return NULL;
+        Cell* rhs = cell_car(rhs_list);
+        RConstraint* left = extract_constraint(lhs);
+        RConstraint* right = extract_constraint(rhs);
+        if (left && right) return rcon_new_binary(RCON_OR, left, right);
+        if (left) rcon_free(left);
+        if (right) rcon_free(right);
+        return NULL;
+    }
+
+    /* Check for (¬ P) */
+    if (strcmp(op_name, "¬") == 0) {
+        RConstraint* inner = extract_constraint(lhs);
+        if (inner) return rcon_new_not(inner);
+        return NULL;
+    }
+
+    /* For comparison ops, we need (op <param-ref> <number>) */
+    if (!cell_is_pair(rhs_list)) return NULL;
+    Cell* rhs = cell_car(rhs_list);
+
+    /* Check for modulo pattern: (≡ (% x (⌜ K)) (⌜ V))
+     * After De Bruijn: param is bare number, literals are (⌜ N) */
+    double rhs_val;
+    if (strcmp(op_name, "≡") == 0 && cell_is_pair(lhs)) {
+        Cell* mod_op = cell_car(lhs);
+        if (cell_is_symbol(mod_op) && strcmp(cell_get_symbol(mod_op), "%") == 0) {
+            Cell* mod_rest = cell_cdr(lhs);
+            if (cell_is_pair(mod_rest)) {
+                Cell* mod_param = cell_car(mod_rest);
+                Cell* mod_rhs_list = cell_cdr(mod_rest);
+                if (cell_is_pair(mod_rhs_list) && is_debruijn_0(mod_param)) {
+                    Cell* divisor_cell = cell_car(mod_rhs_list);
+                    double divisor_val, remainder_val;
+                    if (unwrap_quoted_number(divisor_cell, &divisor_val) &&
+                        unwrap_quoted_number(rhs, &remainder_val)) {
+                        return rcon_new_mod_eq((int64_t)divisor_val,
+                                              (int64_t)remainder_val);
+                    }
+                }
+            }
+        }
+    }
+
+    /* Simple comparison: (op <param> (⌜ N))
+     * lhs must be De Bruijn index 0, rhs must be a quoted number literal */
+    if (!is_debruijn_0(lhs)) return NULL;
+    if (!unwrap_quoted_number(rhs, &rhs_val)) return NULL;
+
+    if (strcmp(op_name, ">") == 0)  return rcon_new_cmp(RCON_GT, rhs_val);
+    if (strcmp(op_name, "≥") == 0)  return rcon_new_cmp(RCON_GE, rhs_val);
+    if (strcmp(op_name, "<") == 0)  return rcon_new_cmp(RCON_LT, rhs_val);
+    if (strcmp(op_name, "≤") == 0)  return rcon_new_cmp(RCON_LE, rhs_val);
+    if (strcmp(op_name, "≡") == 0)  return rcon_new_cmp(RCON_EQ, rhs_val);
+    if (strcmp(op_name, "≢") == 0)  return rcon_new_cmp(RCON_NE, rhs_val);
+
+    return NULL;
+}
+
+/* Try to extract constraint from a lambda Cell */
+static RConstraint* extract_constraint_from_lambda(Cell* lambda_cell) {
+    if (!cell_is_lambda(lambda_cell)) return NULL;
+    Cell* body = lambda_cell->data.lambda.body;
+    return extract_constraint(body);
+}
+
+/* --- Tiered Evaluation --- */
+
+static bool refine_eval_predicate(RefinementDef* def, Cell* val) {
+    /* Tier 0: compiled template (~2ns) */
+    if (def->has_compiled) {
+        return def->compiled.fn(val, def->compiled.op1, def->compiled.op2);
+    }
+
+    /* Tier 1: constraint tree (~50ns) */
+    if (def->constraint && def->constraint->kind != RCON_PRED) {
+        return rcon_eval(def->constraint, val);
+    }
+
+    /* Tier 2: lambda evaluation (~500ns) */
+    if (def->lambda && cell_is_lambda(def->lambda)) {
+        EvalContext* ctx = eval_get_current_context();
+        if (!ctx) return false;
+        /* Direct lambda application — CELL_LAMBDA is not self-evaluating,
+           so we cannot construct (lambda val) and call eval_internal.
+           Instead, extend the closure env with the arg and eval the body. */
+        Cell* closure_env = def->lambda->data.lambda.env;
+        Cell* body = def->lambda->data.lambda.body;
+        cell_retain(val);
+        Cell* arg_list = cell_cons(val, cell_nil());
+        Cell* new_env = extend_env(closure_env, arg_list);
+        cell_release(arg_list);
+        cell_retain(body);
+        Cell* result = eval_internal(ctx, new_env, body);
+        cell_release(new_env);
+        bool ok = cell_is_bool(result) ? cell_get_bool(result) :
+                  !cell_is_nil(result) && !cell_is_error(result);
+        cell_release(result);
+        return ok;
+    }
+
+    return false;
+}
+
+/* Forward declaration for recursive composed check */
+static bool refine_check_value(RefinementDef* def, Cell* val);
+
+/* Full check with cache */
+static bool refine_check_value(RefinementDef* def, Cell* val) {
+    /* 1. Check base type first (fast reject) */
+    if (!value_matches_type(val, def->base_type)) {
+        return false;
+    }
+
+    /* 2. Check cache for immutable values (numbers, strings, bools, symbols) */
+    bool cacheable = cell_is_number(val) || cell_is_string(val) ||
+                     cell_is_bool(val) || cell_is_symbol(val);
+    if (cacheable) {
+        int cached = pred_cache_lookup(def->name_id, val);
+        if (cached >= 0) return (bool)cached;
+    }
+
+    /* 3. For composed refinements, check both parents */
+    bool result;
+    if (def->parent1 && def->parent2) {
+        RefinementDef* d1 = refine_lookup_by_name(def->parent1);
+        RefinementDef* d2 = refine_lookup_by_name(def->parent2);
+        if (d1 && d2) {
+            bool r1 = refine_check_value(d1, val);
+            bool r2 = refine_check_value(d2, val);
+            result = def->is_and ? (r1 && r2) : (r1 || r2);
+        } else {
+            result = refine_eval_predicate(def, val);
+        }
+    } else {
+        /* 3b. Tiered evaluation for base refinements */
+        result = refine_eval_predicate(def, val);
+    }
+
+    /* 4. Cache result */
+    if (cacheable) {
+        pred_cache_store(def->name_id, val, result);
+    }
+
+    return result;
+}
+
+/* --- Primitive Implementations --- */
+
+/* ∈⊡ - define refinement type (called from eval.c special form handler) */
+Cell* prim_refine_def(Cell* args) {
+    Cell* name = arg1(args);
+    Cell* base_type = arg2(args);
+    Cell* predicate = arg3(args);
+
+    if (!cell_is_symbol(name)) {
+        return cell_error("∈⊡ requires symbol as first argument", name);
+    }
+    if (!cell_is_lambda(predicate)) {
+        return cell_error("∈⊡ requires lambda as predicate", predicate);
+    }
+
+    /* If base_type is a builtin (0-arity type constructor like ℤ, 𝕊), call it */
+    if (base_type->type == CELL_BUILTIN) {
+        Cell* (*fn)(Cell*) = (Cell* (*)(Cell*))base_type->data.atom.builtin;
+        Cell* resolved = fn(cell_nil());
+        base_type = resolved;
+    }
+
+    RefinementDef* def = calloc(1, sizeof(RefinementDef));
+    def->name = name;
+    cell_retain(name);
+    def->base_type = base_type;
+    cell_retain(base_type);
+    def->lambda = predicate;
+    cell_retain(predicate);
+    def->name_id = cell_get_symbol_id(name);
+
+    /* Try to extract constraint tree (Tier 1) */
+    def->constraint = extract_constraint_from_lambda(predicate);
+
+    /* Try to compile to Tier 0 */
+    if (def->constraint) {
+        def->has_compiled = compiled_pred_try(def->constraint, &def->compiled);
+    }
+
+    refine_register(def);
+    cell_retain(name);
+    return name;
+}
+
+/* ∈⊡? - check value against refinement */
+Cell* prim_refine_check(Cell* args) {
+    Cell* val = arg1(args);
+    Cell* name = arg2(args);
+
+    if (!cell_is_symbol(name)) {
+        return cell_error("∈⊡? requires symbol as second argument", name);
+    }
+
+    RefinementDef* def = refine_lookup_by_name(name);
+    if (!def) {
+        return cell_error("∈⊡? undefined refinement", name);
+    }
+
+    return cell_bool(refine_check_value(def, val));
+}
+
+/* ∈⊡! - assert value satisfies refinement, return value or error */
+Cell* prim_refine_assert(Cell* args) {
+    Cell* val = arg1(args);
+    Cell* name = arg2(args);
+
+    if (!cell_is_symbol(name)) {
+        return cell_error("∈⊡! requires symbol as second argument", name);
+    }
+
+    RefinementDef* def = refine_lookup_by_name(name);
+    if (!def) {
+        return cell_error("∈⊡! undefined refinement", name);
+    }
+
+    if (refine_check_value(def, val)) {
+        cell_retain(val);
+        return val;
+    }
+
+    return cell_error(":refinement-violated", cell_cons(name, cell_cons(val, cell_nil())));
+}
+
+/* ∈⊡⊙ - get base type of refinement */
+Cell* prim_refine_base(Cell* args) {
+    Cell* name = arg1(args);
+
+    if (!cell_is_symbol(name)) {
+        return cell_error("∈⊡⊙ requires symbol", name);
+    }
+
+    RefinementDef* def = refine_lookup_by_name(name);
+    if (!def) {
+        return cell_error("∈⊡⊙ undefined refinement", name);
+    }
+
+    cell_retain(def->base_type);
+    return def->base_type;
+}
+
+/* ∈⊡→ - get predicate lambda */
+Cell* prim_refine_pred(Cell* args) {
+    Cell* name = arg1(args);
+
+    if (!cell_is_symbol(name)) {
+        return cell_error("∈⊡→ requires symbol", name);
+    }
+
+    RefinementDef* def = refine_lookup_by_name(name);
+    if (!def) {
+        return cell_error("∈⊡→ undefined refinement", name);
+    }
+
+    cell_retain(def->lambda);
+    return def->lambda;
+}
+
+/* ∈⊡⊢ - get constraint tree as Guage value */
+Cell* prim_refine_constraint(Cell* args) {
+    Cell* name = arg1(args);
+
+    if (!cell_is_symbol(name)) {
+        return cell_error("∈⊡⊢ requires symbol", name);
+    }
+
+    RefinementDef* def = refine_lookup_by_name(name);
+    if (!def) {
+        return cell_error("∈⊡⊢ undefined refinement", name);
+    }
+
+    if (def->constraint) {
+        return rcon_to_cell(def->constraint);
+    }
+
+    /* No extracted constraint — return the lambda itself */
+    cell_retain(def->lambda);
+    return def->lambda;
+}
+
+/* Helper: duplicate a leaf constraint (shallow copy for non-composite nodes) */
+static RConstraint* rcon_dup_leaf(RConstraint* c) {
+    if (!c) return NULL;
+    RConstraint* copy = malloc(sizeof(RConstraint));
+    *copy = *c;
+    return copy;
+}
+
+/* ∈⊡∧ - intersect two refinements (returns anonymous refinement name symbol) */
+Cell* prim_refine_intersect(Cell* args) {
+    Cell* name1 = arg1(args);
+    Cell* name2 = arg2(args);
+
+    RefinementDef* d1 = refine_lookup_by_name(name1);
+    RefinementDef* d2 = refine_lookup_by_name(name2);
+    if (!d1) return cell_error("∈⊡∧ undefined refinement", name1);
+    if (!d2) return cell_error("∈⊡∧ undefined refinement", name2);
+
+    static int anon_counter = 0;
+    char buf[64];
+    snprintf(buf, sizeof(buf), ":__refine_and_%d", anon_counter++);
+    Cell* new_name = cell_symbol(buf);
+
+    RefinementDef* def = calloc(1, sizeof(RefinementDef));
+    def->name = new_name;
+    cell_retain(new_name);
+    def->base_type = d1->base_type;
+    cell_retain(def->base_type);
+    def->lambda = d1->lambda; /* fallback */
+    cell_retain(def->lambda);
+    def->name_id = cell_get_symbol_id(new_name);
+
+    /* Store parent refs for composed check */
+    def->parent1 = name1;
+    cell_retain(name1);
+    def->parent2 = name2;
+    cell_retain(name2);
+    def->is_and = true;
+
+    /* Try to compose constraint trees for Tier 0/1 */
+    bool c1_simple = d1->constraint && d1->constraint->kind != RCON_PRED &&
+                     d1->constraint->kind != RCON_AND && d1->constraint->kind != RCON_OR &&
+                     d1->constraint->kind != RCON_NOT;
+    bool c2_simple = d2->constraint && d2->constraint->kind != RCON_PRED &&
+                     d2->constraint->kind != RCON_AND && d2->constraint->kind != RCON_OR &&
+                     d2->constraint->kind != RCON_NOT;
+
+    if (c1_simple && c2_simple) {
+        def->constraint = rcon_new_binary(RCON_AND,
+                                          rcon_dup_leaf(d1->constraint),
+                                          rcon_dup_leaf(d2->constraint));
+    }
+
+    refine_register(def);
+    cell_retain(new_name);
+    return new_name;
+}
+
+/* ∈⊡∨ - union two refinements */
+Cell* prim_refine_union(Cell* args) {
+    Cell* name1 = arg1(args);
+    Cell* name2 = arg2(args);
+
+    RefinementDef* d1 = refine_lookup_by_name(name1);
+    RefinementDef* d2 = refine_lookup_by_name(name2);
+    if (!d1) return cell_error("∈⊡∨ undefined refinement", name1);
+    if (!d2) return cell_error("∈⊡∨ undefined refinement", name2);
+
+    static int anon_counter = 0;
+    char buf[64];
+    snprintf(buf, sizeof(buf), ":__refine_or_%d", anon_counter++);
+    Cell* new_name = cell_symbol(buf);
+
+    RefinementDef* def = calloc(1, sizeof(RefinementDef));
+    def->name = new_name;
+    cell_retain(new_name);
+    def->base_type = d1->base_type;
+    cell_retain(def->base_type);
+    def->lambda = d1->lambda;
+    cell_retain(def->lambda);
+    def->name_id = cell_get_symbol_id(new_name);
+
+    /* Store parent refs for composed check */
+    def->parent1 = name1;
+    cell_retain(name1);
+    def->parent2 = name2;
+    cell_retain(name2);
+    def->is_and = false;
+
+    bool c1_simple = d1->constraint && d1->constraint->kind != RCON_PRED &&
+                     d1->constraint->kind != RCON_AND && d1->constraint->kind != RCON_OR &&
+                     d1->constraint->kind != RCON_NOT;
+    bool c2_simple = d2->constraint && d2->constraint->kind != RCON_PRED &&
+                     d2->constraint->kind != RCON_AND && d2->constraint->kind != RCON_OR &&
+                     d2->constraint->kind != RCON_NOT;
+
+    if (c1_simple && c2_simple) {
+        def->constraint = rcon_new_binary(RCON_OR,
+                                          rcon_dup_leaf(d1->constraint),
+                                          rcon_dup_leaf(d2->constraint));
+    }
+
+    refine_register(def);
+    cell_retain(new_name);
+    return new_name;
+}
+
+/* ∈⊡∀ - list all refinements */
+Cell* prim_refine_list(Cell* args) {
+    (void)args;
+    Cell* result = cell_nil();
+    RefinementDef* d = refine_list_head;
+    while (d) {
+        Cell* entry = cell_cons(d->name,
+                       cell_cons(d->base_type,
+                         cell_cons(d->constraint ? rcon_to_cell(d->constraint) : cell_nil(),
+                           cell_nil())));
+        cell_retain(d->name);
+        cell_retain(d->base_type);
+        result = cell_cons(entry, result);
+        d = d->next;
+    }
+    return result;
+}
+
+/* ∈⊡∈ - find first matching refinement for a value */
+Cell* prim_refine_find(Cell* args) {
+    Cell* val = arg1(args);
+    RefinementDef* d = refine_list_head;
+    while (d) {
+        if (refine_check_value(d, val)) {
+            cell_retain(d->name);
+            return d->name;
+        }
+        d = d->next;
+    }
+    return cell_nil();
+}
+
+/* ∈⊡⊆ - refinement subtype check */
+Cell* prim_refine_subtype(Cell* args) {
+    Cell* name = arg1(args);
+    Cell* type = arg2(args);
+
+    if (!cell_is_symbol(name)) {
+        return cell_error("∈⊡⊆ requires symbol as first argument", name);
+    }
+
+    /* Auto-resolve 0-arity builtins (ℤ, 𝕊, etc.) */
+    if (type->type == CELL_BUILTIN) {
+        Cell* (*fn)(Cell*) = (Cell* (*)(Cell*))type->data.atom.builtin;
+        type = fn(cell_nil());
+    }
+
+    RefinementDef* def = refine_lookup_by_name(name);
+    if (!def) {
+        return cell_error("∈⊡⊆ undefined refinement", name);
+    }
+
+    /* Refined type is subtype of its base type */
+    if (types_equal(def->base_type, type)) return cell_bool(true);
+
+    /* Refined type is subtype of ⊤ */
+    if (is_type_struct(type)) {
+        const char* kind = get_type_kind(type);
+        if (kind && strcmp(kind, ":any") == 0) return cell_bool(true);
+    }
+
+    return cell_bool(false);
+}
+
 /* Primitive table - PURE SYMBOLS ONLY
  * EVERY primitive MUST have documentation */
 static Primitive primitives[] = {
@@ -12196,6 +13757,72 @@ static Primitive primitives[] = {
     {"⌁→≈", prim_ffi_str_to_ptr, 1, {"String to strdup'd pointer", "≈ → ⌁"}},
     {"⌁◈→", prim_ffi_read_buf, 2, {"Read N bytes from pointer", "⌁ → ℕ → ◈"}},
     {"⌁→◈", prim_ffi_buf_to_ptr, 1, {"Buffer to malloc'd pointer", "◈ → ⌁"}},
+
+    /* Networking primitives (Day 126 — HFT-grade event ring + sockets) */
+
+    /* Socket lifecycle (5) */
+    {"⊸⊕", prim_net_socket, 3, {"Create socket", ":sym → :sym → ℕ → ℕ|⚠"}},
+    {"⊸×", prim_net_close, 1, {"Close socket", "ℕ → 𝔹|⚠"}},
+    {"⊸×→", prim_net_shutdown, 2, {"Shutdown socket", "ℕ → :sym → 𝔹|⚠"}},
+    {"⊸⊕⊞", prim_net_socketpair, 2, {"Create connected socket pair", ":sym → :sym → ⟨ℕ ℕ⟩|⚠"}},
+    {"⊸?", prim_net_is_socket, 1, {"Test if fd is a socket", "ℕ → 𝔹"}},
+
+    /* Address construction (3) */
+    {"⊸⊙", prim_net_addr, 2, {"Construct IPv4 address", "≈ → ℕ → ◈|⚠"}},
+    {"⊸⊙₆", prim_net_addr6, 2, {"Construct IPv6 address", "≈ → ℕ → ◈|⚠"}},
+    {"⊸⊙⊘", prim_net_addr_unix, 1, {"Construct Unix domain address", "≈ → ◈|⚠"}},
+
+    /* Synchronous client/server (5) */
+    {"⊸→⊕", prim_net_connect, 2, {"Synchronous connect", "ℕ → ◈ → 𝔹|⚠"}},
+    {"⊸←≔", prim_net_bind, 2, {"Bind socket to address", "ℕ → ◈ → 𝔹|⚠"}},
+    {"⊸←⊕", prim_net_listen, 2, {"Listen for connections", "ℕ → ℕ → 𝔹|⚠"}},
+    {"⊸←", prim_net_accept, 1, {"Accept connection", "ℕ → ⟨ℕ ◈⟩|⚠"}},
+    {"⊸⊙→", prim_net_resolve, 2, {"DNS resolve", "≈ → ≈|∅ → [◈]|⚠"}},
+
+    /* Synchronous I/O (4) */
+    {"⊸→", prim_net_send, 3, {"Send data on socket", "ℕ → ◈ → ℕ → ℕ|⚠"}},
+    {"⊸←◈", prim_net_recv, 3, {"Receive data from socket", "ℕ → ℕ → ℕ → ◈|⚠"}},
+    {"⊸→⊙", prim_net_sendto, 4, {"UDP sendto", "ℕ → ◈ → ℕ → ◈ → ℕ|⚠"}},
+    {"⊸←⊙", prim_net_recvfrom, 3, {"UDP recvfrom", "ℕ → ℕ → ℕ → ⟨◈ ◈⟩|⚠"}},
+
+    /* Socket options (3) */
+    {"⊸≔", prim_net_setsockopt, 3, {"Set socket option", "ℕ → :sym → α → 𝔹|⚠"}},
+    {"⊸≔→", prim_net_getsockopt, 2, {"Get socket option", "ℕ → :sym → α|⚠"}},
+    {"⊸#", prim_net_peername, 1, {"Get peer address", "ℕ → ◈|⚠"}},
+
+    /* Event ring lifecycle (3) */
+    {"⊸⊚⊕", prim_ring_create, 1, {"Create async I/O ring", "ℕ → ⊸⊚|⚠"}},
+    {"⊸⊚×", prim_ring_destroy, 1, {"Destroy async I/O ring", "⊸⊚ → ∅"}},
+    {"⊸⊚?", prim_ring_is, 1, {"Ring type predicate", "α → 𝔹"}},
+
+    /* Buffer pool (4) */
+    {"⊸⊚◈⊕", prim_ring_buf_create, 3, {"Create provided buffer pool", "⊸⊚ → ℕ → ℕ → ⊸◈|⚠"}},
+    {"⊸⊚◈×", prim_ring_buf_destroy, 1, {"Destroy buffer pool", "⊸◈ → ∅"}},
+    {"⊸⊚◈→", prim_ring_buf_get, 2, {"Get buffer by ID", "⊸◈ → ℕ → ◈"}},
+    {"⊸⊚◈←", prim_ring_buf_return, 2, {"Return buffer to pool", "⊸◈ → ℕ → ∅"}},
+
+    /* Async ring operations (8) */
+    {"⊸⊚←", prim_ring_accept, 3, {"Ring async accept (multishot)", "⊸⊚ → ℕ → ℕ → 𝔹|⚠"}},
+    {"⊸⊚←◈", prim_ring_recv, 4, {"Ring async recv (provided bufs)", "⊸⊚ → ℕ → ⊸◈ → ℕ → 𝔹|⚠"}},
+    {"⊸⊚→", prim_ring_send, 4, {"Ring async send", "⊸⊚ → ℕ → ◈ → ℕ → 𝔹|⚠"}},
+    {"⊸⊚→∅", prim_ring_send_zc, 4, {"Ring zero-copy send", "⊸⊚ → ℕ → ◈ → ℕ → 𝔹|⚠"}},
+    {"⊸⊚→⊕", prim_ring_connect, 4, {"Ring async connect", "⊸⊚ → ℕ → ◈ → ℕ → 𝔹|⚠"}},
+    {"⊸⊚→×", prim_ring_close, 3, {"Ring async close", "⊸⊚ → ℕ → ℕ → 𝔹|⚠"}},
+    {"⊸⊚!", prim_ring_submit, 1, {"Flush pending submissions", "⊸⊚ → ℕ|⚠"}},
+    {"⊸⊚⊲", prim_ring_complete, 3, {"Harvest completions", "⊸⊚ → ℕ → ℕ → [⊞]|⚠"}},
+
+    /* Refinement Type primitives (Day 127 — HFT-grade gradual dependent types) */
+    {"∈⊡", prim_refine_def, 3, {"Define refinement type", ":sym → Type → λ → :sym"}},
+    {"∈⊡?", prim_refine_check, 2, {"Check value against refinement", "α → :sym → 𝔹"}},
+    {"∈⊡!", prim_refine_assert, 2, {"Assert value satisfies refinement", "α → :sym → α|⚠"}},
+    {"∈⊡⊙", prim_refine_base, 1, {"Get base type of refinement", ":sym → Type"}},
+    {"∈⊡→", prim_refine_pred, 1, {"Get refinement predicate lambda", ":sym → λ"}},
+    {"∈⊡⊢", prim_refine_constraint, 1, {"Get constraint tree as value", ":sym → ⟨⟩|λ"}},
+    {"∈⊡∧", prim_refine_intersect, 2, {"Intersect two refinements", ":sym → :sym → :sym"}},
+    {"∈⊡∨", prim_refine_union, 2, {"Union two refinements", ":sym → :sym → :sym"}},
+    {"∈⊡∀", prim_refine_list, 0, {"List all refinements", "→ [⟨:sym Type ⟨⟩⟩]"}},
+    {"∈⊡∈", prim_refine_find, 1, {"Find matching refinement for value", "α → :sym|∅"}},
+    {"∈⊡⊆", prim_refine_subtype, 2, {"Refinement subtype check", ":sym → Type → 𝔹"}},
 
     {NULL, NULL, 0, {NULL, NULL}}
 };

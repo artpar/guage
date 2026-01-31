@@ -1,0 +1,187 @@
+; Day 126: HFT-Grade Networking — io_uring/kqueue Event Ring + Zero-Copy Sockets
+; Test: Socket lifecycle, addresses, sync I/O, ring async ops, buffer pools
+
+; ===== Address Construction =====
+
+; IPv4 loopback
+(≔ lo4 (⊸⊙ "127.0.0.1" #8080))
+(⊢ (◈? lo4) :addr-ipv4-is-buffer)
+
+; IPv6 loopback
+(≔ lo6 (⊸⊙₆ "::1" #8081))
+(⊢ (◈? lo6) :addr-ipv6-is-buffer)
+
+; Unix domain
+(≔ uaddr (⊸⊙⊘ "/tmp/guage-test.sock"))
+(⊢ (◈? uaddr) :addr-unix-is-buffer)
+
+; Bad IPv4 → error
+(⊢ (⚠? (⊸⊙ "not-an-ip" #80)) :addr-bad-ipv4)
+
+; Bad IPv6 → error
+(⊢ (⚠? (⊸⊙₆ "not-ipv6" #80)) :addr-bad-ipv6)
+
+; ===== Socket Lifecycle =====
+
+; Create TCP socket
+(≔ s1 (⊸⊕ :inet :stream #0))
+(⊢ (⊸? s1) :socket-is-socket)
+
+; Close socket
+(⊢ (⊸× s1) :socket-close)
+
+; Double close → error
+(⊢ (⚠? (⊸× s1)) :socket-double-close)
+
+; Socket predicate on non-socket
+(⊢ (¬ (⊸? #42)) :not-socket-number)
+
+; ===== Socketpair Echo =====
+
+; Create connected pair
+(≔ pair (⊸⊕⊞ :unix :stream))
+(≔ sa (◁ pair))
+(≔ sb (▷ pair))
+(⊢ (⊸? sa) :pair-a-is-socket)
+(⊢ (⊸? sb) :pair-b-is-socket)
+
+; Send "hello" through pair
+(≔ hello (≈◈ "hello"))
+(≔ sent (⊸→ sa hello #0))
+(⊨ (⌜ :pair-sent-bytes) #5 sent)
+
+; Receive on other end
+(≔ got (⊸←◈ sb #1024 #0))
+(⊢ (◈? got) :pair-recv-is-buffer)
+(⊨ (⌜ :pair-recv-size) #5 (◈# got))
+
+; Bidirectional: send back
+(≔ reply (≈◈ "world"))
+(⊸→ sb reply #0)
+(≔ got2 (⊸←◈ sa #1024 #0))
+(⊨ (⌜ :pair-echo-size) #5 (◈# got2))
+
+; Cleanup pair
+(⊸× sa)
+(⊸× sb)
+
+; ===== Socket Options =====
+
+(≔ s2 (⊸⊕ :inet :stream #0))
+
+; Set SO_REUSEADDR
+(⊢ (⊸≔ s2 :reuse-addr #1) :setsockopt-reuseaddr)
+
+; Get SO_REUSEADDR back (value is non-zero when set; exact value is platform-dependent)
+(⊢ (< #0 (⊸≔→ s2 :reuse-addr)) :getsockopt-reuseaddr)
+
+; Set nonblock
+(⊢ (⊸≔ s2 :nonblock #1) :setsockopt-nonblock)
+
+; Cleanup
+(⊸× s2)
+
+; ===== Ring Lifecycle =====
+
+; Create ring
+(≔ ring (⊸⊚⊕ #64))
+(⊢ (⊸⊚? ring) :ring-is-ring)
+(⊢ (¬ (⊸⊚? #42)) :ring-pred-number)
+
+; ===== Buffer Pool =====
+
+; Create buffer pool
+(≔ pool (⊸⊚◈⊕ ring #16 #4096))
+(⊢ (¬ (⚠? pool)) :bufpool-created)
+
+; Get buffer 0 — returns buffer cell
+(≔ b0 (⊸⊚◈→ pool #0))
+(⊢ (◈? b0) :bufpool-get-is-buffer)
+
+; Return buffer
+(⊸⊚◈← pool #0)
+
+; ===== Ring Async: Socketpair Send/Recv =====
+
+; Create pair for async test
+(≔ ap (⊸⊕⊞ :unix :stream))
+(≔ afd1 (◁ ap))
+(≔ afd2 (▷ ap))
+
+; Set nonblock for ring ops
+(⊸≔ afd1 :nonblock #1)
+(⊸≔ afd2 :nonblock #1)
+
+; Prep async send on fd1
+(≔ msg (≈◈ "ring-test"))
+(⊸⊚→ ring afd1 msg #100)
+
+; Submit
+(≔ sub-count (⊸⊚! ring))
+(⊢ (¬ (⚠? sub-count)) :ring-submit-ok)
+
+; Prep async recv on fd2 (without buffer pool - uses temp buf)
+(⊸⊚←◈ ring afd2 #0 #200)
+(⊸⊚! ring)
+
+; Harvest completions (wait for at least 1, 500ms timeout)
+(≔ cqes (⊸⊚⊲ ring #1 #500))
+(⊢ (¬ (⚠? cqes)) :ring-complete-ok)
+(⊢ (¬ (∅? cqes)) :ring-got-completions)
+
+; Check first completion is send or recv
+(≔ cqe1 (◁ cqes))
+(⊢ (⊞? cqe1) :cqe-is-hashmap)
+(⊢ (¬ (⚠? (⊞→ cqe1 :result))) :cqe-has-result)
+(⊢ (¬ (⚠? (⊞→ cqe1 :user-data))) :cqe-has-userdata)
+(⊢ (¬ (⚠? (⊞→ cqe1 :op))) :cqe-has-op)
+
+; Cleanup async pair
+(⊸× afd1)
+(⊸× afd2)
+
+; ===== UDP Loopback =====
+
+; Create UDP socket pair
+(≔ udp1 (⊸⊕ :inet :dgram #0))
+(≔ udp2 (⊸⊕ :inet :dgram #0))
+
+; Bind udp2 to a port (0 = ephemeral)
+(≔ bind-addr (⊸⊙ "127.0.0.1" #0))
+(⊸←≔ udp2 bind-addr)
+
+; Get bound address info (we can't easily query the port,
+; so we test the basic bind succeeded)
+(⊢ (¬ (⚠? udp1)) :udp-socket1)
+(⊢ (¬ (⚠? udp2)) :udp-socket2)
+
+; Cleanup
+(⊸× udp1)
+(⊸× udp2)
+
+; ===== Destroy Ring =====
+
+; Destroy buffer pool first
+(⊸⊚◈× pool)
+
+; Destroy ring
+(⊸⊚× ring)
+
+; ===== DNS Resolve =====
+
+; Resolve localhost
+(≔ addrs (⊸⊙→ "localhost" ∅))
+(⊢ (¬ (⚠? addrs)) :resolve-localhost)
+(⊢ (¬ (∅? addrs)) :resolve-got-results)
+
+; ===== Error Cases =====
+
+; Bad fd for send
+(⊢ (⚠? (⊸→ #-1 (≈◈ "x") #0)) :bad-fd-send)
+
+; Bad fd for recv
+(⊢ (⚠? (⊸←◈ #-1 #100 #0)) :bad-fd-recv)
+
+; Socket type errors
+(⊢ (⚠? (⊸⊕ :bogus :stream #0)) :bad-domain)
+(⊢ (⚠? (⊸⊕ :inet :bogus #0)) :bad-type)

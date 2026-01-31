@@ -1697,6 +1697,39 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                 return val;  /* Unwrap: return value as-is */
             }
 
+            /* ∈⊡ - refinement type definition (special form: name arg unevaluated) */
+            if (id == SYM_ID_REFINE_DEF) {
+                /* Parse: (∈⊡ name base-type-expr predicate-expr) */
+                Cell* name = cell_car(rest);
+                Cell* base_expr = cell_car(cell_cdr(rest));
+                Cell* pred_expr = cell_car(cell_cdr(cell_cdr(rest)));
+
+                if (!cell_is_symbol(name)) {
+                    return cell_error_at("∈⊡ requires symbol as first argument", name, expr->span);
+                }
+
+                /* Evaluate base type and predicate */
+                Cell* base_type = eval_internal(ctx, env, base_expr);
+                if (UNLIKELY(cell_is_error(base_type))) {
+                    error_stamp_return(base_type, expr->span.inline_span.lo);
+                    return base_type;
+                }
+
+                Cell* predicate = eval_internal(ctx, env, pred_expr);
+                if (UNLIKELY(cell_is_error(predicate))) {
+                    error_stamp_return(predicate, expr->span.inline_span.lo);
+                    return predicate;
+                }
+
+                /* Call the primitive with (name base_type predicate) */
+                extern Cell* prim_refine_def(Cell*);
+                Cell* args = cell_cons(name, cell_cons(base_type, cell_cons(predicate, cell_nil())));
+                cell_retain(name);
+                Cell* result = prim_refine_def(args);
+                cell_release(args);
+                return result;
+            }
+
             /* ∇ - pattern match (special form) */
             if (id == SYM_ID_RECUR) {
                 Cell* expr_unevaled = cell_car(rest);

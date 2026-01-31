@@ -1,11 +1,110 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-01-31 (Day 125 COMPLETE)
+Updated: 2026-01-31 (Day 127 COMPLETE)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 125 - FFI with JIT-Compiled Stubs (2026-01-31)
+# Session Handoff: Day 127 - HFT-Grade Refinement Types (2026-01-31)
+
+## Day 127 Progress - HFT-Grade Gradual Dependent Types — Refinement Types (`∈⊡`)
+
+**RESULT:** 125 test files (125 passing, 0 failures), 10 new primitives + 1 special form, three-tier predicate evaluation with constraint trees
+
+### Changes:
+
+1. **Special form `∈⊡` (define refinement type)** — Added `SYM_ID_REFINE_DEF = 31` to intern table. Handler in eval.c takes unevaluated name, evaluates base type and predicate. Auto-resolves 0-arity builtins (ℤ, 𝕊, etc.) to type structs.
+
+2. **Three-tier predicate evaluation:**
+   - **Tier 0 (~2ns):** Compiled C templates — `tpl_gt`, `tpl_ge`, `tpl_lt`, `tpl_le`, `tpl_eq`, `tpl_ne`, `tpl_range`, `tpl_mod_eq`. Pattern-matched from constraint tree at definition time.
+   - **Tier 1 (~50ns):** Constraint tree interpretation — `RConstraint` algebraic data type with `RCON_CMP`, `RCON_AND`, `RCON_OR`, `RCON_NOT`, `RCON_MOD_EQ`, `RCON_RANGE`, `RCON_PRED` nodes. Recursive `rcon_eval` over the tree.
+   - **Tier 2 (~500ns):** Direct lambda application — Extends closure env with the argument, evaluates body. Used as fallback when constraint extraction fails (e.g., string predicates using `≈#`).
+
+3. **Constraint extraction from lambda body** — Pattern-matches De Bruijn-converted AST (bare numbers for parameter refs, `(⌜ N)` for quoted literals) to build constraint trees. Handles comparisons, logical AND/OR/NOT, modulo, and range patterns.
+
+4. **Predicate cache** — Bounded Swiss table with 4096 entries, SipHash keys on (name_id, value), avoids repeated evaluation for hot paths.
+
+5. **Refinement registry** — 256-bucket hash table keyed by interned symbol ID + linked list for enumeration. Supports composed refinements with parent1/parent2/is_and fields.
+
+6. **10 primitives:** `∈⊡?` (check), `∈⊡!` (assert), `∈⊡⊙` (base type), `∈⊡→` (predicate), `∈⊡⊢` (constraint tree), `∈⊡∧` (intersect), `∈⊡∨` (union), `∈⊡∀` (list all), `∈⊡∈` (find matching), `∈⊡⊆` (subtype check).
+
+7. **test_refinement_types.test** — ~35 assertions: definition, check (positive/negative/zero/even/percentage/nonzero/nonempty), base type mismatch, string refinements, assert (ok/fail), introspection (base type/predicate/constraint tree), composition (AND/OR), subtyping, listing, finding.
+
+### Key bugs fixed:
+- **CELL_LAMBDA not self-evaluating in eval_internal** — Tier 2 originally constructed `(lambda val)` as a cons pair and called `eval_internal`, but CELL_LAMBDA falls through to "eval-error" since it's not handled as self-evaluating. Fixed by directly applying the lambda: extend closure env with arg, eval body in new env.
+- **Constraint extraction failed on De Bruijn bodies** — `is_debruijn_0` checked for `(:__indexed__ 0)` pair, but De Bruijn conversion uses bare `cell_number(0)` for parameter refs and `(⌜ N)` for literal numbers. Fixed to match actual AST structure.
+- **Subtype check failed on builtin type constructors** — `∈⊡⊆` compared stored type struct against raw `ℤ` builtin. Fixed by auto-resolving 0-arity builtins in `prim_refine_subtype`.
+
+### Files Modified (4):
+- `bootstrap/intern.h` — `SYM_ID_REFINE_DEF 31`, `MAX_SPECIAL_FORM_ID 31`
+- `bootstrap/intern.c` — UTF-8 preload entry for `∈⊡` at index 31
+- `bootstrap/eval.c` — `∈⊡` special form handler
+- `bootstrap/primitives.h` — 11 primitive declarations
+- `bootstrap/primitives.c` — ~500 lines: RConstraint structs, tier evaluation, registry, cache, constraint extraction, 11 implementations + table entries
+
+### Files Created (1):
+- **NEW** `bootstrap/tests/test_refinement_types.test` — Refinement types test suite
+
+### Primitive Count: 499 (488 prior + 11 refinement)
+### Test Files: 125 (125 passing, 0 failures)
+
+---
+
+## Day 126 Progress - HFT-Grade Networking — io_uring/kqueue Event Ring + Zero-Copy Sockets (`⊸`)
+
+**RESULT:** 124 test files (124 passing, 0 failures), 35 new networking primitives, platform-abstracted async I/O ring (kqueue on macOS, io_uring on Linux, IOCP placeholder on Windows)
+
+### Changes:
+
+1. **Platform-abstracted event ring (`ring.h` + `ring.c`)** — Unified async I/O API across three backends: io_uring (Linux, direct syscalls without liburing), kqueue (macOS, readiness→completion emulation), IOCP (Windows, placeholder). EventRing struct, BufferRing for zero-alloc provided buffers, RingCQE unified completion events. Batch submit/complete, multishot accept/recv emulation on kqueue.
+
+2. **20 socket primitives:**
+   - Lifecycle: `⊸⊕` (socket), `⊸×` (close), `⊸×→` (shutdown), `⊸⊕⊞` (socketpair), `⊸?` (predicate)
+   - Address: `⊸⊙` (IPv4), `⊸⊙₆` (IPv6), `⊸⊙⊘` (Unix domain)
+   - Client/server: `⊸→⊕` (connect), `⊸←≔` (bind), `⊸←⊕` (listen), `⊸←` (accept), `⊸⊙→` (resolve)
+   - I/O: `⊸→` (send), `⊸←◈` (recv), `⊸→⊙` (sendto), `⊸←⊙` (recvfrom)
+   - Options: `⊸≔` (setsockopt), `⊸≔→` (getsockopt), `⊸#` (peername)
+
+3. **15 ring primitives:**
+   - Ring lifecycle: `⊸⊚⊕` (create), `⊸⊚×` (destroy), `⊸⊚?` (predicate)
+   - Buffer pool: `⊸⊚◈⊕` (create), `⊸⊚◈×` (destroy), `⊸⊚◈→` (get), `⊸⊚◈←` (return)
+   - Async ops: `⊸⊚←` (accept), `⊸⊚←◈` (recv), `⊸⊚→` (send), `⊸⊚→∅` (zero-copy send), `⊸⊚→⊕` (connect), `⊸⊚→×` (close), `⊸⊚!` (submit), `⊸⊚⊲` (complete)
+
+4. **Ring/BufferRing stored as `CELL_FFI_PTR`** with type tags `"ring"` and `"bufring"`, finalizers for automatic cleanup.
+
+5. **Completions returned as list of HashMaps (`⊞`)** with keys `:result`, `:user-data`, `:buffer-id`, `:more`, `:op`.
+
+6. **Socket options:** `:reuse-addr`, `:reuse-port`, `:keepalive`, `:rcvbuf`, `:sndbuf`, `:nodelay`, `:nonblock`, `:busy-poll`, `:prefer-busy-poll`. Platform-graceful (`:busy-poll` is no-op on macOS).
+
+7. **Addresses are byte buffers (◈)** — sockaddr packed into existing CELL_BUFFER type. Values as boundaries.
+
+8. **test_net.test** — ~50 assertions: address construction (IPv4/IPv6/Unix/bad-input), socket lifecycle (create/close/double-close/predicate), socketpair echo (bidirectional send/recv), socket options (SO_REUSEADDR, nonblock), ring lifecycle, buffer pool (create/get/return), ring async (socketpair send+recv via ring), UDP sockets, DNS resolve, error cases.
+
+9. **stdlib/net.scm** — High-level wrappers: `⊸:tcp-connect`, `⊸:tcp-listen`, `⊸:tcp-accept`, `⊸:ring-echo-once`, `⊸:send-string`, `⊸:recv-string`.
+
+### HFT Techniques Incorporated:
+- **Zero-copy send** via `IORING_OP_SEND_ZC` (Linux) / fallback to regular send (macOS)
+- **Provided buffer rings** for zero-alloc recv (io_uring kernel-shared / kqueue free-stack emulation)
+- **Multishot operations** — single submit → N completions (accept, recv)
+- **Batch submit/complete** — amortize syscall overhead
+- **SO_BUSY_POLL** support (Linux HFT polling mode)
+- **No liburing dependency** — inline io_uring syscall wrappers
+
+### Files Created (4):
+- **NEW** `bootstrap/ring.h` — Event ring types, platform abstraction API
+- **NEW** `bootstrap/ring.c` — kqueue backend (macOS) + io_uring backend (Linux) + IOCP placeholder
+- **NEW** `bootstrap/tests/test_net.test` — Networking test suite
+- **NEW** `bootstrap/stdlib/net.scm` — High-level networking wrappers
+
+### Files Modified (3):
+- `bootstrap/primitives.h` — 35 prim_net_*/prim_ring_* declarations
+- `bootstrap/primitives.c` — 35 networking primitive implementations + table entries, `#include "ring.h"`
+- `Makefile` — ring.c added to SOURCES, dependency line for ring.o
+
+### Primitive Count: 488 (453 prior + 35 networking)
+### Test Files: 124 (124 passing, 0 failures)
+
+---
 
 ## Day 125 Progress - HFT-Grade FFI with JIT-Compiled Stubs (`⌁`)
 

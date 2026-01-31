@@ -1,0 +1,65 @@
+; === Day 127: HFT-Grade Refinement Types ===
+; Three-tier predicate evaluation with constraint trees
+
+; === Definition ===
+(∈⊡ :Positive ℤ (λ (x) (> x #0)))
+(∈⊡ :NonNeg ℤ (λ (x) (≥ x #0)))
+(∈⊡ :Even ℤ (λ (x) (≡ (% x #2) #0)))
+(∈⊡ :Percentage ℤ (λ (x) (∧ (≥ x #0) (≤ x #100))))
+(∈⊡ :NonZero ℤ (λ (x) (≢ x #0)))
+(∈⊡ :NonEmpty 𝕊 (λ (s) (> (≈# s) #0)))
+
+; === Check (∈⊡?) ===
+(⊨ :pos-5       #t (∈⊡? #5 :Positive))
+(⊨ :pos-neg3    #f (∈⊡? #-3 :Positive))
+(⊨ :pos-0       #f (∈⊡? #0 :Positive))
+(⊨ :nonneg-0    #t (∈⊡? #0 :NonNeg))
+(⊨ :nonneg-neg  #f (∈⊡? #-1 :NonNeg))
+(⊨ :even-4      #t (∈⊡? #4 :Even))
+(⊨ :even-3      #f (∈⊡? #3 :Even))
+(⊨ :pct-50      #t (∈⊡? #50 :Percentage))
+(⊨ :pct-101     #f (∈⊡? #101 :Percentage))
+(⊨ :pct-neg     #f (∈⊡? #-1 :Percentage))
+(⊨ :nz-5        #t (∈⊡? #5 :NonZero))
+(⊨ :nz-0        #f (∈⊡? #0 :NonZero))
+(⊨ :wrong-base  #f (∈⊡? "hello" :Positive))
+
+; === String refinement ===
+(⊨ :ne-hello    #t (∈⊡? "hello" :NonEmpty))
+(⊨ :ne-empty    #f (∈⊡? "" :NonEmpty))
+
+; === Assert (∈⊡!) ===
+(⊨ :assert-ok   #5 (∈⊡! #5 :Positive))
+(⊨ :assert-fail #t (⚠? (∈⊡! #-3 :Positive)))
+(⊨ :assert-pct  #50 (∈⊡! #50 :Percentage))
+
+; === Introspection ===
+(⊨ :base-int    #t (∈≡ (∈⊡⊙ :Positive) (ℤ)))
+(⊨ :base-str    #t (∈≡ (∈⊡⊙ :NonEmpty) (𝕊)))
+(⊨ :pred-fn     #t (≡ (∈⊙ (∈⊡→ :Positive)) :function))
+(⊨ :pred-apply  #t ((∈⊡→ :Positive) #5))
+(⊨ :undef-err   #t (⚠? (∈⊡⊙ :NoSuch)))
+
+; === Constraint tree (∈⊡⊢) ===
+(⊨ :con-not-nil #t (¬ (∅? (∈⊡⊢ :Positive))))
+
+; === Composition ===
+(≔ pos-even (∈⊡∧ :Positive :Even))
+(⊨ :and-4      #t (∈⊡? #4 pos-even))
+(⊨ :and-3      #f (∈⊡? #3 pos-even))
+(⊨ :and-neg2   #f (∈⊡? #-2 pos-even))
+
+(≔ pos-or-neg (∈⊡∨ :Positive :NonNeg))
+(⊨ :or-5       #t (∈⊡? #5 pos-or-neg))
+(⊨ :or-0       #t (∈⊡? #0 pos-or-neg))
+
+; === Subtyping ===
+(⊨ :sub-base   #t (∈⊡⊆ :Positive ℤ))
+(⊨ :sub-any    #t (∈⊡⊆ :Positive ⊤))
+(⊨ :sub-wrong  #f (∈⊡⊆ :Positive 𝕊))
+
+; === List all ===
+(⊨ :list-nonempty #t (¬ (∅? (∈⊡∀))))
+
+; === Find matching ===
+(⊨ :find-5 #t (¬ (∅? (∈⊡∈ #5))))

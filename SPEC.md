@@ -1558,6 +1558,110 @@ At bind time, per-signature machine code stubs are JIT-compiled (ARM64 AAPCS64 o
 
 ---
 
+### Networking — HFT-Grade Event Ring + Zero-Copy Sockets (35 primitives) ✅
+
+Three-layer architecture: platform-abstracted async I/O ring (`ring.h`/`ring.c`), socket primitives, and ring async operations. Backends: io_uring (Linux), kqueue (macOS), IOCP (Windows).
+
+#### Socket Lifecycle (5)
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `⊸⊕` | `:sym → :sym → ℕ → ℕ\|⚠` | Create socket (domain, type, proto) | ✅ DONE (Day 126) |
+| `⊸×` | `ℕ → 𝔹\|⚠` | Close socket | ✅ DONE (Day 126) |
+| `⊸×→` | `ℕ → :sym → 𝔹\|⚠` | Shutdown socket (:rd :wr :rdwr) | ✅ DONE (Day 126) |
+| `⊸⊕⊞` | `:sym → :sym → ⟨ℕ ℕ⟩\|⚠` | Create connected socketpair | ✅ DONE (Day 126) |
+| `⊸?` | `α → 𝔹` | Socket predicate (fstat + S_ISSOCK) | ✅ DONE (Day 126) |
+
+#### Address Construction (3)
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `⊸⊙` | `≈ → ℕ → ◈\|⚠` | IPv4 address (inet_pton → sockaddr_in as buffer) | ✅ DONE (Day 126) |
+| `⊸⊙₆` | `≈ → ℕ → ◈\|⚠` | IPv6 address (sockaddr_in6 as buffer) | ✅ DONE (Day 126) |
+| `⊸⊙⊘` | `≈ → ◈\|⚠` | Unix domain address (sockaddr_un as buffer) | ✅ DONE (Day 126) |
+
+#### Synchronous Client/Server (5)
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `⊸→⊕` | `ℕ → ◈ → 𝔹\|⚠` | Connect to address | ✅ DONE (Day 126) |
+| `⊸←≔` | `ℕ → ◈ → 𝔹\|⚠` | Bind to address | ✅ DONE (Day 126) |
+| `⊸←⊕` | `ℕ → ℕ → 𝔹\|⚠` | Listen (backlog) | ✅ DONE (Day 126) |
+| `⊸←` | `ℕ → ⟨ℕ ◈⟩\|⚠` | Accept connection | ✅ DONE (Day 126) |
+| `⊸⊙→` | `≈ → ≈\|∅ → [◈]\|⚠` | DNS resolve (getaddrinfo) | ✅ DONE (Day 126) |
+
+#### Synchronous I/O (4)
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `⊸→` | `ℕ → ◈ → ℕ → ℕ\|⚠` | Send (fd, buf, flags) | ✅ DONE (Day 126) |
+| `⊸←◈` | `ℕ → ℕ → ℕ → ◈\|⚠` | Recv (fd, maxlen, flags) | ✅ DONE (Day 126) |
+| `⊸→⊙` | `ℕ → ◈ → ℕ → ◈ → ℕ\|⚠` | UDP sendto | ✅ DONE (Day 126) |
+| `⊸←⊙` | `ℕ → ℕ → ℕ → ⟨◈ ◈⟩\|⚠` | UDP recvfrom | ✅ DONE (Day 126) |
+
+#### Socket Options (3)
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `⊸≔` | `ℕ → :sym → α → 𝔹\|⚠` | Set socket option (:reuse-addr :nodelay :nonblock etc.) | ✅ DONE (Day 126) |
+| `⊸≔→` | `ℕ → :sym → α\|⚠` | Get socket option | ✅ DONE (Day 126) |
+| `⊸#` | `ℕ → ◈\|⚠` | Get peer address (getpeername) | ✅ DONE (Day 126) |
+
+#### Event Ring Lifecycle (3)
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `⊸⊚⊕` | `ℕ → ⊸⊚\|⚠` | Create event ring (SQ entries) | ✅ DONE (Day 126) |
+| `⊸⊚×` | `⊸⊚ → ∅` | Destroy ring | ✅ DONE (Day 126) |
+| `⊸⊚?` | `α → 𝔹` | Ring predicate | ✅ DONE (Day 126) |
+
+Ring stored as `CELL_FFI_PTR` with type tag `"ring"` and finalizer.
+
+#### Buffer Pool (4)
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `⊸⊚◈⊕` | `⊸⊚ → ℕ → ℕ → ⊸◈\|⚠` | Create buffer pool (ring, count, buf_size) | ✅ DONE (Day 126) |
+| `⊸⊚◈×` | `⊸◈ → ∅` | Destroy buffer pool | ✅ DONE (Day 126) |
+| `⊸⊚◈→` | `⊸◈ → ℕ → ◈` | Get buffer by ID (zero-copy view) | ✅ DONE (Day 126) |
+| `⊸⊚◈←` | `⊸◈ → ℕ → ∅` | Return buffer to pool | ✅ DONE (Day 126) |
+
+Buffer pool stored as `CELL_FFI_PTR` with type tag `"bufring"`.
+
+#### Async Ring Operations (8)
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `⊸⊚←` | `⊸⊚ → ℕ → ℕ → 𝔹\|⚠` | Async accept (multishot on Linux) | ✅ DONE (Day 126) |
+| `⊸⊚←◈` | `⊸⊚ → ℕ → ℕ → ℕ → 𝔹\|⚠` | Async recv (provided bufs on Linux) | ✅ DONE (Day 126) |
+| `⊸⊚→` | `⊸⊚ → ℕ → ◈ → ℕ → 𝔹\|⚠` | Async send | ✅ DONE (Day 126) |
+| `⊸⊚→∅` | `⊸⊚ → ℕ → ◈ → ℕ → 𝔹\|⚠` | Zero-copy send (Linux; fallback on macOS) | ✅ DONE (Day 126) |
+| `⊸⊚→⊕` | `⊸⊚ → ℕ → ◈ → ℕ → 𝔹\|⚠` | Async connect | ✅ DONE (Day 126) |
+| `⊸⊚→×` | `⊸⊚ → ℕ → ℕ → 𝔹\|⚠` | Async close | ✅ DONE (Day 126) |
+| `⊸⊚!` | `⊸⊚ → ℕ\|⚠` | Submit pending SQEs to kernel | ✅ DONE (Day 126) |
+| `⊸⊚⊲` | `⊸⊚ → ℕ → ℕ → [⊞]\|⚠` | Harvest completions (wait_min, timeout_ms) | ✅ DONE (Day 126) |
+
+Completions returned as list of HashMaps with keys: `:result`, `:user-data`, `:buffer-id`, `:more`, `:op`.
+
+**HFT Techniques:**
+- io_uring multishot recv + provided buffer rings (zero-alloc recv)
+- Zero-copy send via `IORING_OP_SEND_ZC` (Linux, >3KB payloads)
+- `SO_BUSY_POLL` / `SO_PREFER_BUSY_POLL` for polling-mode sockets
+- Batch submit/complete — amortize syscall overhead
+- No liburing dependency — inline syscall wrappers
+
+**Usage:**
+```scheme
+; Socketpair echo
+(≔ pair (⊸⊕⊞ :unix :stream))
+(⊸→ (◁ pair) (≈◈ "hello") #0)
+(≔ got (⊸←◈ (▷ pair) #1024 #0))
+
+; Ring async send/recv
+(≔ ring (⊸⊚⊕ #64))
+(⊸⊚→ ring fd (≈◈ "data") #100)
+(⊸⊚! ring)
+(≔ cqes (⊸⊚⊲ ring #1 #500))
+
+; TCP server
+(≔ fd (⊸:tcp-listen "0.0.0.0" #8080))
+(≔ client (⊸:tcp-accept fd))
+```
+
+---
+
 ### Mutable References (6) ✅
 | Symbol | Type | Meaning | Status |
 |--------|------|---------|--------|
@@ -1937,13 +2041,20 @@ Full pattern matching with guards, as-patterns, or-patterns, and view patterns. 
 | `⤴` | Pure lift | Identity (value unchanged) | ✅ DONE |
 | `≫` | Effect bind | Apply function to value | ✅ DONE |
 
-### Refinement Types (4) - COMPILE TIME ONLY
-| Symbol | Type | Meaning |
-|--------|------|---------|
-| `{⋅∣φ}` | `{ν:τ ∣ φ}` | Refinement |
-| `⊢` | `⊢ φ` | Proof |
-| `⊨` | `⊨ α φ` | Assert |
-| `∴` | Therefore | Conclusion |
+### Refinement Types (11) ✅
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `∈⊡` | `:sym → Type → λ → :sym` | Define refinement type (special form) | ✅ DONE (Day 127) |
+| `∈⊡?` | `α → :sym → 𝔹` | Check value against refinement | ✅ DONE (Day 127) |
+| `∈⊡!` | `α → :sym → α` | Assert value satisfies refinement | ✅ DONE (Day 127) |
+| `∈⊡⊙` | `:sym → Type` | Get base type of refinement | ✅ DONE (Day 127) |
+| `∈⊡→` | `:sym → λ` | Get predicate of refinement | ✅ DONE (Day 127) |
+| `∈⊡⊢` | `:sym → Cell` | Get constraint tree of refinement | ✅ DONE (Day 127) |
+| `∈⊡∧` | `:sym → :sym → :sym` | Intersect two refinements | ✅ DONE (Day 127) |
+| `∈⊡∨` | `:sym → :sym → :sym` | Union two refinements | ✅ DONE (Day 127) |
+| `∈⊡∀` | `() → [(:sym . RefinementDef)]` | List all refinements | ✅ DONE (Day 127) |
+| `∈⊡∈` | `α → [(:sym)]` | Find refinements matching a value | ✅ DONE (Day 127) |
+| `∈⊡⊆` | `:sym → Type → 𝔹` | Refinement subtype check | ✅ DONE (Day 127) |
 
 ### Actors (7) ✅
 | Symbol | Type | Meaning | Status |
