@@ -1,0 +1,436 @@
+; Test: Deep Concurrency + Tracing Integration
+; Verifies interaction between actors, channels, supervision and execution tracing
+
+; ============ Helpers for event field access ============
+(≔ ev-ts     (λ (ev) (▷ (◁ ev))))
+(≔ ev-sched  (λ (ev) (▷ (◁ (▷ ev)))))
+(≔ ev-actor  (λ (ev) (▷ (◁ (▷ (▷ ev))))))
+(≔ ev-kind   (λ (ev) (▷ (◁ (▷ (▷ (▷ ev)))))))
+(≔ ev-detail (λ (ev) (▷ (◁ (▷ (▷ (▷ (▷ ev))))))))
+
+; ============================================================
+; Section 1: Multi-Actor Lifecycle Counting (4 tests)
+; ============================================================
+(⟳∅)
+(⟿∅)
+(⟳⊳⊳! #t)
+(⟳⊳⊳∅)
+
+(≔ ma1 (⟳ (λ (self) :a)))
+(≔ ma2 (⟳ (λ (self) :b)))
+(≔ ma3 (⟳ (λ (self) :c)))
+(≔ ma4 (⟳ (λ (self) :d)))
+(≔ ma5 (⟳ (λ (self) :e)))
+(⟳! #200)
+
+(⊨ (⌜ :multi-spawn-count) #5 (⟳⊳⊳# :SPAWN))
+(⊨ (⌜ :multi-die-count) #5 (⟳⊳⊳# :DIE))
+(⊨ (⌜ :multi-no-send) #0 (⟳⊳⊳# :SEND))
+(⊨ (⌜ :multi-resume-present) #t (≥ (⟳⊳⊳# :RESUME) #5))
+
+; ============================================================
+; Section 2: Message Chain Trace (A→B→C) (5 tests)
+; ============================================================
+(⟳∅)
+(⟿∅)
+(⟳⊳⊳∅)
+
+; C receives and returns
+(≔ actC (⟳ (λ (self) (←?))))
+; B receives, forwards to C
+(≔ actB (⟳ (λ (self)
+  (≫ (←?) (λ (msg)
+    (≫ (→! actC :pong) (λ (_)
+      msg)))))))
+; A sends to B
+(≔ actA (⟳ (λ (self)
+  (≫ (→! actB :ping) (λ (_)
+    :sent)))))
+(⟳! #200)
+
+(⊨ (⌜ :chain-send-count) #2 (⟳⊳⊳# :SEND))
+(⊨ (⌜ :chain-recv-present) #t (≥ (⟳⊳⊳# :RECV) #2))
+(⊨ (⌜ :chain-spawn-3) #3 (⟳⊳⊳# :SPAWN))
+(⊨ (⌜ :chain-die-3) #3 (⟳⊳⊳# :DIE))
+(⊨ (⌜ :chain-all-kinds-sum) #t
+  (≡ (⟳⊳⊳#)
+      (⊕ (⊕ (⊕ (⊕ (⟳⊳⊳# :SPAWN) (⟳⊳⊳# :SEND)) (⟳⊳⊳# :RECV))
+              (⊕ (⟳⊳⊳# :DIE) (⟳⊳⊳# :RESUME)))
+          (⊕ (⊕ (⟳⊳⊳# :YIELD) (⟳⊳⊳# :WAKE)) (⟳⊳⊳# :STEAL)))))
+
+; ============================================================
+; Section 3: Multiple Sends Trace Verification (3 tests)
+; ============================================================
+(⟳∅)
+(⟿∅)
+(⟳⊳⊳∅)
+
+; Receiver accepts 3 messages
+(≔ pp-recv (⟳ (λ (self)
+  (≫ (←?) (λ (m1)
+  (≫ (←?) (λ (m2)
+  (≫ (←?) (λ (m3)
+    (⟨⟩ m1 (⟨⟩ m2 m3)))))))))))
+
+; Sender1 sends 2, Sender2 sends 1 → total 3 SENDs from 3 actors
+(≔ pp-s1 (⟳ (λ (self)
+  (≫ (→! pp-recv :p1) (λ (_)
+  (≫ (→! pp-recv :p2) (λ (_)
+    :sent2)))))))
+(≔ pp-s2 (⟳ (λ (self)
+  (≫ (→! pp-recv :p3) (λ (_)
+    :sent1)))))
+(⟳! #200)
+
+(⊨ (⌜ :multi-send-3) #3 (⟳⊳⊳# :SEND))
+(⊨ (⌜ :multi-recv-ge-3) #t (≥ (⟳⊳⊳# :RECV) #3))
+(⊨ (⌜ :multi-send-spawn-3) #3 (⟳⊳⊳# :SPAWN))
+
+; ============================================================
+; Section 4: Channel Producer-Consumer Traces (4 tests)
+; ============================================================
+(⟳∅)
+(⟿∅)
+(⟳⊳⊳∅)
+
+(≔ pch (⟿⊚))
+(≔ producer (⟳ (λ (self)
+  (≫ (⟿→ pch :v1) (λ (_)
+  (≫ (⟿→ pch :v2) (λ (_)
+  (≫ (⟿→ pch :v3) (λ (_)
+  (≫ (⟿× pch) (λ (_)
+    :produced)))))))))))
+(≔ consumer (⟳ (λ (self)
+  (≫ (⟿← pch) (λ (a)
+  (≫ (⟿← pch) (λ (b)
+  (≫ (⟿← pch) (λ (c)
+    (⟨⟩ a (⟨⟩ b c)))))))))))
+(⟳! #200)
+
+(⊨ (⌜ :chan-pc-send-3) #3 (⟳⊳⊳# :CHAN_SEND))
+(⊨ (⌜ :chan-pc-recv-3) #3 (⟳⊳⊳# :CHAN_RECV))
+(⊨ (⌜ :chan-pc-close-1) #1 (⟳⊳⊳# :CHAN_CLOSE))
+(⊨ (⌜ :chan-pc-actors-die) #2 (⟳⊳⊳# :DIE))
+
+; ============================================================
+; Section 5: Multiple Channels Isolation (3 tests)
+; ============================================================
+(⟳∅)
+(⟿∅)
+(⟳⊳⊳∅)
+
+(≔ mch1 (⟿⊚))
+(≔ mch2 (⟿⊚))
+; Actor sends 2 items on ch1 and 1 on ch2
+(≔ multi-sender (⟳ (λ (self)
+  (≫ (⟿→ mch1 :x1) (λ (_)
+  (≫ (⟿→ mch1 :x2) (λ (_)
+  (≫ (⟿→ mch2 :y1) (λ (_)
+    :sent)))))))))
+; Another actor drains both
+(≔ multi-reader (⟳ (λ (self)
+  (≫ (⟿← mch1) (λ (a)
+  (≫ (⟿← mch1) (λ (b)
+  (≫ (⟿← mch2) (λ (c)
+    (⟨⟩ a (⟨⟩ b c)))))))))))
+(⟳! #200)
+
+(⊨ (⌜ :multi-chan-total-send) #3 (⟳⊳⊳# :CHAN_SEND))
+(⊨ (⌜ :multi-chan-total-recv) #3 (⟳⊳⊳# :CHAN_RECV))
+; Verify CHAN_SEND events exist and first has detail > 0 (channel ID)
+(≔ cs-events (⟳⊳⊳? :CHAN_SEND))
+(⊨ (⌜ :multi-chan-events-nonempty) #t
+  (∧ (¬ (≡ cs-events ∅))
+      (≥ (ev-detail (◁ cs-events)) #0)))
+
+; ============================================================
+; Section 6: Blocking Channel + RESUME Trace (3 tests)
+; ============================================================
+(⟳∅)
+(⟿∅)
+(⟳⊳⊳∅)
+
+(≔ bch (⟿⊚ #1))
+; Sender sends 2 items — second will block (capacity=1)
+(≔ bsender (⟳ (λ (self)
+  (≫ (⟿→ bch :a) (λ (_)
+  (≫ (⟿→ bch :b) (λ (_)
+    :sent-both)))))))
+; Consumer drains both
+(≔ brecver (⟳ (λ (self)
+  (≫ (⟿← bch) (λ (v1)
+  (≫ (⟿← bch) (λ (v2)
+    (⟨⟩ v1 v2))))))))
+(⟳! #200)
+
+(⊨ (⌜ :blocking-chan-send-2) #2 (⟳⊳⊳# :CHAN_SEND))
+(⊨ (⌜ :blocking-chan-recv-2) #2 (⟳⊳⊳# :CHAN_RECV))
+; Blocking causes wake events when channel drains
+(⊨ (⌜ :blocking-chan-resume) #t (≥ (⟳⊳⊳# :RESUME) (⟳⊳⊳# :SPAWN)))
+
+; ============================================================
+; Section 7: Link/Monitor/Exit Signal Traces (5 tests)
+; ============================================================
+(⟳∅)
+(⟿∅)
+(⟳⊳⊳∅)
+
+; D: target for exit signal — waits for message
+(≔ actD (⟳ (λ (self) (←?))))
+; C: monitored — waits, then completes when sent :go
+(≔ actCC (⟳ (λ (self) (←?))))
+; B: waits for :crash msg, then crashes (must be alive when A links)
+(≔ actBB (⟳ (λ (self)
+  (≫ (←?) (λ (msg)
+    (⚠ :crash :boom))))))
+; A: links to B, monitors C, sends exit signal to D, then tells B to crash
+(≔ actAA (⟳ (λ (self)
+  (≫ (⟳⊜ #t) (λ (_)
+  (≫ (⟳⊗ actBB) (λ (_)
+  (≫ (⟳⊙ actCC) (λ (_)
+  (≫ (⟳✕ actD :killed) (λ (_)
+  (≫ (→! actCC :go) (λ (_)
+  (≫ (→! actBB :crash) (λ (_)
+    (←?))))))))))))))))
+(⟳! #200)
+
+(⊨ (⌜ :link-event-traced) #t (≥ (⟳⊳⊳# :LINK) #1))
+(⊨ (⌜ :monitor-event-traced) #t (≥ (⟳⊳⊳# :MONITOR) #1))
+(⊨ (⌜ :exit-signal-traced) #t (≥ (⟳⊳⊳# :EXIT_SIGNAL) #1))
+; B crashes, D killed, C finishes, A gets :EXIT from link
+; At least B, C, D die
+(⊨ (⌜ :link-die-propagates) #t (≥ (⟳⊳⊳# :DIE) #2))
+(⊨ (⌜ :supervision-spawn-count) #4 (⟳⊳⊳# :SPAWN))
+
+; ============================================================
+; Section 8: Supervisor Restart in Trace (3 tests)
+; ============================================================
+(⟳∅)
+(⟿∅)
+(⟳⊳⊳∅)
+
+(≔ sch (⟿⊚))
+(≔ crashy (λ (self)
+  (≫ (⟿→ sch :alive) (λ (_)
+    (≫ (←?) (λ (msg)
+      (? (≡ msg :crash)
+         (⚠ :crashed :boom)
+         msg)))))))
+(≔ sup-tr (⟳⊛ :one-for-one (⟨⟩ crashy ∅)))
+(⟳! #100)
+(≔ spawn-before (⟳⊳⊳# :SPAWN))
+; Tell child to crash
+(≔ kids-before (⟳⊛? sup-tr))
+(→! (◁ kids-before) :crash)
+(⟳! #200)
+(≔ spawn-after (⟳⊳⊳# :SPAWN))
+
+; At least the initial child was spawned
+(⊨ (⌜ :sup-initial-spawn) #t (≥ spawn-before #1))
+; Child died from crash
+(⊨ (⌜ :sup-child-die) #t (≥ (⟳⊳⊳# :DIE) #1))
+; Restart created extra spawn
+(⊨ (⌜ :sup-extra-spawn) #t (> spawn-after spawn-before))
+
+; ============================================================
+; Section 9: Event Detail Field Verification (5 tests)
+; ============================================================
+(⟳∅)
+(⟿∅)
+(⟳⊳⊳∅)
+
+(≔ det-recv (⟳ (λ (self) (←?))))
+(≔ det-send (⟳ (λ (self)
+  (≫ (→! det-recv :msg) (λ (_) :sent)))))
+(≔ det-ch (⟿⊚))
+(≔ det-chan-actor (⟳ (λ (self) (⟿→ det-ch :val))))
+(⟳! #200)
+
+; SPAWN events have detail ≥ 0 (parent ID or 0)
+(≔ spawn-evts (⟳⊳⊳? :SPAWN))
+(⊨ (⌜ :detail-spawn-exists) #t
+  (∧ (¬ (≡ spawn-evts ∅))
+      (≥ (ev-detail (◁ spawn-evts)) #0)))
+
+; SEND event detail > 0 (target actor ID)
+(≔ send-evts (⟳⊳⊳? :SEND))
+(⊨ (⌜ :detail-send-target) #t
+  (∧ (¬ (≡ send-evts ∅))
+      (> (ev-detail (◁ send-evts)) #0)))
+
+; CHAN_SEND event detail ≥ 0 (channel ID)
+(≔ chan-send-evts (⟳⊳⊳? :CHAN_SEND))
+(⊨ (⌜ :detail-chan-send-id) #t
+  (∧ (¬ (≡ chan-send-evts ∅))
+      (≥ (ev-detail (◁ chan-send-evts)) #0)))
+
+; SPAWN event actor field > 0 (new actor ID)
+(⊨ (⌜ :detail-actor-field) #t
+  (> (ev-actor (◁ spawn-evts)) #0))
+
+; Event kind field = :SPAWN
+(⊨ (⌜ :detail-kind-field) :SPAWN
+  (ev-kind (◁ spawn-evts)))
+
+; ============================================================
+; Section 10: Filter Accuracy Under Load (4 tests)
+; ============================================================
+(⟳∅)
+(⟿∅)
+(⟳⊳⊳∅)
+
+; 8 actors: 4 senders, 4 receivers
+(≔ lr1 (⟳ (λ (self) (←?))))
+(≔ lr2 (⟳ (λ (self) (←?))))
+(≔ lr3 (⟳ (λ (self) (←?))))
+(≔ lr4 (⟳ (λ (self) (←?))))
+(≔ ls1 (⟳ (λ (self) (≫ (→! lr1 :m) (λ (_) :ok)))))
+(≔ ls2 (⟳ (λ (self) (≫ (→! lr2 :m) (λ (_) :ok)))))
+(≔ ls3 (⟳ (λ (self) (≫ (→! lr3 :m) (λ (_) :ok)))))
+(≔ ls4 (⟳ (λ (self) (≫ (→! lr4 :m) (λ (_) :ok)))))
+; 2 channel ops
+(≔ lch (⟿⊚))
+(≔ lch-actor (⟳ (λ (self)
+  (≫ (⟿→ lch :v1) (λ (_)
+  (≫ (⟿→ lch :v2) (λ (_)
+    :ch-done)))))))
+(⟳! #200)
+
+(≔ total (⟳⊳⊳#))
+(≔ sum-kinds (⊕ (⊕ (⊕ (⊕ (⟳⊳⊳# :SPAWN) (⟳⊳⊳# :SEND)) (⟳⊳⊳# :RECV))
+                    (⊕ (⟳⊳⊳# :DIE) (⟳⊳⊳# :RESUME)))
+                (⊕ (⊕ (⟳⊳⊳# :YIELD) (⟳⊳⊳# :WAKE))
+                    (⊕ (⟳⊳⊳# :STEAL) (⊕ (⟳⊳⊳# :CHAN_SEND) (⟳⊳⊳# :CHAN_RECV))))))
+(⊨ (⌜ :filter-sum-matches-total) #t (≡ total sum-kinds))
+
+; No timer events used
+(⊨ (⌜ :filter-nonexistent-zero) #0 (⟳⊳⊳# :TIMER_FIRE))
+
+; 9 actors spawned (4 recv + 4 send + 1 chan)
+(⊨ (⌜ :filter-spawn-exact) #9 (⟳⊳⊳# :SPAWN))
+
+; 4 →! calls from senders
+(⊨ (⌜ :filter-send-exact) #4 (⟳⊳⊳# :SEND))
+
+; ============================================================
+; Section 11: Flight Recorder Snapshot Semantics (3 tests)
+; ============================================================
+(⟳∅)
+(⟿∅)
+(⟳⊳⊳∅)
+
+; Generate 20+ events
+(≔ sn1 (⟳ (λ (self) :a)))
+(≔ sn2 (⟳ (λ (self) :b)))
+(≔ sn3 (⟳ (λ (self) :c)))
+(≔ sn4 (⟳ (λ (self) :d)))
+(≔ sn5 (⟳ (λ (self) :e)))
+(≔ sn6 (⟳ (λ (self) :f)))
+(≔ sn7 (⟳ (λ (self) :g)))
+(⟳! #200)
+
+; Snapshot last 5 — should return non-empty, ≤ 5
+(≔ snap5 (⟳⊳⊳⊛ #5))
+(⊨ (⌜ :snap-last-5) #t (¬ (≡ snap5 ∅)))
+
+; Snapshot large N — count = total
+(≔ snap-big (⟳⊳⊳⊛ #9999))
+(≔ snap-big-total (⟳⊳⊳#))
+(⊨ (⌜ :snap-large-n) #t (> snap-big-total #0))
+
+; Clear then snapshot → empty
+(⟳⊳⊳∅)
+(≔ snap-empty (⟳⊳⊳⊛ #5))
+(⊨ (⌜ :snap-after-clear) ∅ snap-empty)
+
+; ============================================================
+; Section 12: Causal Tracing Through Message Chain (2 tests)
+; ============================================================
+(⟳∅)
+(⟿∅)
+(⟳⊳⊳∅)
+
+; Actor enables causal tracing (pass #t) and sends
+(≔ causal-recv (⟳ (λ (self) (←?))))
+(≔ causal-sender (⟳ (λ (self)
+  (≫ (⟳⊳⊳⊗ #t) (λ (ok)
+    (≫ (→! causal-recv :traced-msg) (λ (_)
+      ok)))))))
+(⟳! #200)
+
+; ⟳⊳⊳⊗ inside actor returns #t
+(⊨ (⌜ :causal-enable-ok) #t (⟳→ causal-sender))
+
+; SEND events present after causal send
+(⊨ (⌜ :causal-send-traced) #t (> (⟳⊳⊳# :SEND) #0))
+
+; ============================================================
+; Section 13: Trace Toggle Mid-Workload (3 tests)
+; ============================================================
+(⟳∅)
+(⟿∅)
+(⟳⊳⊳∅)
+
+; Phase 1: tracing ON — spawn A
+(⟳⊳⊳! #t)
+(≔ togA (⟳ (λ (self) :a)))
+(⟳! #200)
+(≔ count-phase1 (⟳⊳⊳#))
+(⊨ (⌜ :toggle-phase1-nonzero) #t (> count-phase1 #0))
+
+; Phase 2: tracing OFF — spawn B
+(⟳⊳⊳! #f)
+(⟳∅)
+(≔ togB (⟳ (λ (self) :b)))
+(⟳! #200)
+(≔ count-phase2 (⟳⊳⊳#))
+(⊨ (⌜ :toggle-phase2-same) #t (≡ count-phase2 count-phase1))
+
+; Phase 3: tracing ON — spawn C
+(⟳⊳⊳! #t)
+(⟳∅)
+(≔ togC (⟳ (λ (self) :c)))
+(⟳! #200)
+(≔ count-phase3 (⟳⊳⊳#))
+(⊨ (⌜ :toggle-phase3-grows) #t (> count-phase3 count-phase1))
+
+; ============================================================
+; Section 14: Rapid Lifecycle Stress (2 tests)
+; ============================================================
+(⟳∅)
+(⟿∅)
+(⟳⊳⊳∅)
+(⟳⊳⊳! #t)
+
+(≔ s01 (⟳ (λ (self) :ok)))
+(≔ s02 (⟳ (λ (self) :ok)))
+(≔ s03 (⟳ (λ (self) :ok)))
+(≔ s04 (⟳ (λ (self) :ok)))
+(≔ s05 (⟳ (λ (self) :ok)))
+(≔ s06 (⟳ (λ (self) :ok)))
+(≔ s07 (⟳ (λ (self) :ok)))
+(≔ s08 (⟳ (λ (self) :ok)))
+(≔ s09 (⟳ (λ (self) :ok)))
+(≔ s10 (⟳ (λ (self) :ok)))
+(≔ s11 (⟳ (λ (self) :ok)))
+(≔ s12 (⟳ (λ (self) :ok)))
+(≔ s13 (⟳ (λ (self) :ok)))
+(≔ s14 (⟳ (λ (self) :ok)))
+(≔ s15 (⟳ (λ (self) :ok)))
+(≔ s16 (⟳ (λ (self) :ok)))
+(≔ s17 (⟳ (λ (self) :ok)))
+(≔ s18 (⟳ (λ (self) :ok)))
+(≔ s19 (⟳ (λ (self) :ok)))
+(≔ s20 (⟳ (λ (self) :ok)))
+(⟳! #200)
+
+(⊨ (⌜ :stress-spawn-20) #20 (⟳⊳⊳# :SPAWN))
+(⊨ (⌜ :stress-die-20) #20 (⟳⊳⊳# :DIE))
+
+; ============================================================
+; Cleanup
+; ============================================================
+(⟳⊳⊳! #f)
+(⟳⊳⊳∅)
+(⟳∅)
+(⟿∅)

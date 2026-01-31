@@ -1,11 +1,154 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-01-31 (Day 127 COMPLETE)
+Updated: 2026-01-31 (Day 136 COMPLETE)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 127 - HFT-Grade Refinement Types (2026-01-31)
+# Session Handoff: Day 136 - HFT-Grade Execution Tracing Complete (2026-01-31)
+
+## Day 136 Progress - HFT-Grade Execution Tracing
+
+**RESULT:** 127 test files (126 passing, 1 pre-existing FFI segfault), 7 new primitives (509 total), ring buffer tracing with flight recorder mode
+
+### Design (Jane Street magic-trace / ftrace / Tracy inspired)
+- Per-thread ring buffer (4096 events, 64KB, L1 resident)
+- `__builtin_expect` branch hint: ~0.3ns disabled cost
+- rdtsc/cntvct_el0 raw timestamps on write, TSCNS calibration converts on read
+- 16-byte fixed TraceEvent (4 per x86 cache line): timestamp(8) + sched_id(2) + actor_id(2) + kind(1) + pad(1) + detail(2)
+- Flight recorder mode: ring overwrites oldest, snapshot last N events on demand
+- Causal token propagation through actor messages (Erlang seq_trace equivalent)
+
+### Trace Points (20 across 4 files)
+| File | Points | Kinds |
+|------|--------|-------|
+| actor.c | 15 | SPAWN, SEND, RECV, DIE, LINK, MONITOR, EXIT_SIGNAL, RESUME (×7 suspend reasons) |
+| scheduler.c | 1 | STEAL |
+| fiber.c | 1 | YIELD |
+| channel.c | 3 | CHAN_SEND, CHAN_RECV, CHAN_CLOSE |
+
+### 7 New Primitives (⟳⊳⊳ prefix)
+| Symbol | Function | Description |
+|--------|----------|-------------|
+| `⟳⊳⊳!` | prim_trace_enable | Enable/disable tracing globally |
+| `⟳⊳⊳?` | prim_trace_read | Read all events or filtered by kind |
+| `⟳⊳⊳∅` | prim_trace_clear | Reset buffer position |
+| `⟳⊳⊳#` | prim_trace_count | Count total or filtered events |
+| `⟳⊳⊳⊛` | prim_trace_snapshot | Flight recorder: all or last N events |
+| `⟳⊳⊳⊗` | prim_trace_causal | Enable causal tracing on current actor |
+| `⟳⊳⊳⊞` | prim_trace_capacity | Returns buffer capacity (4096) |
+
+### Files Modified
+- `bootstrap/scheduler.h` — 15-value TraceEventKind, detail field, g_trace_enabled, TscCalibration, updated trace_record()
+- `bootstrap/scheduler.c` — g_trace_enabled storage, tsc_calibrate(), tsc_to_nanos(), STEAL trace point
+- `bootstrap/actor.h` — 3 causal trace fields (trace_seq, trace_origin, trace_causal)
+- `bootstrap/actor.c` — 15 trace_record() calls + causal token init/propagation
+- `bootstrap/fiber.c` — 1 YIELD trace point
+- `bootstrap/channel.c` — 3 trace points (CHAN_SEND, CHAN_RECV, CHAN_CLOSE)
+- `bootstrap/primitives.h` — 7 new declarations
+- `bootstrap/primitives.c` — 7 primitives + 3 helpers + table entries
+
+### Files Created
+- `bootstrap/tests/test_execution_trace.test` — 16 assertions covering all primitives
+- `bootstrap/tests/test_concurrency_tracing.test` — 49 assertions across 14 sections: multi-actor lifecycle, message chain traces, channel producer-consumer, blocking channel + resume, link/monitor/exit signal traces, supervisor restart, event detail field verification, filter accuracy under load, flight recorder snapshots, causal tracing, trace toggle mid-workload, rapid lifecycle stress
+
+### Primitive Count: 509 (502 prior + 7 trace primitives)
+### Test Files: 127 (126 passing, 1 pre-existing FFI segfault)
+
+### Next Steps
+- Activate multi-scheduler threads (currently single-threaded compatible)
+- Multi-scheduler stress tests
+- Timer fire trace point (TRACE_TIMER_FIRE — enum defined, insertion pending)
+
+---
+
+## Days 129-135 Progress - HFT-Grade Real Concurrency & Parallelism
+
+**RESULT:** 125 test files (124 passing, 1 pre-existing FFI segfault), 5 new primitives, full N:M scheduler infrastructure with thread-safety throughout
+
+### Day 129: Biased Reference Counting + Thread-Local Context
+- Replaced `uint32_t refcount` with split `BiasedRC` (2B biased + 2B owner_tid + 4B atomic shared)
+- Owner thread: non-atomic increment (~1 cycle). Non-owner: atomic CAS on shared counter (~6 cycles)
+- `BRC_IMMORTAL` sentinel for pre-allocated atoms/error templates
+- Thread-local globals: `g_current_fiber`, `g_current_actor`, `g_current_context`, `effect_handler_stack`
+- `_Thread_local uint16_t tls_scheduler_id` in cell.c
+
+### Day 130: BEAM-Style Scheduler with Reduction Counting
+- `Scheduler` struct: 128B-aligned, Chase-Lev WSDeque, park/wake condvars, statistics
+- BEAM reduction counting: `CONTEXT_REDS = 4000`, decrement in eval hot loop, yield via `CELL_YIELD_SENTINEL`
+- `SUSPEND_REDUCTION` fiber state for preempted actors
+- `sched_run_all()` compatibility wrapper delegates to `actor_run_all()`
+- Striped actor locks: 4 `pthread_mutex_t` stripes hashed by actor ID
+
+### Day 131: Vyukov MPMC Channels + Mailboxes
+- Channels: cache-line-aligned `VyukovSlot` (128B each), 1 CAS per enqueue/dequeue
+- Per-actor mailboxes: compact `MailboxSlot` (no cache-line padding), same Vyukov algorithm
+- `channel.h`/`channel.c` fully rewritten with Vyukov MPMC bounded queue
+- Per-actor mailbox init/destroy lifecycle
+
+### Day 132: Intern Table + Shared Subsystem Locks
+- Intern table: `pthread_rwlock` + `_Thread_local` string cache (zero-sync hot path)
+- Extracted `intern_probe_locked()` helper, double-check pattern on write path
+- 9 per-subsystem locks: rwlock for registry/ETS (read-hot), mutex for supervisors/timers/agents/stages/flows/apps/flow-registry
+- All public functions in every subsystem wrapped with appropriate lock/unlock
+
+### Day 133: Chase-Lev Work Stealing + Multi-Scheduler
+- Chase-Lev deque: C11 weak-memory safe, owner push/pop without CAS, stealers use single CAS
+- `home_scheduler` field on Actor for scheduler affinity
+- 2 new primitives: `⟳#` (get/set scheduler count), `⟳#⊙` (current scheduler ID)
+- XorShift32 RNG for random-victim steal loop
+
+### Day 134: Blocking Operations + Condition Variables + Supervision Safety
+- Per-actor `_Atomic int wait_flag` for wake-on-send protocol
+- Per-channel `_Atomic int recv_waiter` / `send_waiter` for blocking channel ops
+- `actor_send()` wakes blocked actor: clear wait_flag → enqueue to home scheduler → unpark
+- `channel_try_send/recv` wake opposite-direction waiters
+- `actor_notify_exit()` thread-safe: copy links/monitors under stripe lock, process outside
+- `actor_link/unlink/add_monitor` protected by ordered stripe locks (deadlock-free)
+
+### Day 135: Polish, Diagnostics, Trace Compatibility
+- `⟳#?` primitive: per-scheduler statistics (reductions, context-switches, steals, actors-run, queue-depth, parked)
+- Thread-local trace event ring buffer (`TraceEvent[4096]`) with `rdtsc`/`cntvct_el0` timestamps
+- `cell_box_set()` uses `__atomic_exchange_n` for cross-thread visibility
+- Full 124/125 regression pass maintained throughout
+
+### Files Modified:
+- `bootstrap/cell.h` — BiasedRC struct, BRC macros
+- `bootstrap/cell.c` — BRC retain/release, atomic box set, TLS scheduler ID
+- `bootstrap/actor.h` — Mailbox/MailboxSlot types, wait_flag, home_scheduler
+- `bootstrap/actor.c` — Vyukov mailbox, 9 subsystem locks, thread-safe link/unlink/notify_exit, wake protocol
+- `bootstrap/channel.h` — VyukovSlot, recv_waiter/send_waiter
+- `bootstrap/channel.c` — Vyukov MPMC queue, wake protocol
+- `bootstrap/scheduler.h` — Scheduler struct, WSDeque, TraceEvent ring
+- `bootstrap/scheduler.c` — Chase-Lev deque, scheduler init/shutdown, trace TLS storage
+- `bootstrap/intern.c` — rwlock + TLS cache, probe_locked helper
+- `bootstrap/eval.c` — Reduction counting in eval hot loop
+- `bootstrap/fiber.h` — SUSPEND_REDUCTION reason
+- `bootstrap/primitives.c` — 5 new primitives (⟳#, ⟳#⊙, ⟳#?)
+
+### Primitive Count: 502 (499 prior + 3 scheduler diagnostics)
+### Test Files: 125 (124 passing, 1 pre-existing FFI segfault)
+
+### Thread-Safety Summary:
+| Component | Strategy | Notes |
+|-----------|----------|-------|
+| Cell refcount | Biased RC | ~1 cycle owner, ~6 cycle non-owner |
+| Context pointers | `_Thread_local` | Zero overhead |
+| Channels | Vyukov MPMC + 128B slots | 1 CAS per op |
+| Mailboxes | Vyukov MPMC (compact) | 1 CAS per op |
+| Run queues | Chase-Lev deque | 0 CAS push/pop, 1 CAS steal |
+| Preemption | Reduction counting | 4000/quantum |
+| Intern table | rwlock + TLS cache | ~2ns hot path |
+| Actor registry | Striped locks (4) | Hash by actor ID |
+| ETS/Named reg | rwlock | Read-hot |
+| Others | mutex | Cold path |
+
+### Next Steps:
+- Resume Day 128 (Execution Tracing) with per-scheduler trace buffers
+- Activate multi-scheduler threads (currently single-threaded compatible)
+- Multi-scheduler stress tests
+
+---
 
 ## Day 127 Progress - HFT-Grade Gradual Dependent Types — Refinement Types (`∈⊡`)
 
