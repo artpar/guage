@@ -230,6 +230,18 @@ Cell* cell_dirstream(void* dir) {
 bool cell_is_port(Cell* c) { return c && c->type == CELL_PORT; }
 bool cell_is_dir(Cell* c) { return c && c->type == CELL_DIR; }
 
+Cell* cell_ffi_ptr(void* ptr, void (*finalizer)(void*), const char* type_tag) {
+    Cell* c = cell_alloc(CELL_FFI_PTR);
+    c->data.ffi_ptr.ptr = ptr;
+    c->data.ffi_ptr.finalizer = finalizer;
+    c->data.ffi_ptr.type_tag = type_tag ? strdup(type_tag) : "unknown";
+    return c;
+}
+
+bool cell_is_ffi_ptr(Cell* c) { return c && c->type == CELL_FFI_PTR; }
+void* cell_ffi_ptr_get(Cell* c) { return c ? c->data.ffi_ptr.ptr : NULL; }
+const char* cell_ffi_ptr_tag(Cell* c) { return c ? c->data.ffi_ptr.type_tag : NULL; }
+
 /* Cell accessors */
 double cell_get_number(Cell* c) {
     assert(c->type == CELL_ATOM_NUMBER);
@@ -477,6 +489,14 @@ void cell_release(Cell* c) {
             case CELL_DIR:
                 if (c->data.dirstream.is_open && c->data.dirstream.dir) {
                     closedir((DIR*)c->data.dirstream.dir);
+                }
+                break;
+            case CELL_FFI_PTR:
+                if (c->data.ffi_ptr.finalizer && c->data.ffi_ptr.ptr) {
+                    c->data.ffi_ptr.finalizer(c->data.ffi_ptr.ptr);
+                }
+                if (c->data.ffi_ptr.type_tag) {
+                    free((void*)c->data.ffi_ptr.type_tag);
                 }
                 break;
             default:
@@ -1164,6 +1184,10 @@ void cell_print(Cell* c) {
             break;
         case CELL_DIR:
             printf("≋⊙[dir%s]", c->data.dirstream.is_open ? "" : ":closed");
+            break;
+        case CELL_FFI_PTR:
+            printf("⌁[%s:%p]", c->data.ffi_ptr.type_tag ? c->data.ffi_ptr.type_tag : "?",
+                   c->data.ffi_ptr.ptr);
             break;
     }
 }
@@ -2594,6 +2618,7 @@ int cell_compare(Cell* a, Cell* b) {
         [CELL_ITERATOR] = 23,
         [CELL_PORT] = 24,
         [CELL_DIR] = 25,
+        [CELL_FFI_PTR] = 26,
     };
 
     int ta = type_order[a->type];

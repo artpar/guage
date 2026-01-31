@@ -1,0 +1,108 @@
+; Day 125: FFI with JIT-Compiled Stubs
+; Test: Load libm, bind math functions, call them
+
+; ===== Library Loading =====
+
+; Load libm
+(≔ libm (⌁⊳ "libm"))
+(⊢ (⌁? libm) :libm-loaded)
+(⊨ (⌜ :ffi-tag) "dlhandle" (⌁⊙ libm))
+
+; ===== Function Binding =====
+
+; Bind sin — returns CELL_BUILTIN (directly callable!)
+(≔ sin (⌁→ libm "sin" (⟨⟩ :double ∅) :double))
+
+; Bind sqrt
+(≔ sqrt (⌁→ libm "sqrt" (⟨⟩ :double ∅) :double))
+
+; Bind floor
+(≔ floor (⌁→ libm "floor" (⟨⟩ :double ∅) :double))
+
+; Bind ceil
+(≔ ceil (⌁→ libm "ceil" (⟨⟩ :double ∅) :double))
+
+; Bind pow (two args)
+(≔ pow (⌁→ libm "pow" (⟨⟩ :double (⟨⟩ :double ∅)) :double))
+
+; Bind fabs
+(≔ fabs (⌁→ libm "fabs" (⟨⟩ :double ∅) :double))
+
+; ===== Direct Calls =====
+
+; sin(0) = 0
+(⊨ (⌜ :sin-zero) #0 (sin #0))
+
+; sin(pi/2) ≈ 1
+(⊢ (< (fabs (⊖ (sin #1.5707963267948966) #1)) #0.0001) :sin-halfpi)
+
+; sqrt(4) = 2
+(⊨ (⌜ :sqrt-4) #2 (sqrt #4))
+
+; sqrt(9) = 3
+(⊨ (⌜ :sqrt-9) #3 (sqrt #9))
+
+; sqrt(0) = 0
+(⊨ (⌜ :sqrt-0) #0 (sqrt #0))
+
+; pow(2, 10) = 1024
+(⊨ (⌜ :pow-2-10) #1024 (pow #2 #10))
+
+; pow(3, 3) = 27
+(⊨ (⌜ :pow-3-3) #27 (pow #3 #3))
+
+; floor(3.7) = 3
+(⊨ (⌜ :floor-3.7) #3 (floor #3.7))
+
+; ceil(3.2) = 4
+(⊨ (⌜ :ceil-3.2) #4 (ceil #3.2))
+
+; fabs(-42) = 42
+(⊨ (⌜ :fabs-neg) #42 (fabs #-42))
+
+; ===== Error Handling =====
+
+; Bad library name → error
+(⊢ (⚠? (⌁⊳ "no_such_lib_xyz_12345")) :bad-lib)
+
+; Bad symbol name → error
+(⊢ (⚠? (⌁→ libm "no_such_fn_xyz" (⟨⟩ :double ∅) :double)) :bad-sym)
+
+; ===== NULL Pointer =====
+
+(⊢ (⌁∅? (⌁∅)) :null-is-null)
+(⊢ (¬ (⌁∅? libm)) :handle-not-null)
+
+; ===== FFI Type Predicate =====
+
+(⊢ (⌁? libm) :libm-is-ffi)
+(⊢ (¬ (⌁? #42)) :num-not-ffi)
+(⊢ (¬ (⌁? "hello")) :str-not-ffi)
+
+; ===== Type Error Propagation =====
+
+; Pass string to double-expecting function → error
+(⊢ (⚠? (sin "hello")) :type-error-str)
+
+; Pass boolean to double-expecting function → error
+(⊢ (⚠? (sin #t)) :type-error-bool)
+
+; ===== String Marshalling =====
+
+; String to pointer and back
+(≔ ptr (⌁→≈ "hello world"))
+(⊢ (⌁? ptr) :str-to-ptr)
+(⊨ (⌜ :ptr-tag) "cstring" (⌁⊙ ptr))
+(⊨ (⌜ :read-back) "hello world" (⌁≈→ ptr))
+
+; ===== Address =====
+
+(⊢ (> (⌁# libm) #0) :addr-positive)
+(⊨ (⌜ :null-addr) #0 (⌁# (⌁∅)))
+
+; ===== Close =====
+
+(⌁× libm)
+
+; ===== Summary =====
+(≋ "Day 125: FFI JIT tests complete")

@@ -1,11 +1,56 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-01-31 (Day 124 COMPLETE)
+Updated: 2026-01-31 (Day 125 COMPLETE)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 124 - First-Class Test Runner (2026-01-31)
+# Session Handoff: Day 125 - FFI with JIT-Compiled Stubs (2026-01-31)
+
+## Day 125 Progress - HFT-Grade FFI with JIT-Compiled Stubs (`⌁`)
+
+**RESULT:** 123 test files (123 passing, 0 failures), 15 new FFI primitives, 1 new cell type (CELL_FFI_PTR), JIT-compiled ARM64/x86-64 stubs for zero-overhead C function calls
+
+### Changes:
+
+1. **New cell type: `CELL_FFI_PTR`** — Opaque C pointer with GC finalizer and type tag. Constructor `cell_ffi_ptr(ptr, finalizer, type_tag)`, predicate `cell_is_ffi_ptr()`, accessors `cell_ffi_ptr_get()`/`cell_ffi_ptr_tag()`. Release calls finalizer and frees type_tag. Print format: `⌁[tag:addr]`.
+
+2. **JIT infrastructure (`ffi_jit.h` + `ffi_jit.c`)** — FFICType enum (12 C types), FFISig struct, emit buffer helpers. Platform-specific mmap: `MAP_JIT` + `pthread_jit_write_protect_np()` on macOS ARM64, `mmap(RW)` → `mprotect(RX)` elsewhere. Type symbol parser with `:` prefix stripping for Guage symbols.
+
+3. **ARM64 AAPCS64 stub emitter (`ffi_emit_a64.c`)** — Generates per-signature machine code stubs. STP/LDP prologue/epilogue, per-arg cons-list walking with inline type checks, scratch storage for extracted values, ABI register loading (D0-D7 for floats, X0-X7 for ints), return value wrapping via `cell_number`/`cell_string`/etc. ~112-170 bytes per stub.
+
+4. **x86-64 SysV stub emitter (`ffi_emit_x64.c`)** — Same structure for x86-64. XMM0-7 for floats, RDI/RSI/RDX/RCX/R8/R9 for ints. ~73-120 bytes per stub.
+
+5. **15 new FFI primitives:**
+   - Core: `⌁⊳` (dlopen), `⌁×` (dlclose), `⌁→` (bind+JIT→CELL_BUILTIN), `⌁!` (call), `⌁?` (predicate), `⌁⊙` (type tag)
+   - Pointer: `⌁⊞` (wrap), `⌁⊞×` (wrap+finalizer), `⌁∅` (NULL), `⌁∅?` (null test), `⌁#` (address)
+   - Marshalling: `⌁≈→` (read C string), `⌁→≈` (string→ptr), `⌁◈→` (read buffer), `⌁→◈` (buffer→ptr)
+
+6. **Key design: `⌁→` returns `CELL_BUILTIN`** — JIT-compiled stubs are directly callable like any Guage primitive. `(≔ sin (⌁→ libm "sin" (⟨⟩ :double ∅) :double))` then `(sin #1.57)` works with zero interpreter overhead beyond a normal primitive call.
+
+7. **test_ffi.test** — ~25 assertions: dlopen libm, bind sin/sqrt/pow/floor/ceil/fabs, direct calls, error handling (bad lib, bad symbol, type mismatch), NULL pointer, FFI type predicate, string marshalling, address extraction, dlclose.
+
+### Bug Fixed:
+- **Symbol prefix mismatch** — Guage symbols include leading `:` (e.g. `":double"`), but `ffi_parse_type_symbol` compared against bare names. All types mapped to `FFI_VOID` fallback, causing type checks in JIT stubs to reject valid numeric arguments. Fixed by stripping `:` prefix in parser.
+
+### Files Created (5):
+- **NEW** `bootstrap/ffi_jit.h` — FFI types, JIT state, emitter API
+- **NEW** `bootstrap/ffi_jit.c` — JIT memory manager, emit helpers, type parser
+- **NEW** `bootstrap/ffi_emit_x64.c` — x86-64 SysV stub emitter
+- **NEW** `bootstrap/ffi_emit_a64.c` — ARM64 AAPCS64 stub emitter
+- **NEW** `bootstrap/tests/test_ffi.test` — FFI test suite
+
+### Files Modified (5):
+- `bootstrap/cell.h` — CELL_FFI_PTR enum, ffi_ptr union member, declarations
+- `bootstrap/cell.c` — Constructor, predicate, release (finalizer), print, compare
+- `bootstrap/primitives.h` — 15 prim_ffi_* declarations
+- `bootstrap/primitives.c` — 15 FFI primitive implementations + table entries, `#include <dlfcn.h>`, `#include "ffi_jit.h"`
+- `Makefile` — 3 new source files, `-ldl` on Linux, dependency lines
+
+### Primitive Count: 453 (438 prior + 15 FFI)
+### Test Files: 123 (123 passing, 0 failures)
+
+---
 
 ## Day 124 Progress - First-Class Test Runner + ART Trie Bug Fix
 
@@ -1254,10 +1299,10 @@ Replaced replay-based resumable effects with real delimited continuations using 
 ## Current Status
 
 **System State:**
-- **Primitives:** 438 total (432 prior + 6 test runner)
+- **Primitives:** 453 total (438 prior + 15 FFI)
 - **Special Forms:** 31 (including ⚡?)
-- **Cell Types:** 26 total (through CELL_DIR)
-- **Tests:** 122/122 test files passing (100%)
+- **Cell Types:** 27 total (through CELL_FFI_PTR)
+- **Tests:** 123/123 test files passing (100%)
 - **Build:** Clean, O2 optimized, 32MB stack
 
 **Core Capabilities:**
@@ -1294,6 +1339,7 @@ Replaced replay-based resumable effects with real delimited continuations using 
 - Vector (⟦⟧) — SBO + 1.5x growth + cache-line aligned
 - Priority Queue (△) — 4-ary min-heap with SoA + branchless sift
 - Iterator Protocol (⊣) — Morsel-driven batch iteration with selection vectors
+- FFI with JIT-compiled stubs (⌁⊳, ⌁→, ⌁×) — zero-overhead C interop via per-signature machine code
 - Module system (⋘ load, ⌂⊚ info)
 - Structures (⊙ leaf, ⊚ node/ADT)
 - Pattern matching (∇) with guards, as-patterns, or-patterns, view patterns
@@ -1310,6 +1356,11 @@ Replaced replay-based resumable effects with real delimited continuations using 
 
 | Day | Feature | Tests |
 |-----|---------|-------|
+| 125 | FFI with JIT-Compiled Stubs (⌁) — ARM64/x86-64 machine code, 15 primitives | 123/123 (100%), 1 new test file |
+| 124 | Test Runner (⊨⊕) — Trie-backed registry, prefix/tag filtering | 122/122 (100%), 1 new test file |
+| 123 | Error Diagnostics — Rust/Zig/Elm-style spans, cause chains, return traces | 122/122 (100%), 1 new test file |
+| 122 | String SDK — SIMD-accelerated search, 20 new primitives | 121/121 (100%), 1 new test file |
+| 121 | POSIX System Interface — SRFI-170, 59 primitives | 119/119 (100%), 1 new test file |
 | 118 | Iterator Protocol (⊣) — Morsel-driven batch iteration + selection vectors | 116/116 (100%), 1 new test file |
 | 117 | Trie (⊮) — ART + SIMD Node16 + path compression | 115/115 (100%), 1 new test file |
 | 116 | Sorted Map (⋔) — Algorithmica-grade SIMD B-tree | 114/114 (100%), 1 new test file |
@@ -1406,5 +1457,5 @@ bootstrap/tests/             # Test suite (88 test files)
 
 ---
 
-**Last Updated:** 2026-01-31 (Day 124 complete)
-**Next Session:** Day 125 - Continue stdlib or new domain
+**Last Updated:** 2026-01-31 (Day 125 complete)
+**Next Session:** Day 126 - Continue stdlib or new domain

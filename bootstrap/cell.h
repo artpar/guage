@@ -52,7 +52,8 @@ typedef enum {
     CELL_TRIE,           /* ⊮ - trie (ART with SIMD Node16 + path compression) */
     CELL_ITERATOR,       /* ⊣ - iterator (morsel-driven batch iteration) */
     CELL_PORT,           /* ⊞⊳ - I/O port (FILE* wrapper) */
-    CELL_DIR             /* ≋⊙ - directory stream (DIR* wrapper) */
+    CELL_DIR,            /* ≋⊙ - directory stream (DIR* wrapper) */
+    CELL_FFI_PTR         /* ⌁ - opaque C pointer with GC finalizer */
 } CellType;
 
 /* Port Type Flags */
@@ -261,6 +262,11 @@ struct Cell {
             void*   dir;        /* DIR* (cast to avoid dirent include) */
             bool    is_open;    /* Whether directory stream is open */
         } dirstream;
+        struct {
+            void*  ptr;             /* Opaque C pointer */
+            void (*finalizer)(void*); /* GC cleanup (NULL = borrowed) */
+            const char* type_tag;   /* "dlhandle", user-defined, etc. */
+        } ffi_ptr;
     } data;
 };
 
@@ -284,6 +290,7 @@ Cell* cell_box(Cell* value);
 
 Cell* cell_port(void* file, int fd, PortTypeFlags flags, PortBufferMode buf_mode);
 Cell* cell_dirstream(void* dir);
+Cell* cell_ffi_ptr(void* ptr, void (*finalizer)(void*), const char* type_tag);
 
 /* Cell accessors */
 double cell_get_number(Cell* c);
@@ -458,6 +465,11 @@ Cell* cell_iterator_zip(Cell* it1, Cell* it2);
 /* Port/Dir predicates and accessors */
 bool cell_is_port(Cell* c);
 bool cell_is_dir(Cell* c);
+
+/* FFI pointer predicates and accessors */
+bool cell_is_ffi_ptr(Cell* c);
+void* cell_ffi_ptr_get(Cell* c);
+const char* cell_ffi_ptr_tag(Cell* c);
 
 /* Total ordering for all Cell types (Erlang term ordering) */
 int cell_compare(Cell* a, Cell* b);

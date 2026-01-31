@@ -17,7 +17,7 @@ UNAME_S := $(shell uname -s 2>/dev/null || echo Windows)
 ifeq ($(UNAME_S),Darwin)
     LDFLAGS ?= -Wl,-stack_size,0x2000000
 else ifeq ($(UNAME_S),Linux)
-    LDFLAGS ?= -static
+    LDFLAGS ?= -ldl
 else
     LDFLAGS ?=
 endif
@@ -25,7 +25,8 @@ endif
 # Source files (all in bootstrap/)
 SOURCES = cell.c intern.c span.c primitives.c debruijn.c debug.c eval.c cfg.c dfg.c \
           pattern.c pattern_check.c type.c testgen.c module.c macro.c \
-          fiber.c actor.c channel.c linenoise.c diagnostic.c main.c
+          fiber.c actor.c channel.c linenoise.c diagnostic.c \
+          ffi_jit.c ffi_emit_x64.c ffi_emit_a64.c main.c
 OBJECTS = $(SOURCES:.c=.o)
 EXECUTABLE = guage
 
@@ -212,7 +213,7 @@ $(BOOTSTRAP_DIR)/primitives.o: $(BOOTSTRAP_DIR)/primitives.c $(BOOTSTRAP_DIR)/pr
                                 $(BOOTSTRAP_DIR)/cell.h $(BOOTSTRAP_DIR)/pattern.h \
                                 $(BOOTSTRAP_DIR)/type.h $(BOOTSTRAP_DIR)/testgen.h \
                                 $(BOOTSTRAP_DIR)/module.h $(BOOTSTRAP_DIR)/actor.h \
-                                $(BOOTSTRAP_DIR)/channel.h
+                                $(BOOTSTRAP_DIR)/channel.h $(BOOTSTRAP_DIR)/ffi_jit.h
 $(BOOTSTRAP_DIR)/debruijn.o: $(BOOTSTRAP_DIR)/debruijn.c $(BOOTSTRAP_DIR)/debruijn.h \
                               $(BOOTSTRAP_DIR)/cell.h
 $(BOOTSTRAP_DIR)/debug.o: $(BOOTSTRAP_DIR)/debug.c $(BOOTSTRAP_DIR)/debug.h \
@@ -247,6 +248,12 @@ $(BOOTSTRAP_DIR)/actor.o: $(BOOTSTRAP_DIR)/actor.c $(BOOTSTRAP_DIR)/actor.h \
 $(BOOTSTRAP_DIR)/channel.o: $(BOOTSTRAP_DIR)/channel.c $(BOOTSTRAP_DIR)/channel.h \
                               $(BOOTSTRAP_DIR)/cell.h
 $(BOOTSTRAP_DIR)/linenoise.o: $(BOOTSTRAP_DIR)/linenoise.c $(BOOTSTRAP_DIR)/linenoise.h
+$(BOOTSTRAP_DIR)/ffi_jit.o: $(BOOTSTRAP_DIR)/ffi_jit.c $(BOOTSTRAP_DIR)/ffi_jit.h \
+                            $(BOOTSTRAP_DIR)/cell.h
+$(BOOTSTRAP_DIR)/ffi_emit_x64.o: $(BOOTSTRAP_DIR)/ffi_emit_x64.c $(BOOTSTRAP_DIR)/ffi_jit.h \
+                                  $(BOOTSTRAP_DIR)/cell.h
+$(BOOTSTRAP_DIR)/ffi_emit_a64.o: $(BOOTSTRAP_DIR)/ffi_emit_a64.c $(BOOTSTRAP_DIR)/ffi_jit.h \
+                                  $(BOOTSTRAP_DIR)/cell.h
 $(BOOTSTRAP_DIR)/main.o: $(BOOTSTRAP_DIR)/main.c $(BOOTSTRAP_DIR)/cell.h \
                           $(BOOTSTRAP_DIR)/span.h $(BOOTSTRAP_DIR)/primitives.h \
                           $(BOOTSTRAP_DIR)/eval.h $(BOOTSTRAP_DIR)/debug.h \

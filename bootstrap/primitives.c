@@ -28,6 +28,8 @@
 #include <grp.h>
 #include <sys/time.h>
 #include <limits.h>
+#include <dlfcn.h>
+#include "ffi_jit.h"
 
 /* Helper: get first argument */
 static Cell* arg1(Cell* args) {
@@ -11342,6 +11344,269 @@ Cell* prim_jps(Cell* args) {
     return cell_number(1e9); /* nanosecond resolution */
 }
 
+/* ===== FFI Primitives (Day 125) ===== */
+
+static bool ffi_jit_initialized = false;
+
+static void ensure_ffi_init(void) {
+    if (!ffi_jit_initialized) {
+        jit_state_init();
+        ffi_jit_initialized = true;
+    }
+}
+
+/* dlclose wrapper for finalizer */
+static void ffi_dlclose_finalizer(void* handle) {
+    dlclose(handle);
+}
+
+/* ⌁⊳ - dlopen shared library */
+Cell* prim_ffi_dlopen(Cell* args) {
+    Cell* name_cell = arg1(args);
+    if (!cell_is_string(name_cell))
+        return cell_error("ffi-dlopen: expected string", name_cell);
+
+    const char* name = cell_get_string(name_cell);
+
+    /* Try with common library path patterns */
+    void* handle = NULL;
+
+#ifdef __APPLE__
+    /* macOS: try .dylib first, then bare name */
+    if (!handle) {
+        char buf[512];
+        snprintf(buf, sizeof(buf), "lib%s.dylib", name);
+        handle = dlopen(buf, RTLD_LAZY);
+    }
+    if (!handle) {
+        char buf[512];
+        snprintf(buf, sizeof(buf), "%s.dylib", name);
+        handle = dlopen(buf, RTLD_LAZY);
+    }
+#else
+    /* Linux: try .so first */
+    if (!handle) {
+        char buf[512];
+        snprintf(buf, sizeof(buf), "lib%s.so", name);
+        handle = dlopen(buf, RTLD_LAZY);
+    }
+#endif
+
+    /* Try bare name */
+    if (!handle) handle = dlopen(name, RTLD_LAZY);
+
+    /* Last resort: NULL means search default (libc, libm linked in) */
+    if (!handle && (strcmp(name, "libm") == 0 || strcmp(name, "libc") == 0 || strcmp(name, "libm.dylib") == 0)) {
+        handle = dlopen(NULL, RTLD_LAZY);
+    }
+
+    if (!handle) {
+        return cell_error("ffi-dlopen-failed", cell_string(dlerror()));
+    }
+
+    return cell_ffi_ptr(handle, ffi_dlclose_finalizer, "dlhandle");
+}
+
+/* ⌁× - dlclose handle */
+Cell* prim_ffi_dlclose(Cell* args) {
+    Cell* h = arg1(args);
+    if (!cell_is_ffi_ptr(h))
+        return cell_error("ffi-dlclose: expected ffi-ptr", h);
+    void* handle = cell_ffi_ptr_get(h);
+    if (handle) {
+        dlclose(handle);
+        h->data.ffi_ptr.ptr = NULL;
+        h->data.ffi_ptr.finalizer = NULL; /* prevent double-close on GC */
+    }
+    return cell_nil();
+}
+
+/* Parse a Guage cons-list of type symbols into FFISig arg types */
+static int parse_arg_types(Cell* type_list, FFICType* out, int max) {
+    int n = 0;
+    Cell* cur = type_list;
+    while (cell_is_pair(cur) && n < max) {
+        Cell* sym = cell_car(cur);
+        if (!cell_is_symbol(sym)) return -1;
+        out[n++] = ffi_parse_type_symbol(cell_get_symbol(sym));
+        cur = cell_cdr(cur);
+    }
+    return n;
+}
+
+/* ⌁→ - bind function: (⌁→ handle "name" arg-type-list ret-type) → CELL_BUILTIN */
+Cell* prim_ffi_bind(Cell* args) {
+    ensure_ffi_init();
+
+    Cell* handle_cell = arg1(args);
+    Cell* name_cell = arg2(args);
+    Cell* arg_types_cell = arg3(args);
+    Cell* rest3 = cell_cdr(cell_cdr(cell_cdr(args)));
+    Cell* ret_type_cell = cell_is_pair(rest3) ? cell_car(rest3) : cell_nil();
+
+    if (!cell_is_ffi_ptr(handle_cell))
+        return cell_error("ffi-bind: arg1 must be ffi-ptr (dlhandle)", handle_cell);
+    if (!cell_is_string(name_cell))
+        return cell_error("ffi-bind: arg2 must be string (function name)", name_cell);
+    if (!cell_is_symbol(ret_type_cell))
+        return cell_error("ffi-bind: arg4 must be symbol (return type)", ret_type_cell);
+
+    void* dl_handle = cell_ffi_ptr_get(handle_cell);
+    const char* fn_name = cell_get_string(name_cell);
+
+    /* Clear dlerror */
+    dlerror();
+    void* fn_ptr = dlsym(dl_handle, fn_name);
+    char* err = dlerror();
+    if (err) {
+        return cell_error("ffi-dlsym-failed", cell_string(err));
+    }
+
+    /* Build signature */
+    FFISig sig;
+    sig.fn_ptr = fn_ptr;
+    sig.ret_type = ffi_parse_type_symbol(cell_get_symbol(ret_type_cell));
+    sig.n_args = parse_arg_types(arg_types_cell, sig.arg_types, FFI_MAX_ARGS);
+    if (sig.n_args < 0) {
+        return cell_error("ffi-bind: invalid arg type list", arg_types_cell);
+    }
+
+    /* JIT compile the stub */
+    FFIStubFn stub = jit_emit_stub(&sig);
+    if (!stub) {
+        return cell_error("ffi-jit-failed", cell_string(fn_name));
+    }
+
+    /* Return as CELL_BUILTIN — directly callable like any primitive */
+    return cell_builtin((void*)stub);
+}
+
+/* ⌁! - call bound FFI function (convenience — the result of ⌁→ is already callable) */
+Cell* prim_ffi_call(Cell* args) {
+    Cell* fn = arg1(args);
+    if (fn->type != CELL_BUILTIN)
+        return cell_error("ffi-call: arg1 must be bound function", fn);
+
+    /* Get the remaining args as a cons-list */
+    Cell* call_args = cell_cdr(args);
+
+    /* Call the builtin (which is the JIT stub) */
+    Cell* (*stub_fn)(Cell*) = (Cell* (*)(Cell*))fn->data.atom.builtin;
+    return stub_fn(call_args);
+}
+
+/* ⌁? - FFI_PTR type predicate */
+Cell* prim_ffi_is(Cell* args) {
+    return cell_bool(cell_is_ffi_ptr(arg1(args)));
+}
+
+/* ⌁⊙ - get FFI_PTR type tag */
+Cell* prim_ffi_type_tag(Cell* args) {
+    Cell* p = arg1(args);
+    if (!cell_is_ffi_ptr(p))
+        return cell_error("ffi-type-tag: expected ffi-ptr", p);
+    const char* tag = cell_ffi_ptr_tag(p);
+    return tag ? cell_string(tag) : cell_nil();
+}
+
+/* ⌁⊞ - wrap address + tag → FFI_PTR (no finalizer) */
+Cell* prim_ffi_wrap(Cell* args) {
+    Cell* addr = arg1(args);
+    Cell* tag = arg2(args);
+    if (!cell_is_number(addr))
+        return cell_error("ffi-wrap: arg1 must be number (address)", addr);
+    if (!cell_is_string(tag))
+        return cell_error("ffi-wrap: arg2 must be string (tag)", tag);
+    void* ptr = (void*)(uintptr_t)(uint64_t)cell_get_number(addr);
+    return cell_ffi_ptr(ptr, NULL, cell_get_string(tag));
+}
+
+/* ⌁⊞× - wrap + finalizer */
+Cell* prim_ffi_wrap_fin(Cell* args) {
+    Cell* addr = arg1(args);
+    Cell* tag = arg2(args);
+    Cell* fin = arg3(args);
+    if (!cell_is_number(addr))
+        return cell_error("ffi-wrap-fin: arg1 must be number", addr);
+    if (!cell_is_string(tag))
+        return cell_error("ffi-wrap-fin: arg2 must be string", tag);
+    /* fin should be a builtin (bound FFI free function) */
+    if (fin->type != CELL_BUILTIN)
+        return cell_error("ffi-wrap-fin: arg3 must be bound FFI function", fin);
+    void* ptr = (void*)(uintptr_t)(uint64_t)cell_get_number(addr);
+    /* We use a simple free finalizer — the fin arg is for the user's reference */
+    return cell_ffi_ptr(ptr, free, cell_get_string(tag));
+}
+
+/* ⌁∅ - NULL pointer constant */
+Cell* prim_ffi_null(Cell* args) {
+    (void)args;
+    return cell_ffi_ptr(NULL, NULL, "null");
+}
+
+/* ⌁∅? - test if NULL */
+Cell* prim_ffi_null_p(Cell* args) {
+    Cell* p = arg1(args);
+    if (!cell_is_ffi_ptr(p))
+        return cell_error("ffi-null?: expected ffi-ptr", p);
+    return cell_bool(cell_ffi_ptr_get(p) == NULL);
+}
+
+/* ⌁# - get address as number */
+Cell* prim_ffi_addr(Cell* args) {
+    Cell* p = arg1(args);
+    if (!cell_is_ffi_ptr(p))
+        return cell_error("ffi-addr: expected ffi-ptr", p);
+    return cell_number((double)(uintptr_t)cell_ffi_ptr_get(p));
+}
+
+/* ⌁≈→ - read C string from FFI_PTR (copies into Guage string) */
+Cell* prim_ffi_read_cstr(Cell* args) {
+    Cell* p = arg1(args);
+    if (!cell_is_ffi_ptr(p))
+        return cell_error("ffi-read-cstr: expected ffi-ptr", p);
+    const char* str = (const char*)cell_ffi_ptr_get(p);
+    if (!str) return cell_error("ffi-read-cstr: NULL pointer", p);
+    return cell_string(str);
+}
+
+/* ⌁→≈ - Guage string → FFI_PTR wrapping strdup'd char* */
+Cell* prim_ffi_str_to_ptr(Cell* args) {
+    Cell* s = arg1(args);
+    if (!cell_is_string(s))
+        return cell_error("ffi-str-to-ptr: expected string", s);
+    char* dup = strdup(cell_get_string(s));
+    return cell_ffi_ptr(dup, free, "cstring");
+}
+
+/* ⌁◈→ - read N bytes from FFI_PTR → CELL_BUFFER */
+Cell* prim_ffi_read_buf(Cell* args) {
+    Cell* p = arg1(args);
+    Cell* n = arg2(args);
+    if (!cell_is_ffi_ptr(p))
+        return cell_error("ffi-read-buf: arg1 must be ffi-ptr", p);
+    if (!cell_is_number(n))
+        return cell_error("ffi-read-buf: arg2 must be number", n);
+    uint32_t size = (uint32_t)cell_get_number(n);
+    uint8_t* src = (uint8_t*)cell_ffi_ptr_get(p);
+    if (!src) return cell_error("ffi-read-buf: NULL pointer", p);
+    Cell* buf = cell_buffer_new(size);
+    memcpy(buf->data.buffer.bytes, src, size);
+    buf->data.buffer.size = size;
+    return buf;
+}
+
+/* ⌁→◈ - CELL_BUFFER → FFI_PTR wrapping malloc'd copy */
+Cell* prim_ffi_buf_to_ptr(Cell* args) {
+    Cell* b = arg1(args);
+    if (!cell_is_buffer(b))
+        return cell_error("ffi-buf-to-ptr: expected buffer", b);
+    uint32_t sz = cell_buffer_size(b);
+    uint8_t* copy = (uint8_t*)malloc(sz);
+    memcpy(copy, b->data.buffer.bytes, sz);
+    return cell_ffi_ptr(copy, free, "buffer");
+}
+
 /* Primitive table - PURE SYMBOLS ONLY
  * EVERY primitive MUST have documentation */
 static Primitive primitives[] = {
@@ -11914,6 +12179,23 @@ static Primitive primitives[] = {
     {"⊙⏱≈", prim_current_second, 0, {"Current second (epoch float)", "→ ℕ"}},
     {"⊙⏱⊕#", prim_jiffy, 0, {"High-res monotonic counter", "→ ℕ"}},
     {"⊙⏱⊕≈", prim_jps, 0, {"Jiffies per second", "→ ℕ"}},
+
+    /* FFI primitives (Day 125 — JIT-compiled stubs) */
+    {"⌁⊳", prim_ffi_dlopen, 1, {"Load shared library", "≈ → ⌁|⚠"}},
+    {"⌁×", prim_ffi_dlclose, 1, {"Close library handle", "⌁ → ∅"}},
+    {"⌁→", prim_ffi_bind, 4, {"Bind C function (JIT stub)", "⌁ → ≈ → [⊙] → ⊙ → λ"}},
+    {"⌁!", prim_ffi_call, -1, {"Call bound FFI function", "λ → α... → β"}},
+    {"⌁?", prim_ffi_is, 1, {"FFI pointer type predicate", "α → 𝔹"}},
+    {"⌁⊙", prim_ffi_type_tag, 1, {"Get FFI pointer type tag", "⌁ → ≈"}},
+    {"⌁⊞", prim_ffi_wrap, 2, {"Wrap address as FFI pointer", "ℕ → ≈ → ⌁"}},
+    {"⌁⊞×", prim_ffi_wrap_fin, 3, {"Wrap address with finalizer", "ℕ → ≈ → λ → ⌁"}},
+    {"⌁∅", prim_ffi_null, 0, {"NULL pointer constant", "→ ⌁"}},
+    {"⌁∅?", prim_ffi_null_p, 1, {"Test if NULL pointer", "⌁ → 𝔹"}},
+    {"⌁#", prim_ffi_addr, 1, {"Get pointer address as number", "⌁ → ℕ"}},
+    {"⌁≈→", prim_ffi_read_cstr, 1, {"Read C string from pointer", "⌁ → ≈"}},
+    {"⌁→≈", prim_ffi_str_to_ptr, 1, {"String to strdup'd pointer", "≈ → ⌁"}},
+    {"⌁◈→", prim_ffi_read_buf, 2, {"Read N bytes from pointer", "⌁ → ℕ → ◈"}},
+    {"⌁→◈", prim_ffi_buf_to_ptr, 1, {"Buffer to malloc'd pointer", "◈ → ⌁"}},
 
     {NULL, NULL, 0, {NULL, NULL}}
 };

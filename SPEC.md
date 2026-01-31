@@ -31,10 +31,10 @@ Everything is a **Cell**:
 
 **See:** `KEYWORDS.md` for complete specification.
 
-## Runtime Primitives (432 Total)
+## Runtime Primitives (453 Total)
 
-**Status:** 182 primitives implemented and stable (121/122 test files passing)
-**Note:** All primitives fully working including graph algorithms, actors, channels, supervision, supervisors, registry, timers, GenServer, process dictionary, task async/await, mutable references, sequencing, and SOTA error diagnostics
+**Status:** 453 primitives implemented and stable (123/123 test files passing)
+**Note:** All primitives fully working including graph algorithms, actors, channels, supervision, supervisors, registry, timers, GenServer, process dictionary, task async/await, mutable references, sequencing, SOTA error diagnostics, and FFI with JIT-compiled stubs
 
 ### Core Lambda Calculus (3) ✅
 | Symbol | Type | Meaning | Status |
@@ -1510,6 +1510,53 @@ Time accessors (2): `:seconds`, `:nanoseconds`
 - Module registry to prevent double-loading
 - Namespace isolation
 - Dependency resolution
+
+### FFI — Foreign Function Interface with JIT-Compiled Stubs (15 primitives) ✅
+
+At bind time, per-signature machine code stubs are JIT-compiled (ARM64 AAPCS64 or x86-64 SysV ABI). Each stub is stored as `CELL_BUILTIN` — callable directly like any Guage primitive with zero interpreter overhead. No external dependencies (no libffi). Zero-copy for strings and buffers.
+
+**Cell type:** `CELL_FFI_PTR` — opaque C pointer with GC finalizer and type tag. Print: `⌁[tag:addr]`.
+
+**FFI type symbols:** `:void :double :int :long :uint :ulong :float :char* :void* :bool :size_t :buffer`
+
+#### Core (6)
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `⌁⊳` | `≈ → ⌁ \| ⚠` | dlopen shared library → FFI_PTR("dlhandle") | ✅ DONE (Day 125) |
+| `⌁×` | `⌁ → ∅` | dlclose handle | ✅ DONE (Day 125) |
+| `⌁→` | `⌁ → ≈ → [⊙] → ⊙ → λ` | dlsym + JIT stub → CELL_BUILTIN (directly callable) | ✅ DONE (Day 125) |
+| `⌁!` | `λ → α... → β` | Call bound FFI function (convenience wrapper) | ✅ DONE (Day 125) |
+| `⌁?` | `α → 𝔹` | FFI_PTR type predicate | ✅ DONE (Day 125) |
+| `⌁⊙` | `⌁ → ≈` | Get FFI_PTR type tag | ✅ DONE (Day 125) |
+
+#### Pointer (5)
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `⌁⊞` | `ℕ → ≈ → ⌁` | Wrap address + tag → FFI_PTR (no finalizer) | ✅ DONE (Day 125) |
+| `⌁⊞×` | `ℕ → ≈ → λ → ⌁` | Wrap + finalizer | ✅ DONE (Day 125) |
+| `⌁∅` | `→ ⌁` | NULL pointer constant | ✅ DONE (Day 125) |
+| `⌁∅?` | `⌁ → 𝔹` | Test if NULL | ✅ DONE (Day 125) |
+| `⌁#` | `⌁ → ℕ` | Get address as number | ✅ DONE (Day 125) |
+
+#### Marshalling (4)
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `⌁≈→` | `⌁ → ≈` | Read C string from FFI_PTR | ✅ DONE (Day 125) |
+| `⌁→≈` | `≈ → ⌁` | Guage string → FFI_PTR (strdup'd char*) | ✅ DONE (Day 125) |
+| `⌁◈→` | `⌁ → ℕ → ◈` | Read N bytes from FFI_PTR → CELL_BUFFER | ✅ DONE (Day 125) |
+| `⌁→◈` | `◈ → ⌁` | CELL_BUFFER → FFI_PTR (malloc'd copy) | ✅ DONE (Day 125) |
+
+**Usage:**
+```scheme
+(≔ libm (⌁⊳ "libm"))                                          ; load library
+(≔ sin (⌁→ libm "sin" (⟨⟩ :double ∅) :double))               ; bind with JIT stub
+(sin #1.5707963267948966)                                       ; → #1 (direct call!)
+(≔ pow (⌁→ libm "pow" (⟨⟩ :double (⟨⟩ :double ∅)) :double)) ; two args
+(pow #2 #10)                                                    ; → #1024
+(⌁× libm)                                                      ; close
+```
+
+---
 
 ### Mutable References (6) ✅
 | Symbol | Type | Meaning | Status |

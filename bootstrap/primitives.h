@@ -384,6 +384,23 @@ Cell* prim_error_root_cause(Cell* args); /* ⚠⊸* - get root cause */
 Cell* prim_error_trace(Cell* args);      /* ⚠⟲ - get return trace as list */
 Cell* prim_error_chain_match(Cell* args);/* ⚠⊙? - check if error chain matches type */
 
+/* FFI primitives (Day 125 — JIT-compiled stubs) */
+Cell* prim_ffi_dlopen(Cell* args);      /* ⌁⊳ - load shared library */
+Cell* prim_ffi_dlclose(Cell* args);     /* ⌁× - close library handle */
+Cell* prim_ffi_bind(Cell* args);        /* ⌁→ - bind function (JIT stub) */
+Cell* prim_ffi_call(Cell* args);        /* ⌁! - call bound FFI function */
+Cell* prim_ffi_is(Cell* args);          /* ⌁? - FFI_PTR type predicate */
+Cell* prim_ffi_type_tag(Cell* args);    /* ⌁⊙ - get FFI_PTR type tag */
+Cell* prim_ffi_wrap(Cell* args);        /* ⌁⊞ - wrap address as FFI_PTR */
+Cell* prim_ffi_wrap_fin(Cell* args);    /* ⌁⊞× - wrap with finalizer */
+Cell* prim_ffi_null(Cell* args);        /* ⌁∅ - NULL pointer constant */
+Cell* prim_ffi_null_p(Cell* args);      /* ⌁∅? - test if NULL */
+Cell* prim_ffi_addr(Cell* args);        /* ⌁# - get address as number */
+Cell* prim_ffi_read_cstr(Cell* args);   /* ⌁≈→ - read C string from ptr */
+Cell* prim_ffi_str_to_ptr(Cell* args);  /* ⌁→≈ - string to strdup'd ptr */
+Cell* prim_ffi_read_buf(Cell* args);    /* ⌁◈→ - read N bytes from ptr */
+Cell* prim_ffi_buf_to_ptr(Cell* args);  /* ⌁→◈ - buffer to malloc'd ptr */
+
 /* Primitive documentation structure */
 typedef struct {
     const char* description;     /* What this primitive does */
