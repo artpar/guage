@@ -17,7 +17,7 @@ UNAME_S := $(shell uname -s 2>/dev/null || echo Windows)
 ifeq ($(UNAME_S),Darwin)
     LDFLAGS ?= -Wl,-stack_size,0x2000000 -lpthread
 else ifeq ($(UNAME_S),Linux)
-    LDFLAGS ?= -ldl -lpthread
+    LDFLAGS ?= -ldl -lpthread -lm
 else
     LDFLAGS ?=
 endif

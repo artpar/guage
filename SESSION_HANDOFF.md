@@ -1,11 +1,82 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-02-01 (Day 145 COMPLETE)
+Updated: 2026-02-01 (Day 146 COMPLETE)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 145 - HFT-Grade Test Infrastructure (2026-02-01)
+# Session Handoff: Day 146 - Deep Parallelism & Load Testing (2026-02-01)
+
+## Day 146 — Deep Parallelism & Load Testing (COMPLETE)
+
+**STATUS:** 125/148 test files passing ✅ (23 pre-existing failures, 0 regressions)
+
+### What Was Done
+
+Added multi-scheduler auto-detection, thread-safe test state, fork-based load test runner with full metrics, and a CPU count primitive. REPL now uses all available CPUs for real parallelism. `--test` mode remains deterministic (single scheduler) unless overridden.
+
+### Thread-Safe Test State (`primitives.c`)
+
+- `g_pass_count` / `g_fail_count` → `_Atomic int` with `atomic_fetch_add`/`atomic_load`/`atomic_store`
+- `g_test_results` cons-list mutations wrapped in `pthread_mutex_t g_test_results_lock`
+- All readers (`test_emit_and_exit`, `prim_test_results`, `prim_test_count`, `prim_test_exit`) use atomic loads + mutex
+- New public API: `test_get_counts()`, `test_reset_counts()` for load test workers
+
+### Auto-Detect CPU Count + CLI Flags (`main.c`)
+
+- New flags: `--schedulers N`, `--load-test <file>`, `--iterations N`, `--workers N`, `--warmup N`
+- Scheduler init logic:
+  - REPL: `sched_init(num_cpus)` — real parallelism
+  - `--test`: `sched_init(1)` — deterministic single-scheduler
+  - `--load-test`: `sched_init(1)` — workers handle their own
+  - `--schedulers N`: always overrides
+
+### `⟳⊞⊛` Primitive — CPU Count (`primitives.c`)
+
+- Exposes `sysconf(_SC_NPROCESSORS_ONLN)` to Guage programs
+- `(⟳⊞⊛)` → number of online CPUs
+
+### Extracted `run_test_core()` (`main.c`)
+
+- Refactored `run_test_file` into `run_test_core()` (parse+eval+drain, returns `TestRunResult`) + wrapper
+- `TestRunResult` struct: `{pass_count, fail_count, elapsed_us, alloc_delta, had_error}`
+- Single path — both `--test` and `--load-test` use `run_test_core`
+
+### Fork-Based Load Test Runner (`main.c`)
+
+- `run_load_test()`: fork W worker processes, shared memory via `mmap(MAP_SHARED|MAP_ANON)`
+- Atomic work-stealing: `shared->next_iter` counter, each worker claims iterations
+- Per-iteration JSON Lines: `{"t":"load-iter","iter":N,"worker":W,"elapsed_us":...,"pass":N,"fail":N}`
+- Progress updates: `{"t":"load-progress","completed":N,"total":N}`
+- Summary with full metrics: p50/p95/p99, mean, stddev, min, max, throughput (ops/sec), peak RSS
+- Workers reset actor state + test counters between iterations
+
+### New Primitives (+1)
+
+| Symbol | Description |
+|--------|-------------|
+| `⟳⊞⊛` | Online CPU count via sysconf |
+
+### Files Changed
+
+| File | Changes |
+|------|---------|
+| `bootstrap/primitives.c` | Atomic test counters, mutex on results list, `test_get_counts()`, `test_reset_counts()`, `prim_cpu_count()` |
+| `bootstrap/primitives.h` | `test_get_counts()`, `test_reset_counts()` declarations |
+| `bootstrap/main.c` | CLI flags, auto-detect CPU count, `run_test_core()` extraction, `run_load_test()` |
+| `Makefile` | Added `-lm` to Linux LDFLAGS |
+
+### Primitive Count: 541 (was 540)
+
+### Load Test JSON Lines Format (stderr)
+
+```jsonl
+{"t":"load-iter","iter":5,"worker":2,"elapsed_us":1234.5,"pass":3,"fail":0}
+{"t":"load-progress","completed":10,"total":50}
+{"t":"load-summary","file":"...","iterations":100,"workers":8,"warmup":2,"stats":{"p50_us":1200,"p95_us":2400,"p99_us":5000,"mean_us":1350,"stddev_us":450,"min_us":800,"max_us":6000,"throughput_ops_sec":740,"peak_rss_kb":16384,"total_pass":300,"total_fail":0}}
+```
+
+---
 
 ## Day 145 — Structured Test Infrastructure (COMPLETE)
 

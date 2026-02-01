@@ -3,6 +3,10 @@
 #include <string.h>
 #ifndef _WIN32
 #include <unistd.h>
+#include <sys/mman.h>
+#include <sys/wait.h>
+#include <sys/resource.h>
+#include <stdatomic.h>
 #else
 #define isatty(fd) 0
 #define fileno _fileno
@@ -14,10 +18,12 @@
 #include "primitives.h"
 #include "eval.h"
 #include "module.h"
+#include "actor.h"
 #include "linenoise.h"
 #include "diagnostic.h"
 #include "scheduler.h"
 #include <time.h>
+#include <math.h>
 
 /* Evaluator uses goto-based tail call optimization (TCO) */
 
@@ -640,6 +646,76 @@ static const char* get_history_path(void) {
     return NULL;
 }
 
+/* ── Test run result (shared between --test and --load-test) ── */
+typedef struct {
+    int pass_count;
+    int fail_count;
+    double elapsed_us;
+    uint64_t alloc_delta;
+    int had_error;
+} TestRunResult;
+
+/* ── Core test logic: parse, eval, drain actors, return results ── */
+static TestRunResult run_test_core(const char* filename, char* buffer, size_t len) {
+    TestRunResult r = {0};
+
+    /* Register with SourceMap */
+    uint32_t file_base = 0;
+    if (g_source_map) {
+        file_base = srcmap_add_file(g_source_map, filename, buffer, (uint32_t)len);
+    }
+
+    /* Initialize coverage bitmap for this file */
+    coverage_init((uint32_t)len);
+
+    /* Setup eval context */
+    EvalContext* ctx = eval_context_new();
+    module_registry_init();
+    module_registry_add("<test>");
+    eval_define(ctx, "#t", cell_bool(true));
+    eval_define(ctx, "#f", cell_bool(false));
+    eval_define(ctx, "∅", cell_nil());
+
+    /* Track alloc stats for leak detection */
+    uint64_t alloc_start = cell_get_alloc_count();
+
+    /* Parse and eval loop */
+    int pos = 0;
+
+    struct timespec t_start, t_end;
+    clock_gettime(CLOCK_MONOTONIC, &t_start);
+
+    while (buffer[pos] != '\0') {
+        Cell* expr = parse_next(buffer, &pos, file_base);
+        if (!expr) break;
+
+        Cell* result = eval(ctx, expr);
+        cell_release(expr);
+
+        if (cell_is_error(result)) {
+            r.had_error = 1;
+        }
+        cell_release(result);
+    }
+
+    /* Drain pending actor work */
+    sched_run_all(100000);
+
+    clock_gettime(CLOCK_MONOTONIC, &t_end);
+    r.elapsed_us = (t_end.tv_sec - t_start.tv_sec) * 1e6 +
+                   (t_end.tv_nsec - t_start.tv_nsec) / 1e3;
+
+    /* Alloc stats */
+    uint64_t alloc_end = cell_get_alloc_count();
+    r.alloc_delta = alloc_end - alloc_start;
+
+    /* Snapshot test counters */
+    test_get_counts(&r.pass_count, &r.fail_count);
+
+    eval_context_free(ctx);
+    return r;
+}
+
 /* ── Test file runner (--test mode) ── */
 static void run_test_file(const char* filename) {
     /* Read file */
@@ -664,64 +740,187 @@ static void run_test_file(const char* filename) {
     buffer[bytes_read] = '\0';
     fclose(file);
 
-    /* Register with SourceMap */
-    uint32_t file_base = 0;
-    if (g_source_map) {
-        file_base = srcmap_add_file(g_source_map, filename, buffer, (uint32_t)bytes_read);
-    }
-
-    /* Initialize coverage bitmap for this file */
-    coverage_init((uint32_t)bytes_read);
-
-    /* Setup eval context */
-    EvalContext* ctx = eval_context_new();
-    module_registry_init();
-    module_registry_add("<test>");
-    eval_define(ctx, "#t", cell_bool(true));
-    eval_define(ctx, "#f", cell_bool(false));
-    eval_define(ctx, "∅", cell_nil());
-
-    /* Track alloc stats for leak detection */
-    uint64_t alloc_start = cell_get_alloc_count();
-
-    /* Parse and eval loop (same as repl non-interactive, but from buffer) */
-    int pos = 0;
-    int had_toplevel_error = 0;
-
-    struct timespec t_start, t_end;
-    clock_gettime(CLOCK_MONOTONIC, &t_start);
-
-    while (buffer[pos] != '\0') {
-        Cell* expr = parse_next(buffer, &pos, file_base);
-        if (!expr) break;
-
-        Cell* result = eval(ctx, expr);
-        cell_release(expr);
-
-        if (cell_is_error(result)) {
-            had_toplevel_error = 1;
-        }
-        cell_release(result);
-    }
-
-    /* Drain pending actor work */
-    sched_run_all(100000);
-
-    clock_gettime(CLOCK_MONOTONIC, &t_end);
-    double elapsed_us = (t_end.tv_sec - t_start.tv_sec) * 1e6 +
-                        (t_end.tv_nsec - t_start.tv_nsec) / 1e3;
-
-    /* Alloc stats for leak detection */
-    uint64_t alloc_end = cell_get_alloc_count();
+    TestRunResult r = run_test_core(filename, buffer, bytes_read);
 
     /* Emit structured results and exit */
-    test_emit_and_exit(filename, had_toplevel_error, elapsed_us,
-                       alloc_end - alloc_start);
+    test_emit_and_exit(filename, r.had_error, r.elapsed_us, r.alloc_delta);
 
     /* unreachable — test_emit_and_exit calls exit() */
     free(buffer);
-    eval_context_free(ctx);
 }
+
+#ifndef _WIN32
+/* ── Load test: shared memory layout ── */
+typedef struct {
+    double elapsed_us;
+    int pass_count;
+    int fail_count;
+    uint64_t alloc_delta;
+    long peak_rss_kb;
+} LoadIterResult;
+
+typedef struct {
+    _Atomic int next_iter;
+    _Atomic int completed;
+    LoadIterResult results[];
+} SharedLoadState;
+
+/* qsort comparator for doubles */
+static int cmp_double(const void* a, const void* b) {
+    double da = *(const double*)a, db = *(const double*)b;
+    return (da > db) - (da < db);
+}
+
+static void run_load_test(const char* filename, int iterations, int workers,
+                          int warmup, int schedulers_per_worker) {
+    /* Read file */
+    FILE* file = fopen(filename, "r");
+    if (!file) {
+        fprintf(stderr, "{\"t\":\"error\",\"file\":\"%s\",\"msg\":\"cannot open file\"}\n", filename);
+        exit(2);
+    }
+    fseek(file, 0, SEEK_END);
+    long file_size = ftell(file);
+    fseek(file, 0, SEEK_SET);
+    char* buffer = (char*)malloc(file_size + 1);
+    if (!buffer) { fclose(file); exit(2); }
+    size_t bytes_read = fread(buffer, 1, file_size, file);
+    buffer[bytes_read] = '\0';
+    fclose(file);
+
+    /* Allocate shared memory for results */
+    size_t shm_size = sizeof(SharedLoadState) + iterations * sizeof(LoadIterResult);
+    SharedLoadState* shared = mmap(NULL, shm_size, PROT_READ | PROT_WRITE,
+                                   MAP_SHARED | MAP_ANON, -1, 0);
+    if (shared == MAP_FAILED) {
+        fprintf(stderr, "{\"t\":\"error\",\"msg\":\"mmap failed\"}\n");
+        exit(2);
+    }
+    atomic_store(&shared->next_iter, 0);
+    atomic_store(&shared->completed, 0);
+    memset(shared->results, 0, iterations * sizeof(LoadIterResult));
+
+    struct timespec wall_start, wall_end;
+    clock_gettime(CLOCK_MONOTONIC, &wall_start);
+
+    /* Fork workers */
+    pid_t* pids = malloc(workers * sizeof(pid_t));
+    for (int w = 0; w < workers; w++) {
+        pid_t pid = fork();
+        if (pid < 0) {
+            fprintf(stderr, "{\"t\":\"error\",\"msg\":\"fork failed\"}\n");
+            exit(2);
+        }
+        if (pid == 0) {
+            /* Child worker */
+            while (1) {
+                int iter = atomic_fetch_add(&shared->next_iter, 1);
+                if (iter >= iterations) _exit(0);
+
+                /* Reset state for this iteration */
+                actor_reset_all();
+                test_reset_counts();
+                sched_shutdown();
+                sched_init(schedulers_per_worker);
+
+                /* Re-init source map and interning for this process */
+                if (!g_source_map) g_source_map = srcmap_new();
+
+                TestRunResult r = run_test_core(filename, buffer, bytes_read);
+
+                /* Record results */
+                struct rusage ru;
+                getrusage(RUSAGE_SELF, &ru);
+
+                shared->results[iter].elapsed_us = r.elapsed_us;
+                shared->results[iter].pass_count = r.pass_count;
+                shared->results[iter].fail_count = r.fail_count;
+                shared->results[iter].alloc_delta = r.alloc_delta;
+                #ifdef __APPLE__
+                shared->results[iter].peak_rss_kb = ru.ru_maxrss / 1024;
+                #else
+                shared->results[iter].peak_rss_kb = ru.ru_maxrss;
+                #endif
+
+                int done = atomic_fetch_add(&shared->completed, 1) + 1;
+                fprintf(stderr, "{\"t\":\"load-iter\",\"iter\":%d,\"worker\":%d,"
+                        "\"elapsed_us\":%.1f,\"pass\":%d,\"fail\":%d}\n",
+                        iter, w, r.elapsed_us, r.pass_count, r.fail_count);
+
+                /* Progress on stderr */
+                if (done % 10 == 0 || done == iterations) {
+                    fprintf(stderr, "{\"t\":\"load-progress\",\"completed\":%d,\"total\":%d}\n",
+                            done, iterations);
+                }
+            }
+        }
+        pids[w] = pid;
+    }
+
+    /* Wait for all workers */
+    for (int w = 0; w < workers; w++) {
+        waitpid(pids[w], NULL, 0);
+    }
+
+    clock_gettime(CLOCK_MONOTONIC, &wall_end);
+    double wall_secs = (wall_end.tv_sec - wall_start.tv_sec) +
+                       (wall_end.tv_nsec - wall_start.tv_nsec) / 1e9;
+
+    /* Compute stats (skip warmup iterations) */
+    int effective = iterations - warmup;
+    if (effective <= 0) effective = iterations; /* fallback if warmup >= iterations */
+    int start_idx = iterations - effective;     /* skip first 'warmup' iterations */
+
+    double* latencies = malloc(effective * sizeof(double));
+    int total_pass = 0, total_fail = 0;
+    long peak_rss = 0;
+    double sum = 0;
+
+    for (int i = 0; i < effective; i++) {
+        LoadIterResult* lr = &shared->results[start_idx + i];
+        latencies[i] = lr->elapsed_us;
+        sum += lr->elapsed_us;
+        total_pass += lr->pass_count;
+        total_fail += lr->fail_count;
+        if (lr->peak_rss_kb > peak_rss) peak_rss = lr->peak_rss_kb;
+    }
+
+    qsort(latencies, effective, sizeof(double), cmp_double);
+
+    double mean = sum / effective;
+    double variance = 0;
+    for (int i = 0; i < effective; i++) {
+        double d = latencies[i] - mean;
+        variance += d * d;
+    }
+    double stddev = (effective > 1) ? sqrt(variance / (effective - 1)) : 0;
+
+    double p50 = latencies[effective / 2];
+    double p95 = latencies[(int)(effective * 0.95)];
+    double p99 = latencies[(int)(effective * 0.99)];
+    double min_us = latencies[0];
+    double max_us = latencies[effective - 1];
+    double throughput = (wall_secs > 0) ? effective / wall_secs : 0;
+
+    /* Emit summary */
+    fprintf(stderr,
+        "{\"t\":\"load-summary\",\"file\":\"%s\",\"iterations\":%d,\"workers\":%d,"
+        "\"warmup\":%d,\"stats\":{\"p50_us\":%.1f,\"p95_us\":%.1f,\"p99_us\":%.1f,"
+        "\"mean_us\":%.1f,\"stddev_us\":%.1f,\"min_us\":%.1f,\"max_us\":%.1f,"
+        "\"throughput_ops_sec\":%.1f,\"peak_rss_kb\":%ld,"
+        "\"total_pass\":%d,\"total_fail\":%d}}\n",
+        filename, iterations, workers, warmup,
+        p50, p95, p99, mean, stddev, min_us, max_us,
+        throughput, peak_rss, total_pass, total_fail);
+
+    free(latencies);
+    free(pids);
+    munmap(shared, shm_size);
+    free(buffer);
+
+    exit(total_fail > 0 ? 1 : 0);
+}
+#endif /* !_WIN32 */
 
 /* REPL */
 void repl(void) {
@@ -931,22 +1130,48 @@ int main(int argc, char** argv) {
     g_argc = argc;
     g_argv = argv;
 
-    /* Parse arguments:
-     *   --test <file>   Structured test mode (JSON Lines on stderr, exit code)
-     *   <file>          Shorthand for --test <file> (any arg ending in .test/.scm)
-     *
-     * NOTE: stdin piping (guage < file) is the REPL's non-interactive mode.
-     * Always prefer --test for test files — it gives structured output + exit codes.
-     */
+    /* Parse arguments */
     const char* test_file = NULL;
+    const char* load_test_file = NULL;
+    int sched_override = 0;       /* 0 = auto-detect */
+    int load_iterations = 100;
+    int load_workers = 0;         /* 0 = auto-detect CPU count */
+    int load_warmup = 2;
+
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--test") == 0 && i + 1 < argc) {
             test_file = argv[++i];
+        } else if (strcmp(argv[i], "--load-test") == 0 && i + 1 < argc) {
+            load_test_file = argv[++i];
+        } else if (strcmp(argv[i], "--schedulers") == 0 && i + 1 < argc) {
+            sched_override = atoi(argv[++i]);
+            if (sched_override < 1) sched_override = 1;
+        } else if (strcmp(argv[i], "--iterations") == 0 && i + 1 < argc) {
+            load_iterations = atoi(argv[++i]);
+            if (load_iterations < 1) load_iterations = 1;
+        } else if (strcmp(argv[i], "--workers") == 0 && i + 1 < argc) {
+            load_workers = atoi(argv[++i]);
+            if (load_workers < 1) load_workers = 1;
+        } else if (strcmp(argv[i], "--warmup") == 0 && i + 1 < argc) {
+            load_warmup = atoi(argv[++i]);
+            if (load_warmup < 0) load_warmup = 0;
         } else if (argv[i][0] != '-') {
             /* Positional arg: treat as test file */
             test_file = argv[i];
         }
     }
+
+    /* Auto-detect CPU count */
+    int num_cpus = 1;
+#ifndef _WIN32
+    {
+        long n = sysconf(_SC_NPROCESSORS_ONLN);
+        if (n > 0) num_cpus = (int)n;
+    }
+#endif
+
+    /* Default workers to CPU count if not specified */
+    if (load_workers == 0) load_workers = num_cpus;
 
     guage_siphash_init();
     intern_init();
@@ -958,10 +1183,31 @@ int main(int argc, char** argv) {
     /* Initialize sentinel (immortal) error cells */
     error_sentinels_init();
 
-    /* Initialize scheduler subsystem (1 scheduler = main thread only) */
-    sched_init(1);
+    /* Initialize scheduler subsystem:
+     * --test: single scheduler (deterministic) unless --schedulers overrides
+     * --load-test: single scheduler per parent (workers handle their own)
+     * REPL: auto-detect CPU count for real parallelism
+     * --schedulers N: always overrides */
+    int sched_count_init;
+    if (sched_override > 0) {
+        sched_count_init = sched_override;
+    } else if (test_file || load_test_file) {
+        sched_count_init = 1;
+    } else {
+        sched_count_init = num_cpus;
+    }
+    sched_init(sched_count_init);
 
-    if (test_file) {
+    if (load_test_file) {
+#ifndef _WIN32
+        int sched_per_worker = sched_override > 0 ? sched_override : 1;
+        run_load_test(load_test_file, load_iterations, load_workers,
+                      load_warmup, sched_per_worker);
+#else
+        fprintf(stderr, "load-test not supported on Windows\n");
+        exit(2);
+#endif
+    } else if (test_file) {
         /* Deterministic scheduling for reproducible tests */
         sched_set_deterministic(1, sched_hash_seed(test_file));
         run_test_file(test_file);

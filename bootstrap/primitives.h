@@ -523,4 +523,8 @@ const Primitive* primitive_lookup_by_name(const char* name);
 void test_emit_and_exit(const char* filename, int had_toplevel_error,
                         double elapsed_us, uint64_t leaked_cells);
 
+/* Thread-safe accessors for test counters (used by --load-test) */
+void test_get_counts(int* pass, int* fail);
+void test_reset_counts(void);
+
 #endif /* GUAGE_PRIMITIVES_H */

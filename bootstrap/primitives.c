@@ -28,6 +28,8 @@
 #include <time.h>
 #include <errno.h>
 #include <pwd.h>
+#include <stdatomic.h>
+#include <pthread.h>
 #include <grp.h>
 #include <sys/time.h>
 #include <limits.h>
@@ -112,8 +114,9 @@ static Cell* arg4(Cell* args) {
 
 /* ═══ Test Runner Global State ═══ */
 static Cell* g_test_results = NULL;    /* Accumulated test results (cons list of ⊞ HashMaps) */
-static int   g_pass_count = 0;        /* Tests passed */
-static int   g_fail_count = 0;        /* Tests failed */
+static _Atomic int g_pass_count = 0;        /* Tests passed (atomic for multi-scheduler) */
+static _Atomic int g_fail_count = 0;        /* Tests failed (atomic for multi-scheduler) */
+static pthread_mutex_t g_test_results_lock = PTHREAD_MUTEX_INITIALIZER;
 static Cell* g_test_registry = NULL;  /* ⊮ Trie: name → ⊞{:fn λ, :tags ⊍{...}} */
 static Cell* g_tag_registry = NULL;   /* ⊮ Trie: "tag:name" → #t (inverted index) */
 static Cell* g_current_suite = NULL;  /* Current suite name for auto-prefixing */
@@ -167,11 +170,14 @@ static void cell_to_json_string(FILE* out, Cell* c) {
 /* ── Structured test exit (called from run_test_file in main.c) ── */
 void test_emit_and_exit(const char* filename, int had_toplevel_error,
                         double elapsed_us, uint64_t leaked_cells) {
-    int total = g_pass_count + g_fail_count;
-    if (had_toplevel_error && g_fail_count == 0) g_fail_count = 1;
-    int code = (g_fail_count > 0) ? 1 : 0;
+    int pass = atomic_load(&g_pass_count);
+    int fail = atomic_load(&g_fail_count);
+    int total = pass + fail;
+    if (had_toplevel_error && fail == 0) { fail = 1; atomic_store(&g_fail_count, 1); }
+    int code = (fail > 0) ? 1 : 0;
 
     /* Per-test detail lines on stderr */
+    pthread_mutex_lock(&g_test_results_lock);
     Cell* cur = g_test_results;
     while (cur && cell_is_pair(cur)) {
         Cell* m = cell_car(cur);
@@ -216,6 +222,7 @@ void test_emit_and_exit(const char* filename, int had_toplevel_error,
         }
         cur = cell_cdr(cur);
     }
+    pthread_mutex_unlock(&g_test_results_lock);
 
     /* Leak detection line */
     if (leaked_cells > 0) {
@@ -231,11 +238,28 @@ void test_emit_and_exit(const char* filename, int had_toplevel_error,
     fprintf(stderr, "{\"t\":\"summary\",\"file\":");
     json_escape_string(stderr, filename);
     fprintf(stderr, ",\"pass\":%d,\"fail\":%d,\"total\":%d,\"elapsed_us\":%.1f",
-            g_pass_count, g_fail_count, total, elapsed_us);
+            pass, fail, total, elapsed_us);
     fprintf(stderr, ",\"sched_seed\":%u", sched_hash_seed(filename));
     fprintf(stderr, "}\n");
 
     exit(code);
+}
+
+/* Thread-safe accessors for test counters */
+void test_get_counts(int* pass, int* fail) {
+    *pass = atomic_load(&g_pass_count);
+    *fail = atomic_load(&g_fail_count);
+}
+
+void test_reset_counts(void) {
+    atomic_store(&g_pass_count, 0);
+    atomic_store(&g_fail_count, 0);
+    pthread_mutex_lock(&g_test_results_lock);
+    if (g_test_results) {
+        cell_release(g_test_results);
+        g_test_results = NULL;
+    }
+    pthread_mutex_unlock(&g_test_results_lock);
 }
 
 /* Core Lambda Calculus */
@@ -2318,7 +2342,7 @@ Cell* prim_test_case(Cell* args) {
 
     if (passed) {
         printf(" ✓ PASS\n");
-        g_pass_count++;
+        atomic_fetch_add(&g_pass_count, 1);
     } else {
         printf(" ✗ FAIL\n");
         printf("  Expected: ");
@@ -2326,7 +2350,7 @@ Cell* prim_test_case(Cell* args) {
         printf("\n  Actual:   ");
         cell_print(actual);
         printf("\n");
-        g_fail_count++;
+        atomic_fetch_add(&g_fail_count, 1);
     }
 
     /* Build result HashMap: ⊞{:name :status :expected :actual :elapsed} */
@@ -2345,11 +2369,13 @@ Cell* prim_test_case(Cell* args) {
         cell_hashmap_put(result_map, cell_symbol(":suite"), g_current_suite);
     }
 
-    /* Accumulate into g_test_results */
+    /* Accumulate into g_test_results (mutex for multi-scheduler safety) */
     cell_retain(result_map);
+    pthread_mutex_lock(&g_test_results_lock);
     Cell* new_cons = cell_cons(result_map, g_test_results ? g_test_results : cell_nil());
     g_test_results = new_cons;
     cell_retain(g_test_results);
+    pthread_mutex_unlock(&g_test_results_lock);
 
     if (passed) {
         return cell_bool(true);
@@ -2818,20 +2844,28 @@ Cell* prim_test_run_registry(Cell* args) {
 /* ⊨⊜ — Return accumulated test results list */
 Cell* prim_test_results(Cell* args) {
     (void)args;
-    if (!g_test_results) return cell_nil();
+    pthread_mutex_lock(&g_test_results_lock);
+    if (!g_test_results) {
+        pthread_mutex_unlock(&g_test_results_lock);
+        return cell_nil();
+    }
     cell_retain(g_test_results);
-    return g_test_results;
+    Cell* ret = g_test_results;
+    pthread_mutex_unlock(&g_test_results_lock);
+    return ret;
 }
 
 /* ⊨⊜∅ — Clear all test state */
 Cell* prim_test_reset(Cell* args) {
     (void)args;
+    pthread_mutex_lock(&g_test_results_lock);
     if (g_test_results) {
         cell_release(g_test_results);
         g_test_results = NULL;
     }
-    g_pass_count = 0;
-    g_fail_count = 0;
+    pthread_mutex_unlock(&g_test_results_lock);
+    atomic_store(&g_pass_count, 0);
+    atomic_store(&g_fail_count, 0);
     if (g_current_suite) {
         cell_release(g_current_suite);
         g_current_suite = NULL;
@@ -2842,19 +2876,23 @@ Cell* prim_test_reset(Cell* args) {
 /* ⊨⊜# — Return pass/fail/total as cons triple */
 Cell* prim_test_count(Cell* args) {
     (void)args;
-    int total = g_pass_count + g_fail_count;
-    return cell_cons(cell_number(g_pass_count),
-           cell_cons(cell_number(g_fail_count),
+    int pass = atomic_load(&g_pass_count);
+    int fail = atomic_load(&g_fail_count);
+    int total = pass + fail;
+    return cell_cons(cell_number(pass),
+           cell_cons(cell_number(fail),
            cell_cons(cell_number(total), cell_nil())));
 }
 
 /* ⊨⊜× — Exit with status code (0 if all pass, 1 if any fail) */
 Cell* prim_test_exit(Cell* args) {
     (void)args;
-    int code = (g_fail_count > 0) ? 1 : 0;
+    int pass = atomic_load(&g_pass_count);
+    int fail = atomic_load(&g_fail_count);
+    int code = (fail > 0) ? 1 : 0;
     printf("\n═══ Final Test Report ═══\n");
     printf("Passed: %d  Failed: %d  Total: %d\n",
-           g_pass_count, g_fail_count, g_pass_count + g_fail_count);
+           pass, fail, pass + fail);
     exit(code);
     return cell_nil(); /* unreachable */
 }
@@ -3066,6 +3104,14 @@ Cell* prim_sched_count(Cell* args) {
     }
     sched_set_count((int)cell_get_number(n));
     return cell_nil();
+}
+
+/* ⟳⊞⊛ - get online CPU count
+ * (⟳⊞⊛) → number of online CPUs */
+Cell* prim_cpu_count(Cell* args) {
+    (void)args;
+    long n = sysconf(_SC_NPROCESSORS_ONLN);
+    return cell_number(n > 0 ? (double)n : 1.0);
 }
 
 /* ⟳⊞⊙ - get current thread's scheduler ID
@@ -15094,6 +15140,7 @@ static Primitive primitives[] = {
     {"⟳#", prim_sched_count, -1, {"Get/set scheduler count", "() → ℕ | ℕ → ∅"}},
     {"⟳#⊙", prim_sched_id, 0, {"Current scheduler ID", "() → ℕ"}},
     {"⟳#?", prim_sched_stats, 0, {"Per-scheduler statistics", "() → [⟨ℕ ⊞⟩]"}},
+    {"⟳⊞⊛", prim_cpu_count, 0, {"Online CPU count", "() → ℕ"}},
     {"⟳?", prim_actor_alive, 1, {"Check if actor is alive", "⟳ → 𝔹"}},
     {"⟳→", prim_actor_result, 1, {"Get finished actor result", "⟳ → α | ⚠"}},
     {"⟳⚐", prim_actor_wait_flag, 1, {"Get actor wait_flag (testing introspection)", "⟳ → ℕ"}},
