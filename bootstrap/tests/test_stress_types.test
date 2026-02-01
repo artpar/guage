@@ -39,8 +39,8 @@
 (≔ mixed-validate (λ (i acc)
   (? (≡ i #0) acc
      (⪢
-       (≔ val (? (≡ (⊛% i #3) #0) i
-                 (? (≡ (⊛% i #3) #1) "str"
+       (≔ val (? (≡ (% i #3) #0) i
+                 (? (≡ (% i #3) #1) "str"
                     :sym)))
        (mixed-validate (⊖ i #1)
          (⊕ acc (? (∨ (∈✓ val ℤ) (∨ (∈✓ val ≋) (∈✓ val ⊙)))

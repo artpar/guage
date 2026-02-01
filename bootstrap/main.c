@@ -424,14 +424,21 @@ static void handle_help_command(EvalContext* ctx, const char* cmd) {
         printf("║    :help              List all REPL commands              ║\n");
         printf("║    :help <symbol>     Show primitive documentation        ║\n");
         printf("║    :primitives        List all primitive symbols          ║\n");
+        printf("║    :categories        List categories with counts        ║\n");
+        printf("║    :search <term>     Search primitives by keyword       ║\n");
         printf("║    :modules           List loaded modules                 ║\n");
         printf("║                                                           ║\n");
         printf("║  Special Forms:                                           ║\n");
         printf("║    λ, ≔, ?, ∇         Core language constructs           ║\n");
         printf("║                                                           ║\n");
+        printf("║  Programmatic Discovery:                                  ║\n");
+        printf("║    (⌂*)               List all primitives as data        ║\n");
+        printf("║    (⌂⊳ :keyword)      Search by keyword                 ║\n");
+        printf("║    (⌂⊳⊜ :category)    Filter by category                ║\n");
+        printf("║                                                           ║\n");
         printf("║  Example Usage:                                           ║\n");
         printf("║    :help ⊕            Show documentation for addition    ║\n");
-        printf("║    :primitives        List all available primitives      ║\n");
+        printf("║    :search hash       Find hashmap/set primitives        ║\n");
         printf("╚═══════════════════════════════════════════════════════════╝\n\n");
         return;
     }
@@ -454,6 +461,7 @@ static void handle_help_command(EvalContext* ctx, const char* cmd) {
     printf("\n┌─────────────────────────────────────────────────────────┐\n");
     printf("│ Primitive: %s\n", prim->name);
     printf("├─────────────────────────────────────────────────────────┤\n");
+    printf("│ Category: %s\n", prim->doc.category ? prim->doc.category : "uncategorized");
     printf("│ Description: %s\n", prim->doc.description);
     printf("│ Type: %s\n", prim->doc.type_signature);
     printf("│ Arity: %d\n", prim->arity);
@@ -461,85 +469,111 @@ static void handle_help_command(EvalContext* ctx, const char* cmd) {
 }
 
 static void handle_primitives_command(void) {
-    extern Primitive primitives[];  /* From primitives.c */
+    const Primitive* prims = primitives_table();
+
+    int total = 0;
+    while (prims[total].name) total++;
 
     printf("\n╔═══════════════════════════════════════════════════════════╗\n");
-    printf("║  Guage Primitives (78 total)                             ║\n");
+    printf("║  Guage Primitives (%d total)                              \n", total);
     printf("╠═══════════════════════════════════════════════════════════╣\n");
 
-    /* Core Lambda Calculus */
-    printf("║  Core Lambda Calculus:                                    ║\n");
-    printf("║    ⟨⟩  ◁  ▷                                              ║\n");
-    printf("║                                                           ║\n");
-
-    /* Metaprogramming */
-    printf("║  Metaprogramming:                                         ║\n");
-    printf("║    ⌜  ⌞                                                   ║\n");
-    printf("║                                                           ║\n");
-
-    /* Comparison & Logic */
-    printf("║  Comparison & Logic:                                      ║\n");
-    printf("║    ≡  ≢  ∧  ∨  ¬                                         ║\n");
-    printf("║                                                           ║\n");
-
-    /* Arithmetic */
-    printf("║  Arithmetic:                                              ║\n");
-    printf("║    ⊕  ⊖  ⊗  ⊘  %%  <  >  ≤  ≥                            ║\n");
-    printf("║                                                           ║\n");
-
-    /* Type Predicates */
-    printf("║  Type Predicates:                                         ║\n");
-    printf("║    ℕ?  𝔹?  :?  ∅?  ⟨⟩?  #?  ≈?  ⚠?                       ║\n");
-    printf("║                                                           ║\n");
-
-    /* Debug & Testing */
-    printf("║  Debug & Testing:                                         ║\n");
-    printf("║    ⚠  ⊢  ⟲  ⧉  ⊛  ≟  ⊨                                   ║\n");
-    printf("║                                                           ║\n");
-
-    /* I/O */
-    printf("║  I/O:                                                     ║\n");
-    printf("║    ≋  ≋≈  ≋←  ≋⊳  ≋⊲  ≋⊕  ≋?  ≋∅?                        ║\n");
-    printf("║                                                           ║\n");
-
-    /* Modules */
-    printf("║  Modules:                                                 ║\n");
-    printf("║    ⋘  ⋖  ⌂⊚  ⌂⊚→                                         ║\n");
-    printf("║                                                           ║\n");
-
-    /* Strings */
-    printf("║  Strings:                                                 ║\n");
-    printf("║    ≈  ≈#  ≈⊙  ≈⊕  ≈⊂  ≈≡  ≈<  ≈>                         ║\n");
-    printf("║                                                           ║\n");
-
-    /* Structures */
-    printf("║  Structures (Leaf):                                       ║\n");
-    printf("║    ⊙≔  ⊙  ⊙→  ⊙←  ⊙?                                     ║\n");
-    printf("║                                                           ║\n");
-
-    printf("║  Structures (Node/ADT):                                   ║\n");
-    printf("║    ⊚≔  ⊚  ⊚→  ⊚?                                         ║\n");
-    printf("║                                                           ║\n");
-
-    printf("║  Structures (Graph):                                      ║\n");
-    printf("║    ⊝≔  ⊝  ⊝⊕  ⊝⊗  ⊝→  ⊝?                                 ║\n");
-    printf("║                                                           ║\n");
-
-    /* CFG/DFG */
-    printf("║  CFG/DFG Analysis:                                        ║\n");
-    printf("║    ⌂⇝  ⌂⇝⊳                                               ║\n");
-    printf("║                                                           ║\n");
-
-    /* Effects & Actors (placeholders) */
-    printf("║  Effects (placeholder):                                   ║\n");
-    printf("║    ⟪⟫  ↯  ⤴  ≫                                           ║\n");
-    printf("║                                                           ║\n");
-
-    printf("║  Actors (placeholder):                                    ║\n");
-    printf("║    ⟳  →!  ←?                                             ║\n");
-    printf("╠═══════════════════════════════════════════════════════════╣\n");
-    printf("║  Use :help <symbol> to see detailed documentation        ║\n");
+    const char* current_cat = NULL;
+    int col = 0;
+    for (int i = 0; i < total; i++) {
+        const char* cat = prims[i].doc.category;
+        if (!cat) cat = "uncategorized";
+        if (!current_cat || strcmp(current_cat, cat) != 0) {
+            if (current_cat) printf("\n");
+            printf("║  %s:\n║    ", cat);
+            col = 0;
+            current_cat = cat;
+        }
+        int namelen = (int)strlen(prims[i].name);
+        if (col > 0 && col + namelen + 2 > 54) {
+            printf("\n║    ");
+            col = 0;
+        }
+        printf("%s  ", prims[i].name);
+        col += namelen + 2;
+    }
+    printf("\n╠═══════════════════════════════════════════════════════════╣\n");
+    printf("║  :help <sym>  docs  :search <term>  :categories  counts  ║\n");
     printf("╚═══════════════════════════════════════════════════════════╝\n\n");
+}
+
+static void handle_categories_command(void) {
+    const Primitive* prims = primitives_table();
+
+    printf("\n┌─────────────────────────────────────────────────────────┐\n");
+    printf("│ Primitive Categories\n");
+    printf("├─────────────────────────────────────────────────────────┤\n");
+
+    const char* current_cat = NULL;
+    int count = 0, total = 0;
+    for (int i = 0; ; i++) {
+        const char* cat = prims[i].name ? prims[i].doc.category : NULL;
+        if (!cat) cat = prims[i].name ? "uncategorized" : NULL;
+        if (current_cat && (!cat || strcmp(current_cat, cat) != 0)) {
+            printf("│  %-24s %3d primitives\n", current_cat, count);
+            total += count;
+            count = 0;
+        }
+        if (!prims[i].name) break;
+        current_cat = cat;
+        count++;
+    }
+    printf("├─────────────────────────────────────────────────────────┤\n");
+    printf("│  Total: %d primitives\n", total);
+    printf("└─────────────────────────────────────────────────────────┘\n\n");
+}
+
+static void handle_search_command(const char* term) {
+    const Primitive* prims = primitives_table();
+
+    while (*term == ' ' || *term == '\t') term++;
+    if (*term == '\0' || *term == '\n') {
+        printf("Usage: :search <term>\n");
+        return;
+    }
+
+    printf("\n┌─────────────────────────────────────────────────────────┐\n");
+    printf("│ Search: \"%s\"\n", term);
+    printf("├─────────────────────────────────────────────────────────┤\n");
+
+    int found = 0;
+    for (int i = 0; prims[i].name; i++) {
+        const Primitive* p = &prims[i];
+        int match = 0;
+        const char* fields[] = {p->name, p->doc.description, p->doc.type_signature, p->doc.category};
+        for (int f = 0; f < 4; f++) {
+            if (!fields[f]) continue;
+            const char* h = fields[f];
+            size_t tlen = strlen(term), hlen = strlen(h);
+            if (tlen > hlen) continue;
+            for (size_t j = 0; j <= hlen - tlen; j++) {
+                int ok = 1;
+                for (size_t k = 0; k < tlen; k++) {
+                    char a = h[j+k], b = term[k];
+                    if (a >= 'A' && a <= 'Z') a += 32;
+                    if (b >= 'A' && b <= 'Z') b += 32;
+                    if (a != b) { ok = 0; break; }
+                }
+                if (ok) { match = 1; break; }
+            }
+            if (match) break;
+        }
+        if (match) {
+            printf("│  %-8s [%-16s] %s\n", p->name,
+                   p->doc.category ? p->doc.category : "?",
+                   p->doc.description);
+            found++;
+        }
+    }
+    if (found == 0) printf("│  (no matches)\n");
+    printf("├─────────────────────────────────────────────────────────┤\n");
+    printf("│  %d result(s)\n", found);
+    printf("└─────────────────────────────────────────────────────────┘\n\n");
 }
 
 static void handle_modules_command(EvalContext* ctx) {
@@ -582,7 +616,7 @@ static void handle_modules_command(EvalContext* ctx) {
 static void completion_callback(const char *buf, linenoiseCompletions *lc) {
     /* Complete REPL commands */
     if (buf[0] == ':') {
-        const char *commands[] = {":help", ":primitives", ":modules", NULL};
+        const char *commands[] = {":help", ":primitives", ":categories", ":search", ":modules", NULL};
         for (int i = 0; commands[i]; i++) {
             if (strncmp(buf, commands[i], strlen(buf)) == 0) {
                 linenoiseAddCompletion(lc, commands[i]);
@@ -1012,6 +1046,10 @@ void repl(void) {
                 handle_help_command(ctx, input + 5);
             } else if (strcmp(input, ":primitives") == 0) {
                 handle_primitives_command();
+            } else if (strcmp(input, ":categories") == 0) {
+                handle_categories_command();
+            } else if (strncmp(input, ":search", 7) == 0) {
+                handle_search_command(input + 7);
             } else if (strcmp(input, ":modules") == 0) {
                 handle_modules_command(ctx);
             } else {

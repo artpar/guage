@@ -1,11 +1,67 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-02-02 (Day 147 COMPLETE)
+Updated: 2026-02-02 (Day 148 COMPLETE)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 147 - Pure Guage Stdlib & Deep Integration Tests (2026-02-02)
+# Session Handoff: Day 148 - Primitive Discovery (2026-02-02)
+
+## Day 148 — Primitive Discovery: Zero-Duplication (COMPLETE)
+
+**STATUS:** 131/174 test files passing ✅ (43 pre-existing failures, 0 regressions)
+
+### What Was Done
+
+Made all 559 primitives discoverable through both REPL commands and programmatic Guage primitives. Categories are derived from the C comment sections in the primitives[] table — a ~70-entry range index stamps category labels at init, zero edits to the 559 primitive entries themselves.
+
+### Category System
+
+- `prim_categories[]` range table maps array indices to category labels (~70 entries)
+- `primitives_stamp_categories()` stamps `.doc.category` on each primitive at init
+- Added `category` field to `PrimitiveDoc` struct in primitives.h
+- Added `primitives_table()` accessor (array is static, main.c uses accessor)
+
+### New Guage Primitives (3)
+
+| Primitive | Arity | Description |
+|-----------|-------|-------------|
+| `⌂*` | 0 | List all primitives as `((name cat desc type) ...)` |
+| `⌂⊳` | 1 | Search by keyword substring (name/desc/type/category) |
+| `⌂⊳⊜` | 1 | Filter by category name |
+
+Each returns a cons list of 4-tuples (name, category, description, type_sig) as strings.
+
+### REPL Commands Updated
+
+- **`:primitives`** — replaced 80-line hardcoded printf (78 symbols) with dynamic grouped listing of all 559 primitives by category
+- **`:categories`** — NEW: lists all category names with primitive counts
+- **`:search <term>`** — NEW: case-insensitive substring search across name/desc/type/category
+- **`:help <symbol>`** — now shows `Category:` line in output
+- **Tab completion** updated to include `:categories` and `:search`
+
+### Files Changed
+
+| File | Changes |
+|------|---------|
+| `bootstrap/primitives.h` | Added `category` field to PrimitiveDoc, `primitives_table()` decl |
+| `bootstrap/primitives.c` | Category range table, stamp function, 3 discovery primitives, accessor |
+| `bootstrap/main.c` | Dynamic `:primitives`, `:categories`, `:search`, category in `:help` |
+| `bootstrap/tests/test_stress_*.test` (18 files) | Stress test fixes (pre-existing) |
+
+### Verification
+
+1. `make` — compiles cleanly (0 errors)
+2. `:categories` — shows ~35 categories with counts
+3. `:primitives` — dynamic grouped listing of all 559 primitives
+4. `:search hash` — finds hashmap/hashset primitives
+5. `:help ⊕` — shows `Category: arithmetic`
+6. `(⌂*)` — returns full primitive catalog as data
+7. `(⌂⊳ "hash")` — programmatic search returns 22 hashmap/hashset primitives
+8. `(⌂⊳⊜ "arithmetic")` — returns 10 arithmetic primitives
+9. `make test` — 131 PASS / 43 FAIL (no regressions)
+
+---
 
 ## Day 147 — Pure Guage Stdlib & Deep Integration Tests (COMPLETE)
 

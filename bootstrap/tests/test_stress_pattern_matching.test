@@ -30,10 +30,10 @@
 (≔ shape-loop (λ (i acc)
   (? (≡ i #0) acc
      (⪢
-       (≔ s (? (≡ (⊛% i #5) #0) (⊚ :Shape :Circle #10)
-              (? (≡ (⊛% i #5) #1) (⊚ :Shape :Rect #3 #4)
-                 (? (≡ (⊛% i #5) #2) (⊚ :Shape :Triangle #5 #6)
-                    (? (≡ (⊛% i #5) #3) (⊚ :Shape :Point)
+       (≔ s (? (≡ (% i #5) #0) (⊚ :Shape :Circle #10)
+              (? (≡ (% i #5) #1) (⊚ :Shape :Rect #3 #4)
+                 (? (≡ (% i #5) #2) (⊚ :Shape :Triangle #5 #6)
+                    (? (≡ (% i #5) #3) (⊚ :Shape :Point)
                        (⊚ :Shape :Line #7))))))
        (shape-loop (⊖ i #1) (⊕ acc #1))))))
 
@@ -86,10 +86,10 @@
 (≔ color-loop (λ (i acc)
   (? (≡ i #0) acc
      (⪢
-       (≔ c (? (≡ (⊛% i #5) #0) (⊚ :Color :Red)
-              (? (≡ (⊛% i #5) #1) (⊚ :Color :Green)
-                 (? (≡ (⊛% i #5) #2) (⊚ :Color :Blue)
-                    (? (≡ (⊛% i #5) #3) (⊚ :Color :Yellow)
+       (≔ c (? (≡ (% i #5) #0) (⊚ :Color :Red)
+              (? (≡ (% i #5) #1) (⊚ :Color :Green)
+                 (? (≡ (% i #5) #2) (⊚ :Color :Blue)
+                    (? (≡ (% i #5) #3) (⊚ :Color :Yellow)
                        (⊚ :Color :Black))))))
        (color-loop (⊖ i #1) (⊕ acc (? (is-primary c) #1 #0)))))))
 
@@ -129,7 +129,7 @@
 (≔ build-items (λ (i acc)
   (? (≡ i #0) acc
      (build-items (⊖ i #1)
-       (⟨⟩ (? (≡ (⊛% i #2) #0) (⊚ :Item :Val i) (⊚ :Item :Skip)) acc)))))
+       (⟨⟩ (? (≡ (% i #2) #0) (⊚ :Item :Val i) (⊚ :Item :Skip)) acc)))))
 
 (≔ item-list (build-items #10000 ∅))
 (≔ item-sum (sum-items item-list))

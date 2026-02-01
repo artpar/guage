@@ -39,10 +39,10 @@
 (≔ multi-adt-loop (λ (i acc)
   (? (≡ i #0) acc
      (⪢
-       (≔ val (? (≡ (⊛% i #5) #0) (⊚ :Maybe :Just i)
-                 (? (≡ (⊛% i #5) #1) (⊚ :Result :Ok i)
-                    (? (≡ (⊛% i #5) #2) (⊚ :Expr :Num i)
-                       (? (≡ (⊛% i #5) #3) (⊚ :Shape :Circle i)
+       (≔ val (? (≡ (% i #5) #0) (⊚ :Maybe :Just i)
+                 (? (≡ (% i #5) #1) (⊚ :Result :Ok i)
+                    (? (≡ (% i #5) #2) (⊚ :Expr :Num i)
+                       (? (≡ (% i #5) #3) (⊚ :Shape :Circle i)
                           (⊚ :Tree :Leaf i))))))
        (multi-adt-loop (⊖ i #1) (⊕ acc (process-any val)))))))
 
@@ -62,7 +62,7 @@
 (≔ type-adt-loop (λ (i acc)
   (? (≡ i #0) acc
      (⪢
-       (≔ val (? (≡ (⊛% i #2) #0)
+       (≔ val (? (≡ (% i #2) #0)
                  (⊚ :Maybe :Just i)
                  (⊚ :Result :Ok i)))
        (type-adt-loop (⊖ i #1) (⊕ acc (? (validate-adt val) #1 #0)))))))
@@ -84,8 +84,8 @@
 (≔ dispatch-loop (λ (i big-count)
   (? (≡ i #0) big-count
      (⪢
-       (≔ val (? (≡ (⊛% i #3) #0) (⊚ :Maybe :Just i)
-                 (? (≡ (⊛% i #3) #1) (⊚ :Result :Ok i)
+       (≔ val (? (≡ (% i #3) #0) (⊚ :Maybe :Just i)
+                 (? (≡ (% i #3) #1) (⊚ :Result :Ok i)
                     (⊚ :Maybe :Nothing))))
        (≔ tag (dispatch-val val))
        (dispatch-loop (⊖ i #1)
@@ -104,7 +104,7 @@
 
 (≔ build-maybe-tree (λ (depth)
   (? (≡ depth #0)
-     (⊚ :Tree :Leaf (? (≡ (⊛% depth #2) #0) (⊚ :Maybe :Just #1) (⊚ :Maybe :Nothing)))
+     (⊚ :Tree :Leaf (? (≡ (% depth #2) #0) (⊚ :Maybe :Just #1) (⊚ :Maybe :Nothing)))
      (⊚ :Tree :Node (build-maybe-tree (⊖ depth #1)) (build-maybe-tree (⊖ depth #1))))))
 
 (≔ mt (build-maybe-tree #12))

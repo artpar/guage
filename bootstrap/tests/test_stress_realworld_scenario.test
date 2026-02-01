@@ -83,7 +83,7 @@
 
 (≔ submit-orders (λ (server n total-shipped total-failed)
   (? (≡ n #0) (⟨⟩ total-shipped total-failed)
-     (≫ (⟳⇅ server (⟨⟩ n (? (≡ (⊛% n #10) #0) (⊖ #0 #1) n))) (λ (r)
+     (≫ (⟳⇅ server (⟨⟩ n (? (≡ (% n #10) #0) (⊖ #0 #1) n))) (λ (r)
        (? (≡ r :shipped)
           (submit-orders server (⊖ n #1) (⊕ total-shipped #1) total-failed)
           (submit-orders server (⊖ n #1) total-shipped (⊕ total-failed #1))))))))

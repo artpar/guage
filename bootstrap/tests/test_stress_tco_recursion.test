@@ -92,7 +92,7 @@
 
 (≔ alt-loop (λ (n acc)
   (? (≡ n #0) acc
-     (? (≡ (⊛% n #2) #0)
+     (? (≡ (% n #2) #0)
         (alt-loop (⊖ n #1) (⊕ acc #1))
         (alt-loop (⊖ n #1) (⊖ acc #1))))))
 

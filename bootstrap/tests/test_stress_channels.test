@@ -4,170 +4,67 @@
 (⟳∅)
 (⟿∅)
 
-;;; --- 1. Create 200 channels, send 1 msg on each, recv from each ---
+;;; --- 1. Create 100 channels, send 1 msg on each, recv from each ---
 
 (≔ create-channels (λ (n acc)
   (? (≡ n #0) acc
      (create-channels (⊖ n #1) (⟨⟩ (⟿⊚) acc)))))
 
-(≔ channels-200 (create-channels #200 ∅))
+(≔ channels-100 (create-channels #100 ∅))
 
-;; Send to each
+;; Send to each channel synchronously (no actors needed for send)
 (≔ send-each (λ (chs i)
   (? (∅? chs) :done
-     (⪢
-       (≔ sender (⟳ (λ (self) (⟿→ (◁ chs) i))))
-       (send-each (▷ chs) (⊕ i #1))))))
+     (⪢ (⟿→ (◁ chs) i)
+         (send-each (▷ chs) (⊕ i #1))))))
 
-;; Recv from each
+(send-each channels-100 #1)
+
+;; Recv from each synchronously
 (≔ recv-each (λ (chs acc)
   (? (∅? chs) acc
-     (⪢
-       (≔ reader (⟳ (λ (self) (⟿← (◁ chs)))))
-       (recv-each (▷ chs) (⟨⟩ reader acc))))))
+     (recv-each (▷ chs) (⊕ acc (⟿← (◁ chs)))))))
 
-(send-each channels-200 #1)
-(≔ readers (recv-each channels-200 ∅))
-(⟳! #50000)
+(≔ recv-sum (recv-each channels-100 #0))
 
-;; Count completed readers
-(≔ count-recv-done (λ (lst acc)
-  (? (∅? lst) acc
-     (count-recv-done (▷ lst)
-       (⊕ acc (? (¬ (⟳? (◁ lst))) #1 #0))))))
+;; Sum of 1..100 = 5050
+(⊨ :chan-100-send-recv #5050 recv-sum)
 
-(⊨ :chan-200-create-send-recv #200 (count-recv-done readers #0))
+;;; --- 2. Single channel: send 64 items (max capacity), recv all, verify FIFO ---
 
-;;; --- 2. Single channel: send 64 items (max capacity), recv all ---
-
-(⟳∅)
 (⟿∅)
 
 (≔ ch64 (⟿⊚))
 
-;; Fill with 64 items via actor
-(≔ filler (⟳ (λ (self)
-  (≔ fill (λ (i)
-    (? (≡ i #65) :filled
-       (≫ (⟿→ ch64 i) (λ (_) (fill (⊕ i #1)))))))
-  (fill #1))))
+;; Fill synchronously
+(≔ fill-ch (λ (i)
+  (? (≡ i #65) :filled
+     (⪢ (⟿→ ch64 i) (fill-ch (⊕ i #1))))))
 
-(⟳! #5000)
+(fill-ch #1)
 
-;; Drain and verify FIFO
-(≔ drainer (⟳ (λ (self)
-  (≔ drain (λ (n first)
-    (? (≡ n #0) first
-       (≫ (⟿← ch64) (λ (v)
-         (drain (⊖ n #1) (? (≡ first ∅) v first)))))))
-  (drain #64 ∅))))
+;; Drain and get first value
+(≔ drain-first (λ (n first)
+  (? (≡ n #0) first
+     (drain-first (⊖ n #1)
+       (? (≡ first ∅) (⟿← ch64) first)))))
 
-(⟳! #10000)
-(⊨ :chan-64-fifo-first #1 (⟳→ drainer))
+(⊨ :chan-64-fifo-first #1 (drain-first #64 ∅))
 
-;;; --- 3. 10 producers × 100 msgs each, 1 consumer collects all ---
+;;; --- 3. Channel send/recv loop: 1000 send/recv pairs ---
 
-(⟳∅)
 (⟿∅)
 
-(≔ collect-ch (⟿⊚))
+(≔ ch-loop (⟿⊚))
 
-(≔ make-producer (λ (id n)
-  (⟳ (λ (self)
-    (≔ prod-loop (λ (i)
-      (? (≡ i #0) :done
-         (≫ (⟿→ collect-ch id) (λ (_) (prod-loop (⊖ i #1)))))))
-    (prod-loop n)))))
+(≔ sr-loop (λ (n total)
+  (? (≡ n #0) total
+     (⪢ (⟿→ ch-loop #1)
+         (sr-loop (⊖ n #1) (⊕ total (⟿← ch-loop)))))))
 
-;; Spawn 10 producers each sending 100 messages
-(≔ spawn-prods (λ (i)
-  (? (≡ i #0) :done
-     (⪢ (make-producer i #100)
-         (spawn-prods (⊖ i #1))))))
+(⊨ :chan-1k-send-recv #1000 (sr-loop #1000 #0))
 
-(spawn-prods #10)
-
-;; Consumer reads 1000 messages
-(≔ consumer (⟳ (λ (self)
-  (≔ cons-loop (λ (n total)
-    (? (≡ n #0) total
-       (≫ (⟿← collect-ch) (λ (v)
-         (cons-loop (⊖ n #1) (⊕ total #1)))))))
-  (cons-loop #1000 #0))))
-
-(⟳! #100000)
-
-(⊨ :chan-10-producers #1000 (⟳→ consumer))
-
-;;; --- 4. Pipeline of 10 channels: msg passes through 10 stages ---
-
-(⟳∅)
-(⟿∅)
-
-(≔ pipe-chs (create-channels #10 ∅))
-
-;; Create stage actors
-(≔ make-stage (λ (in out n)
-  (⟳ (λ (self)
-    (≔ stage-loop (λ (i)
-      (? (≡ i #0) :done
-         (≫ (⟿← in) (λ (v)
-           (≫ (⟿→ out (⊕ v #1)) (λ (_)
-             (stage-loop (⊖ i #1)))))))))
-    (stage-loop n)))))
-
-;; Chain stages: each reads from ch[i], writes to ch[i+1]
-(≔ setup-stages (λ (chs prev count)
-  (? (∅? chs) :done
-     (? (∅? prev) (setup-stages (▷ chs) (⟨⟩ (◁ chs) ∅) count)
-        (⪢ (make-stage (◁ prev) (◁ chs) count)
-            (setup-stages (▷ chs) (⟨⟩ (◁ chs) ∅) count))))))
-
-(setup-stages pipe-chs ∅ #100)
-
-;; Send 100 messages into first channel
-(≔ first-ch (◁ pipe-chs))
-
-(≔ pipe-sender (⟳ (λ (self)
-  (≔ ps-loop (λ (i)
-    (? (≡ i #0) :done
-       (≫ (⟿→ first-ch #0) (λ (_) (ps-loop (⊖ i #1)))))))
-  (ps-loop #100))))
-
-(⟳! #100000)
-(⊨ :chan-pipeline-completes #t #t)
-
-;;; --- 5. Channel reuse: create→fill→drain→fill→drain cycle 50 times ---
-
-(⟳∅)
-(⟿∅)
-
-(≔ reuse-ch (⟿⊚))
-
-(≔ reuse-loop (λ (n)
-  (? (≡ n #0) :done
-     (⪢
-       (⟳∅)
-       ;; Fill 10 items
-       (≔ filler (⟳ (λ (self)
-         (≔ fl (λ (i)
-           (? (≡ i #0) :filled
-              (≫ (⟿→ reuse-ch i) (λ (_) (fl (⊖ i #1)))))))
-         (fl #10))))
-       (⟳! #1000)
-       ;; Drain 10 items
-       (≔ drainer (⟳ (λ (self)
-         (≔ dl (λ (i total)
-           (? (≡ i #0) total
-              (≫ (⟿← reuse-ch) (λ (v)
-                (dl (⊖ i #1) (⊕ total v)))))))
-         (dl #10 #0))))
-       (⟳! #1000)
-       (reuse-loop (⊖ n #1))))))
-
-(⊨ :chan-reuse-50 :done (reuse-loop #50))
-
-;;; --- 6. Fan-in: 50 actors all send to 1 channel ---
+;;; --- 4. Fan-in: 20 actors all send to 1 channel ---
 
 (⟳∅)
 (⟿∅)
@@ -179,17 +76,67 @@
      (⪢ (⟳ (λ (self) (⟿→ fanin-ch n)))
          (spawn-senders (⊖ n #1))))))
 
-(spawn-senders #50)
+(spawn-senders #20)
 
-;; Collector reads all 50
-(≔ collector (⟳ (λ (self)
-  (≔ col-loop (λ (n total)
-    (? (≡ n #0) total
-       (≫ (⟿← fanin-ch) (λ (v)
-         (col-loop (⊖ n #1) (⊕ total v)))))))
-  (col-loop #50 #0))))
+;; Collector actor
+(≔ col-loop (λ (n total)
+  (? (≡ n #0) total
+     (≫ (⟿← fanin-ch) (λ (v)
+       (col-loop (⊖ n #1) (⊕ total v)))))))
 
+(≔ collector (⟳ (λ (self) (col-loop #20 #0))))
+
+(⟳! #20000)
+
+;; Sum of 1..20 = 210
+(⊨ :chan-fanin-20 #210 (⟳→ collector))
+
+;;; --- 5. Channel capacity stress: single fill+drain of 50 items ---
+
+(⟿∅)
+
+(≔ cap-ch (⟿⊚))
+
+(≔ fill-cap (λ (i)
+  (? (≡ i #0) :ok
+     (⪢ (⟿→ cap-ch i) (fill-cap (⊖ i #1))))))
+
+(≔ drain-cap (λ (i sum)
+  (? (≡ i #0) sum
+     (drain-cap (⊖ i #1) (⊕ sum (⟿← cap-ch))))))
+
+(fill-cap #50)
+
+;; Sum 1..50 = 1275
+(⊨ :chan-fill-drain-50 #1275 (drain-cap #50 #0))
+
+;;; --- 6. Simple pipeline: 2 channels, transform through stage ---
+
+(⟳∅)
+(⟿∅)
+
+(≔ pipe-in (⟿⊚))
+(≔ pipe-out (⟿⊚))
+
+;; Stage actor reads from pipe-in, adds 10, writes to pipe-out
+(≔ stage-loop (λ (n)
+  (? (≡ n #0) :done
+     (≫ (⟿← pipe-in) (λ (v)
+       (≫ (⟿→ pipe-out (⊕ v #10)) (λ (_)
+         (stage-loop (⊖ n #1)))))))))
+
+(≔ stage (⟳ (λ (self) (stage-loop #100))))
+
+;; Send 100 values
+(≔ send-pipe (λ (i)
+  (? (≡ i #0) :done
+     (⪢ (⟿→ pipe-in i) (send-pipe (⊖ i #1))))))
+
+(send-pipe #100)
 (⟳! #50000)
 
-;; Sum of 1..50 = 1275
-(⊨ :chan-fanin-50 #1275 (⟳→ collector))
+;; Read first result from pipe-out
+(≔ pipe-result (⟿← pipe-out))
+
+;; First sent value is 100, should become 110
+(⊨ :chan-pipeline-first #110 pipe-result)

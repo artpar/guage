@@ -19,6 +19,7 @@
 #include <assert.h>
 #include <math.h>
 #include <string.h>
+#include <ctype.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/statvfs.h>
@@ -8447,7 +8448,7 @@ Cell* prim_load(Cell* args) {
     return result;
 }
 
-/* Forward declaration */
+/* Forward declaration — completed at end of file */
 static Primitive primitives[];
 /* Documentation primitives */
 
@@ -14991,6 +14992,11 @@ Cell* prim_signal_list(Cell* args) {
     return result;
 }
 
+/* Forward declarations for discovery primitives */
+static Cell* prim_discovery_all(Cell* args);
+static Cell* prim_discovery_search(Cell* args);
+static Cell* prim_discovery_category(Cell* args);
+
 /* Primitive table - PURE SYMBOLS ONLY
  * EVERY primitive MUST have documentation */
 static Primitive primitives[] = {
@@ -15717,8 +15723,149 @@ static Primitive primitives[] = {
     {"⚡×", prim_signal_unregister, 1, {"Unregister signal handler", ":sym → 𝔹"}},
     {"⚡?", prim_signal_list, 0, {"List registered signal handlers", "→ [⟨:sym ⟳⟩]"}},
 
-    {NULL, NULL, 0, {NULL, NULL}}
+    /* Discovery primitives */
+    {"⌂*", prim_discovery_all, 0, {"List all primitives as ((name cat desc type) ...)", "→ [⟨≈ ≈ ≈ ≈⟩]"}},
+    {"⌂⊳", prim_discovery_search, 1, {"Search primitives by keyword substring", "≈ → [⟨≈ ≈ ≈ ≈⟩]"}},
+    {"⌂⊳⊜", prim_discovery_category, 1, {"Filter primitives by category", "≈ → [⟨≈ ≈ ≈ ≈⟩]"}},
+
+    {NULL, NULL, 0, {NULL, NULL, NULL}}
 };
+
+/* ── Category range table ── */
+static const struct { int start; const char* cat; } prim_categories[] = {
+    {0,   "pair"}, {3,   "meta"}, {6,   "compare"}, {9,   "arithmetic"},
+    {19,  "math"}, {41,  "type-check"}, {47,  "type"}, {68,  "type-inference"},
+    {70,  "error"}, {81,  "introspect"}, {83,  "macro"}, {86,  "test"},
+    {88,  "test-runner"}, {94,  "property-test"}, {101, "effect"}, {103, "actor"},
+    {115, "supervision"}, {120, "supervisor"}, {125, "dynamic-supervisor"},
+    {130, "process-registry"}, {139, "process-dict"}, {143, "ets"},
+    {150, "application"}, {156, "task"}, {159, "agent"}, {164, "gen-stage"},
+    {170, "flow"}, {176, "flow-registry"}, {180, "channel"},
+    {187, "documentation"}, {198, "cfg-dfg"}, {200, "struct-leaf"},
+    {205, "struct-adt"}, {209, "graph"}, {215, "graph-algo"},
+    {221, "string"}, {236, "string-sdk"}, {256, "io-console"},
+    {259, "io-file"}, {264, "module"}, {273, "ref"}, {279, "weak-ref"},
+    {283, "hashmap"}, {294, "hashset"}, {305, "deque"}, {316, "buffer"},
+    {327, "vector"}, {338, "heap"}, {347, "sorted-map"}, {363, "trie"},
+    {377, "iterator"}, {393, "port"}, {406, "filesystem"},
+    {427, "process-state"}, {438, "user-group"}, {440, "time"},
+    {442, "environment"}, {445, "terminal"}, {446, "system"},
+    {451, "ffi"}, {466, "network"}, {501, "refinement"},
+    {512, "trace"}, {519, "trace-global"}, {521, "trait"}, {529, "bitwise"},
+    {544, "ffi-struct"}, {551, "ffi-callback"}, {553, "signal"},
+    {556, "discovery"}, {-1, NULL}
+};
+
+/* Stamp .category on each primitive from the range table */
+static void primitives_stamp_categories(void) {
+    for (int c = 0; prim_categories[c].cat; c++) {
+        int start = prim_categories[c].start;
+        int end = prim_categories[c+1].cat ? prim_categories[c+1].start : 9999;
+        for (int i = start; i < end && primitives[i].name; i++)
+            primitives[i].doc.category = prim_categories[c].cat;
+    }
+}
+
+/* Build a 4-element info tuple: (name category description type_sig) */
+static Cell* prim_info_tuple(const Primitive* p) {
+    Cell* name = cell_string(p->name);
+    Cell* cat  = cell_string(p->doc.category ? p->doc.category : "uncategorized");
+    Cell* desc = cell_string(p->doc.description ? p->doc.description : "");
+    Cell* type = cell_string(p->doc.type_signature ? p->doc.type_signature : "");
+    Cell* t = cell_cons(type, cell_nil());
+    Cell* d = cell_cons(desc, t);
+    Cell* c = cell_cons(cat, d);
+    Cell* n = cell_cons(name, c);
+    cell_release(type); cell_release(desc); cell_release(cat); cell_release(name);
+    cell_release(t); cell_release(d); cell_release(c);
+    return n;
+}
+
+/* Case-insensitive substring search */
+static int ci_strstr(const char* haystack, const char* needle) {
+    if (!haystack || !needle) return 0;
+    size_t nlen = strlen(needle);
+    size_t hlen = strlen(haystack);
+    if (nlen > hlen) return 0;
+    for (size_t i = 0; i <= hlen - nlen; i++) {
+        size_t j;
+        for (j = 0; j < nlen; j++) {
+            if (tolower((unsigned char)haystack[i+j]) != tolower((unsigned char)needle[j]))
+                break;
+        }
+        if (j == nlen) return 1;
+    }
+    return 0;
+}
+
+/* ⌂* — list all primitives */
+static Cell* prim_discovery_all(Cell* args) {
+    (void)args;
+    Cell* result = cell_nil();
+    int count = 0;
+    while (primitives[count].name) count++;
+    for (int i = count - 1; i >= 0; i--) {
+        Cell* tuple = prim_info_tuple(&primitives[i]);
+        Cell* next = cell_cons(tuple, result);
+        cell_release(tuple);
+        cell_release(result);
+        result = next;
+    }
+    return result;
+}
+
+/* ⌂⊳ — search by keyword substring */
+static Cell* prim_discovery_search(Cell* args) {
+    Cell* kw_cell = cell_car(args);
+    const char* kw = NULL;
+    if (cell_is_symbol(kw_cell))      { kw = cell_get_symbol(kw_cell); if (kw && kw[0] == ':') kw++; }
+    else if (cell_is_string(kw_cell)) kw = cell_get_string(kw_cell);
+    else return cell_error(":type-error", cell_string("⌂⊳ expects symbol or string"));
+    if (!kw || !*kw) return cell_nil();
+
+    Cell* result = cell_nil();
+    int count = 0;
+    while (primitives[count].name) count++;
+    for (int i = count - 1; i >= 0; i--) {
+        const Primitive* p = &primitives[i];
+        if (ci_strstr(p->name, kw) ||
+            ci_strstr(p->doc.description, kw) ||
+            ci_strstr(p->doc.type_signature, kw) ||
+            ci_strstr(p->doc.category, kw)) {
+            Cell* tuple = prim_info_tuple(p);
+            Cell* next = cell_cons(tuple, result);
+            cell_release(tuple);
+            cell_release(result);
+            result = next;
+        }
+    }
+    return result;
+}
+
+/* ⌂⊳⊜ — filter by category */
+static Cell* prim_discovery_category(Cell* args) {
+    Cell* cat_cell = cell_car(args);
+    const char* cat = NULL;
+    if (cell_is_symbol(cat_cell))      { cat = cell_get_symbol(cat_cell); if (cat && cat[0] == ':') cat++; }
+    else if (cell_is_string(cat_cell)) cat = cell_get_string(cat_cell);
+    else return cell_error(":type-error", cell_string("⌂⊳⊜ expects symbol or string"));
+    if (!cat || !*cat) return cell_nil();
+
+    Cell* result = cell_nil();
+    int count = 0;
+    while (primitives[count].name) count++;
+    for (int i = count - 1; i >= 0; i--) {
+        const Primitive* p = &primitives[i];
+        if (p->doc.category && ci_strstr(p->doc.category, cat)) {
+            Cell* tuple = prim_info_tuple(p);
+            Cell* next = cell_cons(tuple, result);
+            cell_release(tuple);
+            cell_release(result);
+            result = next;
+        }
+    }
+    return result;
+}
 
 /* Look up primitive by name (returns NULL if not found) */
 const Primitive* primitive_lookup_by_name(const char* name) {
@@ -15730,8 +15877,14 @@ const Primitive* primitive_lookup_by_name(const char* name) {
     return NULL;
 }
 
+/* Get pointer to primitives table (for main.c REPL commands) */
+const Primitive* primitives_table(void) {
+    return primitives;
+}
+
 /* Initialize primitive environment */
 Cell* primitives_init(void) {
+    primitives_stamp_categories();
     Cell* env = cell_nil();
 
     /* Panic on duplicate primitive names — no silent shadowing */

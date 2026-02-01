@@ -37,7 +37,7 @@
             (crash-n (▷ lst) (⊖ n #1)))))))
 
 (crash-n kids32 #16)
-(⟳! #5000)
+(⟳! #100000)
 
 ;; All should be alive again after restart
 (≔ kids32b (⟳⊛? sup32))
@@ -69,25 +69,26 @@
 (⟳⊞⊕ :crash-counter)
 (⟳⊞⊙ :crash-counter :count #0)
 
-(≔ crash-child (λ (self)
-  (⪢
-    ;; Increment ETS counter
-    (≔ cur (⟳⊞? :crash-counter :count))
-    (⟳⊞⊙ :crash-counter :count (⊕ cur #1))
-    ;; Wait for crash signal
-    (≫ (←?) (λ (msg) (⚠ :crash msg))))))
+;; Helper: increment counter then wait for message
+(≔ crash-child-init (λ ()
+  (⟳⊞⊙ :crash-counter :count (⊕ (⟳⊞? :crash-counter :count) #1))))
 
-(≔ ets-sup (⟳⊛ :one-for-one (⟨⟩ crash-child ∅)))
+(≔ crash-child-body (λ (self)
+  (⪢ (crash-child-init)
+      (≫ (←?) (λ (msg) (⚠ :crash msg))))))
+
+(≔ ets-sup (⟳⊛ :one-for-one (⟨⟩ crash-child-body ∅)))
 (⟳! #500)
 
 ;; Crash and restart 20 times
+(≔ crash-once (λ ()
+  (⪢ (→! (◁ (⟳⊛? ets-sup)) :die)
+      (⟳! #1000))))
+
 (≔ crash-cycle (λ (n)
   (? (≡ n #0) :done
-     (⪢
-       (≔ ck (⟳⊛? ets-sup))
-       (→! (◁ ck) :die)
-       (⟳! #1000)
-       (crash-cycle (⊖ n #1))))))
+     (⪢ (crash-once)
+         (crash-cycle (⊖ n #1))))))
 
 (crash-cycle #20)
 
@@ -116,7 +117,7 @@
 
 (create-ets-tables #50)
 
-;; Fill each table with entries
+;; Fill each table with 200 entries
 (≔ fill-ets (λ (table-id entries)
   (? (≡ entries #0) :done
      (⪢ (⟳⊞⊙ table-id entries (⊗ entries #3))
@@ -140,24 +141,21 @@
 (⟳⊞⊕ :shared-ets)
 (⟳⊞⊙ :shared-ets :counter #0)
 
-(≔ ets-worker (λ (n)
-  (⟳ (λ (self)
-    (≔ ets-loop (λ (i)
-      (? (≡ i #0) :done
-         (⪢
-           (≔ cur (⟳⊞? :shared-ets :counter))
-           (⟳⊞⊙ :shared-ets :counter (⊕ cur #1))
-           (ets-loop (⊖ i #1))))))
-    (ets-loop n)))))
+;; Worker loop defined outside actor body
+(≔ ets-worker-loop (λ (i)
+  (? (≡ i #0) :done
+     (⪢
+       (⟳⊞⊙ :shared-ets :counter (⊕ (⟳⊞? :shared-ets :counter) #1))
+       (ets-worker-loop (⊖ i #1))))))
 
-;; 10 workers each doing 100 operations
+;; 10 workers each doing 1000 operations
 (≔ spawn-ets-workers (λ (n)
   (? (≡ n #0) :done
-     (⪢ (ets-worker #100)
+     (⪢ (⟳ (λ (self) (ets-worker-loop #1000)))
          (spawn-ets-workers (⊖ n #1))))))
 
 (spawn-ets-workers #10)
-(⟳! #50000)
+(⟳! #100000)
 
-;; Counter should be > 0 (exact value depends on interleaving)
-(⊨ :ets-concurrent-access #t (> (⟳⊞? :shared-ets :counter) #0))
+;; Counter should be > 0 (exact value depends on interleaving, up to 10000)
+(⊨ :ets-concurrent-positive #t (> (⟳⊞? :shared-ets :counter) #0))

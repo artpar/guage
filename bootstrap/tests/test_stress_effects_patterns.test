@@ -20,7 +20,7 @@
        (≔ result
          (⟪⟫ (↯ :Provider :fetch n)
            (:Provider
-             (:fetch (λ (key) (? (≡ (⊛% key #3) #0)
+             (:fetch (λ (key) (? (≡ (% key #3) #0)
                                   (⊚ :Result :Err :bad)
                                   (⊚ :Result :Ok key)))))))
        (≔ is-ok (∇ result (⌜ (
@@ -66,10 +66,10 @@
 (≔ dispatch-loop (λ (n acc)
   (? (≡ n #0) acc
      (⪢
-       (≔ op (? (≡ (⊛% n #5) #0) (⊚ :Op :Add n #1)
-                (? (≡ (⊛% n #5) #1) (⊚ :Op :Sub n #1)
-                   (? (≡ (⊛% n #5) #2) (⊚ :Op :Mul n #2)
-                      (? (≡ (⊛% n #5) #3) (⊚ :Op :Div n #2)
+       (≔ op (? (≡ (% n #5) #0) (⊚ :Op :Add n #1)
+                (? (≡ (% n #5) #1) (⊚ :Op :Sub n #1)
+                   (? (≡ (% n #5) #2) (⊚ :Op :Mul n #2)
+                      (? (≡ (% n #5) #3) (⊚ :Op :Div n #2)
                          (⊚ :Op :Neg n))))))
        (≔ result (⟪⟫ (↯ :Dispatch :op op)
                     (:Dispatch (:op (λ (o) (dispatch-op o))))))

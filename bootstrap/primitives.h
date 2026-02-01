@@ -500,6 +500,7 @@ bool trait_type_satisfies(const char* type, const char* trait);
 typedef struct {
     const char* description;     /* What this primitive does */
     const char* type_signature;  /* Type signature */
+    const char* category;        /* Searchable category tag */
 } PrimitiveDoc;
 
 /* Environment for primitives */
@@ -518,6 +519,9 @@ Cell* primitives_lookup(Cell* env, const char* sym);
 
 /* Lookup primitive by name (returns NULL if not found) */
 const Primitive* primitive_lookup_by_name(const char* name);
+
+/* Get pointer to primitives table (NULL-terminated) */
+const Primitive* primitives_table(void);
 
 /* Structured test output (called from main.c --test mode) */
 void test_emit_and_exit(const char* filename, int had_toplevel_error,

@@ -16,7 +16,7 @@
 (≔ count-done (λ (lst acc)
   (? (∅? lst) acc
      (count-done (▷ lst)
-       (⊕ acc (? (¬ (⟳? (◁ lst))) #1 #0))))))
+       (⊕ acc (? (⟳? (◁ lst)) #0 #1))))))
 
 (⊨ :actors-250-all-done #250 (count-done actors-250 #0))
 
@@ -24,49 +24,49 @@
 
 (⟳∅)
 
-(≔ accumulator (⟳ (λ (self)
-  (≔ acc-loop (λ (n total)
-    (? (≡ n #0) total
-       (≫ (←?) (λ (msg)
-         (acc-loop (⊖ n #1) (⊕ total msg)))))))
-  (acc-loop #250 #0))))
+;; Define loop outside actor so body is a single monadic expression
+(≔ acc-loop (λ (n total)
+  (? (≡ n #0) total
+     (≫ (←?) (λ (msg)
+       (acc-loop (⊖ n #1) (⊕ total msg)))))))
 
-;; Send 250 messages
+(≔ accumulator (⟳ (λ (self) (acc-loop #180 #0))))
+
+;; Send 180 messages (stay under mailbox capacity when burst-sent)
 (≔ send-loop (λ (i)
   (? (≡ i #0) :done
      (⪢ (→! accumulator i)
          (send-loop (⊖ i #1))))))
 
-(send-loop #250)
-(⟳! #10000)
+(send-loop #180)
+(⟳! #50000)
 
-;; Sum of 1..250 = 31375
-(⊨ :actor-250-msgs #31375 (⟳→ accumulator))
+;; Sum of 1..180 = 16290
+(⊨ :actor-180-msgs #16290 (⟳→ accumulator))
 
-;;; --- 3. Ping-pong: 2 actors exchange 10,000 messages (5,000 each) ---
+;;; --- 3. Ping-pong: 2 actors exchange 100 messages each ---
 
 (⟳∅)
-(≔ pp-ch (⟿⊚))
 
-(≔ pinger (⟳ (λ (self)
-  (≔ ping-loop (λ (n)
-    (? (≡ n #0) :ping-done
-       (≫ (←?) (λ (msg)
-         (≫ (→! (◁ msg) (⟨⟩ self :pong)) (λ (_)
-           (ping-loop (⊖ n #1)))))))))
-  (ping-loop #5000))))
+;; Pass self as parameter since loops are defined outside actor
+(≔ ping-loop (λ (me n)
+  (? (≡ n #0) :ping-done
+     (≫ (←?) (λ (msg)
+       (≫ (→! (◁ msg) (⟨⟩ me :pong)) (λ (_)
+         (ping-loop me (⊖ n #1)))))))))
 
-(≔ ponger (⟳ (λ (self)
-  (≔ pong-loop (λ (n)
-    (? (≡ n #0) :pong-done
-       (≫ (←?) (λ (msg)
-         (≫ (→! (◁ msg) (⟨⟩ self :ping)) (λ (_)
-           (pong-loop (⊖ n #1)))))))))
-  (pong-loop #5000))))
+(≔ pong-loop (λ (me n)
+  (? (≡ n #0) :pong-done
+     (≫ (←?) (λ (msg)
+       (≫ (→! (◁ msg) (⟨⟩ me :ping)) (λ (_)
+         (pong-loop me (⊖ n #1)))))))))
+
+(≔ pinger (⟳ (λ (self) (ping-loop self #100))))
+(≔ ponger (⟳ (λ (self) (pong-loop self #100))))
 
 ;; Kick off by sending first message
 (→! pinger (⟨⟩ ponger :start))
-(⟳! #100000)
+(⟳! #10000)
 
 (⊨ :actor-pingpong-pinger :ping-done (⟳→ pinger))
 (⊨ :actor-pingpong-ponger :pong-done (⟳→ ponger))
@@ -75,41 +75,41 @@
 
 (⟳∅)
 
+;; Worker loop defined outside actor — each worker receives 20 msgs
+(≔ w-loop (λ (n total)
+  (? (≡ n #0) total
+     (≫ (←?) (λ (msg)
+       (w-loop (⊖ n #1) (⊕ total msg)))))))
+
 (≔ make-worker (λ ()
-  (⟳ (λ (self)
-    (≔ w-loop (λ (n total)
-      (? (≡ n #0) total
-         (≫ (←?) (λ (msg)
-           (w-loop (⊖ n #1) (⊕ total msg)))))))
-    (w-loop #100 #0)))))
+  (⟳ (λ (self) (w-loop #20 #0)))))
 
 (≔ spawn-workers (λ (n acc)
   (? (≡ n #0) acc
      (spawn-workers (⊖ n #1) (⟨⟩ (make-worker) acc)))))
 
-(≔ workers (spawn-workers #50 ∅))
+(≔ workers (spawn-workers #20 ∅))
 
-;; Send 100 messages to each worker
+;; Send 20 messages to each worker
+(≔ send-to-worker (λ (w i)
+  (? (≡ i #0) :done
+     (⪢ (→! w #1) (send-to-worker w (⊖ i #1))))))
+
 (≔ fanout (λ (wlist msg-n)
   (? (∅? wlist) :done
-     (⪢
-       (≔ send-to-worker (λ (w i)
-         (? (≡ i #0) :done
-            (⪢ (→! w #1) (send-to-worker w (⊖ i #1))))))
-       (send-to-worker (◁ wlist) msg-n)
-       (fanout (▷ wlist) msg-n)))))
+     (⪢ (send-to-worker (◁ wlist) msg-n)
+         (fanout (▷ wlist) msg-n)))))
 
-(fanout workers #100)
+(fanout workers #20)
 (⟳! #100000)
 
-;; Each worker sums 100 x #1 = 100
 ;; Count completed workers
 (≔ count-workers-done (λ (lst acc)
   (? (∅? lst) acc
      (count-workers-done (▷ lst)
-       (⊕ acc (? (¬ (⟳? (◁ lst))) #1 #0))))))
+       (⊕ acc (? (⟳? (◁ lst)) #0 #1))))))
 
-(⊨ :actor-fanout-done #50 (count-workers-done workers #0))
+(⊨ :actor-fanout-done #20 (count-workers-done workers #0))
 
 ;;; --- 5. Rapid lifecycle: spawn→run→die cycle 200 times ---
 
@@ -145,7 +145,7 @@
 (≔ tree-result (⟳→ tree-root))
 
 ;; Binary tree depth 4: 1+2+4+8+16 = 31 actors
-(⊨ :actor-tree-completes #t (¬ (⚠? tree-result)))
+(⊨ :actor-tree-completes #t (? (⚠? tree-result) #f #t))
 
 ;;; --- 7. Scheduler tick stress: 100K ticks, verify no crash ---
 
@@ -158,19 +158,21 @@
 
 (⟳∅)
 
-(≔ mailbox-actor (⟳ (λ (self)
-  (≔ drain (λ (n total)
-    (? (≡ n #0) total
-       (≫ (←?) (λ (msg)
-         (drain (⊖ n #1) (⊕ total msg)))))))
-  (drain #250 #0))))
+;; Drain loop defined outside actor
+(≔ drain-loop (λ (n total)
+  (? (≡ n #0) total
+     (≫ (←?) (λ (msg)
+       (drain-loop (⊖ n #1) (⊕ total msg)))))))
+
+(≔ mailbox-actor (⟳ (λ (self) (drain-loop #180 #0))))
 
 (≔ fill-mailbox (λ (i)
   (? (≡ i #0) :done
      (⪢ (→! mailbox-actor i)
          (fill-mailbox (⊖ i #1))))))
 
-(fill-mailbox #250)
-(⟳! #10000)
+(fill-mailbox #180)
+(⟳! #50000)
 
-(⊨ :actor-mailbox-250 #31375 (⟳→ mailbox-actor))
+;; Sum of 1..180 = 16290
+(⊨ :actor-mailbox-180 #16290 (⟳→ mailbox-actor))

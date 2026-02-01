@@ -26,10 +26,10 @@
 
 (≔ make-item (λ (i)
   (⊚ :Item :MkItem i
-    (? (≡ (⊛% i #5) #0) (⊚ :Category :CatA)
-       (? (≡ (⊛% i #5) #1) (⊚ :Category :CatB)
-          (? (≡ (⊛% i #5) #2) (⊚ :Category :CatC)
-             (? (≡ (⊛% i #5) #3) (⊚ :Category :CatD)
+    (? (≡ (% i #5) #0) (⊚ :Category :CatA)
+       (? (≡ (% i #5) #1) (⊚ :Category :CatB)
+          (? (≡ (% i #5) #2) (⊚ :Category :CatC)
+             (? (≡ (% i #5) #3) (⊚ :Category :CatD)
                 (⊚ :Category :CatE)))))
     i)))
 
@@ -101,7 +101,7 @@
 ;; Sort 500 elements (insertion sort is O(n²))
 (≔ unsorted (λ (n acc)
   (? (≡ n #0) acc
-     (unsorted (⊖ n #1) (⟨⟩ (⊛% (⊗ n #7919) #10000) acc)))))
+     (unsorted (⊖ n #1) (⟨⟩ (% (⊗ n #7919) #10000) acc)))))
 
 (≔ unsorted-500 (unsorted #500 ∅))
 (≔ sorted (sort-list (λ (a b) (< a b)) unsorted-500))

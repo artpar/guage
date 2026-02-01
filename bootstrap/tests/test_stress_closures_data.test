@@ -40,7 +40,7 @@
 (≔ freq-fold (λ (lst)
   (? (∅? lst) freq
      (⪢
-       (≔ k (⊛% (◁ lst) #10))
+       (≔ k (% (◁ lst) #10))
        (≔ cur (⊞→ freq k))
        (⊞← freq k (? (∅? cur) #1 (⊕ cur #1)))
        (freq-fold (▷ lst))))))
