@@ -22,12 +22,13 @@
  * SysV integer arg regs: RDI, RSI, RDX, RCX, R8, R9
  * SysV float arg regs: XMM0-XMM7
  *
- * Cell layout offsets (verified from cell.h):
+ * Cell layout offsets (with BiasedRC):
  *   +0:  type (uint32_t CellType)
- *   +32: data.atom.number (double) / data.atom.string (char*) / data.pair.car
- *   +40: data.pair.cdr
- *   +32: data.buffer.bytes (uint8_t*)
+ *   +40: data.atom.number / data.atom.string / data.pair.car / data.buffer.bytes
+ *   +48: data.pair.cdr
  */
+#define CELL_OFF_DATA 40
+#define CELL_OFF_CDR  48
 
 /* x86-64 register encoding */
 #define RAX 0
@@ -297,8 +298,8 @@ bool emit_x64_stub(EmitCtx* ctx, FFISig* sig) {
         FFICType at = sig->arg_types[i];
         int expected_ct = ffi_expected_cell_type(at);
 
-        /* RAX = car(R12) = [R12 + 32] — the arg cell */
-        emit_mov_rm_disp8(ctx, RAX, R12, 32);
+        /* RAX = car(R12) = [R12 + CELL_OFF_DATA] — the arg cell */
+        emit_mov_rm_disp8(ctx, RAX, R12, CELL_OFF_DATA);
 
         /* Type check: cmp dword [RAX], expected_cell_type */
         emit_cmp_dword_mem_imm8(ctx, RAX, (uint8_t)expected_ct);
@@ -306,9 +307,8 @@ bool emit_x64_stub(EmitCtx* ctx, FFISig* sig) {
 
         /* Extract value based on FFI type */
         if (at == FFI_DOUBLE) {
-            /* movsd xmmN, [RAX+32] — but we need to stash to stack since we
-             * can't keep xmm regs across the cons-list walk. Store at [RSP + float_reg_idx*8] */
-            emit_movsd_xmm_mem(ctx, 0, RAX, 32); /* XMM0 = double value */
+            /* movsd xmm0, [RAX+CELL_OFF_DATA] — stash to stack */
+            emit_movsd_xmm_mem(ctx, 0, RAX, CELL_OFF_DATA); /* XMM0 = double value */
             /* movsd [RSP + offset], xmm0 */
             emit_u8(ctx, 0xF2); emit_u8(ctx, 0x0F); emit_u8(ctx, 0x11);
             emit_u8(ctx, 0x44); emit_u8(ctx, 0x24);
@@ -316,22 +316,21 @@ bool emit_x64_stub(EmitCtx* ctx, FFISig* sig) {
             float_reg_idx++;
         } else if (at == FFI_FLOAT) {
             /* Load double, will convert to float before call */
-            emit_movsd_xmm_mem(ctx, 0, RAX, 32);
+            emit_movsd_xmm_mem(ctx, 0, RAX, CELL_OFF_DATA);
             emit_u8(ctx, 0xF2); emit_u8(ctx, 0x0F); emit_u8(ctx, 0x11);
             emit_u8(ctx, 0x44); emit_u8(ctx, 0x24);
             emit_u8(ctx, (uint8_t)(float_reg_idx * 8));
             float_reg_idx++;
         } else if (ffi_is_int_arg(at)) {
-            /* mov reg, [RAX+32] — load the value (number as double, then cvt, or pointer/string direct) */
             if (at == FFI_PTR || at == FFI_CSTRING || at == FFI_BUFFER) {
-                /* Pointer types: load [RAX+32] directly as pointer */
-                emit_mov_rm_disp8(ctx, R13, RAX, 32);
+                /* Pointer types: load [RAX+CELL_OFF_DATA] directly as pointer */
+                emit_mov_rm_disp8(ctx, R13, RAX, CELL_OFF_DATA);
             } else if (at == FFI_BOOL) {
-                /* Load boolean from [RAX+32] */
-                emit_mov_rm_disp8(ctx, R13, RAX, 32);
+                /* Load boolean from [RAX+CELL_OFF_DATA] */
+                emit_mov_rm_disp8(ctx, R13, RAX, CELL_OFF_DATA);
             } else {
-                /* Integer types: load double from [RAX+32], convert to int64 */
-                emit_movsd_xmm_mem(ctx, 0, RAX, 32);
+                /* Integer types: load double from [RAX+CELL_OFF_DATA], convert to int64 */
+                emit_movsd_xmm_mem(ctx, 0, RAX, CELL_OFF_DATA);
                 emit_cvtsd2si(ctx, R13, 0);
             }
             /* Store int value at [RSP + 64 + int_reg_idx*8] */
@@ -345,8 +344,8 @@ bool emit_x64_stub(EmitCtx* ctx, FFISig* sig) {
             int_reg_idx++;
         }
 
-        /* Advance: R12 = cdr(R12) = [R12 + 40] */
-        emit_mov_rm_disp8(ctx, R12, R12, 40);
+        /* Advance: R12 = cdr(R12) = [R12 + CELL_OFF_CDR] */
+        emit_mov_rm_disp8(ctx, R12, R12, CELL_OFF_CDR);
     }
 
     /* Now load extracted values into the correct ABI registers.

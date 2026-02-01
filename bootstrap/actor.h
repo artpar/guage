@@ -2,11 +2,30 @@
 #define GUAGE_ACTOR_H
 
 #include <stdbool.h>
+#include <stdatomic.h>
+#include <stdint.h>
 #include "cell.h"
 #include "fiber.h"
 #include "eval.h"
 
 #define MAX_ACTORS 256
+#define MAILBOX_DEFAULT_CAP 256  /* Power of 2 */
+
+/* Per-actor Vyukov MPMC mailbox slot (compact, no cache-line padding) */
+typedef struct {
+    _Atomic uint64_t sequence;
+    Cell* value;
+} MailboxSlot;
+
+/* Per-actor Vyukov MPMC mailbox */
+typedef struct {
+    uint32_t capacity;
+    uint32_t mask;
+    _Atomic uint64_t enqueue_pos;
+    _Atomic uint64_t dequeue_pos;
+    _Atomic int32_t count;       /* Approximate count for scheduling heuristic */
+    MailboxSlot* slots;
+} Mailbox;
 #define MAX_LINKS 32
 #define MAX_MONITORS 32
 #define MAX_SUPERVISORS 64
@@ -24,7 +43,7 @@
 typedef struct Actor {
     int id;                /* Unique actor ID */
     Fiber* fiber;          /* Underlying fiber */
-    int mailbox_count;     /* Number of pending messages */
+    Mailbox mailbox;       /* Per-actor Vyukov MPMC mailbox */
     bool alive;            /* false after actor finishes */
     Cell* result;          /* Final result when finished */
 
@@ -39,6 +58,17 @@ typedef struct Actor {
     Cell* dict_keys[MAX_DICT_ENTRIES];
     Cell* dict_values[MAX_DICT_ENTRIES];
     int dict_count;
+
+    /* Scheduler affinity (Day 133) */
+    int home_scheduler;     /* Scheduler ID that owns this actor */
+
+    /* Blocking/wake protocol (Day 134) */
+    _Atomic int wait_flag;  /* 0=runnable, 1=blocked on mailbox/channel/etc */
+
+    /* Causal trace token (Day 136) */
+    _Atomic uint32_t trace_seq;    /* Monotonic per-actor sequence counter */
+    uint16_t trace_origin;         /* Origin actor of causal chain (0=none) */
+    bool trace_causal;             /* Causal tracing active for this actor */
 } Actor;
 
 /* Lifecycle */
@@ -47,8 +77,13 @@ void   actor_send(Actor* actor, Cell* message);
 Cell*  actor_receive(Actor* actor);
 void   actor_destroy(Actor* actor);
 
+/* Striped lock initialization/cleanup */
+void actor_locks_init(void);
+void actor_locks_destroy(void);
+
 /* Registry */
 Actor* actor_lookup(int id);
+Actor* actor_lookup_by_index(int index);
 int    actor_run_all(int max_ticks);
 void   actor_reset_all(void);
 
@@ -62,6 +97,7 @@ void   actor_unlink(Actor* a, Actor* b);
 void   actor_add_monitor(Actor* target, Actor* watcher);
 void   actor_exit_signal(Actor* target, Actor* sender, Cell* reason);
 void   actor_notify_exit(Actor* exiting, Cell* reason);
+bool   actor_finish(Actor* actor, Cell* result);  /* Thread-safe finish: returns false if already dead */
 
 /* Supervisor strategies */
 typedef enum {

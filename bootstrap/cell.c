@@ -41,6 +41,9 @@ typedef struct {
 static void sm_pool_destroy_impl(SMPool* p);
 void art_destroy_node(void* node);
 
+/* Thread-local scheduler ID (defined here, declared extern in cell.h) */
+_Thread_local uint16_t tls_scheduler_id = 0;
+
 /* Cell allocation */
 static Cell* cell_alloc(CellType type) {
     Cell* c = (Cell*)malloc(sizeof(Cell));
@@ -48,8 +51,11 @@ static Cell* cell_alloc(CellType type) {
     memset(c, 0, sizeof(Cell));
 
     c->type = type;
-    c->refcount = 1;
-    c->weak_refcount = 0;
+    /* Biased RC: owner = current thread, biased = 1, shared = 0 */
+    c->rc.biased = 1;
+    c->rc.owner_tid = tls_scheduler_id;
+    atomic_init(&c->rc.shared, 0);
+    atomic_init(&c->weak_refcount, 0);
     c->sym_id = 0;
     c->linear_flags = LINEAR_NONE;
     c->caps = CAP_READ | CAP_WRITE | CAP_SHARE;  /* Default capabilities */
@@ -280,21 +286,153 @@ Cell* cell_cdr(Cell* c) {
     return c->data.pair.cdr;
 }
 
-/* Reference counting */
+/* ── Biased Reference Counting ──
+ * Fast path (owner thread): non-atomic increment/decrement (~1 cycle).
+ * Slow path (non-owner): atomic CAS on shared counter.
+ * Merge: when biased hits 0, owner merges into shared; last release frees. */
+
+/* Slow path: non-owner thread retain — fetch_add (2x faster than CAS on M-series) */
+__attribute__((noinline))
+static void cell_retain_slow(Cell* c) {
+    atomic_fetch_add_explicit(&c->rc.shared, 1, memory_order_relaxed);
+}
+
+/* Slow path: non-owner thread release — fetch_sub (no retry loop, always succeeds) */
+__attribute__((noinline))
+static bool cell_release_slow(Cell* c) {
+    uint32_t prev = atomic_fetch_sub_explicit(&c->rc.shared, 1, memory_order_acq_rel);
+    uint32_t old_count = prev & BRC_COUNT_MASK;
+    if (old_count <= 1) {
+        /* Count was 1 (now 0) or 0 (underflow safety) */
+        if ((prev & BRC_MERGED_FLAG) && old_count == 1) {
+            return true;  /* Merged + last shared ref → free */
+        }
+    }
+    return false;
+}
+
 void cell_retain(Cell* c) {
     if (c == NULL) return;
-    if (c->refcount == UINT32_MAX) return;  /* Immortal sentinel */
-    c->refcount++;
+    if (UNLIKELY(c->rc.biased == BRC_IMMORTAL)) return;  /* Immortal sentinel */
+
+    /* Fast path: owner thread, non-atomic */
+    if (LIKELY(c->rc.owner_tid == tls_scheduler_id)) {
+        c->rc.biased++;
+        return;
+    }
+    /* Slow path: non-owner, atomic CAS on shared counter */
+    cell_retain_slow(c);
 }
+
+/* Cross-thread retain: always increments shared counter regardless of owner.
+ * Use when the cell will be released by a different thread than the current one
+ * (e.g., actor->result set on worker, released on main during cleanup). */
+void cell_retain_shared(Cell* c) {
+    if (c == NULL) return;
+    if (UNLIKELY(c->rc.biased == BRC_IMMORTAL)) return;
+    cell_retain_slow(c);
+}
+
+/* Transfer one biased reference to the shared domain.
+ * Must be called from the owner thread (current thread == owner_tid).
+ * Decrements biased, increments shared. If biased reaches 0, sets merged flag
+ * and disowns the cell (owner_tid = UINT16_MAX) so all future operations go
+ * through the shared path. Used for actor->result which may be released from
+ * any thread during cleanup. */
+void cell_transfer_to_shared(Cell* c) {
+    if (c == NULL) return;
+    if (UNLIKELY(c->rc.biased == BRC_IMMORTAL)) return;
+    if (c->rc.owner_tid != tls_scheduler_id) {
+        /* Not the owner — just add a shared ref (no biased to transfer) */
+        cell_retain_slow(c);
+        return;
+    }
+    /* Owner thread: move one ref from biased to shared */
+    cell_retain_slow(c);   /* shared += 1 */
+    c->rc.biased--;        /* biased -= 1 (non-atomic, we're the owner) */
+    if (c->rc.biased == 0) {
+        /* Last biased ref transferred — disown so future releases use shared path */
+        c->rc.owner_tid = UINT16_MAX;
+        /* Set merged flag: shared path will handle eventual free */
+        uint32_t old = atomic_load_explicit(&c->rc.shared, memory_order_acquire);
+        for (;;) {
+            uint32_t new_val = old | BRC_MERGED_FLAG;
+            if (atomic_compare_exchange_weak_explicit(&c->rc.shared, &old, new_val,
+                    memory_order_release, memory_order_relaxed))
+                break;
+        }
+    }
+}
+
+/* Forward declaration for the free path */
+static void cell_free_children(Cell* c);
 
 void cell_release(Cell* c) {
     if (c == NULL) return;
-    if (c->refcount == UINT32_MAX) return;  /* Immortal sentinel */
+    if (UNLIKELY(c->rc.biased == BRC_IMMORTAL)) return;  /* Immortal sentinel */
 
-    assert(c->refcount > 0);
-    c->refcount--;
+    /* Fast path: owner thread */
+    if (LIKELY(c->rc.owner_tid == tls_scheduler_id)) {
+        assert(c->rc.biased > 0);
+        c->rc.biased--;
+        if (c->rc.biased == 0) {
+            /* Owner's count is zero — check shared */
+            uint32_t shared = atomic_load_explicit(&c->rc.shared, memory_order_acquire);
+            if ((shared & BRC_COUNT_MASK) == 0) {
+                /* No shared refs — free immediately */
+                goto do_free;
+            }
+            /* Shared refs exist — set merged flag so last non-owner release frees */
+            uint32_t old = shared;
+            for (;;) {
+                uint32_t new_val = old | BRC_MERGED_FLAG;
+                if (atomic_compare_exchange_weak_explicit(&c->rc.shared, &old, new_val,
+                        memory_order_release, memory_order_relaxed)) {
+                    break;
+                }
+            }
+            return; /* Non-owner will eventually free */
+        }
+        return;
+    }
 
-    if (c->refcount == 0) {
+    /* Slow path: non-owner release */
+    if (cell_release_slow(c)) {
+        goto do_free;
+    }
+    return;
+
+do_free:
+    {
+        /* Check weak refs before freeing */
+        uint16_t weak = atomic_load_explicit(&c->weak_refcount, memory_order_acquire);
+        cell_free_children(c);
+        if (weak == 0) {
+            free(c);
+        }
+        /* else: weak refs exist, zombie cell — freed when last weak_release */
+    }
+}
+
+/* Cross-thread release: always decrements shared counter regardless of owner.
+ * Use when the reference was added via cell_retain_shared or cell_transfer_to_shared.
+ * Pairs with cell_retain_shared — ensures retain/release use the same domain. */
+void cell_release_shared(Cell* c) {
+    if (c == NULL) return;
+    if (UNLIKELY(c->rc.biased == BRC_IMMORTAL)) return;
+    if (cell_release_slow(c)) {
+        /* Check weak refs before freeing */
+        uint16_t weak = atomic_load_explicit(&c->weak_refcount, memory_order_acquire);
+        cell_free_children(c);
+        if (weak == 0) {
+            free(c);
+        }
+    }
+}
+
+/* Free children of a cell (extracted from old cell_release) */
+static void cell_free_children(Cell* c) {
+    {
         /* Free children first */
         switch (c->type) {
             case CELL_PAIR:
@@ -502,11 +640,6 @@ void cell_release(Cell* c) {
             default:
                 break;
         }
-
-        /* Zombie: if weak refs still point here, keep shell alive */
-        if (c->weak_refcount > 0) return;
-
-        free(c);
     }
 }
 
@@ -622,8 +755,8 @@ Cell* cell_box_set(Cell* c, Cell* new_value) {
     assert(c->type == CELL_BOX);
     /* Retain new first (handles self-assignment) */
     if (new_value) cell_retain(new_value);
-    Cell* old = c->data.box.value;
-    c->data.box.value = new_value;
+    /* Atomic exchange for visibility across threads (Day 135) */
+    Cell* old = __atomic_exchange_n(&c->data.box.value, new_value, __ATOMIC_ACQ_REL);
     /* Return old WITHOUT releasing — caller inherits the box's old reference */
     return old;
 }
@@ -646,14 +779,16 @@ Cell* cell_get_weak_target(Cell* c) {
 }
 
 void cell_weak_retain(Cell* c) {
-    if (c) c->weak_refcount++;
+    if (c) atomic_fetch_add_explicit(&c->weak_refcount, 1, memory_order_relaxed);
 }
 
 void cell_weak_release(Cell* c) {
     if (!c) return;
-    assert(c->weak_refcount > 0);
-    c->weak_refcount--;
-    if (c->weak_refcount == 0 && c->refcount == 0) {
+    uint16_t prev = atomic_fetch_sub_explicit(&c->weak_refcount, 1, memory_order_acq_rel);
+    assert(prev > 0);
+    if (prev == 1 &&
+        c->rc.biased == 0 &&
+        (atomic_load_explicit(&c->rc.shared, memory_order_acquire) & BRC_COUNT_MASK) == 0) {
         free(c);
     }
 }
@@ -741,7 +876,7 @@ Cell* ERR_STACK_OVERFLOW = NULL;
 
 static Cell* make_sentinel_error(const char* message) {
     Cell* c = cell_error(message, cell_nil());
-    c->refcount = UINT32_MAX;  /* Immortal: retain/release are no-ops */
+    c->rc.biased = BRC_IMMORTAL;  /* Immortal: retain/release are no-ops */
     return c;
 }
 
@@ -1135,7 +1270,7 @@ void cell_print(Cell* c) {
             printf("]");
             break;
         case CELL_WEAK_REF:
-            if (c->data.weak_ref.target && c->data.weak_ref.target->refcount > 0) {
+            if (c->data.weak_ref.target && c->data.weak_ref.target->rc.biased > 0) {
                 printf("◇[alive]");
             } else {
                 printf("◇[dead]");
@@ -1614,7 +1749,9 @@ Cell* cell_hashset_new(uint32_t initial_n_groups) {
 
     Cell* c = (Cell*)calloc(1, sizeof(Cell));
     c->type = CELL_SET;
-    c->refcount = 1;
+    c->rc.biased = 1;
+    c->rc.owner_tid = tls_scheduler_id;
+    atomic_init(&c->rc.shared, 0);
 
     /* Allocate 16-byte aligned metadata: ng * 16 bytes */
     c->data.hashset.metadata = (uint8_t*)aligned_alloc(16, ng * HS_META_SIZE);
@@ -4845,7 +4982,9 @@ static Cell* iter_alloc(void) {
     assert(c != NULL);
     memset(c, 0, sizeof(Cell));
     c->type = CELL_ITERATOR;
-    c->refcount = 1;
+    c->rc.biased = 1;
+    c->rc.owner_tid = tls_scheduler_id;
+    atomic_init(&c->rc.shared, 0);
     c->linear_flags = LINEAR_NONE;
     c->caps = CAP_READ;
     return c;

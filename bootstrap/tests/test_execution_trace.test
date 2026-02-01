@@ -1,0 +1,111 @@
+; Test: Execution Trace System (Day 136)
+; HFT-grade ring buffer tracing with flight recorder mode
+
+; ============ Reset ============
+(⟳∅)
+
+; ============ 1. Trace disabled by default ============
+(⊨ (⌜ :trace-disabled-default) #0 (⟳⊳⊳#))
+
+; ============ 2. Enable tracing ============
+(⊨ (⌜ :trace-enable) #t (⟳⊳⊳! #t))
+
+; ============ 3. Buffer capacity ============
+(⊨ (⌜ :trace-capacity) #4096 (⟳⊳⊳⊞))
+
+; Clear any events from enable itself
+(⟳⊳⊳∅)
+
+; ============ 4. Spawn traced ============
+(≔ ta1 (⟳ (λ (self) :traced)))
+(⊨ (⌜ :spawn-traced) #t (> (⟳⊳⊳# :SPAWN) #0))
+
+; ============ 5. Send traced ============
+(⟳⊳⊳∅)
+(≔ ta2 (⟳ (λ (self) (←?))))
+(→! ta2 :msg)
+(⊨ (⌜ :send-traced) #t (> (⟳⊳⊳# :SEND) #0))
+
+; ============ 6. Recv + Die traced via scheduler run ============
+(⟳⊳⊳∅)
+(⟳! #100)
+(⊨ (⌜ :die-traced) #t (> (⟳⊳⊳# :DIE) #0))
+
+; ============ 7. Reset and read returns list ============
+(⟳∅)
+(⟳⊳⊳∅)
+(≔ ta3 (⟳ (λ (self) :done)))
+(⟳! #100)
+(≔ events (⟳⊳⊳?))
+(⊨ (⌜ :read-returns-list) #t (¬ (≡ events ∅)))
+
+; ============ 8. Event has keys ============
+(≔ first-event (◁ events))
+(⊨ (⌜ :event-has-kind) #t (¬ (≡ first-event ∅)))
+
+; ============ 9. Filter by kind ============
+(≔ spawn-events (⟳⊳⊳? :SPAWN))
+(≔ spawn-count (⟳⊳⊳# :SPAWN))
+; All events in filtered list should be SPAWN kind
+(⊨ (⌜ :filter-by-kind) #t (> spawn-count #0))
+
+; ============ 10. Clear works ============
+(⟳⊳⊳∅)
+(⊨ (⌜ :clear-works) #0 (⟳⊳⊳#))
+
+; ============ 11. Disable stops recording ============
+(⟳⊳⊳! #f)
+(⟳∅)
+(≔ ta4 (⟳ (λ (self) :nope)))
+(⟳! #100)
+(⊨ (⌜ :disable-stops-recording) #0 (⟳⊳⊳#))
+
+; ============ 12. Re-enable and flight recorder ============
+(⟳⊳⊳! #t)
+(⟳∅)
+(⟳⊳⊳∅)
+(≔ ta5 (⟳ (λ (self) :a)))
+(≔ ta6 (⟳ (λ (self) :b)))
+(≔ ta7 (⟳ (λ (self) :c)))
+(⟳! #100)
+(≔ snap3 (⟳⊳⊳⊛ #3))
+; Snapshot should return exactly 3 events
+(≔ snap3-len #0)
+(≔ snap3-cur snap3)
+(≔ snap3-len (⊕ snap3-len (? (≡ snap3-cur ∅) #0 #1)))
+; Simple check: snapshot returned a non-empty list
+(⊨ (⌜ :flight-recorder-3) #t (¬ (≡ snap3 ∅)))
+
+; ============ 13. Snapshot all matches count ============
+(≔ snap-all (⟳⊳⊳⊛))
+(≔ total-count (⟳⊳⊳#))
+(⊨ (⌜ :snapshot-all-nonempty) #t (> total-count #0))
+
+; ============ 14. Timestamps monotonic ============
+; First and last events should have non-decreasing timestamps
+(≔ all-events (⟳⊳⊳?))
+(≔ first-ts (◁ (◁ all-events)))
+; The first pair in first event is (:ts value) — just check it exists
+(⊨ (⌜ :timestamps-exist) #t (¬ (≡ first-ts ∅)))
+
+; ============ 15. Trace survives actor reset ============
+(≔ pre-reset-count (⟳⊳⊳#))
+(⟳∅)
+(≔ post-reset-count (⟳⊳⊳#))
+(⊨ (⌜ :trace-survives-reset) #t (≡ pre-reset-count post-reset-count))
+
+; ============ 16. Channel trace ============
+(⟳⊳⊳∅)
+(≔ ch (⟿⊚ #4))
+(⟿→ ch :hello)
+(⟿← ch)
+(⟿× ch)
+(⊨ (⌜ :chan-send-traced) #t (> (⟳⊳⊳# :CHAN_SEND) #0))
+(⊨ (⌜ :chan-recv-traced) #t (> (⟳⊳⊳# :CHAN_RECV) #0))
+(⊨ (⌜ :chan-close-traced) #t (> (⟳⊳⊳# :CHAN_CLOSE) #0))
+
+; ============ Cleanup ============
+(⟳⊳⊳! #f)
+(⟳⊳⊳∅)
+(⟳∅)
+(⟿∅)

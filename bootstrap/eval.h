@@ -43,6 +43,11 @@ struct EvalContext {
     FunctionDoc* user_docs;  /* User function documentation */
     Cell* type_registry;     /* Type definitions (alist: type_tag -> schema) */
     Cell* effect_registry;   /* Effect definitions (alist: name -> ops-list) */
+
+    /* BEAM-style reduction counting (Day 130) */
+    int32_t reductions_left;  /* Decremented per eval step; yield when <= 0 */
+    Cell* continuation;       /* Saved expression on yield */
+    Cell* continuation_env;   /* Saved environment on yield */
 };
 
 /* Create new evaluation context */

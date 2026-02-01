@@ -4,6 +4,8 @@
 #include <string.h>
 #include <assert.h>
 #include <stdint.h>
+#include <stdbool.h>
+#include <pthread.h>
 
 /* =========================================================================
  * HFT-Grade String Intern Table
@@ -40,7 +42,13 @@ typedef struct {
     InternResult result;     /* Cached intern result */
 } StrCacheEntry;
 
-static StrCacheEntry intern_strcache[STRCACHE_SIZE];
+/* Thread-local string cache: zero-synchronization hot path per thread */
+static _Thread_local StrCacheEntry intern_strcache[STRCACHE_SIZE];
+
+/* RWLock protecting the shared intern table.
+ * Read path (probe): rdlock — multiple readers in parallel.
+ * Write path (insert): wrlock — exclusive. Cold path (<0.1% of calls). */
+static pthread_rwlock_t intern_rwlock = PTHREAD_RWLOCK_INITIALIZER;
 
 /* ID-indexed parallel arrays for O(1) hash lookup */
 static const char* intern_id_canonical[MAX_INTERN_COUNT];
@@ -82,8 +90,28 @@ static void intern_grow(void) {
     intern_mask = new_mask;
 }
 
+/* Probe table under read lock — returns true if found, fills *out */
+static bool intern_probe_locked(const char* str, size_t slen, uint8_t len, uint64_t h, InternResult* out) {
+    uint32_t idx = (uint32_t)(h & intern_mask);
+    while (intern_table[idx].canonical) {
+        if (intern_table[idx].len == len &&
+            intern_table[idx].hash == h) {
+            const char* cmp = (len <= INTERN_MAX_INLINE) ?
+                intern_table[idx].inline_str : intern_table[idx].canonical;
+            if (memcmp(cmp, str, slen) == 0) {
+                out->canonical = intern_table[idx].canonical;
+                out->id = intern_table[idx].id;
+                out->hash = intern_table[idx].hash;
+                return true;
+            }
+        }
+        idx = (idx + 1) & intern_mask;
+    }
+    return false;
+}
+
 InternResult intern(const char* str) {
-    /* 1. Check string cache by C pointer (LuaJIT-style) */
+    /* 1. TLS cache check — zero synchronization (~2ns) */
     uint32_t cache_idx = (uint32_t)(((uintptr_t)str >> 4) & STRCACHE_MASK);
     if (intern_strcache[cache_idx].c_ptr == str &&
         intern_strcache[cache_idx].result.canonical != NULL &&
@@ -91,48 +119,47 @@ InternResult intern(const char* str) {
         return intern_strcache[cache_idx].result;
     }
 
-    /* 2. Compute length and hash */
+    /* 2. Compute length and hash (outside lock) */
     size_t slen = strlen(str);
     uint8_t len = (uint8_t)(slen > 255 ? 255 : slen);
     uint64_t h = guage_siphash(str, slen);
 
-    /* 3. Probe intern table */
+    /* 3. Read-lock probe — parallel readers allowed */
+    InternResult r;
+    pthread_rwlock_rdlock(&intern_rwlock);
+    bool found = intern_probe_locked(str, slen, len, h, &r);
+    pthread_rwlock_unlock(&intern_rwlock);
+
+    if (found) {
+        intern_strcache[cache_idx].c_ptr = str;
+        intern_strcache[cache_idx].result = r;
+        return r;
+    }
+
+    /* 4. Write-lock insert — exclusive, cold path */
+    pthread_rwlock_wrlock(&intern_rwlock);
+
+    /* Double-check: another thread may have inserted while we waited */
+    if (intern_probe_locked(str, slen, len, h, &r)) {
+        pthread_rwlock_unlock(&intern_rwlock);
+        intern_strcache[cache_idx].c_ptr = str;
+        intern_strcache[cache_idx].result = r;
+        return r;
+    }
+
+    /* Resize if needed */
+    if (intern_size * 4 >= intern_cap * 3) {
+        intern_grow();
+    }
+
+    /* Find empty slot */
     uint32_t idx = (uint32_t)(h & intern_mask);
     while (intern_table[idx].canonical) {
-        /* Length-first rejection: 1 byte compare */
-        if (intern_table[idx].len == len &&
-            intern_table[idx].hash == h) {
-            /* Full comparison using inline storage if available */
-            const char* cmp = (len <= INTERN_MAX_INLINE) ?
-                intern_table[idx].inline_str : intern_table[idx].canonical;
-            if (memcmp(cmp, str, slen) == 0) {
-                /* FOUND — update cache and return */
-                InternResult r = {
-                    intern_table[idx].canonical,
-                    intern_table[idx].id,
-                    intern_table[idx].hash
-                };
-                intern_strcache[cache_idx].c_ptr = str;
-                intern_strcache[cache_idx].result = r;
-                return r;
-            }
-        }
         idx = (idx + 1) & intern_mask;
     }
 
-    /* 4. Not found — check if resize needed */
-    if (intern_size * 4 >= intern_cap * 3) {  /* 75% load factor */
-        intern_grow();
-        /* Recompute idx after grow */
-        idx = (uint32_t)(h & intern_mask);
-        while (intern_table[idx].canonical) {
-            idx = (idx + 1) & intern_mask;
-        }
-    }
-
-    /* 5. Insert new entry */
+    /* Insert */
     assert(intern_next_id < MAX_INTERN_COUNT);
-
     const char* canonical = strdup(str);
     uint16_t id = intern_next_id++;
 
@@ -145,12 +172,15 @@ InternResult intern(const char* str) {
     }
     intern_size++;
 
-    /* Store in ID-indexed arrays */
     intern_id_canonical[id] = canonical;
     intern_id_hash[id] = h;
 
-    /* Update cache */
-    InternResult r = { canonical, id, h };
+    pthread_rwlock_unlock(&intern_rwlock);
+
+    /* Update TLS cache */
+    r.canonical = canonical;
+    r.id = id;
+    r.hash = h;
     intern_strcache[cache_idx].c_ptr = str;
     intern_strcache[cache_idx].result = r;
 

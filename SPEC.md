@@ -668,7 +668,7 @@ Every Cell carries an 8-byte **Span** (Rust-style inline-or-intern encoding) tra
 **Dynamic handler stack:** Inner handlers shadow outer for the same effect.
 Non-resumable (`⟪⟫`) handlers receive perform arguments directly.
 Resumable (`⟪↺⟫`) handlers receive continuation `k` as first argument; calling `(k value)` resumes body.
-Implementation: fiber-based coroutines using `ucontext` — O(n) cost for n performs.
+Implementation: fiber-based coroutines using assembly `fcontext` (ARM64/x86-64, ~4-20ns context switch) — O(n) cost for n performs.
 Delimited continuations (`⟪⊸⟫`/`⊸`) provide standalone shift/reset for general-purpose control flow.
 Continuations are one-shot (linear) — calling `k` twice returns `⚠:one-shot-continuation-already-used`.
 Unhandled effects return `⚠:unhandled-effect` errors.
@@ -684,7 +684,7 @@ Unhandled effects return `⚠:unhandled-effect` errors.
 | `⟳→` | `⟳ → α` | Get finished actor's result | ✅ |
 | `⟳∅` | `() → ∅` | Reset all actors (testing) | ✅ |
 
-Cooperative actor model built on fibers. Single-threaded round-robin scheduling.
+Cooperative actor model built on fibers. N:M multi-scheduler with work-stealing (Chase-Lev deque + LIFO slot + steal-half + global overflow queue). Assembly fcontext context switch (~4-20ns). BEAM-style reduction counting (4000 reductions per quantum).
 Actors yield at `←?` when mailbox is empty. Use `≫` (bind) to sequence multiple receives.
 
 ### Channels (7) ✅
@@ -779,6 +779,30 @@ Per-actor key-value store (Erlang `put/get/erase` equivalent). Keys compared wit
 | `⟳⊲?` | `⟳ → α \| ∅` | Check task result (non-blocking) | ✅ |
 
 Higher-level abstraction over actors for async computations. `⟳⊳` spawns an actor from a zero-arg function (no `self` parameter needed). `⟳⊲` blocks the calling actor until the target finishes, then returns its result. `⟳⊲?` returns the result if finished, `∅` if still running. Both work on any actor, not just tasks.
+
+### Scheduler Configuration (5) ✅
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `⟳#` | `ℕ → ℕ` | Set number of schedulers (1-16), returns previous count | ✅ |
+| `⟳#?` | `() → [...]` | Get per-scheduler stats (reductions, steals, ctx-sw, actors, queue depth, parked) | ✅ |
+| `⟳⊳⊳!` | `𝔹 → ∅` | Enable/disable execution tracing globally | ✅ |
+| `⟳⊳⊳?` | `() → [TraceEvent] \| :kind → [TraceEvent]` | Read all trace events or filter by kind | ✅ |
+| `⟳⊳⊳∅` | `() → ∅` | Clear trace buffer | ✅ |
+
+Multi-scheduler architecture: N:M scheduling with one OS thread per scheduler. Scheduler 0 runs on main thread; schedulers 1..N-1 run on pthreads. Work-stealing uses Chase-Lev deque + LIFO slot (Tokio/Go `runnext` pattern, starvation guard after 3 consecutive uses) + steal-half policy + Vyukov MPMC global overflow queue (1024 capacity). Stack allocation via `mmap` with guard page and pre-fault, pooled per-scheduler (max 64). Thread parking via `__ulock` on macOS / `futex` on Linux (4 bytes). Adaptive idle: spin hint → sched_yield → park.
+
+### Execution Tracing (7) ✅
+| Symbol | Type | Meaning | Status |
+|--------|------|---------|--------|
+| `⟳⊳⊳!` | `𝔹 → ∅` | Enable/disable tracing | ✅ |
+| `⟳⊳⊳?` | `() → [event]` | Read events (optional :kind filter) | ✅ |
+| `⟳⊳⊳∅` | `() → ∅` | Clear trace buffer | ✅ |
+| `⟳⊳⊳#` | `() → ℕ \| :kind → ℕ` | Count events (optional filter) | ✅ |
+| `⟳⊳⊳⊛` | `() → [event] \| ℕ → [event]` | Flight recorder snapshot (all or last N) | ✅ |
+| `⟳⊳⊳⊗` | `() → ∅` | Enable causal tracing on current actor | ✅ |
+| `⟳⊳⊳⊞` | `() → ℕ` | Buffer capacity (4096) | ✅ |
+
+Per-thread ring buffer (4096 events, 64KB, L1 resident). 16-byte TraceEvent: timestamp(8) + sched_id(2) + actor_id(2) + kind(1) + pad(1) + detail(2). `rdtscp`/ISB serialized timestamps. Trace kinds: SPAWN, SEND, RECV, DIE, STEAL, YIELD, WAKE, RESUME, LINK, MONITOR, EXIT_SIGNAL, TIMER_FIRE, CHAN_SEND, CHAN_RECV, CHAN_CLOSE. Causal token propagation through actor messages.
 
 ### Documentation (10) ✅
 | Symbol | Type | Meaning | Status |

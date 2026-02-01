@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <stdatomic.h>
 #include "span.h"
 
 /* Branch prediction hints */
@@ -13,6 +14,32 @@
 #define UNLIKELY(x) (x)
 #define LIKELY(x)   (x)
 #endif
+
+/* ── Biased Reference Counting (BRC) ──
+ * Owner thread: non-atomic fast path (~1 cycle increment).
+ * Non-owner threads: atomic CAS on shared counter.
+ * Research: PACT 2018, UIUC — 2.25x faster than pure atomic RC.
+ *
+ * Layout: 8 bytes total, fits in the same slot as old uint32_t refcount.
+ *   shared  (4B): _Atomic uint32_t — non-owner atomic counter + flags
+ *   biased  (2B): uint16_t — owner-thread non-atomic counter
+ *   owner_tid (2B): uint16_t — owning scheduler/thread ID
+ */
+typedef struct {
+    _Atomic uint32_t shared;    /* Non-owner atomic counter + flags */
+    uint16_t         biased;    /* Owner-thread non-atomic counter */
+    uint16_t         owner_tid; /* Owning thread's scheduler ID */
+} BiasedRC;
+
+/* BRC flags packed into top bits of shared counter */
+#define BRC_MERGED_FLAG  (1u << 31)  /* Owner counter has been merged */
+#define BRC_COUNT_MASK   0x7FFFFFFFu /* Lower 31 bits = shared count */
+
+/* BRC immortal sentinel — biased = UINT16_MAX means never free */
+#define BRC_IMMORTAL     UINT16_MAX
+
+/* Thread-local scheduler ID (defined in scheduler.c, 0 = main thread) */
+extern _Thread_local uint16_t tls_scheduler_id;
 
 /* Error return trace capacity (ring buffer of byte positions) */
 #define ERROR_TRACE_CAP 32
@@ -127,11 +154,11 @@ typedef union {
 struct Cell {
     CellType type;
 
-    /* Reference counting for GC */
-    uint32_t refcount;
+    /* Biased reference counting for GC (thread-safe) */
+    BiasedRC rc;
 
-    /* Weak reference counting (zombie support) */
-    uint16_t weak_refcount;
+    /* Weak reference counting (zombie support, atomic for cross-thread) */
+    _Atomic uint16_t weak_refcount;
 
     /* Interned symbol ID (valid when type == CELL_ATOM_SYMBOL) */
     uint16_t sym_id;
@@ -303,7 +330,10 @@ Cell* cell_cdr(Cell* c);  /* ▷ - tail */
 
 /* Reference counting */
 void cell_retain(Cell* c);
+void cell_retain_shared(Cell* c);  /* Always use shared counter (cross-thread safe) */
+void cell_transfer_to_shared(Cell* c);  /* Move one biased ref to shared domain + disown if last */
 void cell_release(Cell* c);
+void cell_release_shared(Cell* c);  /* Always use shared counter (cross-thread safe) */
 
 /* Linear type operations */
 bool cell_is_linear(Cell* c);
@@ -490,7 +520,7 @@ void error_stamp_return(Cell* err, uint32_t pos);
 /* Check if error or any cause in chain matches a type (by interned string) */
 bool cell_error_chain_matches(Cell* err, const char* error_type);
 
-/* Sentinel (immortal) pre-allocated errors — refcount = UINT32_MAX */
+/* Sentinel (immortal) pre-allocated errors — rc.biased = BRC_IMMORTAL */
 extern Cell* ERR_DIV_BY_ZERO;
 extern Cell* ERR_UNDEFINED_VAR;
 extern Cell* ERR_TYPE_MISMATCH;

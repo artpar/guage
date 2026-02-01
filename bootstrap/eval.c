@@ -5,6 +5,7 @@
 #include "pattern.h"
 #include "module.h"
 #include "macro.h"
+#include "scheduler.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -208,8 +209,8 @@ static void extract_dependencies(Cell* expr, SymbolSet* params, DepList* deps) {
 /* Forward declaration */
 static FunctionDoc* doc_find(EvalContext* ctx, const char* name);
 
-/* Global current context (for primitives to access user docs) */
-static EvalContext* g_current_context = NULL;
+/* Thread-local current context (for primitives to access user docs) */
+static _Thread_local EvalContext* g_current_context = NULL;
 
 /* Set current eval context */
 void eval_set_current_context(EvalContext* ctx) {
@@ -674,6 +675,9 @@ EvalContext* eval_context_new(void) {
     ctx->user_docs = NULL;  /* Initialize doc list */
     ctx->type_registry = cell_nil();  /* Initialize type registry */
     ctx->effect_registry = cell_nil();  /* Initialize effect registry */
+    ctx->reductions_left = 0;    /* 0 = disabled (REPL/non-actor eval) */
+    ctx->continuation = NULL;
+    ctx->continuation_env = NULL;
     macro_init();  /* Initialize macro system */
     return ctx;
 }
@@ -976,6 +980,17 @@ Cell* eval_internal(EvalContext* ctx, Cell* env, Cell* expr) {
     Cell* owned_expr = NULL;  /* Track owned expressions for cleanup */
 
 tail_call:  /* TCO: loop back here instead of recursive call */
+    /* BEAM-style reduction counting: yield when budget exhausted */
+    if (ctx->reductions_left > 0) {
+        if (--ctx->reductions_left <= 0) {
+            /* Save continuation for scheduler to resume */
+            ctx->continuation = expr;
+            ctx->continuation_env = env;
+            if (owned_expr) cell_release(owned_expr);
+            if (owned_env) cell_release(owned_env);
+            return CELL_YIELD_SENTINEL;
+        }
+    }
     /* Note: owned resources released right before setting new ones */
     /* Macro expansion pass - expand macros before evaluation */
     if (cell_is_pair(expr)) {
@@ -2670,8 +2685,8 @@ bool eval_has_type(EvalContext* ctx, Cell* type_tag) {
 
 /* ============ Effect Registry ============ */
 
-/* Global effect handler stack (dynamic scoping) */
-static EffectFrame* effect_handler_stack = NULL;
+/* Thread-local effect handler stack (dynamic scoping) */
+static _Thread_local EffectFrame* effect_handler_stack = NULL;
 
 /* Register an effect type with its operations */
 void eval_register_effect(EvalContext* ctx, const char* name, Cell* operations) {

@@ -15,9 +15,9 @@ CFLAGS = -Wall -Wextra -std=c11 -g -O2 -fno-omit-frame-pointer
 # Allow full override via command line (e.g., make LDFLAGS="")
 UNAME_S := $(shell uname -s 2>/dev/null || echo Windows)
 ifeq ($(UNAME_S),Darwin)
-    LDFLAGS ?= -Wl,-stack_size,0x2000000
+    LDFLAGS ?= -Wl,-stack_size,0x2000000 -lpthread
 else ifeq ($(UNAME_S),Linux)
-    LDFLAGS ?= -ldl
+    LDFLAGS ?= -ldl -lpthread
 else
     LDFLAGS ?=
 endif
@@ -25,9 +25,22 @@ endif
 # Source files (all in bootstrap/)
 SOURCES = cell.c intern.c span.c primitives.c debruijn.c debug.c eval.c cfg.c dfg.c \
           pattern.c pattern_check.c type.c testgen.c module.c macro.c \
-          fiber.c actor.c channel.c linenoise.c diagnostic.c \
+          fiber.c actor.c channel.c scheduler.c park.c linenoise.c diagnostic.c \
           ffi_jit.c ffi_emit_x64.c ffi_emit_a64.c ring.c main.c
-OBJECTS = $(SOURCES:.c=.o)
+
+# Platform-specific assembly (fcontext context switch)
+UNAME_M := $(shell uname -m 2>/dev/null || echo unknown)
+ifeq ($(UNAME_M),arm64)
+    ASM_SOURCES = fcontext_arm64.S
+else ifeq ($(UNAME_M),aarch64)
+    ASM_SOURCES = fcontext_arm64.S
+else ifeq ($(UNAME_M),x86_64)
+    ASM_SOURCES = fcontext_x86_64.S
+else
+    ASM_SOURCES =
+endif
+
+OBJECTS = $(SOURCES:.c=.o) $(ASM_SOURCES:.S=.o)
 EXECUTABLE = guage
 
 # Add bootstrap/ prefix to paths
@@ -55,6 +68,11 @@ $(BOOTSTRAP_EXECUTABLE): $(BOOTSTRAP_OBJECTS)
 # Compile C source files
 $(BOOTSTRAP_DIR)/%.o: $(BOOTSTRAP_DIR)/%.c
 	@echo "Compiling $<..."
+	$(CC) $(CFLAGS) -c $< -o $@
+
+# Compile assembly source files (fcontext context switch)
+$(BOOTSTRAP_DIR)/%.o: $(BOOTSTRAP_DIR)/%.S
+	@echo "Assembling $<..."
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # ============================================================================
@@ -214,7 +232,7 @@ $(BOOTSTRAP_DIR)/primitives.o: $(BOOTSTRAP_DIR)/primitives.c $(BOOTSTRAP_DIR)/pr
                                 $(BOOTSTRAP_DIR)/type.h $(BOOTSTRAP_DIR)/testgen.h \
                                 $(BOOTSTRAP_DIR)/module.h $(BOOTSTRAP_DIR)/actor.h \
                                 $(BOOTSTRAP_DIR)/channel.h $(BOOTSTRAP_DIR)/ffi_jit.h \
-                                $(BOOTSTRAP_DIR)/ring.h
+                                $(BOOTSTRAP_DIR)/ring.h $(BOOTSTRAP_DIR)/scheduler.h
 $(BOOTSTRAP_DIR)/debruijn.o: $(BOOTSTRAP_DIR)/debruijn.c $(BOOTSTRAP_DIR)/debruijn.h \
                               $(BOOTSTRAP_DIR)/cell.h
 $(BOOTSTRAP_DIR)/debug.o: $(BOOTSTRAP_DIR)/debug.c $(BOOTSTRAP_DIR)/debug.h \
@@ -223,7 +241,7 @@ $(BOOTSTRAP_DIR)/eval.o: $(BOOTSTRAP_DIR)/eval.c $(BOOTSTRAP_DIR)/eval.h \
                           $(BOOTSTRAP_DIR)/cell.h $(BOOTSTRAP_DIR)/primitives.h \
                           $(BOOTSTRAP_DIR)/debruijn.h $(BOOTSTRAP_DIR)/debug.h \
                           $(BOOTSTRAP_DIR)/module.h $(BOOTSTRAP_DIR)/macro.h \
-                          $(BOOTSTRAP_DIR)/fiber.h
+                          $(BOOTSTRAP_DIR)/fiber.h $(BOOTSTRAP_DIR)/scheduler.h
 $(BOOTSTRAP_DIR)/cfg.o: $(BOOTSTRAP_DIR)/cfg.c $(BOOTSTRAP_DIR)/cfg.h \
                          $(BOOTSTRAP_DIR)/cell.h $(BOOTSTRAP_DIR)/primitives.h
 $(BOOTSTRAP_DIR)/dfg.o: $(BOOTSTRAP_DIR)/dfg.c $(BOOTSTRAP_DIR)/dfg.h \
@@ -242,10 +260,12 @@ $(BOOTSTRAP_DIR)/macro.o: $(BOOTSTRAP_DIR)/macro.c $(BOOTSTRAP_DIR)/macro.h \
                            $(BOOTSTRAP_DIR)/cell.h $(BOOTSTRAP_DIR)/eval.h \
                            $(BOOTSTRAP_DIR)/primitives.h
 $(BOOTSTRAP_DIR)/fiber.o: $(BOOTSTRAP_DIR)/fiber.c $(BOOTSTRAP_DIR)/fiber.h \
-                           $(BOOTSTRAP_DIR)/cell.h $(BOOTSTRAP_DIR)/eval.h
+                           $(BOOTSTRAP_DIR)/cell.h $(BOOTSTRAP_DIR)/eval.h \
+                           $(BOOTSTRAP_DIR)/scheduler.h
 $(BOOTSTRAP_DIR)/actor.o: $(BOOTSTRAP_DIR)/actor.c $(BOOTSTRAP_DIR)/actor.h \
                            $(BOOTSTRAP_DIR)/cell.h $(BOOTSTRAP_DIR)/fiber.h \
-                           $(BOOTSTRAP_DIR)/eval.h $(BOOTSTRAP_DIR)/channel.h
+                           $(BOOTSTRAP_DIR)/eval.h $(BOOTSTRAP_DIR)/channel.h \
+                           $(BOOTSTRAP_DIR)/scheduler.h
 $(BOOTSTRAP_DIR)/channel.o: $(BOOTSTRAP_DIR)/channel.c $(BOOTSTRAP_DIR)/channel.h \
                               $(BOOTSTRAP_DIR)/cell.h
 $(BOOTSTRAP_DIR)/linenoise.o: $(BOOTSTRAP_DIR)/linenoise.c $(BOOTSTRAP_DIR)/linenoise.h
@@ -255,8 +275,13 @@ $(BOOTSTRAP_DIR)/ffi_emit_x64.o: $(BOOTSTRAP_DIR)/ffi_emit_x64.c $(BOOTSTRAP_DIR
                                   $(BOOTSTRAP_DIR)/cell.h
 $(BOOTSTRAP_DIR)/ffi_emit_a64.o: $(BOOTSTRAP_DIR)/ffi_emit_a64.c $(BOOTSTRAP_DIR)/ffi_jit.h \
                                   $(BOOTSTRAP_DIR)/cell.h
+$(BOOTSTRAP_DIR)/scheduler.o: $(BOOTSTRAP_DIR)/scheduler.c $(BOOTSTRAP_DIR)/scheduler.h \
+                               $(BOOTSTRAP_DIR)/cell.h $(BOOTSTRAP_DIR)/eval.h \
+                               $(BOOTSTRAP_DIR)/actor.h $(BOOTSTRAP_DIR)/channel.h
+$(BOOTSTRAP_DIR)/park.o: $(BOOTSTRAP_DIR)/park.c $(BOOTSTRAP_DIR)/park.h
 $(BOOTSTRAP_DIR)/ring.o: $(BOOTSTRAP_DIR)/ring.c $(BOOTSTRAP_DIR)/ring.h
 $(BOOTSTRAP_DIR)/main.o: $(BOOTSTRAP_DIR)/main.c $(BOOTSTRAP_DIR)/cell.h \
                           $(BOOTSTRAP_DIR)/span.h $(BOOTSTRAP_DIR)/primitives.h \
                           $(BOOTSTRAP_DIR)/eval.h $(BOOTSTRAP_DIR)/debug.h \
-                          $(BOOTSTRAP_DIR)/module.h $(BOOTSTRAP_DIR)/linenoise.h
+                          $(BOOTSTRAP_DIR)/module.h $(BOOTSTRAP_DIR)/linenoise.h \
+                          $(BOOTSTRAP_DIR)/scheduler.h

@@ -454,6 +454,15 @@ Cell* prim_ring_close(Cell* args);      /* ⊸⊚→× - async close */
 Cell* prim_ring_submit(Cell* args);     /* ⊸⊚! - flush submissions */
 Cell* prim_ring_complete(Cell* args);   /* ⊸⊚⊲ - harvest completions */
 
+/* Execution Trace primitives (Day 136 — HFT-grade execution tracing) */
+Cell* prim_trace_enable(Cell* args);     /* ⟳⊳⊳! - enable/disable tracing */
+Cell* prim_trace_read(Cell* args);       /* ⟳⊳⊳? - read trace events */
+Cell* prim_trace_clear(Cell* args);      /* ⟳⊳⊳∅ - clear trace buffer */
+Cell* prim_trace_count(Cell* args);      /* ⟳⊳⊳# - count trace events */
+Cell* prim_trace_snapshot(Cell* args);   /* ⟳⊳⊳⊛ - flight recorder snapshot */
+Cell* prim_trace_causal(Cell* args);     /* ⟳⊳⊳⊗ - enable causal tracing */
+Cell* prim_trace_capacity(Cell* args);   /* ⟳⊳⊳⊞ - buffer capacity */
+
 /* Refinement Type primitives (Day 127 — HFT-grade gradual dependent types) */
 Cell* prim_refine_def(Cell* args);        /* ∈⊡ - define refinement type (special form) */
 Cell* prim_refine_check(Cell* args);      /* ∈⊡? - check value against refinement */

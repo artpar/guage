@@ -1,8 +1,7 @@
 #ifndef GUAGE_FIBER_H
 #define GUAGE_FIBER_H
 
-#define _XOPEN_SOURCE
-#include <ucontext.h>
+#include "fcontext.h"
 #include <stdbool.h>
 #include <stddef.h>
 
@@ -26,13 +25,14 @@ typedef enum {
     SUSPEND_CHAN_SEND,   /* ⟿→ on full channel */
     SUSPEND_SELECT,      /* ⟿⊞ waiting on multiple channels */
     SUSPEND_TASK_AWAIT,  /* ⟳⊲ waiting for actor to finish */
+    SUSPEND_REDUCTION,   /* Reduction budget exhausted — immediately runnable */
 } SuspendReason;
 
 /* Fiber - lightweight coroutine for delimited continuations */
 typedef struct Fiber {
-    ucontext_t ctx;            /* Fiber's saved execution context */
-    ucontext_t caller_ctx;     /* Caller's context (return point on yield) */
-    char* stack;               /* Allocated stack */
+    fcontext_t ctx;            /* Fiber's saved execution context (8 bytes) */
+    fcontext_t caller_ctx;     /* Caller's context — return point on yield (8 bytes) */
+    char* stack;               /* Allocated stack (base of usable region) */
     size_t stack_size;
     FiberState state;
 
@@ -64,6 +64,13 @@ typedef struct Fiber {
 
     /* Task await */
     int suspend_await_actor_id;    /* actor ID we're waiting to finish */
+
+    /* Thread-safe select round-robin (was static int sel_round — data race) */
+    int select_round;
+
+    /* Per-fiber continuation save (for multi-scheduler correctness) */
+    Cell* saved_continuation;
+    Cell* saved_continuation_env;
 
     /* Evaluation context */
     EvalContext* eval_ctx;

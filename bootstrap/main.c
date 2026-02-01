@@ -16,6 +16,7 @@
 #include "module.h"
 #include "linenoise.h"
 #include "diagnostic.h"
+#include "scheduler.h"
 
 /* Evaluator uses goto-based tail call optimization (TCO) */
 
@@ -773,8 +774,12 @@ int main(int argc, char** argv) {
     /* Initialize sentinel (immortal) error cells */
     error_sentinels_init();
 
+    /* Initialize scheduler subsystem (1 scheduler = main thread only) */
+    sched_init(1);
+
     repl();
 
+    sched_shutdown();
     srcmap_free(g_source_map);
     g_source_map = NULL;
     return 0;

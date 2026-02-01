@@ -11,6 +11,7 @@
 #include "macro.h"
 #include "actor.h"
 #include "channel.h"
+#include "scheduler.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
@@ -2597,8 +2598,53 @@ Cell* prim_actor_run(Cell* args) {
         return cell_error("run-not-number", max_cell);
     }
     int max_ticks = (int)cell_get_number(max_cell);
-    int ran = actor_run_all(max_ticks);
+    int ran = sched_run_all(max_ticks);
     return cell_number((double)ran);
+}
+
+/* ⟳⊞ - get or set scheduler count
+ * (⟳⊞) → current count
+ * (⟳⊞ n) → set count (before multi-thread activation) */
+Cell* prim_sched_count(Cell* args) {
+    if (!args || cell_is_nil(args)) {
+        return cell_number((double)sched_count());
+    }
+    Cell* n = arg1(args);
+    if (!cell_is_number(n)) {
+        return cell_error("sched-count-not-number", n);
+    }
+    sched_set_count((int)cell_get_number(n));
+    return cell_nil();
+}
+
+/* ⟳⊞⊙ - get current thread's scheduler ID
+ * (⟳⊞⊙) → scheduler ID number */
+Cell* prim_sched_id(Cell* args) {
+    (void)args;
+    return cell_number((double)tls_scheduler_id);
+}
+
+/* ⟳#? - per-scheduler statistics
+ * (⟳#?) → list of ⟨:sched-id ⟨:reds N :ctx-sw N :steals N :actors N⟩⟩ */
+Cell* prim_sched_stats(Cell* args) {
+    (void)args;
+    int n = sched_count();
+    Cell* result = cell_nil();
+    for (int i = n - 1; i >= 0; i--) {
+        Scheduler* s = sched_get(i);
+        if (!s) continue;
+        /* Build stats alist for this scheduler */
+        Cell* stats = cell_nil();
+        stats = cell_cons(cell_cons(cell_symbol(":actors"), cell_number((double)s->stat_actors_run)), stats);
+        stats = cell_cons(cell_cons(cell_symbol(":steals"), cell_number((double)s->stat_steals)), stats);
+        stats = cell_cons(cell_cons(cell_symbol(":ctx-sw"), cell_number((double)s->stat_context_switches)), stats);
+        stats = cell_cons(cell_cons(cell_symbol(":reds"), cell_number((double)s->stat_reductions)), stats);
+        stats = cell_cons(cell_cons(cell_symbol(":queue"), cell_number((double)ws_size(&s->deque))), stats);
+        stats = cell_cons(cell_cons(cell_symbol(":parked"), cell_bool(atomic_load_explicit(&s->park_state, memory_order_relaxed) == 1)), stats);
+        Cell* entry = cell_cons(cell_number((double)i), stats);
+        result = cell_cons(entry, result);
+    }
+    return result;
 }
 
 /* ⟳? - check if actor is alive
@@ -2641,6 +2687,205 @@ Cell* prim_actor_reset(Cell* args) {
     (void)args;
     actor_reset_all();
     return cell_nil();
+}
+
+/* ============ Execution Trace Primitives (Day 136) ============ */
+
+/* Helper: TraceEventKind → symbol */
+static Cell* trace_kind_to_symbol(uint8_t kind) {
+    switch (kind) {
+        case TRACE_SPAWN:       return cell_symbol(":SPAWN");
+        case TRACE_SEND:        return cell_symbol(":SEND");
+        case TRACE_RECV:        return cell_symbol(":RECV");
+        case TRACE_DIE:         return cell_symbol(":DIE");
+        case TRACE_STEAL:       return cell_symbol(":STEAL");
+        case TRACE_YIELD:       return cell_symbol(":YIELD");
+        case TRACE_WAKE:        return cell_symbol(":WAKE");
+        case TRACE_RESUME:      return cell_symbol(":RESUME");
+        case TRACE_LINK:        return cell_symbol(":LINK");
+        case TRACE_MONITOR:     return cell_symbol(":MONITOR");
+        case TRACE_EXIT_SIGNAL: return cell_symbol(":EXIT_SIGNAL");
+        case TRACE_TIMER_FIRE:  return cell_symbol(":TIMER_FIRE");
+        case TRACE_CHAN_SEND:   return cell_symbol(":CHAN_SEND");
+        case TRACE_CHAN_RECV:   return cell_symbol(":CHAN_RECV");
+        case TRACE_CHAN_CLOSE:  return cell_symbol(":CHAN_CLOSE");
+        default:                return cell_symbol(":UNKNOWN");
+    }
+}
+
+/* Helper: symbol → TraceEventKind, returns -1 if not found */
+static int trace_symbol_to_kind(Cell* sym) {
+    if (!sym || sym->type != CELL_ATOM_SYMBOL) return -1;
+    const char* name = cell_get_symbol(sym);
+    if (strcmp(name, ":SPAWN") == 0) return TRACE_SPAWN;
+    if (strcmp(name, ":SEND") == 0) return TRACE_SEND;
+    if (strcmp(name, ":RECV") == 0) return TRACE_RECV;
+    if (strcmp(name, ":DIE") == 0) return TRACE_DIE;
+    if (strcmp(name, ":STEAL") == 0) return TRACE_STEAL;
+    if (strcmp(name, ":YIELD") == 0) return TRACE_YIELD;
+    if (strcmp(name, ":WAKE") == 0) return TRACE_WAKE;
+    if (strcmp(name, ":RESUME") == 0) return TRACE_RESUME;
+    if (strcmp(name, ":LINK") == 0) return TRACE_LINK;
+    if (strcmp(name, ":MONITOR") == 0) return TRACE_MONITOR;
+    if (strcmp(name, ":EXIT_SIGNAL") == 0) return TRACE_EXIT_SIGNAL;
+    if (strcmp(name, ":TIMER_FIRE") == 0) return TRACE_TIMER_FIRE;
+    if (strcmp(name, ":CHAN_SEND") == 0) return TRACE_CHAN_SEND;
+    if (strcmp(name, ":CHAN_RECV") == 0) return TRACE_CHAN_RECV;
+    if (strcmp(name, ":CHAN_CLOSE") == 0) return TRACE_CHAN_CLOSE;
+    return -1;
+}
+
+/* Helper: build alist from TraceEvent (converts TSC→nanos on read) */
+static Cell* build_trace_alist(TraceEvent* ev) {
+    /* ((:ts nanos) (:sched id) (:actor id) (:kind :SPAWN) (:detail n)) */
+    uint64_t ns = tsc_to_nanos(ev->timestamp);
+
+    Cell* ts_key = cell_symbol(":ts");
+    Cell* ts_val = cell_number((double)ns);
+    Cell* ts_pair = cell_cons(ts_key, ts_val);
+    cell_release(ts_key); cell_release(ts_val);
+
+    Cell* sc_key = cell_symbol(":sched");
+    Cell* sc_val = cell_number((double)ev->scheduler_id);
+    Cell* sc_pair = cell_cons(sc_key, sc_val);
+    cell_release(sc_key); cell_release(sc_val);
+
+    Cell* ac_key = cell_symbol(":actor");
+    Cell* ac_val = cell_number((double)ev->actor_id);
+    Cell* ac_pair = cell_cons(ac_key, ac_val);
+    cell_release(ac_key); cell_release(ac_val);
+
+    Cell* kd_key = cell_symbol(":kind");
+    Cell* kd_val = trace_kind_to_symbol(ev->kind);
+    Cell* kd_pair = cell_cons(kd_key, kd_val);
+    cell_release(kd_key); cell_release(kd_val);
+
+    Cell* dt_key = cell_symbol(":detail");
+    Cell* dt_val = cell_number((double)ev->detail);
+    Cell* dt_pair = cell_cons(dt_key, dt_val);
+    cell_release(dt_key); cell_release(dt_val);
+
+    /* Build list: (dt_pair kd_pair ac_pair sc_pair ts_pair) */
+    Cell* list = cell_nil();
+    Cell* tmp;
+    tmp = cell_cons(dt_pair, list); cell_release(dt_pair); cell_release(list); list = tmp;
+    tmp = cell_cons(kd_pair, list); cell_release(kd_pair); cell_release(list); list = tmp;
+    tmp = cell_cons(ac_pair, list); cell_release(ac_pair); cell_release(list); list = tmp;
+    tmp = cell_cons(sc_pair, list); cell_release(sc_pair); cell_release(list); list = tmp;
+    tmp = cell_cons(ts_pair, list); cell_release(ts_pair); cell_release(list); list = tmp;
+    return list;
+}
+
+/* ⟳⊳⊳! — enable/disable tracing */
+Cell* prim_trace_enable(Cell* args) {
+    Cell* val = arg1(args);
+    bool enable = cell_is_bool(val) && cell_get_bool(val);
+    atomic_store_explicit(&g_trace_enabled, enable, memory_order_release);
+    return cell_bool(enable);
+}
+
+/* ⟳⊳⊳? — read trace events, optionally filtered by kind */
+Cell* prim_trace_read(Cell* args) {
+    int filter_kind = -1;
+    if (args && args->type == CELL_PAIR) {
+        Cell* first = cell_car(args);
+        if (first && first->type == CELL_ATOM_SYMBOL) {
+            filter_kind = trace_symbol_to_kind(first);
+        }
+    }
+
+    uint32_t count = tls_trace_pos < TRACE_BUF_CAP ? tls_trace_pos : TRACE_BUF_CAP;
+    uint32_t start = tls_trace_pos > TRACE_BUF_CAP ? (tls_trace_pos - TRACE_BUF_CAP) : 0;
+
+    Cell* list = cell_nil();
+    /* Build in reverse so oldest is first in result */
+    for (uint32_t i = start + count; i > start; i--) {
+        uint32_t idx = (i - 1) & (TRACE_BUF_CAP - 1);
+        TraceEvent* ev = &tls_trace_buf[idx];
+        if (filter_kind >= 0 && ev->kind != (uint8_t)filter_kind) continue;
+        Cell* alist = build_trace_alist(ev);
+        Cell* tmp = cell_cons(alist, list);
+        cell_release(alist);
+        cell_release(list);
+        list = tmp;
+    }
+    return list;
+}
+
+/* ⟳⊳⊳∅ — clear trace buffer */
+Cell* prim_trace_clear(Cell* args) {
+    (void)args;
+    tls_trace_pos = 0;
+    return cell_nil();
+}
+
+/* ⟳⊳⊳# — count trace events, optionally filtered */
+Cell* prim_trace_count(Cell* args) {
+    int filter_kind = -1;
+    if (args && args->type == CELL_PAIR) {
+        Cell* first = cell_car(args);
+        if (first && first->type == CELL_ATOM_SYMBOL) {
+            filter_kind = trace_symbol_to_kind(first);
+        }
+    }
+
+    if (filter_kind < 0) {
+        uint32_t total = tls_trace_pos < TRACE_BUF_CAP ? tls_trace_pos : TRACE_BUF_CAP;
+        return cell_number((double)total);
+    }
+
+    uint32_t count = tls_trace_pos < TRACE_BUF_CAP ? tls_trace_pos : TRACE_BUF_CAP;
+    uint32_t start = tls_trace_pos > TRACE_BUF_CAP ? (tls_trace_pos - TRACE_BUF_CAP) : 0;
+    uint32_t matched = 0;
+    for (uint32_t i = 0; i < count; i++) {
+        uint32_t idx = (start + i) & (TRACE_BUF_CAP - 1);
+        if (tls_trace_buf[idx].kind == (uint8_t)filter_kind) matched++;
+    }
+    return cell_number((double)matched);
+}
+
+/* ⟳⊳⊳⊛ — flight recorder snapshot: all events or last N */
+Cell* prim_trace_snapshot(Cell* args) {
+    uint32_t total = tls_trace_pos < TRACE_BUF_CAP ? tls_trace_pos : TRACE_BUF_CAP;
+    uint32_t want = total;
+
+    if (args && args->type == CELL_PAIR) {
+        Cell* first = cell_car(args);
+        if (first && first->type == CELL_ATOM_NUMBER) {
+            int n = (int)cell_get_number(first);
+            if (n > 0 && (uint32_t)n < total) want = (uint32_t)n;
+        }
+    }
+
+    uint32_t start_offset = total > want ? total - want : 0;
+    uint32_t global_start = tls_trace_pos > TRACE_BUF_CAP ? (tls_trace_pos - TRACE_BUF_CAP) : 0;
+
+    Cell* list = cell_nil();
+    for (uint32_t i = start_offset + want; i > start_offset; i--) {
+        uint32_t idx = (global_start + i - 1) & (TRACE_BUF_CAP - 1);
+        Cell* alist = build_trace_alist(&tls_trace_buf[idx]);
+        Cell* tmp = cell_cons(alist, list);
+        cell_release(alist);
+        cell_release(list);
+        list = tmp;
+    }
+    return list;
+}
+
+/* ⟳⊳⊳⊗ — enable causal tracing on current actor */
+Cell* prim_trace_causal(Cell* args) {
+    Cell* val = arg1(args);
+    bool enable = cell_is_bool(val) && cell_get_bool(val);
+    Actor* cur = actor_current();
+    if (!cur) return cell_error("trace-causal-no-actor", cell_nil());
+    cur->trace_causal = enable;
+    return cell_bool(enable);
+}
+
+/* ⟳⊳⊳⊞ — return trace buffer capacity */
+Cell* prim_trace_capacity(Cell* args) {
+    (void)args;
+    return cell_number((double)TRACE_BUF_CAP);
 }
 
 /* ============ Supervision Primitives ============ */
@@ -9307,7 +9552,8 @@ Cell* prim_weak_deref(Cell* args) {
         return cell_error("◇→ requires weak-ref", wr);
     }
     Cell* target = wr->data.weak_ref.target;
-    if (target && target->refcount > 0) {
+    if (target && (target->rc.biased > 0 ||
+        (atomic_load_explicit(&target->rc.shared, memory_order_acquire) & BRC_COUNT_MASK) > 0)) {
         cell_retain(target);
         return target;
     }
@@ -9321,7 +9567,8 @@ Cell* prim_weak_alive(Cell* args) {
         return cell_error("◇? requires weak-ref", wr);
     }
     Cell* target = wr->data.weak_ref.target;
-    return cell_bool(target && target->refcount > 0);
+    return cell_bool(target && (target->rc.biased > 0 ||
+        (atomic_load_explicit(&target->rc.shared, memory_order_acquire) & BRC_COUNT_MASK) > 0));
 }
 
 /* ◇⊙ - type predicate for weak ref */
@@ -13312,6 +13559,9 @@ static Primitive primitives[] = {
     {"→!", prim_send, 2, {"Send message to actor (fire-and-forget)", "⟳ → α → ∅"}},
     {"←?", prim_receive, 0, {"Receive message (yields if mailbox empty)", "() → α"}},
     {"⟳!", prim_actor_run, 1, {"Run actor scheduler for N ticks", "ℕ → ℕ"}},
+    {"⟳#", prim_sched_count, -1, {"Get/set scheduler count", "() → ℕ | ℕ → ∅"}},
+    {"⟳#⊙", prim_sched_id, 0, {"Current scheduler ID", "() → ℕ"}},
+    {"⟳#?", prim_sched_stats, 0, {"Per-scheduler statistics", "() → [⟨ℕ ⊞⟩]"}},
     {"⟳?", prim_actor_alive, 1, {"Check if actor is alive", "⟳ → 𝔹"}},
     {"⟳→", prim_actor_result, 1, {"Get finished actor result", "⟳ → α | ⚠"}},
     {"⟳∅", prim_actor_reset, 0, {"Reset all actors (testing)", "() → ∅"}},
@@ -13823,6 +14073,15 @@ static Primitive primitives[] = {
     {"∈⊡∀", prim_refine_list, 0, {"List all refinements", "→ [⟨:sym Type ⟨⟩⟩]"}},
     {"∈⊡∈", prim_refine_find, 1, {"Find matching refinement for value", "α → :sym|∅"}},
     {"∈⊡⊆", prim_refine_subtype, 2, {"Refinement subtype check", ":sym → Type → 𝔹"}},
+
+    /* Execution Trace primitives (Day 136 — HFT-grade execution tracing) */
+    {"⟳⊳⊳!", prim_trace_enable, 1, {"Enable/disable execution tracing", "𝔹 → 𝔹"}},
+    {"⟳⊳⊳?", prim_trace_read, -1, {"Read trace events (optionally filtered by kind)", "[:sym] → [⟨⟩]"}},
+    {"⟳⊳⊳∅", prim_trace_clear, 0, {"Clear trace ring buffer", "→ ∅"}},
+    {"⟳⊳⊳#", prim_trace_count, -1, {"Count trace events (optionally filtered by kind)", "[:sym] → ℕ"}},
+    {"⟳⊳⊳⊛", prim_trace_snapshot, -1, {"Flight recorder snapshot (all or last N)", "[ℕ] → [⟨⟩]"}},
+    {"⟳⊳⊳⊗", prim_trace_causal, 1, {"Enable causal tracing on current actor", "𝔹 → 𝔹|⚠"}},
+    {"⟳⊳⊳⊞", prim_trace_capacity, 0, {"Return trace buffer capacity", "→ ℕ"}},
 
     {NULL, NULL, 0, {NULL, NULL}}
 };

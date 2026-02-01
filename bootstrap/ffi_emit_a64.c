@@ -21,11 +21,13 @@
  *   [FP-40..FP-96]  = double scratch (8 slots)
  *   [FP-104..FP-160] = int scratch (8 slots)
  *
- * Cell offsets:
+ * Cell offsets (with BiasedRC):
  *   +0:  type (uint32_t)
- *   +32: data union start
- *   +40: pair.cdr
+ *   +40: data union start / pair.car / atom.number / atom.builtin
+ *   +48: pair.cdr
  */
+#define CELL_OFF_DATA 40
+#define CELL_OFF_CDR  48
 
 static void emit_inst(EmitCtx* ctx, uint32_t inst) {
     emit_u32(ctx, inst);
@@ -306,8 +308,8 @@ bool emit_a64_stub(EmitCtx* ctx, FFISig* sig) {
         FFICType at = sig->arg_types[i];
         int expected = ffi_expected_cell_type_a64(at);
 
-        /* X21 = car(X19) = [X19 + 32] */
-        emit_ldr_x(ctx, 21, 19, 32);
+        /* X21 = car(X19) = [X19 + CELL_OFF_DATA] */
+        emit_ldr_x(ctx, 21, 19, CELL_OFF_DATA);
 
         /* W22 = [X21 + 0] (cell->type) */
         emit_ldr_w(ctx, 22, 21, 0);
@@ -317,25 +319,25 @@ bool emit_a64_stub(EmitCtx* ctx, FFISig* sig) {
         error_patches[i] = emit_bne(ctx);
 
         if (at == FFI_DOUBLE || at == FFI_FLOAT) {
-            /* Load double from [X21 + 32], store to scratch */
-            emit_ldr_d(ctx, 0, 21, 32);
+            /* Load double from [X21 + CELL_OFF_DATA], store to scratch */
+            emit_ldr_d(ctx, 0, 21, CELL_OFF_DATA);
             emit_str_d(ctx, 0, 20, DOUBLE_BASE + fp_idx * 8);
             fp_idx++;
         } else if (ffi_is_int_arg_a64(at)) {
             if (at == FFI_PTR || at == FFI_CSTRING || at == FFI_BUFFER || at == FFI_BOOL) {
-                /* Load pointer/bool directly from [X21 + 32] */
-                emit_ldr_x(ctx, 22, 21, 32);
+                /* Load pointer/bool directly from [X21 + CELL_OFF_DATA] */
+                emit_ldr_x(ctx, 22, 21, CELL_OFF_DATA);
             } else {
                 /* Load double, convert to int64 */
-                emit_ldr_d(ctx, 0, 21, 32);
+                emit_ldr_d(ctx, 0, 21, CELL_OFF_DATA);
                 emit_fcvtzs_x_d(ctx, 22, 0);
             }
             emit_str_x(ctx, 22, 20, INT_BASE + int_idx * 8);
             int_idx++;
         }
 
-        /* Advance: X19 = [X19 + 40] (cdr) */
-        emit_ldr_x(ctx, 19, 19, 40);
+        /* Advance: X19 = [X19 + CELL_OFF_CDR] (cdr) */
+        emit_ldr_x(ctx, 19, 19, CELL_OFF_CDR);
     }
 
     /* Load values into ABI registers */
