@@ -1,4 +1,5 @@
 #include "debruijn.h"
+#include "intern.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -118,16 +119,53 @@ Cell* debruijn_convert(Cell* expr, NameContext* ctx) {
                 Cell* params = cell_car(rest);
                 Cell* body_expr = cell_car(cell_cdr(rest));
 
-                /* Count parameters */
-                int param_count = list_length(params);
+                /* Count actual parameters (handling ⊳ markers and : annotations) */
+                int param_count = 0;
+                Cell* count_iter = params;
+                while (cell_is_pair(count_iter)) {
+                    Cell* p = cell_car(count_iter);
+                    if (cell_is_symbol(p) && p->sym_id == SYM_ID_GENERIC_PARAM) {
+                        count_iter = cell_cdr(count_iter);
+                        if (cell_is_pair(count_iter)) {
+                            param_count++;
+                            count_iter = cell_cdr(count_iter);
+                        }
+                    } else {
+                        param_count++;
+                        count_iter = cell_cdr(count_iter);
+                        if (cell_is_pair(count_iter)) {
+                            Cell* mc = cell_car(count_iter);
+                            if (cell_is_symbol(mc) && strcmp(cell_get_symbol(mc), ":") == 0) {
+                                count_iter = cell_cdr(count_iter);
+                                if (cell_is_pair(count_iter)) count_iter = cell_cdr(count_iter);
+                            }
+                        }
+                    }
+                }
 
                 /* Extract parameter names */
                 const char** param_names = (const char**)malloc(param_count * sizeof(char*));
                 Cell* param_iter = params;
-                for (int i = 0; i < param_count; i++) {
-                    Cell* param = cell_car(param_iter);
-                    param_names[i] = cell_get_symbol(param);
-                    param_iter = cell_cdr(param_iter);
+                int pi = 0;
+                while (cell_is_pair(param_iter) && pi < param_count) {
+                    Cell* p = cell_car(param_iter);
+                    if (cell_is_symbol(p) && p->sym_id == SYM_ID_GENERIC_PARAM) {
+                        param_iter = cell_cdr(param_iter);
+                        if (cell_is_pair(param_iter)) {
+                            param_names[pi++] = cell_get_symbol(cell_car(param_iter));
+                            param_iter = cell_cdr(param_iter);
+                        }
+                    } else {
+                        param_names[pi++] = cell_get_symbol(p);
+                        param_iter = cell_cdr(param_iter);
+                        if (cell_is_pair(param_iter)) {
+                            Cell* mc = cell_car(param_iter);
+                            if (cell_is_symbol(mc) && strcmp(cell_get_symbol(mc), ":") == 0) {
+                                param_iter = cell_cdr(param_iter);
+                                if (cell_is_pair(param_iter)) param_iter = cell_cdr(param_iter);
+                            }
+                        }
+                    }
                 }
 
                 /* Create new context (extends current ctx) */

@@ -1,11 +1,70 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-02-01 (Day 142 COMPLETE)
+Updated: 2026-02-01 (Day 142 Session 2 COMPLETE)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 142 - Suspend/Wake Audit & Multi-Scheduler Fixes (2026-02-01)
+# Session Handoff: Day 142 Session 2 - HFT-Aligned Realignment (2026-02-01)
+
+## Day 142 Session 2 — StrTable, Trait Registry, Generics (COMPLETE)
+
+**STATUS:** 134/137 test files passing (3 pre-existing failures: test_conversions, test_line_numbers, test_module_system)
+
+### What Was Done
+
+Implemented the "HFT-Aligned Realignment Plan" — replacing O(n) linked-list lookups with O(1) SwissTable-backed hash tables for module registry and trait dispatch.
+
+### New Files
+
+| File | Description |
+|------|-------------|
+| `bootstrap/strtable.h` | Header-only string→void* hash table using `swisstable.h` SIMD probing + `siphash.h` hashing. Open-addressing, 87.5% load resize, ctrl-byte matching. |
+| `bootstrap/tests/test_generics.test` | 8 assertions: generic identity via `⊳`, trait define/implement/check/ops/dispatch |
+
+### Modified Files
+
+| File | Changes |
+|------|---------|
+| `bootstrap/module.h` | `ModuleRegistry` → `{StrTable modules, StrTable symbol_index, size_t count}`. `ModuleEntry` removed `next` pointer, added `StrTable* export_set` for O(1) export checks. |
+| `bootstrap/module.c` | Full rewrite: all linked-list traversals → `strtable_get`. Global `symbol_index` StrTable for O(1) `find_symbol`. Per-module `export_set` for O(1) `is_exported`. |
+| `bootstrap/intern.h` | Added `SYM_ID_GENERIC_PARAM = 32` for `⊳` in lambda params. `MAX_SPECIAL_FORM_ID = 32`. |
+| `bootstrap/intern.c` | Preload `⊳` (U+22B3) as special form ID 32. |
+| `bootstrap/eval.c` | `extract_param_names_counted()` handles `⊳` — marks type params in lambda signatures. |
+| `bootstrap/debruijn.c` | De Bruijn conversion handles `⊳` type params in lambda parameter lists. |
+| `bootstrap/main.c` | Added `parse_next()` helper for incremental parsing. |
+| `bootstrap/primitives.h` | 5 trait primitive declarations: `prim_trait_define/implement/check/ops/dispatch` |
+| `bootstrap/primitives.c` | Trait registry: two global StrTables (`trait_defs`, `trait_impls`). 5 new primitives (`⊧≔`, `⊧⊕`, `⊧?`, `⊧⊙`, `⊧→`) registered in primitives table. |
+
+### Key Design Decisions
+
+1. **`⊲` is NOT a special form** — `⊲` is already the filter function in `stdlib/list.scm`. Making it a special form (`SYM_ID_INSTANTIATE`) broke list filtering across the codebase. Generic instantiation uses regular function application instead: `((id :Number) #42)` not `((⊲ id :Number) #42)`. Only `⊳` is a special form (used exclusively in lambda param lists, no collision).
+
+2. **Trait compound keys** — `trait_impls` uses `"Type:Trait"` compound string keys for O(1) dispatch (e.g., `"Number:Showable"`).
+
+3. **Module symbol_index** — A second global StrTable mapping `symbol_name → module_name`. Replaces the O(M×S) double-nested list scan in `module_registry_find_symbol`.
+
+4. **Export sets** — Per-module `StrTable* export_set` (NULL = export all). Built from Cell list in `module_registry_set_exports`.
+
+### Test Results
+
+- 134/137 passing (original was 133/137 before this session)
+- `test_generics.test`: NEW, 8/8 assertions pass
+- 3 pre-existing failures unchanged: `test_conversions` (crash in cell_car), `test_line_numbers` (crash), `test_module_system` (4 assertion failures related to module caching/loading)
+
+### What's Left from the Plan
+
+- Step 3 (zero-allocation `⊲` instantiation) was removed — `⊲` can't be a special form due to filter collision. If zero-alloc instantiation is needed later, use a different symbol or handle it in the application path.
+- Step 6 (update module system test) — the test_module_system failures are pre-existing, not caused by this session's changes.
+
+### Pre-existing Test Failures (for reference)
+
+These 3 test files fail on the original code (verified by stashing changes):
+- `test_conversions.test` — Abort trap in `cell_car` assertion (crash during symbol roundtrip test)
+- `test_line_numbers.test` — Abort trap (crash)
+- `test_module_system.test` — 4 assertion failures: `module-loaded-after-load`, `cached-load-no-reeval`, `module-define-exists`, `validated-import-basic`
+
+---
 
 ## Day 142 Progress - Architectural Cohesion Audit (COMPLETE)
 

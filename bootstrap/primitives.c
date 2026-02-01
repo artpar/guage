@@ -1,5 +1,6 @@
 #include "primitives.h"
 #include "swisstable.h"
+#include "strtable.h"
 #include "str_simd.h"
 #include "eval.h"
 #include "cfg.h"
@@ -6973,6 +6974,42 @@ Cell* prim_code_to_char(Cell* args) {
     return cell_string(buf);
 }
 
+/* ≈→ℕ - String to number */
+Cell* prim_str_to_number(Cell* args) {
+    Cell* str = arg1(args);
+
+    if (!cell_is_string(str)) {
+        return cell_error(":invalid-number", str);
+    }
+
+    const char* s = cell_get_string(str);
+    if (s[0] == '\0') {
+        return cell_error(":invalid-number", str);
+    }
+
+    char* end;
+    double val = strtod(s, &end);
+
+    /* Check that entire string was consumed */
+    if (*end != '\0') {
+        return cell_error(":invalid-number", str);
+    }
+
+    return cell_number(val);
+}
+
+/* ≈→: - String to symbol */
+Cell* prim_str_to_symbol(Cell* args) {
+    Cell* str = arg1(args);
+
+    if (!cell_is_string(str)) {
+        return cell_error("≈→: requires a string", str);
+    }
+
+    const char* s = cell_get_string(str);
+    return cell_symbol(s);
+}
+
 /* ≈↑ - String to uppercase */
 Cell* prim_str_upcase(Cell* args) {
     Cell* str = arg1(args);
@@ -7811,38 +7848,9 @@ Cell* prim_file_empty(Cell* args) {
 
 /* Module System */
 
-/* Parser struct from main.c */
-typedef struct {
-    const char* input;
-    int pos;
-} LoadParser;
-
 /* Forward declarations from main.c */
 extern Cell* parse(const char* input);
-
-/* Helper: skip whitespace and comments */
-static void load_skip_whitespace(LoadParser* p) {
-    while (1) {
-        /* Skip whitespace */
-        while (p->input[p->pos] == ' ' ||
-               p->input[p->pos] == '\t' ||
-               p->input[p->pos] == '\n' ||
-               p->input[p->pos] == '\r') {
-            p->pos++;
-        }
-
-        /* Skip comments */
-        if (p->input[p->pos] == ';') {
-            while (p->input[p->pos] != '\0' &&
-                   p->input[p->pos] != '\n') {
-                p->pos++;
-            }
-            continue;
-        }
-
-        break;
-    }
-}
+extern Cell* parse_next(const char* input, int* pos, uint32_t file_base);
 
 /* ⋘ - Load and evaluate a file */
 Cell* prim_load(Cell* args) {
@@ -7853,6 +7861,18 @@ Cell* prim_load(Cell* args) {
     }
 
     const char* filename = cell_get_string(path);
+
+    /* Check module cache: if already loaded, return cached result */
+    ModuleEntry* existing = module_registry_get_entry(filename);
+    if (existing) {
+        if (existing->load_state == MODULE_LOADED && existing->cached_result) {
+            cell_retain(existing->cached_result);
+            return existing->cached_result;
+        }
+        if (existing->load_state == MODULE_LOADING) {
+            return cell_error(":circular-dependency", path);
+        }
+    }
 
     /* Read file */
     FILE* file = fopen(filename, "r");
@@ -7882,6 +7902,10 @@ Cell* prim_load(Cell* args) {
     /* Register module and set as currently loading */
     module_registry_add(filename);
 
+    /* Mark as loading (for circular detection) */
+    ModuleEntry* entry = module_registry_get_entry(filename);
+    if (entry) entry->load_state = MODULE_LOADING;
+
     /* Track dependency if loaded from within another module (Day 29) */
     const char* parent_module = module_get_current_loading();
     if (parent_module && strcmp(parent_module, filename) != 0) {
@@ -7894,25 +7918,27 @@ Cell* prim_load(Cell* args) {
     /* Get current context */
     EvalContext* ctx = eval_get_current_context();
 
-    /* Parse and evaluate all expressions in the file */
-    LoadParser parser = {buffer, 0};
+    /* Get file_base from SourceMap registration */
+    uint32_t file_base = 0;
+    if (g_source_map) {
+        /* srcmap_add_file was already called above; retrieve the base.
+         * The file was just registered, so its base is next_base - bytes_read. */
+        SourceFile* sf = srcmap_file_for_pos(g_source_map, g_source_map->next_base - 1);
+        if (sf) file_base = sf->base;
+    }
+
+    /* Parse and evaluate all expressions using parse_next (preserves spans) */
+    int pos = 0;
     Cell* result = cell_nil();
     int expression_count = 0;
 
-    while (parser.input[parser.pos] != '\0') {
-        load_skip_whitespace(&parser);
-
-        if (parser.input[parser.pos] == '\0') {
-            break;
-        }
-
-        /* Parse one expression */
-        Cell* expr = parse(parser.input + parser.pos);
+    while (buffer[pos] != '\0') {
+        /* parse_next handles whitespace/comment skipping internally */
+        Cell* expr = parse_next(buffer, &pos, file_base);
 
         if (!expr) {
-            module_set_current_loading(NULL);
-            free(buffer);
-            return cell_error(":parse-error", path);
+            /* End of input or parse error */
+            break;
         }
 
         /* Evaluate expression */
@@ -7923,63 +7949,21 @@ Cell* prim_load(Cell* args) {
         cell_release(expr);
 
         if (cell_is_error(result)) {
+            if (entry) entry->load_state = MODULE_UNLOADED;
             module_set_current_loading(NULL);
             free(buffer);
             return result;
         }
 
         expression_count++;
+    }
 
-        /* Advance parser position - skip past the expression we just parsed
-         * by counting balanced parentheses */
-        int start_pos = parser.pos;
-        int depth = 0;
-        int in_string = 0;
-        int started_with_paren = (parser.input[parser.pos] == '(');
-
-        if (started_with_paren) {
-            /* For S-expressions, count balanced parens */
-            while (parser.input[parser.pos] != '\0') {
-                char c = parser.input[parser.pos];
-
-                if (c == '"' && (parser.pos == 0 || parser.input[parser.pos - 1] != '\\')) {
-                    in_string = !in_string;
-                    parser.pos++;
-                    continue;
-                }
-
-                if (!in_string) {
-                    if (c == '(') {
-                        depth++;
-                    } else if (c == ')') {
-                        depth--;
-                        if (depth == 0) {
-                            parser.pos++;
-                            break;
-                        }
-                    }
-                }
-
-                parser.pos++;
-            }
-        } else {
-            /* For atoms, skip until whitespace or paren */
-            while (parser.input[parser.pos] != '\0' &&
-                   parser.input[parser.pos] != ' ' &&
-                   parser.input[parser.pos] != '\n' &&
-                   parser.input[parser.pos] != '\t' &&
-                   parser.input[parser.pos] != '\r' &&
-                   parser.input[parser.pos] != '(' &&
-                   parser.input[parser.pos] != ')') {
-                parser.pos++;
-            }
-        }
-
-        /* Safety check - ensure we made progress */
-        if (parser.pos == start_pos) {
-            /* Didn't advance - skip at least one character to avoid infinite loop */
-            parser.pos++;
-        }
+    /* Cache result and mark as loaded */
+    if (entry) {
+        entry->load_state = MODULE_LOADED;
+        if (entry->cached_result) cell_release(entry->cached_result);
+        entry->cached_result = result;
+        cell_retain(result);
     }
 
     /* Clear current loading module */
@@ -8421,6 +8405,88 @@ Cell* prim_module_cycles(Cell* args) {
     }
 
     return module_registry_detect_cycles(module_path);
+}
+
+/* ⋘? - module-loaded? predicate */
+Cell* prim_module_loaded_p(Cell* args) {
+    Cell* name = arg1(args);
+
+    if (!cell_is_string(name) && !cell_is_symbol(name)) {
+        return cell_error("⋘? requires a string or symbol", name);
+    }
+
+    const char* mod_name = cell_is_string(name) ? cell_get_string(name) : cell_get_symbol(name);
+    ModuleEntry* entry = module_registry_get_entry(mod_name);
+
+    return cell_bool(entry != NULL && entry->load_state == MODULE_LOADED);
+}
+
+/* ⊞◇ - module-define (declare exports) */
+Cell* prim_module_define(Cell* args) {
+    Cell* mod_name = arg1(args);
+    Cell* export_list = arg2(args);
+
+    if (!cell_is_string(mod_name) && !cell_is_symbol(mod_name)) {
+        return cell_error("⊞◇ requires module name as string or symbol", mod_name);
+    }
+
+    const char* name = cell_is_string(mod_name) ? cell_get_string(mod_name) : cell_get_symbol(mod_name);
+
+    /* Use current loading module if available, otherwise the given name */
+    const char* current = module_get_current_loading();
+    const char* target = current ? current : name;
+
+    /* Set exports on module */
+    module_registry_set_exports(target, export_list);
+
+    /* Check for optional version (third arg) */
+    Cell* rest = cell_cdr(cell_cdr(args));
+    if (rest && cell_is_pair(rest)) {
+        Cell* version = cell_car(rest);
+        if (cell_is_string(version)) {
+            module_registry_set_version(target, cell_get_string(version));
+        }
+    }
+
+    return cell_symbol(":ok");
+}
+
+/* ⋘⊳ - module-import with export validation */
+Cell* prim_module_import_validated(Cell* args) {
+    Cell* mod_path = arg1(args);
+
+    if (!cell_is_string(mod_path)) {
+        return cell_error("⋘⊳ requires a string path", mod_path);
+    }
+
+    /* Load module (will use cache if already loaded) */
+    Cell* load_result = prim_load(args);
+    if (cell_is_error(load_result)) {
+        return load_result;
+    }
+
+    /* If second argument provided, validate requested symbols against exports */
+    Cell* rest = cell_cdr(args);
+    if (rest && cell_is_pair(rest)) {
+        Cell* requested = cell_car(rest);
+        const char* mod_name = cell_get_string(mod_path);
+
+        /* Walk requested symbol list, check each is exported */
+        Cell* curr = requested;
+        while (curr && cell_is_pair(curr)) {
+            Cell* sym = cell_car(curr);
+            if (cell_is_symbol(sym)) {
+                const char* sym_name = cell_get_symbol(sym);
+                if (!module_registry_is_exported(mod_name, sym_name)) {
+                    cell_release(load_result);
+                    return cell_error(":not-exported", sym);
+                }
+            }
+            curr = cell_cdr(curr);
+        }
+    }
+
+    return load_result;
 }
 
 /* Forward declaration */
@@ -13555,6 +13621,172 @@ Cell* prim_refine_subtype(Cell* args) {
     return cell_bool(false);
 }
 
+/* ====================================================================
+ * Trait Registry — StrTable-backed O(1) dispatch
+ * ==================================================================== */
+
+static StrTable trait_defs;     /* trait_name → Cell* (list of required ops) */
+static StrTable trait_impls;    /* "type:trait" compound key → Cell* (impl alist) */
+static int trait_tables_inited = 0;
+
+static void trait_ensure_init(void) {
+    if (!trait_tables_inited) {
+        strtable_init(&trait_defs, 32);
+        strtable_init(&trait_impls, 64);
+        trait_tables_inited = 1;
+    }
+}
+
+/* ⊧≔ - define trait: (⊧≔ :TraitName (:op1 :op2 ...)) */
+Cell* prim_trait_define(Cell* args) {
+    trait_ensure_init();
+
+    Cell* name_cell = cell_car(args);
+    Cell* ops = cell_car(cell_cdr(args));
+
+    if (!cell_is_symbol(name_cell))
+        return cell_error("type-error", name_cell);
+
+    const char* trait_name = cell_get_symbol(name_cell);
+    if (trait_name[0] == ':') trait_name++;
+
+    /* Retain ops list — trait_defs owns it */
+    cell_retain(ops);
+    Cell* old = (Cell*)strtable_put(&trait_defs, trait_name, ops);
+    if (old) cell_release(old);
+
+    return name_cell;
+}
+
+/* ⊧⊕ - implement trait: (⊧⊕ :TypeName :TraitName ((:op1 . fn1) (:op2 . fn2))) */
+Cell* prim_trait_implement(Cell* args) {
+    trait_ensure_init();
+
+    Cell* type_cell  = cell_car(args);
+    Cell* trait_cell = cell_car(cell_cdr(args));
+    Cell* impl_alist = cell_car(cell_cdr(cell_cdr(args)));
+
+    if (!cell_is_symbol(type_cell))
+        return cell_error("type-error", type_cell);
+    if (!cell_is_symbol(trait_cell))
+        return cell_error("type-error", trait_cell);
+
+    const char* type_name  = cell_get_symbol(type_cell);
+    const char* trait_name = cell_get_symbol(trait_cell);
+    if (type_name[0] == ':')  type_name++;
+    if (trait_name[0] == ':') trait_name++;
+
+    /* Build compound key "Type:Trait" */
+    size_t tlen = strlen(type_name);
+    size_t rlen = strlen(trait_name);
+    char* compound = malloc(tlen + 1 + rlen + 1);
+    memcpy(compound, type_name, tlen);
+    compound[tlen] = ':';
+    memcpy(compound + tlen + 1, trait_name, rlen + 1);
+
+    cell_retain(impl_alist);
+    Cell* old = (Cell*)strtable_put(&trait_impls, compound, impl_alist);
+    if (old) cell_release(old);
+    free(compound);
+
+    return cell_bool(true);
+}
+
+/* ⊧? - check trait: (⊧? :TypeName :TraitName) → #t/#f */
+Cell* prim_trait_check(Cell* args) {
+    trait_ensure_init();
+
+    Cell* type_cell  = cell_car(args);
+    Cell* trait_cell = cell_car(cell_cdr(args));
+
+    if (!cell_is_symbol(type_cell))
+        return cell_error("type-error", type_cell);
+    if (!cell_is_symbol(trait_cell))
+        return cell_error("type-error", trait_cell);
+
+    const char* type_name  = cell_get_symbol(type_cell);
+    const char* trait_name = cell_get_symbol(trait_cell);
+    if (type_name[0] == ':')  type_name++;
+    if (trait_name[0] == ':') trait_name++;
+
+    size_t tlen = strlen(type_name);
+    size_t rlen = strlen(trait_name);
+    char* compound = malloc(tlen + 1 + rlen + 1);
+    memcpy(compound, type_name, tlen);
+    compound[tlen] = ':';
+    memcpy(compound + tlen + 1, trait_name, rlen + 1);
+
+    int found = strtable_get(&trait_impls, compound) != NULL;
+    free(compound);
+
+    return cell_bool(found);
+}
+
+/* ⊧⊙ - trait ops: (⊧⊙ :TraitName) → list of required ops */
+Cell* prim_trait_ops(Cell* args) {
+    trait_ensure_init();
+
+    Cell* name_cell = cell_car(args);
+    if (!cell_is_symbol(name_cell))
+        return cell_error("type-error", name_cell);
+
+    const char* trait_name = cell_get_symbol(name_cell);
+    if (trait_name[0] == ':') trait_name++;
+
+    Cell* ops = (Cell*)strtable_get(&trait_defs, trait_name);
+    if (!ops) return cell_nil();
+
+    cell_retain(ops);
+    return ops;
+}
+
+/* ⊧→ - dispatch: (⊧→ :TypeName :TraitName :op) → implementation fn */
+Cell* prim_trait_dispatch(Cell* args) {
+    trait_ensure_init();
+
+    Cell* type_cell  = cell_car(args);
+    Cell* trait_cell = cell_car(cell_cdr(args));
+    Cell* op_cell    = cell_car(cell_cdr(cell_cdr(args)));
+
+    if (!cell_is_symbol(type_cell) || !cell_is_symbol(trait_cell) || !cell_is_symbol(op_cell))
+        return cell_error("type-error", cell_nil());
+
+    const char* type_name  = cell_get_symbol(type_cell);
+    const char* trait_name = cell_get_symbol(trait_cell);
+    if (type_name[0] == ':')  type_name++;
+    if (trait_name[0] == ':') trait_name++;
+
+    size_t tlen = strlen(type_name);
+    size_t rlen = strlen(trait_name);
+    char* compound = malloc(tlen + 1 + rlen + 1);
+    memcpy(compound, type_name, tlen);
+    compound[tlen] = ':';
+    memcpy(compound + tlen + 1, trait_name, rlen + 1);
+
+    Cell* impl_alist = (Cell*)strtable_get(&trait_impls, compound);
+    free(compound);
+
+    if (!impl_alist) return cell_error("trait-not-implemented", trait_cell);
+
+    /* Walk alist looking for op */
+    const char* op_name = cell_get_symbol(op_cell);
+    Cell* curr = impl_alist;
+    while (curr && !cell_is_nil(curr)) {
+        Cell* pair = cell_car(curr);
+        if (cell_is_pair(pair)) {
+            Cell* key = cell_car(pair);
+            if (cell_is_symbol(key) && strcmp(cell_get_symbol(key), op_name) == 0) {
+                Cell* val = cell_cdr(pair);
+                cell_retain(val);
+                return val;
+            }
+        }
+        curr = cell_cdr(curr);
+    }
+
+    return cell_error("trait-op-not-found", op_cell);
+}
+
 /* Primitive table - PURE SYMBOLS ONLY
  * EVERY primitive MUST have documentation */
 static Primitive primitives[] = {
@@ -13863,6 +14095,8 @@ static Primitive primitives[] = {
     {"≈<", prim_str_less, 2, {"Test string ordering", "≈ → ≈ → 𝔹"}},
     {"≈→#", prim_str_char_code, 2, {"Get character code at index", "≈ → ℕ → ℕ"}},
     {"#→≈", prim_code_to_char, 1, {"Convert code to single-char string", "ℕ → ≈"}},
+    {"≈→ℕ", prim_str_to_number, 1, {"Convert string to number", "≈ → ℕ|⚠"}},
+    {"≈→:", prim_str_to_symbol, 1, {"Convert string to symbol", "≈ → :sym"}},
     {"≈↑", prim_str_upcase, 1, {"Convert string to uppercase", "≈ → ≈"}},
     {"≈↓", prim_str_downcase, 1, {"Convert string to lowercase", "≈ → ≈"}},
 
@@ -13915,6 +14149,9 @@ static Primitive primitives[] = {
     {"⌂⊚#", prim_module_version, -1, {"Get/set module version", "≈ → ≈ | ≈ → ≈ → :ok"}},
     {"⌂⊚↑", prim_module_exports, -1, {"Get/set module exports", "≈ → [:symbol] | ≈ → [:symbol] → :ok"}},
     {"⌂⊚⊛", prim_module_cycles, -1, {"Detect circular dependencies", "() → [[≈]] | ≈ → [[≈]]"}},
+    {"⋘?", prim_module_loaded_p, 1, {"Check if module is loaded", "≈ → 𝔹"}},
+    {"⊞◇", prim_module_define, -1, {"Define module exports (and optional version)", "≈ → [:symbol] → :ok | ≈ → [:symbol] → ≈ → :ok"}},
+    {"⋘⊳", prim_module_import_validated, -1, {"Import with export validation", "≈ → α | ≈ → [:symbol] → α|⚠"}},
 
     /* Mutable References (Day 107) */
     {"□", prim_box_create, 1, {"Create mutable box", "α → □α"}},
@@ -14227,6 +14464,13 @@ static Primitive primitives[] = {
     /* Global trace primitives (Day 140 — cross-scheduler aggregation) */
     {"⟳⊳⊳⊕", prim_trace_global_read, -1, {"Merged trace from ALL schedulers (optional kind filter)", "[:sym] → [⟨⟩]"}},
     {"⟳⊳⊳⊕#", prim_trace_global_count, -1, {"Count events across ALL schedulers", "[:sym] → ℕ"}},
+
+    /* Trait/Typeclass primitives (StrTable-backed O(1) dispatch) */
+    {"⊧≔", prim_trait_define, 2, {"Define trait with required ops", ":sym → [:sym] → :sym"}},
+    {"⊧⊕", prim_trait_implement, 3, {"Implement trait for type", ":sym → :sym → [⟨:sym . λ⟩] → 𝔹"}},
+    {"⊧?", prim_trait_check, 2, {"Check if type implements trait", ":sym → :sym → 𝔹"}},
+    {"⊧⊙", prim_trait_ops, 1, {"List required ops for trait", ":sym → [:sym]"}},
+    {"⊧→", prim_trait_dispatch, 3, {"Dispatch trait op for type", ":sym → :sym → :sym → λ|⚠"}},
 
     {NULL, NULL, 0, {NULL, NULL}}
 };

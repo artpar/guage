@@ -134,6 +134,9 @@ Cell* prim_load(Cell* args);                /* ⋘ - load and evaluate file */
 Cell* prim_module_import(Cell* args);       /* ⋖ - selective import */
 Cell* prim_module_info(Cell* args);         /* ⌂⊚ - module information */
 Cell* prim_module_dependencies(Cell* args); /* ⌂⊚→ - module dependencies */
+Cell* prim_module_loaded_p(Cell* args);        /* ⋘? - module loaded predicate */
+Cell* prim_module_define(Cell* args);          /* ⊞◇ - module define (exports) */
+Cell* prim_module_import_validated(Cell* args); /* ⋘⊳ - validated import */
 
 /* Weak reference primitives */
 Cell* prim_weak_create(Cell* args);    /* ◇ - create weak reference */
@@ -254,6 +257,8 @@ Cell* prim_trie_vals(Cell* args);
 /* Char/Case primitives (Day 119) */
 Cell* prim_str_char_code(Cell* args);    /* ≈→# - char code at index */
 Cell* prim_code_to_char(Cell* args);     /* #→≈ - code to single-char string */
+Cell* prim_str_to_number(Cell* args);    /* ≈→ℕ - string to number */
+Cell* prim_str_to_symbol(Cell* args);    /* ≈→: - string to symbol */
 Cell* prim_str_upcase(Cell* args);       /* ≈↑ - string to uppercase */
 Cell* prim_str_downcase(Cell* args);     /* ≈↓ - string to lowercase */
 
@@ -475,6 +480,13 @@ Cell* prim_refine_union(Cell* args);      /* ∈⊡∨ - union two refinements *
 Cell* prim_refine_list(Cell* args);       /* ∈⊡∀ - list all refinements */
 Cell* prim_refine_find(Cell* args);       /* ∈⊡∈ - find matching refinement */
 Cell* prim_refine_subtype(Cell* args);    /* ∈⊡⊆ - refinement subtype check */
+
+/* Trait/Typeclass primitives (StrTable-backed O(1) dispatch) */
+Cell* prim_trait_define(Cell* args);     /* ⊧≔ - define trait */
+Cell* prim_trait_implement(Cell* args);  /* ⊧⊕ - implement trait for type */
+Cell* prim_trait_check(Cell* args);      /* ⊧? - check if type implements trait */
+Cell* prim_trait_ops(Cell* args);        /* ⊧⊙ - list trait required ops */
+Cell* prim_trait_dispatch(Cell* args);   /* ⊧→ - dispatch trait op for type */
 
 /* Primitive documentation structure */
 typedef struct {

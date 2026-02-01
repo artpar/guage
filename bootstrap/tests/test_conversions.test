@@ -1,0 +1,88 @@
+#!/usr/bin/env guage
+; Test suite for string conversion primitives
+; ≈→ℕ (string-to-number) and ≈→: (string-to-symbol)
+
+(≋ "Testing String Conversion Primitives...")
+
+; ============================================================================
+; ≈→ℕ — String to Number
+; ============================================================================
+
+(≋ "\nTesting ≈→ℕ (string-to-number)...")
+
+; Integer conversions
+(⊨ :str-to-num-int
+   #42
+   (≈→ℕ "42"))
+
+(⊨ :str-to-num-zero
+   #0
+   (≈→ℕ "0"))
+
+(⊨ :str-to-num-negative
+   #-7
+   (≈→ℕ "-7"))
+
+; Float conversions
+(⊨ :str-to-num-float
+   #3.14
+   (≈→ℕ "3.14"))
+
+(⊨ :str-to-num-neg-float
+   #-0.5
+   (≈→ℕ "-0.5"))
+
+; Scientific notation
+(⊨ :str-to-num-sci
+   #1000
+   (≈→ℕ "1e3"))
+
+; Invalid strings return error
+(⊨ :str-to-num-invalid
+   #t
+   (⚠? (≈→ℕ "abc")))
+
+(⊨ :str-to-num-empty
+   #t
+   (⚠? (≈→ℕ "")))
+
+(⊨ :str-to-num-partial
+   #t
+   (⚠? (≈→ℕ "42abc")))
+
+; Arithmetic on converted numbers
+(⊨ :str-to-num-arithmetic
+   #10
+   (⊕ (≈→ℕ "3") (≈→ℕ "7")))
+
+; ============================================================================
+; ≈→: — String to Symbol
+; ============================================================================
+
+(≋ "\nTesting ≈→: (string-to-symbol)...")
+
+; Basic conversion
+(⊨ :str-to-sym-basic
+   #t
+   (:? (≈→: "hello")))
+
+(⊨ :str-to-sym-eq
+   #t
+   (≡ (≈→: "hello") (⌜ hello)))
+
+; Unicode symbol
+(⊨ :str-to-sym-unicode
+   #t
+   (:? (≈→: "λ")))
+
+; Symbol predicate on result
+(⊨ :str-to-sym-predicate
+   #t
+   (:? (≈→: "test-name")))
+
+; Round-trip: symbol → string → symbol
+(⊨ :str-to-sym-roundtrip
+   #t
+   (≡ (≈→: (:→≈ (⌜ foo))) (⌜ foo)))
+
+(≋ "\nAll conversion tests complete.")

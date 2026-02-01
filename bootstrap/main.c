@@ -298,6 +298,27 @@ Cell* parse(const char* input) {
     return parse_expr(&p);
 }
 
+/* Parse one expression from input at *pos with given file_base.
+ * Advances *pos past the parsed expression (including trailing whitespace).
+ * Returns NULL at end of input. */
+Cell* parse_next(const char* input, int* pos, uint32_t file_base) {
+    Parser p = {input, *pos, 1, 1, file_base};
+
+    /* Compute correct line/column from start of file to current pos */
+    for (int i = 0; i < *pos; i++) {
+        if (input[i] == '\n') {
+            p.line++;
+            p.column = 1;
+        } else {
+            p.column++;
+        }
+    }
+
+    Cell* result = parse_expr(&p);
+    *pos = p.pos;
+    return result;
+}
+
 /* Count parentheses balance in string */
 static int paren_balance(const char* str) {
     int balance = 0;

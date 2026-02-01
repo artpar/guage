@@ -1,0 +1,52 @@
+#!/usr/bin/env guage
+; Test suite for module system improvements
+; Caching, circular detection, ⋘?, ⊞◇, ⋘⊳
+
+(≋ "Testing Module System...")
+
+; --- ⋘? module-loaded predicate ---
+
+; A module we haven't loaded should not be loaded
+(⊨ :module-loaded-false
+   #f
+   (⋘? "nonexistent_module.scm"))
+
+; Load a known stdlib module and check it's cached
+(⋘ "stdlib/math.scm")
+(⊨ :module-loaded-after-load
+   #t
+   (⋘? "stdlib/math.scm"))
+
+; --- Caching: loading twice returns cached result ---
+
+; Create a side-effect counter via box
+(≔ load-counter (□ #0))
+
+; Load math again - should be cached, no re-evaluation
+(⋘ "stdlib/math.scm")
+(⊨ :cached-load-no-reeval
+   #t
+   (⋘? "stdlib/math.scm"))
+
+; --- ⊞◇ module-define (exports + version) ---
+
+; Define exports for current test "module"
+; Note: ⊞◇ operates on the currently-loading module context
+; We test it by defining exports on a known module
+(⊨ :module-define-exists
+   #t
+   (⊙ ⊞◇ :lambda?))
+
+; --- ⋘⊳ validated import ---
+
+; Import a loaded module without symbol filtering
+(⊨ :validated-import-basic
+   #t
+   (¬ (⚠? (⋘⊳ "stdlib/math.scm"))))
+
+; --- Error on non-existent module ---
+(⊨ :validated-import-missing
+   #t
+   (⚠? (⋘⊳ "nonexistent_file_xyz.scm")))
+
+(≋ "\nModule system tests complete.")

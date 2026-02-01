@@ -1,0 +1,60 @@
+#!/usr/bin/env guage
+; Test suite for generics and traits
+
+(≋ "Testing Generics & Traits...")
+
+; --- ⊳ generic parameter extraction + instantiation ---
+
+; Generic identity (curried): ⊳ marks T as type param in lambda
+(≔ id (λ (⊳ T) (λ (x) x)))
+
+; Instantiate with a type and apply via regular function application
+(⊨ :generic-identity-number
+   #42
+   ((id :Number) #42))
+
+(⊨ :generic-identity-bool
+   #t
+   ((id :Bool) #t))
+
+; --- ⊧≔ trait define ---
+
+; Define trait with quoted list of required ops
+(⊧≔ :Showable (⟨⟩ :show (⟨⟩ :format ∅)))
+
+(⊨ :trait-ops-showable
+   #t
+   (⟨⟩? (⊧⊙ :Showable)))
+
+; --- ⊧⊕ trait implement ---
+
+(≔ show-num (λ (x) x))
+(≔ format-num (λ (x) x))
+
+; Build impl alist: ((:show . show-num) (:format . format-num))
+(⊧⊕ :Number :Showable
+     (⟨⟩ (⟨⟩ :show show-num) (⟨⟩ (⟨⟩ :format format-num) ∅)))
+
+; --- ⊧? trait check ---
+
+(⊨ :trait-check-satisfied
+   #t
+   (⊧? :Number :Showable))
+
+(⊨ :trait-check-not-satisfied
+   #f
+   (⊧? :String :Showable))
+
+; --- ⊧⊙ trait ops listing ---
+
+(⊨ :trait-ops-unknown
+   #t
+   (∅? (⊧⊙ :NonExistent)))
+
+; --- ⊧→ trait dispatch ---
+
+(⊨ :trait-dispatch-missing-error
+   #t
+   (⚠? (⊧→ :String :Showable :show)))
+
+(≋ "\nGenerics & traits tests complete.")

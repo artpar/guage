@@ -36,7 +36,8 @@
 #define SYM_ID_OR             29
 #define SYM_ID_TRY_PROP       30
 #define SYM_ID_REFINE_DEF     31
-#define MAX_SPECIAL_FORM_ID   31
+#define SYM_ID_GENERIC_PARAM  32
+#define MAX_SPECIAL_FORM_ID   32
 
 /* Intern result — returned by intern() */
 typedef struct {

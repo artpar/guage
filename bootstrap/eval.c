@@ -859,19 +859,83 @@ int list_length(Cell* list) {
     return count;
 }
 
-/* Extract parameter names from list */
-const char** extract_param_names(Cell* params) {
-    int count = list_length(params);
-    const char** names = (const char**)malloc(count * sizeof(char*));
-
+/* Extract parameter names from list, handling ⊳ markers and : annotations.
+ * (⊳ T) — skip ⊳, use T as param name (generic type param marker)
+ * (x : T) — use x, skip : and T (type annotation)
+ * Returns extracted names array; sets *out_count to actual param count. */
+const char** extract_param_names_counted(Cell* params, int* out_count) {
+    /* First pass: count actual params */
+    int count = 0;
     Cell* current = params;
-    for (int i = 0; i < count; i++) {
+    while (cell_is_pair(current)) {
         Cell* param = cell_car(current);
-        names[i] = cell_get_symbol(param);
-        current = cell_cdr(current);
+        if (cell_is_symbol(param) && param->sym_id == SYM_ID_GENERIC_PARAM) {
+            /* ⊳ marker — skip it, next element is the actual param */
+            current = cell_cdr(current);
+            if (cell_is_pair(current)) {
+                count++;
+                current = cell_cdr(current);
+            }
+        } else if (cell_is_symbol(param)) {
+            count++;
+            current = cell_cdr(current);
+            /* Check for : annotation */
+            if (cell_is_pair(current)) {
+                Cell* maybe_colon = cell_car(current);
+                if (cell_is_symbol(maybe_colon) &&
+                    strcmp(cell_get_symbol(maybe_colon), ":") == 0) {
+                    current = cell_cdr(current); /* skip : */
+                    if (cell_is_pair(current)) {
+                        current = cell_cdr(current); /* skip type */
+                    }
+                }
+            }
+        } else {
+            count++;
+            current = cell_cdr(current);
+        }
+    }
+
+    const char** names = (const char**)malloc(count * sizeof(char*));
+    *out_count = count;
+
+    /* Second pass: extract names */
+    current = params;
+    int i = 0;
+    while (cell_is_pair(current) && i < count) {
+        Cell* param = cell_car(current);
+        if (cell_is_symbol(param) && param->sym_id == SYM_ID_GENERIC_PARAM) {
+            current = cell_cdr(current);
+            if (cell_is_pair(current)) {
+                names[i++] = cell_get_symbol(cell_car(current));
+                current = cell_cdr(current);
+            }
+        } else if (cell_is_symbol(param)) {
+            names[i++] = cell_get_symbol(param);
+            current = cell_cdr(current);
+            if (cell_is_pair(current)) {
+                Cell* maybe_colon = cell_car(current);
+                if (cell_is_symbol(maybe_colon) &&
+                    strcmp(cell_get_symbol(maybe_colon), ":") == 0) {
+                    current = cell_cdr(current);
+                    if (cell_is_pair(current)) {
+                        current = cell_cdr(current);
+                    }
+                }
+            }
+        } else {
+            names[i++] = cell_get_symbol(param);
+            current = cell_cdr(current);
+        }
     }
 
     return names;
+}
+
+/* Legacy wrapper for simple params */
+const char** extract_param_names(Cell* params) {
+    int count;
+    return extract_param_names_counted(params, &count);
 }
 
 /* Forward declaration */
@@ -1568,10 +1632,15 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                 /* Closure env: use indexed env if we're in a lambda, empty if top-level */
                 Cell* closure_env = env_is_indexed(env) ? env : cell_nil();
 
-                /* Create lambda cell with closure environment */
-                /* Day 27: Pass source location (module tracked, line number not yet available) */
+                /* Resolve source line from span */
+                int source_line = 0;
+                if (g_source_map && !span_is_none(expr->span)) {
+                    ResolvedPos rp = srcmap_resolve(g_source_map, span_lo(expr->span));
+                    source_line = (int)rp.line;
+                }
+
                 Cell* lambda = cell_lambda(closure_env, converted_body, arity,
-                                          module_get_current_loading(), 0);
+                                          module_get_current_loading(), source_line);
 
                 return lambda;
             }
@@ -1593,9 +1662,9 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                  * retain so we can safely release later */
                 cell_retain(expanded_body);
 
-                /* Count parameters and extract names */
-                int arity = list_length(params);
-                const char** param_names = extract_param_names(params);
+                /* Count parameters and extract names (handles ⊳ and : annotations) */
+                int arity = 0;
+                const char** param_names = extract_param_names_counted(params, &arity);
 
                 /* Create conversion context */
                 NameContext* ctx_convert = context_new(param_names, arity, NULL);
@@ -1607,10 +1676,15 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                 /* Closure env: use indexed env if we're in a lambda, empty if top-level */
                 Cell* closure_env = env_is_indexed(env) ? env : cell_nil();
 
-                /* Create lambda cell with closure environment */
-                /* Day 27: Pass source location (module tracked, line number not yet available) */
+                /* Resolve source line from span */
+                int source_line = 0;
+                if (g_source_map && !span_is_none(expr->span)) {
+                    ResolvedPos rp = srcmap_resolve(g_source_map, span_lo(expr->span));
+                    source_line = (int)rp.line;
+                }
+
                 Cell* lambda = cell_lambda(closure_env, converted_body, arity,
-                                          module_get_current_loading(), 0);
+                                          module_get_current_loading(), source_line);
 
                 /* Cleanup */
                 context_free(ctx_convert);

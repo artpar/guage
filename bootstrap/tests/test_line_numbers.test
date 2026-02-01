@@ -1,0 +1,20 @@
+#!/usr/bin/env guage
+; Test suite for parser line numbers in lambdas
+; Verifies source_line is correctly resolved from spans
+
+(≋ "Testing Parser Line Numbers...")
+
+; Lambda source line should be non-zero when defined in a file
+(≔ my-fn (λ (x) (⊕ x #1)))
+
+; Check that source introspection reports a line number > 0
+(⊨ :lambda-has-source-line
+   #t
+   (> (⊛ my-fn :line) #0))
+
+; Check that source module is set
+(⊨ :lambda-has-source-module
+   #t
+   (≈? (⊛ my-fn :module)))
+
+(≋ "\nLine number tests complete.")
