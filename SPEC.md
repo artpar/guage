@@ -2564,7 +2564,7 @@ This enables assisted development where the compiler helps you write, prove, tes
 **Implementation Timeline:**
 - Phases 1-2E: Complete (lambda calculus through actors/channels/supervision/supervisors)
 - Phase 3: Dynamic supervisor management, rest-for-one strategy, optimizer
-- Phase 4: Self-hosting (parser/compiler in Guage)
+- Phase 4: Type system (refinement types, dependent types, proofs)
 - Phase 5: Advanced metaprogramming (synthesis, time-travel debugging)
 - Phase 6: Distribution, native compilation
 

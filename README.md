@@ -265,7 +265,7 @@ guage/
 
 **Next:**
 - Phase 3: Multi-scheduler stress tests, BWoS deque, optimizer
-- Phase 4: Self-hosting (parser/compiler in Guage)
+- Phase 4: Type system (refinement types, dependent types, proofs)
 - Phase 5: Advanced metaprogramming (synthesis, time-travel debugging)
 - Phase 6: Distribution, native compilation
 

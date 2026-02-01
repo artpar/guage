@@ -1,0 +1,102 @@
+; Test: Suspend/Wake architectural cohesion
+; Verifies that suspend paths correctly set wait_flag for wake protocol.
+;
+; Bug pattern: infrastructure for sender-side wake (wait_flag, recv_waiter)
+; exists in channel.c and actor.c, but some suspend paths in primitives.c
+; don't register the actor as a waiter. Without registration:
+; - Single-scheduler: poll loop hides the bug (checks conditions every tick)
+; - Multi-scheduler: parked workers never get woken → latency or deadlock
+;
+; These tests use ⟳⚐ (actor-wait-flag introspection) to verify the
+; exact property: wait_flag == 1 after suspension.
+
+
+; ============ SUSPEND_MAILBOX: wait_flag must be set ============
+(⟳∅)
+
+(≔ mb-actor (⟳ (λ (self) (≫ (←?) (λ (msg) msg)))))
+(⟳! 5)
+
+(⊨ (⌜ :mailbox-wait-flag) #1 (⟳⚐ mb-actor))
+
+
+; ============ SUSPEND_CHAN_RECV: wait_flag must be set ============
+(⟳∅)
+(⟿∅)
+
+(≔ ch-recv (⟿⊚))
+(≔ recv-actor (⟳ (λ (self) (≫ (⟿← ch-recv) (λ (v) v)))))
+(⟳! 5)
+
+(⊨ (⌜ :chan-recv-wait-flag) #1 (⟳⚐ recv-actor))
+
+
+; ============ SUSPEND_CHAN_SEND: wait_flag must be set ============
+; Note: capacity rounds to power-of-2, min 2. Fill both slots first.
+(⟳∅)
+(⟿∅)
+
+(≔ ch-send (⟿⊚ #2))
+(≔ filler1 (⟳ (λ (self) (⟿→ ch-send :fill1))))
+(≔ filler2 (⟳ (λ (self) (⟿→ ch-send :fill2))))
+(⟳! 5)
+(≔ send-actor (⟳ (λ (self) (⟿→ ch-send :blocked))))
+(⟳! 5)
+
+(⊨ (⌜ :chan-send-wait-flag) #1 (⟳⚐ send-actor))
+
+
+; ============ SUSPEND_SELECT: wait_flag must be set ============
+(⟳∅)
+(⟿∅)
+
+(≔ ch-sel1 (⟿⊚))
+(≔ ch-sel2 (⟿⊚))
+
+(≔ selector (⟳ (λ (self)
+  (≫ (⟿⊞ ch-sel1 ch-sel2) (λ (pair) (▷ pair))))))
+
+(⟳! 5)
+
+(⊨ (⌜ :select-wait-flag) #1 (⟳⚐ selector))
+
+
+; ============ SUSPEND_TASK_AWAIT: wait_flag must be set ============
+(⟳∅)
+
+(≔ slow-worker (⟳ (λ (self) (≫ (←?) (λ (msg) msg)))))
+(≔ awaiter (⟳ (λ (self) (⟳⊲ slow-worker))))
+
+(⟳! 5)
+
+(⊨ (⌜ :task-await-wait-flag) #1 (⟳⚐ awaiter))
+
+
+; ============ Behavioral: SELECT wake after fix ============
+(⟳∅)
+(⟿∅)
+
+(≔ ch-bsel1 (⟿⊚))
+(≔ ch-bsel2 (⟿⊚))
+
+(≔ bselector (⟳ (λ (self)
+  (≫ (⟿⊞ ch-bsel1 ch-bsel2) (λ (pair) (▷ pair))))))
+
+(⟳! 5)
+(⟿→ ch-bsel2 :selected-data)
+(⟳! 10)
+
+(⊨ (⌜ :select-wake-behavioral) :selected-data (⟳→ bselector))
+
+
+; ============ Behavioral: TASK_AWAIT wake after fix ============
+(⟳∅)
+
+(≔ bworker (⟳ (λ (self) (≫ (←?) (λ (msg) msg)))))
+(≔ bawaiter (⟳ (λ (self) (⟳⊲ bworker))))
+
+(⟳! 10)
+(→! bworker :finished)
+(⟳! 15)
+
+(⊨ (⌜ :task-await-wake-behavioral) :finished (⟳→ bawaiter))

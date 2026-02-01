@@ -1,6 +1,7 @@
 #include "scheduler.h"
 #include "actor.h"
 #include "channel.h"
+#include "log.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -384,51 +385,6 @@ int64_t ws_size(WSDeque* dq) {
     return total > 0 ? total : 0;
 }
 
-/* ── Force-grant: make owner's current block stealable ──
- * Grants the current owner block and advances to the next block.
- * Called once per sched_run_all before the main loop, and by ws_push on overflow. */
-void ws_force_grant(WSDeque* dq) {
-    uint64_t ob = atomic_load_explicit(&dq->owner_block, memory_order_relaxed);
-    BWoSBlock* blk = &dq->blocks[ob & BWOS_B_MASK];
-    uint64_t t = atomic_load_explicit(&blk->tail, memory_order_relaxed);
-    uint64_t h = atomic_load_explicit(&blk->head, memory_order_relaxed);
-
-    if (t <= h) return;  /* Nothing to grant */
-
-    uint64_t next_epoch = ob + 1;
-    uint64_t tb = atomic_load_explicit(&dq->thief_block, memory_order_acquire);
-
-    if (next_epoch - tb >= BWOS_B) return;  /* No free blocks to advance into */
-
-    BWoSBlock* next_blk = &dq->blocks[next_epoch & BWOS_B_MASK];
-
-    /* GRANT current block to thieves.
-     * Start steal_tail from current head (may be >0 if fallback thief stole). */
-    uint64_t cur_head = atomic_load_explicit(&blk->head, memory_order_relaxed);
-    atomic_store_explicit(&blk->head, t, memory_order_relaxed);
-    atomic_store_explicit(&blk->steal_tail, cur_head, memory_order_release);
-
-    /* RECLAIM next block */
-    uint64_t st = atomic_load_explicit(&next_blk->steal_tail, memory_order_acquire);
-    if (st != BWOS_SENTINEL) {
-        uint64_t expected = atomic_load_explicit(&next_blk->tail, memory_order_relaxed);
-        while (atomic_load_explicit(&next_blk->steal_head, memory_order_acquire) < expected) {
-            #if defined(__aarch64__)
-            __builtin_arm_yield();
-            #elif defined(__x86_64__)
-            __asm__ volatile("pause");
-            #endif
-        }
-    }
-
-    /* Reset next block for owner use */
-    atomic_store_explicit(&next_blk->head, 0, memory_order_relaxed);
-    atomic_store_explicit(&next_blk->tail, 0, memory_order_relaxed);
-    atomic_store_explicit(&next_blk->steal_head, 0, memory_order_relaxed);
-    atomic_store_explicit(&next_blk->steal_tail, (uint64_t)BWOS_SENTINEL, memory_order_relaxed);
-
-    atomic_store_explicit(&dq->owner_block, next_epoch, memory_order_relaxed);
-}
 
 /* ── XorShift32 RNG for steal victim selection ── */
 static uint32_t xorshift32(uint32_t* state) {
@@ -737,12 +693,13 @@ void sched_enqueue(Scheduler* sched, Actor* actor) {
     /* ws_steal has a fallback path that steals directly from the
      * owner's active block, so no force_grant needed per-push. */
 
-    /* Notify parked workers via eventcount (no thundering herd —
-     * only wake if no workers are actively searching for work) */
+    /* Notify ALL parked schedulers via eventcount.
+     * Must wake all: runnext is owner-only (not stealable by others).
+     * If we only wake one thread and it's not the runnext owner,
+     * the owner stays parked and never sees its work → deadlock.
+     * With ≤16 schedulers, thundering herd cost is negligible. */
     if (g_num_schedulers > 1) {
-        if (atomic_load_explicit(&g_num_searching, memory_order_acquire) == 0) {
-            ec_notify_one(&g_sched_ec);
-        }
+        ec_notify_all(&g_sched_ec);
     }
 }
 
@@ -777,16 +734,6 @@ Actor* sched_try_steal(Scheduler* thief) {
     return NULL;
 }
 
-/* ── Platform-adaptive parking ── */
-void sched_unpark(int scheduler_id) {
-    if (scheduler_id < 0 || scheduler_id >= g_num_schedulers) return;
-    Scheduler* s = &g_schedulers[scheduler_id];
-    if (atomic_load_explicit(&s->parked, memory_order_acquire)) {
-        /* Targeted wake via eventcount — bump epoch wakes all parked workers,
-         * but only the target will find work on its queue. */
-        ec_notify_one(&g_sched_ec);
-    }
-}
 
 /* ── Scheduler-driven actor execution ── */
 
@@ -954,9 +901,26 @@ int sched_run_one_quantum(Scheduler* sched, Actor* actor) {
         trace_record(TRACE_RESUME, (uint16_t)actor->id, 0);
         fiber_start(fiber);
     } else if (fiber->state == FIBER_SUSPENDED) {
+        atomic_store_explicit(&actor->wait_flag, 0, memory_order_relaxed);
+        /* Clear select waiter registrations before resume */
+        if (fiber->suspend_reason == SUSPEND_SELECT) {
+            for (int j = 0; j < fiber->suspend_select_count; j++) {
+                Channel* ch = channel_lookup(fiber->suspend_select_ids[j]);
+                if (ch) {
+                    int expected = actor->id;
+                    atomic_compare_exchange_strong_explicit(
+                        &ch->recv_waiter, &expected, -1,
+                        memory_order_relaxed, memory_order_relaxed);
+                }
+            }
+        }
         Cell* resume_val = sched_prepare_resume(actor);
         trace_record(TRACE_RESUME, (uint16_t)actor->id, (uint16_t)fiber->suspend_reason);
 
+        /* Clear stale suspend metadata after computing resume value */
+        fiber->suspend_channel_id = -1;
+        fiber->suspend_await_actor_id = -1;
+        fiber->suspend_select_count = 0;
         fiber->suspend_reason = SUSPEND_GENERAL;
         sched->eval_ctx.reductions_left = CONTEXT_REDS;
         fiber_resume(fiber, resume_val);
@@ -1086,13 +1050,15 @@ static void* scheduler_worker_main(void* arg) {
                 break;
             }
 
-            /* One final check for work (belt-and-suspenders) */
-            actor = ws_pop(&sched->deque);
+            /* One final check for ALL work sources (including runnext!) */
+            actor = atomic_exchange_explicit(&sched->runnext, NULL, memory_order_acquire);
+            if (!actor) actor = ws_pop(&sched->deque);
             if (!actor) actor = global_queue_pop();
             if (!actor) actor = sched_try_steal(sched);
             if (actor) {
                 ec_cancel_wait(&g_sched_ec);
                 idle_spins = 0;
+                sched->runnext_consecutive = 0;
                 goto run;
             }
 
@@ -1117,9 +1083,18 @@ static void* scheduler_worker_main(void* arg) {
         }
         atomic_fetch_add_explicit(&g_running_actors, 1, memory_order_relaxed);
         int result = sched_run_one_quantum(sched, actor);
-        if (result != 0) {  /* alive (1=did work, -1=blocked) */
+        if (result == 1) {
+            /* Did work — always re-enqueue */
             sched_enqueue(sched, actor);
         }
+        /* result == -1 (blocked): do NOT re-enqueue.
+         * All suspend paths with wake protocol (MAILBOX, CHAN_RECV,
+         * CHAN_SEND, SELECT, TASK_AWAIT) set wait_flag=1 and have
+         * sender-side wake that CAS's wait_flag 1→0 + sched_enqueue.
+         * Re-enqueueing here causes double-enqueue races → double-run
+         * → Bus error / fiber stack corruption.
+         * SUSPEND_GENERAL also not re-enqueued — it requires explicit
+         * resume (not poll-based). */
         /* Decrement AFTER enqueue so the actor is never in a gap state
          * (not running, not queued) which would fool idle detection. */
         atomic_fetch_sub_explicit(&g_running_actors, 1, memory_order_release);
@@ -1174,6 +1149,8 @@ int sched_run_all(int max_ticks) {
     }
 
     /* ── Multi-scheduler path ── */
+    LOG_DEBUG("sched_run_all: multi-sched max_ticks=%d alive=%d",
+        max_ticks, atomic_load_explicit(&g_alive_actors, memory_order_relaxed));
     g_shared_eval_ctx = eval_get_current_context();
 
     /* Set up scheduler 0's eval context */
@@ -1186,9 +1163,10 @@ int sched_run_all(int max_ticks) {
     /* Distribute actors to schedulers */
     sched_distribute_actors();
 
-    /* Reset global eventcount + searching state for this run */
+    /* Reset global state for this run */
     ec_init(&g_sched_ec);
     atomic_store_explicit(&g_num_searching, 0, memory_order_relaxed);
+    atomic_store_explicit(&g_running_actors, 0, memory_order_relaxed);
 
     /* Spawn workers 1..N-1 */
     for (int i = 1; i < g_num_schedulers; i++) {
@@ -1230,24 +1208,48 @@ int sched_run_all(int max_ticks) {
             idle_spins = 0;
             atomic_fetch_add_explicit(&g_running_actors, 1, memory_order_relaxed);
             int result = sched_run_one_quantum(s0, actor);
-            if (result != 0) sched_enqueue(s0, actor);  /* alive: 1=work, -1=blocked */
+            if (result == 1) sched_enqueue(s0, actor);  /* did work — re-enqueue */
+            /* result == -1 (blocked): NOT re-enqueued.
+             * Wake path (actor_send, channel_wake_actor, actor_finish)
+             * owns re-enqueue via wait_flag CAS. */
             atomic_fetch_sub_explicit(&g_running_actors, 1, memory_order_release);
+            ticks++;
         } else {
             idle_spins++;
-            if (idle_spins > 10) {
-                /* Include g_running_actors in idle check: if any worker is
-                 * mid-quantum, it may produce new work (messages, spawns). */
-                bool no_running = atomic_load_explicit(&g_running_actors, memory_order_acquire) <= 0;
-                if (no_running &&
-                    atomic_load_explicit(&g_alive_actors, memory_order_acquire) <= 0 &&
-                    sched_all_idle()) {
-                    ec_notify_all(&g_sched_ec);
+            bool no_running = atomic_load_explicit(&g_running_actors, memory_order_acquire) <= 0;
+            int alive = atomic_load_explicit(&g_alive_actors, memory_order_acquire);
+            /* Termination: all actors dead, nothing in flight or queued */
+            LOG_DEBUG("S0 idle=%d no_run=%d alive=%d g_run=%d all_idle=%d",
+                idle_spins, no_running, alive,
+                atomic_load(&g_running_actors), sched_all_idle());
+            if (idle_spins > 10 && no_running && alive <= 0 && sched_all_idle()) {
+                LOG_DEBUG("S0 terminating: alive=%d", alive);
+                ec_notify_all(&g_sched_ec);
+                break;
+            }
+            /* Brief park: prepare-wait on eventcount so we wake immediately
+             * when any worker enqueues work (ec_notify_one in sched_enqueue).
+             * Avoids burning CPU and gives workers time to complete. */
+            if (idle_spins > 32) {
+                uint32_t epoch = ec_prepare_wait(&g_sched_ec);
+                /* Re-check ALL sources before committing (including runnext!) */
+                actor = atomic_exchange_explicit(&s0->runnext, NULL, memory_order_acquire);
+                if (!actor) actor = ws_pop(&s0->deque);
+                if (!actor) actor = global_queue_pop();
+                if (!actor) actor = sched_try_steal(s0);
+                if (actor || atomic_load_explicit(&g_alive_actors, memory_order_acquire) <= 0) {
+                    ec_cancel_wait(&g_sched_ec);
+                    if (actor) { idle_spins = 0; s0->runnext_consecutive = 0; continue; }
                     break;
                 }
-                if (no_running && !timer_any_pending() && sched_all_idle()) {
-                    ec_notify_all(&g_sched_ec);
-                    break;
-                }
+                /* Park until woken — bounded by tiered park (YIELD→WFE→ulock) */
+                LOG_DEBUG("S0 parking, alive=%d epoch=%u",
+                    atomic_load_explicit(&g_alive_actors, memory_order_relaxed), epoch);
+                qsbr_thread_offline(0);
+                ec_commit_wait(&g_sched_ec, epoch);
+                qsbr_thread_online(0);
+                LOG_DEBUG("S0 woke from park");
+                idle_spins = 0;
             }
         }
 
@@ -1261,9 +1263,7 @@ int sched_run_all(int max_ticks) {
             epoch_counter = 0;
         }
 
-        /* Tick timers + budget each round (matches single-scheduler semantics) */
         timer_tick_all();
-        ticks++;
     }
 
     qsbr_thread_offline(0);

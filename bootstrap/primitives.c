@@ -12,6 +12,7 @@
 #include "actor.h"
 #include "channel.h"
 #include "scheduler.h"
+#include "log.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
@@ -2574,10 +2575,30 @@ Cell* prim_receive(Cell* args) {
         return msg;
     }
 
-    /* Empty mailbox — yield fiber to scheduler */
+    /* Empty mailbox — prepare to suspend.
+     * 2-phase commit (same pattern as Folly eventcount):
+     *   1. Set wait_flag = 1 (prepare)
+     *   2. Re-check mailbox (verify condition still holds)
+     *   3. If still empty → yield (commit)
+     *   4. If message arrived → cancel wait, consume message
+     * This closes the lost-wakeup race where actor_send delivers
+     * a message between our mailbox check and wait_flag set. */
     Fiber* fiber = actor->fiber;
     if (fiber) {
         fiber->suspend_reason = SUSPEND_MAILBOX;
+        atomic_store_explicit(&actor->wait_flag, 1, memory_order_release);
+
+        /* Re-check: message may have arrived between first check and wait_flag set */
+        msg = actor_receive(actor);
+        if (msg) {
+            /* Cancel the wait — message arrived in the gap */
+            LOG_DEBUG("recv: actor %d got msg in re-check (cancelled wait)", actor->id);
+            atomic_store_explicit(&actor->wait_flag, 0, memory_order_relaxed);
+            fiber->suspend_reason = 0;
+            return msg;
+        }
+
+        LOG_DEBUG("recv: actor %d suspending on MAILBOX", actor->id);
         fiber_yield(fiber);
         /* Resumed by scheduler with message as resume_value */
         Cell* resumed = fiber->resume_value;
@@ -2680,6 +2701,22 @@ Cell* prim_actor_result(Cell* args) {
         return actor->result;
     }
     return cell_nil();
+}
+
+/* ⟳⚐ - actor wait-flag (testing introspection)
+ * (⟳⚐ actor) — return wait_flag value (#0 or #1)
+ * Used to verify suspend paths correctly set wait_flag. */
+Cell* prim_actor_wait_flag(Cell* args) {
+    Cell* target = arg1(args);
+    if (!cell_is_actor(target)) {
+        return cell_error("wait-flag-not-actor", target);
+    }
+    int id = cell_get_actor_id(target);
+    Actor* actor = actor_lookup(id);
+    if (!actor) {
+        return cell_error("actor-not-found", target);
+    }
+    return cell_number(atomic_load_explicit(&actor->wait_flag, memory_order_acquire));
 }
 
 /* ⟳∅ - reset all actors (for testing) */
@@ -3026,8 +3063,11 @@ Cell* prim_actor_monitor(Cell* args) {
     if (!other) {
         return cell_error("monitor-not-found", target);
     }
-    if (!other->alive) {
-        /* Already dead — immediately send :DOWN */
+    /* Atomically add monitor under stripe lock. If target is already dead
+     * (or dies between our check and the lock), actor_add_monitor returns false
+     * and we send :DOWN immediately. This closes the TOCTOU race. */
+    if (!actor_add_monitor(other, current)) {
+        /* Target already dead — immediately send :DOWN */
         Cell* reason = other->result && other->result->type == CELL_ERROR
             ? other->result : cell_symbol(":normal");
         Cell* msg = cell_cons(
@@ -3037,8 +3077,6 @@ Cell* prim_actor_monitor(Cell* args) {
                 cell_cons(reason, cell_nil())));
         actor_send(current, msg);
         cell_release(msg);
-    } else {
-        actor_add_monitor(other, current);
     }
     return cell_nil();
 }
@@ -3540,6 +3578,7 @@ Cell* prim_call(Cell* args) {
 
     if (fiber) {
         fiber->suspend_reason = SUSPEND_MAILBOX;
+        atomic_store_explicit(&caller->wait_flag, 1, memory_order_release);
         fiber_yield(fiber);
         Cell* resumed = fiber->resume_value;
         if (resumed) {
@@ -4143,6 +4182,7 @@ Cell* prim_task_await(Cell* args) {
     /* Suspend waiting for target to finish */
     fiber->suspend_reason = SUSPEND_TASK_AWAIT;
     fiber->suspend_await_actor_id = target_id;
+    atomic_store_explicit(&caller->wait_flag, 1, memory_order_release);
     fiber_yield(fiber);
 
     /* Resumed — target should be dead now */
@@ -4968,6 +5008,14 @@ Cell* prim_chan_send(Cell* args) {
         fiber->suspend_channel_id = chan_id;
         fiber->suspend_send_value = value;
         cell_retain(value);
+        /* CAS: only register if slot is empty — don't overwrite existing waiter */
+        {
+            int expected = -1;
+            atomic_compare_exchange_strong_explicit(
+                &chan->send_waiter, &expected, actor->id,
+                memory_order_release, memory_order_relaxed);
+        }
+        atomic_store_explicit(&actor->wait_flag, 1, memory_order_release);
         fiber_yield(fiber);
         /* Resumed by scheduler after successful send */
         return cell_nil();
@@ -5010,6 +5058,14 @@ Cell* prim_chan_recv(Cell* args) {
         Fiber* fiber = actor->fiber;
         fiber->suspend_reason = SUSPEND_CHAN_RECV;
         fiber->suspend_channel_id = chan_id;
+        /* CAS: only register if slot is empty — don't overwrite existing waiter */
+        {
+            int expected = -1;
+            atomic_compare_exchange_strong_explicit(
+                &chan->recv_waiter, &expected, actor->id,
+                memory_order_release, memory_order_relaxed);
+        }
+        atomic_store_explicit(&actor->wait_flag, 1, memory_order_release);
         fiber_yield(fiber);
         /* Resumed by scheduler with received value */
         Cell* resumed = fiber->resume_value;
@@ -5072,9 +5128,8 @@ Cell* prim_chan_select(Cell* args) {
     }
 
     /* First pass: try_recv with round-robin fairness */
-    static int rr_counter = 0;
-    int start = rr_counter % count;
-    rr_counter++;
+    static _Atomic int rr_counter = 0;
+    int start = atomic_fetch_add_explicit(&rr_counter, 1, memory_order_relaxed) % count;
     int closed_empty = 0;
     for (int j = 0; j < count; j++) {
         int idx = (start + j) % count;
@@ -5104,7 +5159,18 @@ Cell* prim_chan_select(Cell* args) {
         fiber->suspend_select_count = count;
         for (int i = 0; i < count; i++) {
             fiber->suspend_select_ids[i] = ids[i];
+            /* Best-effort waiter registration on each channel.
+             * CAS: only register if slot is empty (-1). If another actor
+             * already claimed the slot, the poll loop handles us. */
+            Channel* ch = channel_lookup(ids[i]);
+            if (ch) {
+                int expected = -1;
+                atomic_compare_exchange_strong_explicit(
+                    &ch->recv_waiter, &expected, actor->id,
+                    memory_order_release, memory_order_relaxed);
+            }
         }
+        atomic_store_explicit(&actor->wait_flag, 1, memory_order_release);
         fiber_yield(fiber);
         /* Resumed by scheduler with ⟨channel value⟩ pair */
         Cell* resumed = fiber->resume_value;
@@ -5139,9 +5205,8 @@ Cell* prim_chan_select_try(Cell* args) {
     }
 
     /* Try recv with round-robin fairness */
-    static int rr_counter = 0;
-    int start = rr_counter % count;
-    rr_counter++;
+    static _Atomic int rr_counter = 0;
+    int start = atomic_fetch_add_explicit(&rr_counter, 1, memory_order_relaxed) % count;
     int closed_empty = 0;
     for (int j = 0; j < count; j++) {
         int idx = (start + j) % count;
@@ -13627,6 +13692,7 @@ static Primitive primitives[] = {
     {"⟳#?", prim_sched_stats, 0, {"Per-scheduler statistics", "() → [⟨ℕ ⊞⟩]"}},
     {"⟳?", prim_actor_alive, 1, {"Check if actor is alive", "⟳ → 𝔹"}},
     {"⟳→", prim_actor_result, 1, {"Get finished actor result", "⟳ → α | ⚠"}},
+    {"⟳⚐", prim_actor_wait_flag, 1, {"Get actor wait_flag (testing introspection)", "⟳ → ℕ"}},
     {"⟳∅", prim_actor_reset, 0, {"Reset all actors (testing)", "() → ∅"}},
 
     /* Supervision primitives */

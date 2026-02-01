@@ -1,6 +1,7 @@
 #include "actor.h"
 #include "channel.h"
 #include "scheduler.h"
+#include "log.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -181,6 +182,7 @@ void actor_send(Actor* actor, Cell* message) {
 
                 /* Wake actor if blocked on mailbox recv (Day 134) */
                 if (atomic_exchange_explicit(&actor->wait_flag, 0, memory_order_acq_rel) == 1) {
+                    LOG_DEBUG("send: waking actor %d (was waiting)", actor->id);
                     Scheduler* home = sched_get(actor->home_scheduler);
                     if (home) {
                         sched_enqueue(home, actor);
@@ -310,14 +312,27 @@ void actor_unlink(Actor* a, Actor* b) {
 }
 
 /* Add watcher as a monitor of target */
-void actor_add_monitor(Actor* target, Actor* watcher) {
-    if (!target || !watcher) return;
+/* Returns true if monitor was added (target alive), false if target already dead.
+ * Caller must send :DOWN immediately when false is returned — this closes the
+ * TOCTOU race between alive-check and monitor registration that caused deadlocks
+ * in multi-scheduler mode. */
+bool actor_add_monitor(Actor* target, Actor* watcher) {
+    if (!target || !watcher) return false;
     pthread_mutex_lock(ACTOR_STRIPE(target->id));
+    if (!target->alive) {
+        pthread_mutex_unlock(ACTOR_STRIPE(target->id));
+        LOG_DEBUG("add_monitor: target %d already dead, watcher %d gets immediate :DOWN",
+            target->id, watcher->id);
+        return false;  /* Target died between caller's check and our lock */
+    }
     if (target->monitor_count < MAX_MONITORS) {
         target->monitors[target->monitor_count++] = watcher->id;
+        LOG_DEBUG("add_monitor: target %d watcher %d (count=%d)",
+            target->id, watcher->id, target->monitor_count);
         trace_record(TRACE_MONITOR, (uint16_t)target->id, (uint16_t)watcher->id);
     }
     pthread_mutex_unlock(ACTOR_STRIPE(target->id));
+    return true;
 }
 
 /* Send exit signal to target from sender with reason.
@@ -377,11 +392,39 @@ bool actor_finish(Actor* actor, Cell* result) {
     }
     /* Break fiber->result alias to prevent double-release in fiber_destroy */
     if (actor->fiber) actor->fiber->result = NULL;
-    atomic_fetch_sub_explicit(&g_alive_actors, 1, memory_order_relaxed);
+    int prev_alive = atomic_fetch_sub_explicit(&g_alive_actors, 1, memory_order_acq_rel);
+    LOG_DEBUG("actor_finish: actor %d dead, alive=%d→%d", actor->id, prev_alive, prev_alive - 1);
     pthread_mutex_unlock(ACTOR_STRIPE(actor->id));
+
+    /* If this was the last alive actor, wake all parked schedulers
+     * (including scheduler 0) so they can detect termination. */
+    if (prev_alive == 1) {
+        extern EventCount g_sched_ec;
+        ec_notify_all(&g_sched_ec);
+    }
 
     /* Notify links/monitors outside lock */
     actor_notify_exit(actor, result);
+
+    /* Wake actors suspended via SUSPEND_TASK_AWAIT on this actor.
+     * Read g_actors[] under registry read-lock to prevent use-after-free
+     * if actor_reset_all runs concurrently. */
+    pthread_rwlock_rdlock(&g_registry_lock);
+    int count = g_actor_count;
+    pthread_rwlock_unlock(&g_registry_lock);
+    for (int i = 0; i < count; i++) {
+        Actor* waiter = g_actors[i];
+        if (!waiter || !waiter->alive || !waiter->fiber) continue;
+        if (waiter->fiber->state == FIBER_SUSPENDED &&
+            waiter->fiber->suspend_reason == SUSPEND_TASK_AWAIT &&
+            waiter->fiber->suspend_await_actor_id == actor->id) {
+            if (atomic_exchange_explicit(&waiter->wait_flag, 0, memory_order_acq_rel) == 1) {
+                Scheduler* home = sched_get(waiter->home_scheduler);
+                if (home) sched_enqueue(home, waiter);
+            }
+        }
+    }
+
     return true;
 }
 
@@ -441,6 +484,8 @@ void actor_notify_exit(Actor* exiting, Cell* reason) {
     /* Notify monitors: send ⟨:DOWN id reason⟩ message (outside lock) */
     for (int i = 0; i < monitor_count; i++) {
         Actor* watcher = actor_lookup(monitor_ids[i]);
+        LOG_DEBUG("notify_exit: actor %d → monitor watcher %d (found=%d alive=%d)",
+            exiting->id, monitor_ids[i], watcher != NULL, watcher ? watcher->alive : 0);
         if (watcher && watcher->alive) {
             Cell* exit_reason = is_error ? reason : cell_symbol(":normal");
             Cell* msg = cell_cons(
@@ -760,6 +805,20 @@ int actor_run_all(int max_ticks) {
                 fiber_start(fiber);
                 any_ran = true;
             } else if (fiber->state == FIBER_SUSPENDED) {
+                /* Clear wait_flag — we're resuming this actor directly */
+                atomic_store_explicit(&actor->wait_flag, 0, memory_order_relaxed);
+                /* Clear select waiter registrations before resume */
+                if (fiber->suspend_reason == SUSPEND_SELECT) {
+                    for (int j = 0; j < fiber->suspend_select_count; j++) {
+                        Channel* ch = channel_lookup(fiber->suspend_select_ids[j]);
+                        if (ch) {
+                            int expected = actor->id;
+                            atomic_compare_exchange_strong_explicit(
+                                &ch->recv_waiter, &expected, -1,
+                                memory_order_relaxed, memory_order_relaxed);
+                        }
+                    }
+                }
                 Cell* resume_val = NULL;
                 trace_record(TRACE_RESUME, (uint16_t)actor->id, (uint16_t)fiber->suspend_reason);
 
@@ -842,6 +901,10 @@ int actor_run_all(int max_ticks) {
                         break;
                 }
 
+                /* Clear stale suspend metadata after computing resume value */
+                fiber->suspend_channel_id = -1;
+                fiber->suspend_await_actor_id = -1;
+                fiber->suspend_select_count = 0;
                 fiber->suspend_reason = SUSPEND_GENERAL;
                 /* Reset reduction budget before resuming */
                 fiber->eval_ctx->reductions_left = CONTEXT_REDS;
@@ -1260,6 +1323,10 @@ void actor_reset_all(void) {
     g_actor_count = 0;
     g_next_actor_id = 1;
     g_current_actor = NULL;
+    /* Reset alive counter — actor_destroy does NOT decrement g_alive_actors
+     * (only actor_finish does). Without this, stale counts leak across
+     * sched_run_all calls and break termination detection. */
+    atomic_store_explicit(&g_alive_actors, 0, memory_order_relaxed);
     channel_reset_all();
 
     /* Reset applications */

@@ -1,0 +1,9 @@
+; Test: ←? works in file mode (post-EOF drain)
+; This exercises the fix for the file-mode hang bug.
+; Without the post-loop sched_run_all drain, ←? would hang.
+
+(⟳∅)
+(≔ srv (⟳ (λ (self) (≫ (←?) (λ (msg) msg)))))
+(→! srv :hello)
+(⟳! 10)
+(⊨ (⌜ :file-recv) :hello (⟳→ srv))

@@ -53,6 +53,8 @@ Channel* channel_create(int capacity) {
     return chan;
 }
 
+static void channel_wake_actor(int actor_id);
+
 void channel_close(Channel* chan) {
     if (!chan) return;
     atomic_store_explicit(&chan->closed, true, memory_order_release);
@@ -60,6 +62,13 @@ void channel_close(Channel* chan) {
         Actor* cur = actor_current();
         trace_record(TRACE_CHAN_CLOSE, cur ? (uint16_t)cur->id : 0, (uint16_t)chan->id);
     }
+    /* Wake actors blocked on this channel — they'll see closed=true
+     * and get an error result on resume. Without this, actors using
+     * the wake protocol (wait_flag=1) would sleep forever. */
+    int rw = atomic_exchange_explicit(&chan->recv_waiter, -1, memory_order_acq_rel);
+    if (rw >= 0) channel_wake_actor(rw);
+    int sw = atomic_exchange_explicit(&chan->send_waiter, -1, memory_order_acq_rel);
+    if (sw >= 0) channel_wake_actor(sw);
 }
 
 void channel_destroy(Channel* chan) {

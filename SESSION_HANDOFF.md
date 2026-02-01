@@ -1,11 +1,86 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-02-01 (Day 141 COMPLETE)
+Updated: 2026-02-01 (Day 142 IN PROGRESS)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 141 - HTF-Grade Scheduler Parking (2026-02-01)
+# Session Handoff: Day 142 - Suspend/Wake Audit & Multi-Scheduler Fixes (2026-02-01)
+
+## Day 142 Progress - Architectural Cohesion Audit (IN PROGRESS)
+
+**STATUS:** 132/133 test files passing (test_multi_scheduler.test hangs at 32/145 assertions). Root cause IDENTIFIED but not yet fixed.
+
+### Audit Goal
+Fix suspend/wake path gaps across all suspend reasons. Ensure HFT-grade correctness for the multi-scheduler runtime.
+
+### Bugs Found & Fixed This Session
+
+**Fix 1: g_alive_actors not reset between sched_run_all calls**
+- `actor_reset_all()` calls `actor_destroy()` (not `actor_finish()`), so `g_alive_actors` accumulates stale counts
+- Added `atomic_store_explicit(&g_alive_actors, 0, memory_order_relaxed)` in `actor_reset_all()`
+
+**Fix 2: actor_add_monitor TOCTOU race (CRITICAL)**
+- Between checking `other->alive` in `prim_actor_monitor` and the stripe lock in `actor_add_monitor`, target could die — losing `:DOWN`
+- Changed `actor_add_monitor` to return `bool`, checking alive UNDER stripe lock
+- Caller sends immediate `:DOWN` if target already dead
+
+**Fix 3: prim_receive lost-wakeup race (CRITICAL)**
+- Between mailbox check (empty) and `wait_flag=1`, message could arrive without wake
+- Fixed with 2-phase commit: set wait_flag → re-check mailbox → cancel if message found
+- Same pattern as Folly eventcount: prepare → verify → commit/cancel
+
+### Infrastructure: Compile-Time Log Levels (log.h)
+- Created `bootstrap/log.h` with LOG_TRACE/DEBUG/INFO/WARN/ERROR macros
+- Build-time `-DLOG_LEVEL=0..5` controls which levels compile in
+- Production (default LOG_LEVEL=2): LOG_TRACE/DEBUG compile to `((void)0)` — zero cost
+- Added `make debug` target (LOG_LEVEL=0, all logs enabled)
+- Permanent LOG_DEBUG calls at critical scheduler/actor lifecycle points
+- `fflush(stderr)` in LOG_EMIT for reliable cross-thread log ordering
+
+### Root Cause IDENTIFIED (Not Yet Fixed)
+
+**Bug: `actor_propagate_exit` and supervisor paths decrement `g_alive_actors` without calling `ec_notify_all`**
+
+When an actor dies and kills a linked actor via `actor_propagate_exit`:
+1. `actor_finish` decrements alive (2→1), checks `prev_alive==1` → false → NO wake
+2. `actor_notify_exit` → `actor_propagate_exit` kills linked actor, decrements alive (1→0) → **NO `ec_notify_all` call**
+3. S0 is parked via eventcount → never wakes → deadlock
+
+Same bug exists in `supervisor_handle_exit` paths (ONE_FOR_ALL, REST_FOR_ONE) at lines 653 and 674.
+
+**Fix needed:** Create `alive_dec_and_notify()` helper that decrements g_alive_actors AND calls `ec_notify_all` when it drops to 0. Use everywhere g_alive_actors is decremented:
+- `actor_finish` (line 395)
+- `actor_propagate_exit` (line 365) ← missing wake
+- `supervisor_handle_exit` ONE_FOR_ALL (line 653) ← missing wake
+- `supervisor_handle_exit` REST_FOR_ONE (line 674) ← missing wake
+
+### Files Modified This Session
+| File | Changes |
+|------|---------|
+| `bootstrap/log.h` | **NEW** — Compile-time log level macros (LOG_TRACE through LOG_ERROR), fflush for thread safety |
+| `bootstrap/actor.c` | g_alive_actors reset in actor_reset_all, actor_add_monitor→bool with alive-under-lock check, permanent LOG_DEBUG at actor_finish/send/notify_exit/add_monitor |
+| `bootstrap/actor.h` | actor_add_monitor signature: void → bool |
+| `bootstrap/primitives.c` | prim_receive 2-phase commit fix, prim_actor_monitor TOCTOU fix, LOG_DEBUG at recv/send |
+| `bootstrap/scheduler.c` | #include "log.h", replaced fprintf with LOG_DEBUG, permanent lifecycle logging at run_all entry/termination/parking/waking |
+| `Makefile` | Added `debug` target (LOG_LEVEL=0), added log.h dependency |
+
+### Remaining Plan Items (from plan file)
+1. **Fix alive_dec_and_notify** — the identified root cause above (NEXT)
+2. **SUSPEND_SELECT wake path** — no wait_flag/channel waiter registration
+3. **SUSPEND_TASK_AWAIT wake path** — no wait_flag, actor_finish doesn't wake awaiting actors (partially done — TASK_AWAIT scan added to actor_finish)
+4. **Clear stale suspend metadata on resume** — suspend_channel_id, suspend_select_ids, suspend_await_actor_id
+5. **CAS-based waiter registration** — prevent single-waiter slot overwrite on channels
+6. **Thread-safe rr_counter in select** — static int → _Atomic int
+7. **Dead code removal** — ws_force_grant, sched_unpark (sched_unpark decl already removed from scheduler.h)
+
+### Test Results
+- **132/133 test files pass** (all except test_multi_scheduler.test)
+- **test_multi_scheduler.test**: 32/145 assertions pass, hangs at Section 12 (link death propagation)
+- Section 11 (monitor across schedulers) passes when child dies before monitor setup
+- Section 12 hangs: link-child dies with error → actor_propagate_exit kills linked parent → alive drops to 0 with no ec_notify_all → S0 parked forever
+
+---
 
 ## Day 141 Progress - Eventcount + Tiered Parking + Searching State
 
@@ -21,34 +96,6 @@ Replaced ad-hoc per-worker `park_state` + Dekker-race-prone parking with product
 - **Sub-microsecond wake for short idles** — 3-tier parking: ARM YIELD ×64 (~100ns) → WFE ×256 (~1-5μs, no syscall) → ulock/futex (OS sleep)
 - **Last-searcher re-scan invariant** — Go/Tokio pattern: last thread to stop searching re-scans all queues before sleeping
 - **Zero fences on worker hot path** — only seq_cst on cancel_wait (Folly insight)
-
-### Files Modified/Created (6)
-| File | Changes |
-|------|---------|
-| `bootstrap/eventcount.h` | **NEW** — Header-only Folly-derived eventcount (epoch+waiters in `_Atomic uint64_t`): ec_init, ec_prepare_wait, ec_cancel_wait, ec_commit_wait, ec_notify_one, ec_notify_all |
-| `bootstrap/park.h` | Added `guage_park_tiered()` declaration |
-| `bootstrap/park.c` | Added `guage_park_tiered()` — 3-stage parking: YIELD→WFE→ulock (Apple Silicon native), with Linux futex + x86 pause fallbacks |
-| `bootstrap/scheduler.h` | Replaced `park_state` with `_Atomic bool parked`; added `g_sched_ec` (EventCount) and `g_num_searching` globals; `#include "eventcount.h"` |
-| `bootstrap/scheduler.c` | Rewrote worker idle path with eventcount 2-phase commit + searching state; updated sched_enqueue (ec_notify_one gate), sched_unpark, termination detection (ec_notify_all), shutdown (ec_notify_all) |
-| `bootstrap/primitives.c` | Updated stats reporting: `park_state` → `parked` |
-
-### Architecture Change
-```
-BEFORE:                                    AFTER:
-per-worker park_state + should_stop    →   global eventcount (epoch+waiters in 1 atomic)
-ad-hoc idle spin → yield → ulock      →   YIELD → WFE → ulock (3-tier, Apple Silicon native)
-no searching state                     →   g_num_searching atomic (Tokio/Go pattern)
-Dekker-race-prone parking              →   race-free by construction (eventcount 2-phase commit)
-```
-
-### Verification
-- **200/200 iterations** of `test_multi_scheduler.test` — zero hangs (was intermittent pre-fix)
-- **131/131 tests** pass in full test suite
-- **Multi-scheduler hang resolved** — the pre-existing termination detection hang from Day 140 is fixed
-
-### Known Issues Resolved
-- **Multi-scheduler hang (was pre-existing)**: FIXED — root cause was Dekker race in park/wake protocol. Eventcount eliminates by design.
-- Note: `bootstrap/guage` does not accept file arguments; tests must be fed via stdin (`< file.test`)
 
 ### Test Files: 131 (131 passing)
 ### Primitive Count: 511 (unchanged)

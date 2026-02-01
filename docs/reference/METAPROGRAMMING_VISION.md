@@ -94,11 +94,11 @@ Guage makes **all aspects of computation** first-class values:
 - Code transformation primitives
 - Synthesis infrastructure
 
-**Phase 4: Self-Hosting (12 weeks)**
-- Compiler as library (queryable, transformable)
-- Full access to own internals
+**Phase 4: Type System & Proofs (12 weeks)**
+- Refinement types (subsets, constraints)
+- Dependent types (length-indexed vectors, etc.)
 - Proof system integration
-- Optimization passes as values
+- Termination and complexity analysis
 
 ---
 
@@ -250,7 +250,7 @@ Invalid states are unrepresentable. The type system proves properties at compile
 
 ### Implementation Strategy
 
-**Phase 4A (Self-hosting complete):**
+**Phase 4A (Type system):**
 1. Basic refinement types (subsets)
 2. Simple dependent types (length-indexed)
 3. SMT solver integration (Z3)
@@ -564,7 +564,7 @@ Phase 3B: Macros (4-6 weeks)
   ↓
 Phase 3C: Generics (6-8 weeks)
   ↓
-Phase 4: Self-Hosting (12 weeks)
+Phase 4: Type System & Proofs (12 weeks)
   ├─→ 4A: Type System (refinement, dependent)
   ├─→ 4B: Effect System
   └─→ 4C: Proof System
@@ -584,7 +584,7 @@ Phase 6: Distribution & Analysis (24 weeks)
 
 ### Total Timeline
 
-- **Phases 2C-4:** ~30 weeks (bootstrap to self-hosting)
+- **Phases 2C-4:** ~30 weeks (bootstrap to type system & proofs)
 - **Phase 5:** 36 weeks (advanced metaprogramming)
 - **Phase 6:** 24 weeks (distribution and analysis)
 - **Total:** ~90 weeks (~21 months) to full vision
@@ -610,9 +610,9 @@ Phase 6: Distribution & Analysis (24 weeks)
 - Code transformation infrastructure
 - Hygiene for generated code
 
-**Phase 4 (Self-Hosting):**
-- Compiler available as library
-- Can analyze/transform self
+**Phase 4 (Type System & Proofs):**
+- Refinement and dependent types
+- Termination and complexity proofs
 - Proof system integration
 
 ---
@@ -663,7 +663,7 @@ Phase 6: Distribution & Analysis (24 weeks)
 
 **Document Status:** Vision/Planning
 **Last Updated:** 2026-01-27
-**Next Review:** After Phase 4 (self-hosting complete)
+**Next Review:** After Phase 4 (type system & proofs)
 
 ---
 

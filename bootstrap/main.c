@@ -751,6 +751,11 @@ void repl(void) {
         }
     }
 
+    /* Drain pending actor work after eval loop exits.
+     * Uniform behavior: interactive (Ctrl-D) and file/pipe (EOF) both drain.
+     * sched_run_all self-terminates on deadlock or all actors finished. */
+    sched_run_all(100000);
+
     eval_context_free(ctx);
 }
 

@@ -94,7 +94,7 @@ void   actor_set_current(Actor* actor);
 /* Supervision */
 void   actor_link(Actor* a, Actor* b);
 void   actor_unlink(Actor* a, Actor* b);
-void   actor_add_monitor(Actor* target, Actor* watcher);
+bool   actor_add_monitor(Actor* target, Actor* watcher);
 void   actor_exit_signal(Actor* target, Actor* sender, Cell* reason);
 void   actor_notify_exit(Actor* exiting, Cell* reason);
 bool   actor_finish(Actor* actor, Cell* result);  /* Thread-safe finish: returns false if already dead */

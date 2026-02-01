@@ -148,8 +148,6 @@ void sched_enqueue(Scheduler* sched, Actor* actor);
 /* Try to steal actor(s) from another scheduler (steal-half policy) */
 Actor* sched_try_steal(Scheduler* thief);
 
-/* Wake a parked scheduler */
-void sched_unpark(int scheduler_id);
 
 /* Run all actors (single-scheduler delegates to actor_run_all;
  * multi-scheduler spawns worker threads) */

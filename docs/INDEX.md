@@ -2,7 +2,7 @@
 
 ---
 **Status:** CURRENT - Single source of truth for documentation navigation
-**Last Updated:** 2026-01-29 (Day 73)
+**Last Updated:** 2026-02-01 (Day 141)
 **Purpose:** Navigation hub + documentation governance
 ---
 
@@ -37,7 +37,7 @@ Deep-dive technical documentation that changes infrequently:
 
 Current roadmaps and active tasks:
 
-- **[Self-Hosting Completion](planning/SELF_HOSTING_COMPLETION.md)** - Meta-evaluator roadmap (ACTIVE - Day 73)
+- *(Planning docs archived — see [archive/2026-01/plans/](archive/2026-01/plans/) for historical roadmaps)*
 - [Pattern Matching Enhancements](planning/PATTERN_MATCHING_ENHANCEMENTS.md) - Guards, as-patterns, or-patterns (COMPLETED ✅)
 - [Week 3 Roadmap](planning/WEEK_3_ROADMAP.md) - Pattern matching implementation plan (COMPLETED ✅)
 - [TODO](planning/TODO.md) - Task tracking and priorities
@@ -212,39 +212,33 @@ SYMBOLIC_VOCABULARY.md           # Symbol catalog
 
 ## 📊 Quick Status
 
-**Last Updated:** 2026-01-28 (Day 58 - Guard conditions implemented! 🎉)
+**Last Updated:** 2026-02-01 (Day 141)
 
 **System State:**
-- **Primitives:** 102 functional (stable)
-- **Tests:** 58/59 passing (98% ✅) + 30/30 guard tests (100% ✅) + 14/14 pattern tests (100% ✅) + 88/88 math tests (100% ✅) + 44/44 result tests (100% ✅) + 21/21 C unit tests (100% ✅)
-- **Build:** O2 optimized, 32MB stack, proper TCO
-- **Evaluator:** Single path - recursive with TCO (goto tail_call pattern)
-- **Self-Hosting:** 59% complete - pure lambda calculus working
-- **Status:** ✅ Turing complete + Proper TCO + Auto-doc + String/List/Math libraries + **Pattern matching with guard conditions!**
+- **Primitives:** 511
+- **Tests:** 131/131 passing (100% ✅)
+- **Build:** O2 optimized, 32MB stack, proper TCO, multi-scheduler
+- **Evaluator:** Single path - recursive with TCO + algebraic effects + actor runtime
+- **Concurrency:** Multi-scheduler (BWoS deque), eventcount parking, QSBR reclamation
+- **Status:** ✅ Turing complete + effects + actors + pattern matching + macros + types + FFI + multi-scheduler
 
 **Recent Milestones:**
-- Day 58: **Guard conditions implemented!** Conditional pattern matching with `(pattern | guard)` syntax (30 tests)
-- Day 57: **Pattern matching bug FIXED!** `∇` works with De Bruijn indices in closures (14 tests, +1 test fixed)
-- Day 56: **Result/Either type complete!** Railway-oriented programming (9 functions, 44 tests)
-- Day 55: **Math library complete!** 22 new primitives (√, ^, trig, log, π, e, rand) + 88 tests
-- Day 53/54: **Self-hosting evaluator 59% complete!** Pure lambda calculus working (13/22 tests)
-- Day 52: **TCO implementation complete!** Proper tail call optimization with goto pattern
-- Day 50: **100% test coverage achieved!** Fixed last 6 tests (test expectations + parse error)
-- Day 46: Stack overflow fixed (32MB stack + O2 optimization)
-- Day 45: Advanced list utilities (14 functions, 47 tests)
-- Day 44: String library complete (8 functions, 43 tests)
-- Day 43: Provenance fix for REPL functions
-- Days 15-19: Pattern matching complete (165 tests)
+- Day 141: **HTF-grade scheduler parking** — eventcount (Folly/Vyukov), tiered park (YIELD→WFE→ulock), searching state (Tokio/Go)
+- Day 140: **Supervisor exit fix, QSBR reclamation, global trace aggregation**
+- Days 137-139: **BWoS deque, multi-scheduler, BRC domain fix**
+- Day 136: Deep concurrency + tracing integration tests (49 assertions, 14 sections)
+- Days 126-127: Networking primitives + refinement types
 
 **Next Steps:**
-- **Option A (Day 59):** As-Patterns (2-3 hours) → `name@pattern` syntax to bind whole and parts
-- **Option B (Day 60):** Or-Patterns (3-4 hours) → `(pattern₁ | pattern₂)` multiple alternatives
-- **Option C:** View Patterns (2-3 hours) → `(→ transform pattern)` transform before matching
+- Formal verification of QSBR grace period correctness
+- Expand global trace to support time-range queries
+- QSBR memory-bound monitoring (retire ring high-water mark stats)
+- Add TRACE_PARK event kind to verify WFE-tier wakes
 
 **Overall Progress:**
-- **Week 7+:** Day 58 complete (Guard conditions implemented!)
-- **Focus:** Pattern matching enhancements - making Guage world-class
-- **Achievement:** Conditional pattern matching comparable to Haskell, OCaml, Rust!
+- **Day 141** complete — production-grade concurrency runtime
+- **Focus:** Scheduler correctness, memory reclamation, tracing
+- **Achievement:** BEAM-style actors + HTF-grade multi-scheduler with work-stealing
 
 ---
 

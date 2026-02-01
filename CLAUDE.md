@@ -6,7 +6,7 @@ Guage is a **Turing-complete ultralanguage** designed to be the ultimate program
 
 ### Ultimate Goals
 
-1. **Self-hosting** - Guage compiler written in Guage
+1. **Expressive power** - Can express any computable abstraction
 2. **Universality** - Can express any computable function
 3. **First-class everything** - Debugging, errors, testing, types, effects
 4. **Pure symbolic syntax** - No English keywords, only mathematical symbols
@@ -122,8 +122,8 @@ Based on:
 - **Lambda calculus** - Functions as first-class values
 - **De Bruijn indices** - Efficient variable representation
 - **Type theory** - Dependent types (future)
-- **Effect algebras** - Composable effects (future)
-- **Actor model** - Concurrent computation (future)
+- **Effect algebras** - Algebraic effects with resumable handlers
+- **Actor model** - BEAM-style actors with supervision
 
 **Why:** Solid theoretical foundation. Proven correctness.
 
@@ -174,64 +174,87 @@ Based on:
 
 ## Feature Set
 
-### Current (Turing Complete ✅)
+### Current (Day 141 — 131 tests, 511 primitives)
 
 **Core:**
 - λ abstraction with De Bruijn indices
 - Function application (beta reduction)
 - Lexical scoping with closures
-- ≔ global definitions
+- ≔ global definitions, named recursion
+- TCO (tail call optimization via goto)
+- ⪢ sequencing
 
 **Data:**
-- Numbers (#42)
-- Booleans (#t, #f)
-- Nil (∅)
-- Pairs (⟨⟩)
-- Symbols (:name)
-- Errors (⚠)
+- Numbers (#42), Booleans (#t, #f), Nil (∅)
+- Pairs (⟨⟩), Symbols (:name), Strings
+- Errors (⚠ — first-class values, not exceptions)
+- Mutable refs (□ box/unbox/swap)
+
+**Data Structures:**
+- HashMap (⊞), HashSet (⊍), Vector (⟦⟧)
+- Deque (⊟), Priority Queue (△), Trie (⊮)
+- Sorted Map (⋔), Byte Buffer (◈)
 
 **Control:**
-- ? conditional
-- ⌜ quote
-- ⌞ eval (future)
+- ? conditional, ⌜ quote
+- ∇ pattern matching (guards, as-patterns, or-patterns, view patterns)
 
-**Primitives:**
-- Arithmetic: ⊕ ⊖ ⊗ ⊘
-- Comparison: ≡ ≢ < > ≤ ≥
-- Logic: ∧ ∨ ¬
-- Lists: ⟨⟩ ◁ ▷
+**Effects:**
+- ⟪ perform, ⟪⟫ handler, ⟪↺⟫ resumable handler
+- ↯ raise, ⟪⊸⟫ linear effect, ⊸ consume
+- ⤴ resume, ≫ chain
+
+**Actors/Concurrency:**
+- ⟳ actors, →!/←? messages, channels
+- Supervisors (one-for-one, one-for-all, rest-for-one)
+- GenServer, ETS tables, process registry, timers
+- Tasks, Agents, GenStage, DynamicSupervisor, Flow
+- Multi-scheduler (BWoS deque), work-stealing
+- Eventcount parking (Folly/Vyukov), QSBR reclamation
+
+**Types:**
+- Annotations (∈), validation (∈✓), inference (∈⍜)
+
+**Macros:**
+- Pattern-based macros (⧉⊜), stdlib macros (control, iteration, exception, pattern, unicode)
+
+**Structures:**
+- ⊙ leaf, ⊚ node/ADT, ⊝ graphs (CFG/DFG)
 
 **Debug/Test:**
-- ⊢ assertions
-- ⟲ trace
-- ⊙ type-of
-- ⧉ arity
-- ⊛ source
-- ≟ deep-equal
-- ⊨ test-case
+- ⊢ assertions, ⟲ trace, ⊙ type-of
+- ⧉ arity, ⊛ source, ≟ deep-equal, ⊨ test-case
+
+**FFI:**
+- JIT-compiled stubs (⌁) — ARM64 + x86-64
+
+**Stdlib:**
+- Math (√, ^, trig, log, π, e, rand), strings, POSIX
+- Lists (extended utilities, sort, comprehensions)
+- Iterator protocol, option/result types, networking
+
+**Infrastructure:**
+- Multi-scheduler with BWoS deque and work-stealing
+- Eventcount parking (3-tier: YIELD→WFE→ulock)
+- QSBR actor reclamation, global trace aggregation
+- String interning (SipHash + SwissTable), fiber runtime
 
 ### Planned
 
 **Near-term:**
-- Named recursion (self-reference in ≔)
-- Y combinator (pure lambda recursion)
-- Pattern matching
-- List comprehensions
-- Standard library
+- Module system improvements
+- Stdlib expansion (more data structure operations)
 
 **Mid-term:**
-- Module system
 - Dependent types
-- Type inference
 - Linear types (infrastructure present)
 - Proof system
 
 **Long-term:**
-- Effect system (⟪⟫, ↯, ⤴, ≫)
-- Actor model (⟳, →!, ←?)
-- Native compilation
+- Native compilation (LLVM backend)
 - Incremental compilation
 - IDE support
+- Dependent types and proof system
 
 ## Syntax Philosophy
 
@@ -270,23 +293,23 @@ Each symbol chosen for **intuitive meaning**:
 C implementation
 ├── Parse symbols → S-expressions
 ├── Convert names → De Bruijn indices
-├── Evaluate → Beta reduction
-└── Reference counting GC
+├── Evaluate → Beta reduction + effects + actors
+└── Reference counting GC + QSBR
 ```
 
-**Goal:** Get to self-hosting ASAP.
+**Goal:** Build the language to full expressive power.
 
-### Self-Hosting Phase (Future)
+### Type System Phase (Future)
 
 ```
-Guage implementation in Guage
-├── Parser written in Guage
-├── Compiler written in Guage
-├── Runtime written in Guage (with FFI)
-└── Standard library in Guage
+Advanced type system
+├── Refinement types (subsets, constraints)
+├── Dependent types (length-indexed, etc.)
+├── Proof system (termination, complexity)
+└── Effect tracking in types
 ```
 
-**Goal:** Prove the language can express itself.
+**Goal:** Provably correct programs through the type system.
 
 ### Native Compilation Phase (Future)
 
@@ -362,9 +385,9 @@ Everything needed is **in the language**:
 
 1. **Primitives** - Add new built-in operations
 2. **Special forms** - Extend evaluator
-3. **Macros** - Syntax transformation (future)
-4. **Effects** - User-defined effect handlers (future)
-5. **Types** - User-defined types (future)
+3. **Macros** - Pattern-based syntax transformation (⧉⊜)
+4. **Effects** - User-defined algebraic effect handlers (⟪⟫)
+5. **Types** - User-defined types with ADTs (⊚)
 
 ### Library Design
 
@@ -430,11 +453,12 @@ Use **symbolic documentation**:
 ### Current Implementation
 
 **Language:** C11
-**GC:** Reference counting
+**GC:** Reference counting + QSBR for actors
 **Representation:** De Bruijn indices
 **Environment:** Hybrid (named at top, indexed in lambdas)
-**Tests:** 14/14 passing ✅
-**Status:** Turing complete ✅
+**Primitives:** 511
+**Tests:** 131/131 passing ✅
+**Status:** Turing complete + effects + actors + multi-scheduler + pattern matching
 
 ### Code Organization
 
@@ -448,21 +472,46 @@ Use **symbolic documentation**:
 ├── SESSION_HANDOFF.md - Current status
 ├── docs/             - Documentation
 └── bootstrap/        - C implementation
-    ├── cell.{c,h}        - Core data structures
-    ├── eval.{c,h}        - Evaluator
+    ├── cell.{c,h}        - Core data structures (cells, pairs, refs)
+    ├── eval.{c,h}        - Evaluator (TCO, effects, actors)
     ├── debruijn.{c,h}    - De Bruijn conversion
     ├── debug.{c,h}       - Stack traces
-    ├── primitives.{c,h}  - Built-in operations
+    ├── primitives.{c,h}  - Built-in operations (511 primitives)
     ├── main.c            - Parser and REPL
-    ├── stdlib/           - Standard library (Guage code)
-    └── tests/            - Test suite
+    ├── actor.{c,h}       - BEAM-style actors, supervisors, GenServer
+    ├── fiber.{c,h}       - Fiber/coroutine runtime
+    ├── channel.{c,h}     - Channel-based communication
+    ├── scheduler.{c,h}   - Multi-scheduler, BWoS deque, work-stealing
+    ├── eventcount.h      - Folly-derived eventcount (parking)
+    ├── park.{c,h}        - Tiered parking (YIELD→WFE→ulock)
+    ├── pattern.{c,h}     - Pattern matching engine
+    ├── pattern_check.{c,h} - Pattern exhaustiveness checking
+    ├── macro.{c,h}       - Pattern-based macro system
+    ├── type.{c,h}        - Type annotations and validation
+    ├── intern.{c,h}      - String interning (SipHash)
+    ├── module.{c,h}      - Module loading (⋘)
+    ├── ffi_jit.{c,h}     - JIT FFI stubs
+    ├── ffi_emit_a64.c    - ARM64 JIT emitter
+    ├── ffi_emit_x64.c    - x86-64 JIT emitter
+    ├── cfg.{c,h}         - Control flow graphs
+    ├── dfg.{c,h}         - Data flow graphs
+    ├── span.{c,h}        - Source spans
+    ├── diagnostic.{c,h}  - Diagnostic messages
+    ├── ring.{c,h}        - Ring buffer
+    ├── testgen.{c,h}     - Test generation
+    ├── siphash.h         - SipHash for interning
+    ├── swisstable.h      - SwissTable hash map
+    ├── fcontext.h        - Fiber context switching
+    ├── iter_batch.h      - Batch iterator
+    ├── stdlib/           - Standard library (30 Guage files)
+    └── tests/            - Test suite (131 test files)
 ```
 
 ### Build and Test
 
 ```bash
 make                    # Build (from project root)
-make test               # Run full test suite (29 tests)
+make test               # Run full test suite (131 test files)
 make repl               # Start REPL
 make help               # Show all available targets
 make run FILE=file.scm  # Run a specific file
@@ -476,22 +525,28 @@ make rebuild            # Clean and rebuild from scratch
 
 - ✅ Turing complete
 - ✅ First-class errors/debug/test
-- ⏳ Named recursion
-- ⏳ Standard library basics
-- ⏳ Module system
+- ✅ Named recursion
+- ✅ Standard library basics
+- ✅ Module system (⋘ load, ⌂⊚ info)
+- ✅ Pattern matching (guards, as-patterns, or-patterns, view patterns)
+- ✅ Effect system (algebraic effects with resumable handlers)
+- ✅ Actor runtime (BEAM-style with supervisors, GenServer, ETS)
+- ✅ Macro system (pattern-based)
+- ✅ Type annotations and validation
+- ✅ FFI (JIT-compiled stubs, ARM64 + x86-64)
+- ✅ Multi-scheduler with work-stealing
 
-### Mid-term (Self-hosting)
+### Mid-term (Type System)
 
-- ⏳ Parser in Guage
-- ⏳ Compiler in Guage
-- ⏳ Type checker in Guage
-- ⏳ Self-hosting complete
+- ⏳ Refinement types
+- ⏳ Dependent types
+- ⏳ Proof system
+- ⏳ Effect tracking in types
 
 ### Long-term (Production)
 
 - ⏳ Native compilation
-- ⏳ Effect system
-- ⏳ Actor runtime
+- ⏳ Dependent types
 - ⏳ Package manager
 - ⏳ Real-world usage
 
@@ -559,7 +614,7 @@ Not "maybe someday" - here's the concrete plan:
 
 - **Phase 2C** (CURRENT): Data structures - 3 weeks
 - **Phase 3**: Pattern matching, macros, generics - 18 weeks
-- **Phase 4**: Self-hosting, type system - 12 weeks
+- **Phase 4**: Type system and proofs - 12 weeks
 - **Phase 5**: Synthesis, optimization, time-travel - 36 weeks
 - **Phase 6**: Distribution, cross-program analysis - 24 weeks
 

@@ -168,6 +168,11 @@ uninstall:
 # Rebuild everything from scratch
 rebuild: clean build
 
+# Debug build with all log levels enabled (TRACE+)
+debug: clean
+	@echo "Building with LOG_LEVEL=0 (all logs enabled)..."
+	$(MAKE) build CFLAGS="$(CFLAGS) -DLOG_LEVEL=0"
+
 # Show build info
 info:
 	@echo "Guage Build Information"
@@ -277,7 +282,8 @@ $(BOOTSTRAP_DIR)/ffi_emit_a64.o: $(BOOTSTRAP_DIR)/ffi_emit_a64.c $(BOOTSTRAP_DIR
                                   $(BOOTSTRAP_DIR)/cell.h
 $(BOOTSTRAP_DIR)/scheduler.o: $(BOOTSTRAP_DIR)/scheduler.c $(BOOTSTRAP_DIR)/scheduler.h \
                                $(BOOTSTRAP_DIR)/cell.h $(BOOTSTRAP_DIR)/eval.h \
-                               $(BOOTSTRAP_DIR)/actor.h $(BOOTSTRAP_DIR)/channel.h
+                               $(BOOTSTRAP_DIR)/actor.h $(BOOTSTRAP_DIR)/channel.h \
+                               $(BOOTSTRAP_DIR)/log.h
 $(BOOTSTRAP_DIR)/park.o: $(BOOTSTRAP_DIR)/park.c $(BOOTSTRAP_DIR)/park.h
 $(BOOTSTRAP_DIR)/ring.o: $(BOOTSTRAP_DIR)/ring.c $(BOOTSTRAP_DIR)/ring.h
 $(BOOTSTRAP_DIR)/main.o: $(BOOTSTRAP_DIR)/main.c $(BOOTSTRAP_DIR)/cell.h \
