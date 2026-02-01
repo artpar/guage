@@ -1,11 +1,69 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-02-01 (Day 142 Session 3 COMPLETE)
+Updated: 2026-02-01 (Day 142 Session 4 COMPLETE)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 142 Session 3 - Trait System Expansion (2026-02-01)
+# Session Handoff: Day 142 Session 4 - FDT Trait Dispatch (2026-02-01)
+
+## Day 142 Session 4 — Flat Dispatch Table + Stdlib Traits (COMPLETE)
+
+**STATUS:** 138/138 test files passing ✅
+
+### What Was Done
+
+Replaced StrTable-based trait dispatch with a Flat Dispatch Table (FDT) — a zero-malloc, zero-hash 2D array indexed by `[CellType][trait_id]`. Added fused `⊧→!` primitive and stdlib trait protocols.
+
+### Architecture: Flat Dispatch Table
+
+```
+                    trait_id (monotonic, assigned at ⊧≔)
+                    0          1            2
+CellType  ┌────────────┬────────────┬────────────┐
+  0 NUM   │ OpSlot[8]  │ OpSlot[8]  │ OpSlot[8]  │
+  1 BOOL  │ OpSlot[8]  │ OpSlot[8]  │ OpSlot[8]  │
+  ...     │   ...      │   ...      │   ...      │
+          └────────────┴────────────┴────────────┘
+
+OpSlot = { uint16_t op_id; Cell* fn; }
+Dispatch: cell->type → fdt[type][trait_id] → ≤8 uint16 compares → fn
+```
+
+### Changes
+
+| File | Changes |
+|------|---------|
+| `bootstrap/primitives.c` | FDT data structures (`FDTOpSlot`, `FDTImplEntry`, `FDTTraitMeta`, `fdt[][]`), `celltype_names[]` array at top, `trait_type_name_to_celltype()`, rewrote `prim_trait_define`/`prim_trait_implement`/`prim_trait_dispatch`/`prim_trait_check`/`trait_type_satisfies` with FDT fast paths, `prim_type_of` replaced 25-branch if/else with array index, new `prim_trait_dispatch_fast` (⊧→!) |
+| `bootstrap/primitives.h` | Added `prim_trait_dispatch_fast` declaration, updated trait section comment |
+| `bootstrap/stdlib/traits.scm` | **NEW** — Showable (8 types), Equatable (5 types), Comparable (Number+String), convenience dispatchers (⊧show, ⊧≡, ⊧compare, ⊧<, ⊧≤, ⊧>, ⊧≥), generic ⊧sort |
+| `bootstrap/tests/test_trait_protocols.test` | **NEW** — 25+ assertions: FDT type-of, show/equal/compare dispatch, fused ⊧→! matching ⊧→, trait check, defaults fallback, missing trait errors, generic sort |
+| `bootstrap/tests/test_conversions.test` | Fix pre-existing test crash |
+| `bootstrap/tests/test_line_numbers.test` | Fix pre-existing test crash |
+| `bootstrap/tests/test_module_system.test` | Fix pre-existing test failures |
+
+### Key Design Decisions
+
+- **FDT is supplementary** — existing StrTable path kept as slow-path fallback for custom struct types not in CellType enum
+- **Zero malloc on hot path** — FDT dispatch does no allocation, no hash, no strcmp
+- **Stack-allocated compound keys** — remaining StrTable paths use `char[128]` instead of malloc
+- **`⊧→!` fused dispatch** — takes value directly, reads `value->type`, skips intermediate symbol allocation
+- **Curried comparators** — `⊧sort` passes curried `(λ (a) (λ (b) ...))` to `⊙sort→` which calls `((cmp a) b)`
+
+### Performance Profile
+
+| Operation | Before (StrTable) | After (FDT) |
+|-----------|-------------------|-------------|
+| `⊧→` dispatch | malloc + SipHash + SIMD probe + O(n) strcmp | array[type][trait] + ≤3 uint16 cmp |
+| `⊧?` check | malloc + SipHash + SIMD probe | array[type][trait].count > 0 |
+| `⊧∈` type-of | 25-branch if/else | array[cell->type] |
+| `⊧→!` fused | N/A | single array read + 1 uint16 cmp |
+
+### Primitive Count: 512 (was 511)
+
+New: `⊧→!` (fused type-of + dispatch)
+
+---
 
 ## Day 142 Session 3 — Type-of, Defaults, Constraints (COMPLETE)
 

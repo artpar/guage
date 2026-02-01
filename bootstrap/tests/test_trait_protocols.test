@@ -1,0 +1,131 @@
+; ═══════════════════════════════════════════════════════════════
+; Guage Trait Protocol Tests: FDT dispatch + stdlib traits
+; ═══════════════════════════════════════════════════════════════
+
+; Load sort (needed for ⊧sort) and traits
+(⋘ "bootstrap/stdlib/sort.scm")
+(⋘ "bootstrap/stdlib/traits.scm")
+
+(≋ "Testing Trait Protocols (FDT dispatch)...")
+
+; ────────────────────────────────────────────────────────────────
+; ⊧∈ — FDT array-indexed type-of
+; ────────────────────────────────────────────────────────────────
+
+(⊨ :fdt-type-of-number  :Number (⊧∈ #42))
+(⊨ :fdt-type-of-bool    :Bool   (⊧∈ #t))
+(⊨ :fdt-type-of-symbol  :Symbol (⊧∈ :foo))
+(⊨ :fdt-type-of-nil     :Nil    (⊧∈ ∅))
+(⊨ :fdt-type-of-string  :String (⊧∈ "hello"))
+(⊨ :fdt-type-of-pair    :Pair   (⊧∈ (⟨⟩ #1 #2)))
+(⊨ :fdt-type-of-lambda  :Lambda (⊧∈ (λ (x) x)))
+(⊨ :fdt-type-of-error   :Error  (⊧∈ (⚠ :test ∅)))
+
+; ────────────────────────────────────────────────────────────────
+; :Showable — ⊧show dispatch
+; ────────────────────────────────────────────────────────────────
+
+(⊨ :show-number  "42"  (⊧show #42))
+(⊨ :show-bool-t  "#t"  (⊧show #t))
+(⊨ :show-bool-f  "#f"  (⊧show #f))
+(⊨ :show-nil     "∅"   (⊧show ∅))
+(⊨ :show-string  "hello" (⊧show "hello"))
+(⊨ :show-lambda  "<λ>" (⊧show (λ (x) x)))
+
+; ────────────────────────────────────────────────────────────────
+; :Equatable — ⊧≡ dispatch
+; ────────────────────────────────────────────────────────────────
+
+(⊨ :eq-numbers-same    #t  ((⊧≡ #42) #42))
+(⊨ :eq-numbers-diff    #f  ((⊧≡ #42) #99))
+(⊨ :eq-bools-same      #t  ((⊧≡ #t) #t))
+(⊨ :eq-strings-same    #t  ((⊧≡ "abc") "abc"))
+(⊨ :eq-strings-diff    #f  ((⊧≡ "abc") "xyz"))
+(⊨ :eq-nil             #t  ((⊧≡ ∅) ∅))
+(⊨ :eq-symbols-same    #t  ((⊧≡ :foo) :foo))
+
+; ────────────────────────────────────────────────────────────────
+; :Comparable — ⊧compare, ⊧<, ⊧≤, ⊧>, ⊧≥
+; ────────────────────────────────────────────────────────────────
+
+(⊨ :cmp-numbers-lt  :lt  ((⊧compare #1) #2))
+(⊨ :cmp-numbers-eq  :eq  ((⊧compare #5) #5))
+(⊨ :cmp-numbers-gt  :gt  ((⊧compare #9) #3))
+
+(⊨ :lt-true   #t  ((⊧< #1) #2))
+(⊨ :lt-false  #f  ((⊧< #2) #1))
+(⊨ :le-true   #t  ((⊧≤ #1) #1))
+(⊨ :le-false  #f  ((⊧≤ #3) #1))
+(⊨ :gt-true   #t  ((⊧> #5) #2))
+(⊨ :gt-false  #f  ((⊧> #1) #2))
+(⊨ :ge-true   #t  ((⊧≥ #3) #3))
+
+; String comparison
+(⊨ :cmp-strings-lt  :lt  ((⊧compare "abc") "xyz"))
+(⊨ :cmp-strings-eq  :eq  ((⊧compare "hello") "hello"))
+
+; ────────────────────────────────────────────────────────────────
+; ⊧→! — fused dispatch matches ⊧→
+; ────────────────────────────────────────────────────────────────
+
+; ⊧→! takes value directly, ⊧→ takes type symbol
+(≔ fdt-show-fn  (⊧→! #42 :Showable :show))
+(≔ str-show-fn  (⊧→ :Number :Showable :show))
+(⊨ :fused-dispatch-matches  (str-show-fn #42)  (fdt-show-fn #42))
+
+; ────────────────────────────────────────────────────────────────
+; FDT trait check (⊧?)
+; ────────────────────────────────────────────────────────────────
+
+(⊨ :fdt-check-showable-number  #t  (⊧? :Number :Showable))
+(⊨ :fdt-check-showable-bool    #t  (⊧? :Bool :Showable))
+(⊨ :fdt-check-equatable-nil    #t  (⊧? :Nil :Equatable))
+(⊨ :fdt-check-comparable-num   #t  (⊧? :Number :Comparable))
+
+; Missing trait → #f
+(⊨ :fdt-check-missing  #f  (⊧? :Number :NonExistent))
+
+; ────────────────────────────────────────────────────────────────
+; Defaults fallback
+; ────────────────────────────────────────────────────────────────
+
+(≔ default-fn (λ (x) :default-result))
+(⊧≔ :DefaultTrait (⟨⟩ :op1 ∅) (⟨⟩ (⟨⟩ :op1 default-fn) ∅))
+
+; No impl for :Number, but default exists
+(⊨ :defaults-fallback  :default-result  ((⊧→ :Number :DefaultTrait :op1) #42))
+(⊨ :defaults-fused     :default-result  ((⊧→! #42 :DefaultTrait :op1) #42))
+
+; ────────────────────────────────────────────────────────────────
+; Missing trait → error
+; ────────────────────────────────────────────────────────────────
+
+(⊨ :dispatch-missing-trait  #t  (⚠? (⊧→ :Number :NoSuchTrait :op)))
+(⊨ :fused-missing-trait     #t  (⚠? (⊧→! #42 :NoSuchTrait :op)))
+
+; ────────────────────────────────────────────────────────────────
+; Generic sort via :Comparable
+; ────────────────────────────────────────────────────────────────
+
+(≔ list-equal? (λ (lst1) (λ (lst2)
+  (? (∅? lst1)
+     (∅? lst2)
+     (? (∅? lst2)
+        #f
+        (? (≡ (◁ lst1) (◁ lst2))
+           ((list-equal? (▷ lst1)) (▷ lst2))
+           #f))))))
+
+(⊨ :sort-numbers
+   #t
+   ((list-equal? (⊧sort (⟨⟩ #3 (⟨⟩ #1 (⟨⟩ #2 ∅)))))
+                 (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅)))))
+
+(⊨ :sort-strings
+   #t
+   ((list-equal? (⊧sort (⟨⟩ "c" (⟨⟩ "a" (⟨⟩ "b" ∅)))))
+                 (⟨⟩ "a" (⟨⟩ "b" (⟨⟩ "c" ∅)))))
+
+(⊨ :sort-empty  #t  (∅? (⊧sort ∅)))
+
+(≋ "\nTrait protocol tests complete.")

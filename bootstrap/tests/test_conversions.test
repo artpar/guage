@@ -83,6 +83,6 @@
 ; Round-trip: symbol → string → symbol
 (⊨ :str-to-sym-roundtrip
    #t
-   (≡ (≈→: (:→≈ (⌜ foo))) (⌜ foo)))
+   (≡ (≈→: (≈ (⌜ foo))) (⌜ foo)))
 
 (≋ "\nAll conversion tests complete.")

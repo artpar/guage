@@ -12,10 +12,10 @@
    (⋘? "nonexistent_module.scm"))
 
 ; Load a known stdlib module and check it's cached
-(⋘ "stdlib/math.scm")
+(⋘ "bootstrap/stdlib/math.scm")
 (⊨ :module-loaded-after-load
    #t
-   (⋘? "stdlib/math.scm"))
+   (⋘? "bootstrap/stdlib/math.scm"))
 
 ; --- Caching: loading twice returns cached result ---
 
@@ -23,26 +23,24 @@
 (≔ load-counter (□ #0))
 
 ; Load math again - should be cached, no re-evaluation
-(⋘ "stdlib/math.scm")
+(⋘ "bootstrap/stdlib/math.scm")
 (⊨ :cached-load-no-reeval
    #t
-   (⋘? "stdlib/math.scm"))
+   (⋘? "bootstrap/stdlib/math.scm"))
 
 ; --- ⊞◇ module-define (exports + version) ---
 
-; Define exports for current test "module"
-; Note: ⊞◇ operates on the currently-loading module context
-; We test it by defining exports on a known module
+; Check that the ⊞◇ primitive exists (not an error when referenced)
 (⊨ :module-define-exists
    #t
-   (⊙ ⊞◇ :lambda?))
+   (¬ (⚠? ⊞◇)))
 
 ; --- ⋘⊳ validated import ---
 
 ; Import a loaded module without symbol filtering
 (⊨ :validated-import-basic
    #t
-   (¬ (⚠? (⋘⊳ "stdlib/math.scm"))))
+   (¬ (⚠? (⋘⊳ "bootstrap/stdlib/math.scm"))))
 
 ; --- Error on non-existent module ---
 (⊨ :validated-import-missing

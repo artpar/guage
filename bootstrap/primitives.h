@@ -481,14 +481,15 @@ Cell* prim_refine_list(Cell* args);       /* ∈⊡∀ - list all refinements */
 Cell* prim_refine_find(Cell* args);       /* ∈⊡∈ - find matching refinement */
 Cell* prim_refine_subtype(Cell* args);    /* ∈⊡⊆ - refinement subtype check */
 
-/* Trait/Typeclass primitives (StrTable-backed O(1) dispatch) */
-Cell* prim_trait_define(Cell* args);     /* ⊧≔ - define trait */
-Cell* prim_trait_implement(Cell* args);  /* ⊧⊕ - implement trait for type */
-Cell* prim_trait_check(Cell* args);      /* ⊧? - check if type implements trait */
-Cell* prim_trait_ops(Cell* args);        /* ⊧⊙ - list trait required ops */
-Cell* prim_trait_dispatch(Cell* args);   /* ⊧→ - dispatch trait op for type */
-Cell* prim_trait_defaults(Cell* args);   /* ⊧⊙? - get trait default implementations */
-Cell* prim_type_of(Cell* args);          /* ⊧∈ - get runtime type name */
+/* Trait/Typeclass primitives (FDT-backed ~5ns dispatch) */
+Cell* prim_trait_define(Cell* args);        /* ⊧≔ - define trait */
+Cell* prim_trait_implement(Cell* args);     /* ⊧⊕ - implement trait for type */
+Cell* prim_trait_check(Cell* args);         /* ⊧? - check if type implements trait */
+Cell* prim_trait_ops(Cell* args);           /* ⊧⊙ - list trait required ops */
+Cell* prim_trait_dispatch(Cell* args);      /* ⊧→ - dispatch trait op for type */
+Cell* prim_trait_dispatch_fast(Cell* args); /* ⊧→! - fused type-of + dispatch */
+Cell* prim_trait_defaults(Cell* args);      /* ⊧⊙? - get trait default implementations */
+Cell* prim_type_of(Cell* args);             /* ⊧∈ - get runtime type name */
 
 /* Trait constraint checking */
 bool trait_type_satisfies(const char* type, const char* trait);
