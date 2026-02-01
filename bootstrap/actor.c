@@ -335,6 +335,15 @@ bool actor_add_monitor(Actor* target, Actor* watcher) {
     return true;
 }
 
+/* Decrement g_alive_actors and wake all schedulers if it hits 0.
+ * Centralises the pattern so every kill path notifies parked schedulers. */
+static void alive_dec_and_notify(void) {
+    int prev = atomic_fetch_sub_explicit(&g_alive_actors, 1, memory_order_acq_rel);
+    if (prev == 1) {
+        ec_notify_all(&g_sched_ec);
+    }
+}
+
 /* Send exit signal to target from sender with reason.
  * If target traps exits → deliver as ⟨:EXIT sender-id reason⟩ message.
  * If target does not trap → kill it. */
@@ -362,7 +371,7 @@ void actor_exit_signal(Actor* target, Actor* sender, Cell* reason) {
         target->alive = false;
         target->result = reason;
         if (reason) cell_retain_shared(reason);  /* shared: cleanup may run on different thread */
-        atomic_fetch_sub_explicit(&g_alive_actors, 1, memory_order_relaxed);
+        alive_dec_and_notify();
         pthread_mutex_unlock(ACTOR_STRIPE(target->id));
         /* Propagate to target's own links/monitors (outside lock) */
         actor_notify_exit(target, reason);
@@ -392,16 +401,9 @@ bool actor_finish(Actor* actor, Cell* result) {
     }
     /* Break fiber->result alias to prevent double-release in fiber_destroy */
     if (actor->fiber) actor->fiber->result = NULL;
-    int prev_alive = atomic_fetch_sub_explicit(&g_alive_actors, 1, memory_order_acq_rel);
-    LOG_DEBUG("actor_finish: actor %d dead, alive=%d→%d", actor->id, prev_alive, prev_alive - 1);
+    alive_dec_and_notify();
+    LOG_DEBUG("actor_finish: actor %d dead, alive now decremented", actor->id);
     pthread_mutex_unlock(ACTOR_STRIPE(actor->id));
-
-    /* If this was the last alive actor, wake all parked schedulers
-     * (including scheduler 0) so they can detect termination. */
-    if (prev_alive == 1) {
-        extern EventCount g_sched_ec;
-        ec_notify_all(&g_sched_ec);
-    }
 
     /* Notify links/monitors outside lock */
     actor_notify_exit(actor, result);
@@ -650,7 +652,7 @@ void supervisor_handle_exit(Supervisor* sup, int dead_id, Cell* reason) {
                 child->alive = false;
                 child->result = cell_symbol(":shutdown");
                 cell_transfer_to_shared(child->result);
-                atomic_fetch_sub_explicit(&g_alive_actors, 1, memory_order_relaxed);
+                alive_dec_and_notify();
                 pthread_mutex_unlock(ACTOR_STRIPE(child->id));
                 actor_notify_exit(child, child->result);
             } else {
@@ -671,7 +673,7 @@ void supervisor_handle_exit(Supervisor* sup, int dead_id, Cell* reason) {
                 child->alive = false;
                 child->result = cell_symbol(":shutdown");
                 cell_transfer_to_shared(child->result);
-                atomic_fetch_sub_explicit(&g_alive_actors, 1, memory_order_relaxed);
+                alive_dec_and_notify();
                 pthread_mutex_unlock(ACTOR_STRIPE(child->id));
                 actor_notify_exit(child, child->result);
             } else {

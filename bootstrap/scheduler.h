@@ -145,6 +145,9 @@ void sched_shutdown(void);
 /* Enqueue actor onto scheduler's local deque (LIFO slot first) */
 void sched_enqueue(Scheduler* sched, Actor* actor);
 
+/* Enqueue a newly-created actor (no-op in single-scheduler mode) */
+void sched_enqueue_new_actor(Actor* actor);
+
 /* Try to steal actor(s) from another scheduler (steal-half policy) */
 Actor* sched_try_steal(Scheduler* thief);
 

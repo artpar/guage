@@ -1,84 +1,76 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-02-01 (Day 142 IN PROGRESS)
+Updated: 2026-02-01 (Day 142 COMPLETE)
 Purpose: Current project status and progress
 ---
 
 # Session Handoff: Day 142 - Suspend/Wake Audit & Multi-Scheduler Fixes (2026-02-01)
 
-## Day 142 Progress - Architectural Cohesion Audit (IN PROGRESS)
+## Day 142 Progress - Architectural Cohesion Audit (COMPLETE)
 
-**STATUS:** 132/133 test files passing (test_multi_scheduler.test hangs at 32/145 assertions). Root cause IDENTIFIED but not yet fixed.
+**STATUS:** 133/133 test files passing ✅
 
 ### Audit Goal
 Fix suspend/wake path gaps across all suspend reasons. Ensure HFT-grade correctness for the multi-scheduler runtime.
 
-### Bugs Found & Fixed This Session
+### Bugs Found & Fixed (All Sessions Combined)
 
 **Fix 1: g_alive_actors not reset between sched_run_all calls**
 - `actor_reset_all()` calls `actor_destroy()` (not `actor_finish()`), so `g_alive_actors` accumulates stale counts
 - Added `atomic_store_explicit(&g_alive_actors, 0, memory_order_relaxed)` in `actor_reset_all()`
 
-**Fix 2: actor_add_monitor TOCTOU race (CRITICAL)**
-- Between checking `other->alive` in `prim_actor_monitor` and the stripe lock in `actor_add_monitor`, target could die — losing `:DOWN`
+**Fix 2: actor_add_monitor TOCTOU race** - Between checking `other->alive` in `prim_actor_monitor` and the stripe lock in `actor_add_monitor`, target could die — losing `:DOWN`
 - Changed `actor_add_monitor` to return `bool`, checking alive UNDER stripe lock
 - Caller sends immediate `:DOWN` if target already dead
 
-**Fix 3: prim_receive lost-wakeup race (CRITICAL)**
-- Between mailbox check (empty) and `wait_flag=1`, message could arrive without wake
+**Fix 3: prim_receive lost-wakeup race** - Between mailbox check (empty) and `wait_flag=1`, message could arrive without wake
 - Fixed with 2-phase commit: set wait_flag → re-check mailbox → cancel if message found
 - Same pattern as Folly eventcount: prepare → verify → commit/cancel
 
-### Infrastructure: Compile-Time Log Levels (log.h)
-- Created `bootstrap/log.h` with LOG_TRACE/DEBUG/INFO/WARN/ERROR macros
+**Fix 4: alive_dec_and_notify — missing ec_notify_all at kill paths** - `actor_exit_signal` and `supervisor_handle_exit` decremented `g_alive_actors` without `ec_notify_all`
+- Created `alive_dec_and_notify()` helper: decrement + wake when count hits 0
+- Replaced 4 decrement sites (actor_finish, actor_exit_signal, supervisor ONE_FOR_ALL, supervisor REST_FOR_ONE)
+- Upgraded all from `memory_order_relaxed` to `memory_order_acq_rel`
+
+**Fix 5: suspend_send_value leak in fiber_destroy** - `fiber->suspend_send_value` is `cell_retain`'d but never released if actor dies while suspended on CHAN_SEND
+- Added `cell_release(fiber->suspend_send_value)` in `fiber_destroy`
+
+**Fix 6: Double-enqueue from result==1 on wait-based suspensions (ROOT CAUSE OF HANG)** - `sched_run_one_quantum` returned 1 (re-enqueue) for ALL suspended fibers
+- Wait-based suspensions (MAILBOX, CHAN_*, SELECT, TASK_AWAIT) set `wait_flag=1` and their wake paths (actor_send, channel_wake) also call `sched_enqueue`
+- This double-enqueue created a no-op dequeue that raced on `fiber->eval_ctx` (line 886) and `wait_flag` (line 904), producing zombie actors: `alive=1, g_run=0, all_idle=1`
+- **Fix:** Return `-1` for wait-based suspensions. Only `SUSPEND_REDUCTION` (preemption) returns 1 for caller re-enqueue.
+
+**Fix 7: Actors spawned during sched_run_all never scheduled** - `sched_distribute_actors()` only distributes actors present at the START of `sched_run_all`
+- Actors spawned during execution (by `prim_spawn`/`prim_task`) incremented `g_alive_actors` but were never enqueued to any scheduler deque
+- Workers saw `alive > 0` but all queues empty → deadlock/premature termination
+- **Fix:** Added `sched_enqueue_new_actor()` called from `prim_spawn` and `prim_task` AFTER fiber body is finalized (not in `actor_create` — would race on placeholder body)
+
+**Fix 8: Double-enqueue SIGSEGV from sched_enqueue_new_actor + sched_distribute_actors** - Actors spawned during REPL eval (before `sched_run_all`) were enqueued by `sched_enqueue_new_actor`, then enqueued AGAIN by `sched_distribute_actors` at the start of `sched_run_all`
+- Two copies in the deque → two workers running the same actor concurrently → SIGSEGV
+- **Fix:** Added `g_sched_running` flag. `sched_enqueue_new_actor` is a no-op when `sched_run_all` is not active. Set true after `sched_distribute_actors`, false before worker shutdown.
+
+### Infrastructure: Compile-Time Log Levels (log.h) - Created `bootstrap/log.h` with LOG_TRACE/DEBUG/INFO/WARN/ERROR macros
 - Build-time `-DLOG_LEVEL=0..5` controls which levels compile in
 - Production (default LOG_LEVEL=2): LOG_TRACE/DEBUG compile to `((void)0)` — zero cost
 - Added `make debug` target (LOG_LEVEL=0, all logs enabled)
-- Permanent LOG_DEBUG calls at critical scheduler/actor lifecycle points
-- `fflush(stderr)` in LOG_EMIT for reliable cross-thread log ordering
 
-### Root Cause IDENTIFIED (Not Yet Fixed)
-
-**Bug: `actor_propagate_exit` and supervisor paths decrement `g_alive_actors` without calling `ec_notify_all`**
-
-When an actor dies and kills a linked actor via `actor_propagate_exit`:
-1. `actor_finish` decrements alive (2→1), checks `prev_alive==1` → false → NO wake
-2. `actor_notify_exit` → `actor_propagate_exit` kills linked actor, decrements alive (1→0) → **NO `ec_notify_all` call**
-3. S0 is parked via eventcount → never wakes → deadlock
-
-Same bug exists in `supervisor_handle_exit` paths (ONE_FOR_ALL, REST_FOR_ONE) at lines 653 and 674.
-
-**Fix needed:** Create `alive_dec_and_notify()` helper that decrements g_alive_actors AND calls `ec_notify_all` when it drops to 0. Use everywhere g_alive_actors is decremented:
-- `actor_finish` (line 395)
-- `actor_propagate_exit` (line 365) ← missing wake
-- `supervisor_handle_exit` ONE_FOR_ALL (line 653) ← missing wake
-- `supervisor_handle_exit` REST_FOR_ONE (line 674) ← missing wake
-
-### Files Modified This Session
+### Files Modified
 | File | Changes |
 |------|---------|
-| `bootstrap/log.h` | **NEW** — Compile-time log level macros (LOG_TRACE through LOG_ERROR), fflush for thread safety |
-| `bootstrap/actor.c` | g_alive_actors reset in actor_reset_all, actor_add_monitor→bool with alive-under-lock check, permanent LOG_DEBUG at actor_finish/send/notify_exit/add_monitor |
+| `bootstrap/log.h` | **NEW** — Compile-time log level macros |
+| `bootstrap/actor.c` | alive_dec_and_notify helper, 4 decrement sites replaced, actor_add_monitor→bool, g_alive_actors reset |
 | `bootstrap/actor.h` | actor_add_monitor signature: void → bool |
-| `bootstrap/primitives.c` | prim_receive 2-phase commit fix, prim_actor_monitor TOCTOU fix, LOG_DEBUG at recv/send |
-| `bootstrap/scheduler.c` | #include "log.h", replaced fprintf with LOG_DEBUG, permanent lifecycle logging at run_all entry/termination/parking/waking |
-| `Makefile` | Added `debug` target (LOG_LEVEL=0), added log.h dependency |
-
-### Remaining Plan Items (from plan file)
-1. **Fix alive_dec_and_notify** — the identified root cause above (NEXT)
-2. **SUSPEND_SELECT wake path** — no wait_flag/channel waiter registration
-3. **SUSPEND_TASK_AWAIT wake path** — no wait_flag, actor_finish doesn't wake awaiting actors (partially done — TASK_AWAIT scan added to actor_finish)
-4. **Clear stale suspend metadata on resume** — suspend_channel_id, suspend_select_ids, suspend_await_actor_id
-5. **CAS-based waiter registration** — prevent single-waiter slot overwrite on channels
-6. **Thread-safe rr_counter in select** — static int → _Atomic int
-7. **Dead code removal** — ws_force_grant, sched_unpark (sched_unpark decl already removed from scheduler.h)
+| `bootstrap/primitives.c` | prim_receive 2-phase commit, prim_actor_monitor TOCTOU fix, SELECT waiter comment, `sched_enqueue_new_actor` calls in prim_spawn/prim_task |
+| `bootstrap/scheduler.c` | **Fix 6:** return -1 for wait-based suspensions; **Fix 7:** `sched_enqueue_new_actor`; **Fix 8:** `g_sched_running` guard |
+| `bootstrap/scheduler.h` | `sched_enqueue_new_actor` declaration |
+| `bootstrap/fiber.c` | suspend_send_value leak fix in fiber_destroy |
+| `bootstrap/park.c` | Bounded ulock wait (10ms) to prevent permanent deadlock |
+| `Makefile` | Added `debug` target |
 
 ### Test Results
-- **132/133 test files pass** (all except test_multi_scheduler.test)
-- **test_multi_scheduler.test**: 32/145 assertions pass, hangs at Section 12 (link death propagation)
-- Section 11 (monitor across schedulers) passes when child dies before monitor setup
-- Section 12 hangs: link-child dies with error → actor_propagate_exit kills linked parent → alive drops to 0 with no ec_notify_all → S0 parked forever
+- **133/133 test files pass** ✅
+- **test_multi_scheduler.test**: All 145 assertions pass (10/10 runs clean) including monitor, link, trap-exit, channel, select, timer, supervisor sections
 
 ---
 

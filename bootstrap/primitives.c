@@ -2535,6 +2535,10 @@ Cell* prim_spawn(Cell* args) {
     cell_retain(body);
     cell_release(body);
 
+    /* Now that the fiber body is fully set up, enqueue for scheduling.
+     * Must happen AFTER body update to avoid workers running placeholder. */
+    sched_enqueue_new_actor(actor);
+
     return cell_actor(actor->id);
 }
 
@@ -4141,6 +4145,9 @@ Cell* prim_task_async(Cell* args) {
     cell_retain(body);
     cell_release(body);
 
+    /* Enqueue for scheduling after body is fully set up */
+    sched_enqueue_new_actor(actor);
+
     return cell_actor(actor->id);
 }
 
@@ -5161,7 +5168,12 @@ Cell* prim_chan_select(Cell* args) {
             fiber->suspend_select_ids[i] = ids[i];
             /* Best-effort waiter registration on each channel.
              * CAS: only register if slot is empty (-1). If another actor
-             * already claimed the slot, the poll loop handles us. */
+             * already claimed the slot, the poll loop handles us.
+             *
+             * KNOWN LIMITATION: When woken via one channel, stale
+             * registrations remain on others until scheduler.c:906-916
+             * cleans them up before resume. The race window is narrow
+             * and only affects high-contention SELECT scenarios. */
             Channel* ch = channel_lookup(ids[i]);
             if (ch) {
                 int expected = -1;

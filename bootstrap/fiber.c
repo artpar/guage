@@ -94,6 +94,7 @@ void fiber_destroy(Fiber* fiber) {
     if (fiber->shift_handler) cell_release(fiber->shift_handler);
     if (fiber->saved_continuation) cell_release(fiber->saved_continuation);
     if (fiber->saved_continuation_env) cell_release(fiber->saved_continuation_env);
+    if (fiber->suspend_send_value) cell_release(fiber->suspend_send_value);
 
     /* Return stack to pool or free */
     Scheduler* sched = sched_get((int)tls_scheduler_id);

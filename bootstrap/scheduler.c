@@ -87,6 +87,7 @@ uint64_t tsc_to_nanos(uint64_t tsc) {
 static Scheduler g_schedulers[MAX_SCHEDULERS] __attribute__((aligned(CACHE_LINE)));
 static int g_num_schedulers = 1;
 static _Atomic bool g_sched_initialized = false;
+static _Atomic bool g_sched_running = false;  /* true while sched_run_all multi-path is active */
 static EvalContext* g_shared_eval_ctx = NULL;
 static size_t g_page_size = 0;
 
@@ -703,6 +704,18 @@ void sched_enqueue(Scheduler* sched, Actor* actor) {
     }
 }
 
+/* ── Enqueue a newly-created actor (called from prim_spawn/prim_task) ──
+ * Only enqueues when sched_run_all is actively running. Actors spawned
+ * before sched_run_all are handled by sched_distribute_actors instead.
+ * Without this guard, actors get double-enqueued → two workers run the
+ * same actor concurrently → SIGSEGV. */
+void sched_enqueue_new_actor(Actor* actor) {
+    if (g_num_schedulers <= 1) return; /* single-scheduler: actor_run_all scans all */
+    if (!atomic_load_explicit(&g_sched_running, memory_order_acquire)) return;
+    Scheduler* home = sched_get(actor->home_scheduler);
+    if (home) sched_enqueue(home, actor);
+}
+
 /* ── Steal-half policy ── */
 Actor* sched_try_steal(Scheduler* thief) {
     if (g_num_schedulers <= 1) return NULL;
@@ -959,7 +972,19 @@ int sched_run_one_quantum(Scheduler* sched, Actor* actor) {
     /* Restore */
     actor_set_current(prev_actor);
     fiber_set_current(prev_fiber);
-    return 1; /* Still alive, did work */
+
+    /* Wait-based suspensions (MAILBOX, CHAN_*, SELECT, TASK_AWAIT) set
+     * wait_flag=1 and have sender-side wake paths that CAS wait_flag 1→0
+     * + sched_enqueue.  Returning 1 here would double-enqueue: the caller
+     * re-enqueues AND the wake path re-enqueues, creating a no-op dequeue
+     * that races on fiber->eval_ctx / wait_flag and produces zombies.
+     * Only SUSPEND_REDUCTION (preemption) should be re-enqueued by the
+     * caller — it is immediately runnable with no external wake path. */
+    if (fiber->state == FIBER_SUSPENDED &&
+        fiber->suspend_reason != SUSPEND_REDUCTION) {
+        return -1; /* Blocked — wake path owns re-enqueue */
+    }
+    return 1; /* Still alive, did work (preemption or other) */
 }
 
 /* ── Worker thread main loop ── */
@@ -1097,7 +1122,12 @@ static void* scheduler_worker_main(void* arg) {
          * resume (not poll-based). */
         /* Decrement AFTER enqueue so the actor is never in a gap state
          * (not running, not queued) which would fool idle detection. */
-        atomic_fetch_sub_explicit(&g_running_actors, 1, memory_order_release);
+        int prev_running = atomic_fetch_sub_explicit(&g_running_actors, 1, memory_order_release);
+        /* When a blocked actor leaves the last running slot, nudge S0
+         * so it can re-evaluate the "all blocked, no progress" condition. */
+        if (result == -1 && prev_running == 1) {
+            ec_notify_one(&g_sched_ec);
+        }
 
         /* QSBR: declare quiescent state + drip-free retired actors */
         qsbr_quiescent(sched->id);
@@ -1130,7 +1160,7 @@ static void sched_distribute_actors(void) {
 static bool sched_all_idle(void) {
     for (int i = 0; i < g_num_schedulers; i++) {
         Scheduler* s = &g_schedulers[i];
-        if (atomic_load_explicit(&s->runnext, memory_order_relaxed) != NULL) return false;
+        if (atomic_load_explicit(&s->runnext, memory_order_acquire) != NULL) return false;
         if (ws_size(&s->deque) > 0) return false;
     }
     if (global_queue_size() > 0) return false;
@@ -1162,6 +1192,9 @@ int sched_run_all(int max_ticks) {
 
     /* Distribute actors to schedulers */
     sched_distribute_actors();
+
+    /* Mark multi-scheduler as running — sched_enqueue_new_actor now active */
+    atomic_store_explicit(&g_sched_running, true, memory_order_release);
 
     /* Reset global state for this run */
     ec_init(&g_sched_ec);
@@ -1212,7 +1245,12 @@ int sched_run_all(int max_ticks) {
             /* result == -1 (blocked): NOT re-enqueued.
              * Wake path (actor_send, channel_wake_actor, actor_finish)
              * owns re-enqueue via wait_flag CAS. */
-            atomic_fetch_sub_explicit(&g_running_actors, 1, memory_order_release);
+            {
+                int prev_run = atomic_fetch_sub_explicit(&g_running_actors, 1, memory_order_release);
+                if (result == -1 && prev_run == 1) {
+                    ec_notify_one(&g_sched_ec);
+                }
+            }
             ticks++;
         } else {
             idle_spins++;
@@ -1222,10 +1260,12 @@ int sched_run_all(int max_ticks) {
             LOG_DEBUG("S0 idle=%d no_run=%d alive=%d g_run=%d all_idle=%d",
                 idle_spins, no_running, alive,
                 atomic_load(&g_running_actors), sched_all_idle());
-            if (idle_spins > 10 && no_running && alive <= 0 && sched_all_idle()) {
-                LOG_DEBUG("S0 terminating: alive=%d", alive);
-                ec_notify_all(&g_sched_ec);
-                break;
+            if (idle_spins > 10 && no_running && sched_all_idle()) {
+                if (alive <= 0 || !timer_any_pending()) {
+                    LOG_DEBUG("S0 terminating: alive=%d", alive);
+                    ec_notify_all(&g_sched_ec);
+                    break;
+                }
             }
             /* Brief park: prepare-wait on eventcount so we wake immediately
              * when any worker enqueues work (ec_notify_one in sched_enqueue).
@@ -1267,6 +1307,9 @@ int sched_run_all(int max_ticks) {
     }
 
     qsbr_thread_offline(0);
+
+    /* Stop accepting new actor enqueues before shutting down workers */
+    atomic_store_explicit(&g_sched_running, false, memory_order_release);
 
     /* Shutdown workers — set should_stop THEN wake all via eventcount.
      * The epoch bump ensures any worker in prepare/commit sees the change. */

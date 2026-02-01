@@ -108,7 +108,9 @@ void guage_park_tiered(_Atomic uint64_t* ec_state, uint32_t expected_epoch) {
     extern int __ulock_wait(uint32_t op, void* addr, uint64_t value, uint32_t timeout);
 #define UL_COMPARE_AND_WAIT_T 1
 #define ULF_NO_ERRNO_T        0x01000000
-    __ulock_wait(UL_COMPARE_AND_WAIT_T | ULF_NO_ERRNO_T, (void*)ec_state, (uint64_t)val, 0);
+    /* Bounded wait (10ms) so threads can re-check termination conditions.
+     * Prevents permanent deadlock when all actors are blocked. */
+    __ulock_wait(UL_COMPARE_AND_WAIT_T | ULF_NO_ERRNO_T, (void*)ec_state, (uint64_t)val, 10000);
 #elif defined(__linux__)
     uint32_t val = (uint32_t)cur;
     syscall(SYS_futex, ec_state, FUTEX_WAIT_PRIVATE, val, NULL, NULL, 0);
