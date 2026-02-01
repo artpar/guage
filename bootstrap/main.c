@@ -931,11 +931,20 @@ int main(int argc, char** argv) {
     g_argc = argc;
     g_argv = argv;
 
-    /* Parse --test flag */
+    /* Parse arguments:
+     *   --test <file>   Structured test mode (JSON Lines on stderr, exit code)
+     *   <file>          Shorthand for --test <file> (any arg ending in .test/.scm)
+     *
+     * NOTE: stdin piping (guage < file) is the REPL's non-interactive mode.
+     * Always prefer --test for test files — it gives structured output + exit codes.
+     */
     const char* test_file = NULL;
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--test") == 0 && i + 1 < argc) {
             test_file = argv[++i];
+        } else if (argv[i][0] != '-') {
+            /* Positional arg: treat as test file */
+            test_file = argv[i];
         }
     }
 

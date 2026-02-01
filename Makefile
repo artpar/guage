@@ -130,7 +130,7 @@ run: build
 		echo "Usage: make run FILE=path/to/file.scm"; \
 		exit 1; \
 	fi
-	@$(BOOTSTRAP_EXECUTABLE) < $(FILE)
+	@$(BOOTSTRAP_EXECUTABLE) $(FILE)
 
 # ============================================================================
 # Cleaning targets
