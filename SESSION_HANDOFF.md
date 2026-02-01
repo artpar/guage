@@ -1,13 +1,74 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-02-01 (Day 144 COMPLETE)
+Updated: 2026-02-01 (Day 144 Session 2 COMPLETE)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 144 - HFT-Grade Low-Level Capabilities (2026-02-01)
+# Session Handoff: Day 144 Session 2 - Module Namespacing & Qualified Access (2026-02-01)
 
-## Day 144 — HFT-Grade Low-Level Capabilities (COMPLETE)
+## Day 144 Session 2 — Module Namespacing & Qualified Access (COMPLETE)
+
+**STATUS:** 140/140 test files passing ✅ (+ intermittent multi_scheduler flakiness, pre-existing)
+
+### What Was Done
+
+Added real module namespacing to Guage: per-module symbol environments, private symbols (non-exported hidden from global), dot-qualified access (`m.sin`), module aliases, and selective imports. Previously all symbols went into one flat global env regardless of exports — now `⊞◇` actually enforces visibility.
+
+### Phase 1: Module-Local Environment
+
+- Each `ModuleEntry` gets a `StrTable* local_env` storing all its symbol→Cell* bindings
+- `eval_define` now stores every module-loaded definition in module's `local_env`
+- Only promotes to global env if `module_registry_is_exported` returns true
+- When no exports declared → promote all (backward compatible with all 30 stdlib files)
+- When exports declared via `⊞◇` → only exported symbols go to global
+- `⊞◇` retroactively removes non-exported symbols from global env (rebuilds alist)
+
+### Phase 2: Qualified Access (Dot Notation)
+
+- Symbol resolution detects `.` in names, splits at first dot
+- Prefix resolved via alias table → module's `local_env` lookup
+- Export boundary enforced: `m.private_sym` returns `:not-exported` error
+- `m.public_sym` resolves correctly through module's local_env
+
+### New Symbols
+
+| Symbol | Meaning | Usage |
+|--------|---------|-------|
+| `.` | Qualified access separator | `m.sin` (in symbol names) |
+| `:⊜` | Alias keyword | `(⋘⊳ "mod" :⊜ :m)` |
+| `:⊏` | Select keyword | `(⋘⊳ "mod" :⊏ (⌜ (:a :b)))` |
+
+### Files Changed
+
+| File | Changes |
+|------|---------|
+| `bootstrap/module.h` | `local_env` field on `ModuleEntry`, `alias_table` on `ModuleRegistry`, 4 new function declarations |
+| `bootstrap/module.c` | `module_registry_define`, `module_registry_lookup`, `module_registry_set_alias`, `module_registry_resolve_alias`, init/free for local_env and alias_table |
+| `bootstrap/eval.c` | Conditional promotion in `eval_define`, dot-qualified lookup in symbol resolution |
+| `bootstrap/primitives.c` | Extended `⋘⊳` with `:⊜` (alias) and `:⊏` (select), extended `⊞◇` with retroactive env cleanup, fixed `prim_load` to restore parent module context |
+| `bootstrap/tests/test_module_helper.scm` | **NEW** — test module declaring exports |
+| `bootstrap/tests/test_module_noexport.scm` | **NEW** — test module without exports (backward compat) |
+| `bootstrap/tests/test_module_namespace.test` | **NEW** — 11 assertions for namespace features |
+
+### Bug Fix: Nested Module Loading
+
+Fixed `prim_load` to restore parent module context after loading a child module. Previously it set `current_loading_module` to NULL, which would break any defines in the parent after a nested load.
+
+### Backward Compatibility
+
+- All 30 stdlib files: none use `⊞◇` → all symbols promoted to global as before
+- All 139 existing tests: pass unchanged
+- REPL: definitions always go to global env (no module context)
+- New behavior only activates when a module explicitly calls `⊞◇`
+
+### Test Results
+
+140/140 test files passing (139 existing + 1 new).
+
+---
+
+## Day 144 Session 1 — HFT-Grade Low-Level Capabilities (COMPLETE)
 
 **STATUS:** 139/139 test files passing ✅
 

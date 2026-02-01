@@ -740,17 +740,24 @@ Cell* eval_lookup(EvalContext* ctx, const char* name) {
 
 /* Define global binding */
 void eval_define(EvalContext* ctx, const char* name, Cell* value) {
-    Cell* sym = cell_symbol(name);
-    Cell* binding = cell_cons(sym, value);
-    ctx->env = cell_cons(binding, ctx->env);
-
     /* Track this symbol in module registry */
     const char* current_module = module_get_current_loading();
     if (current_module != NULL) {
         /* Loading a module file - register in that module */
         module_registry_add_symbol(current_module, name);
+        /* Store in module's local environment */
+        module_registry_define(current_module, name, value);
+        /* Only promote to global if exported (or no exports declared) */
+        if (module_registry_is_exported(current_module, name)) {
+            Cell* sym = cell_symbol(name);
+            Cell* binding = cell_cons(sym, value);
+            ctx->env = cell_cons(binding, ctx->env);
+        }
     } else {
-        /* REPL definition - register in virtual <repl> module */
+        /* REPL definition - always global */
+        Cell* sym = cell_symbol(name);
+        Cell* binding = cell_cons(sym, value);
+        ctx->env = cell_cons(binding, ctx->env);
         module_registry_add_symbol("<repl>", name);
     }
 
@@ -1161,6 +1168,34 @@ tail_call:  /* TCO: loop back here instead of recursive call */
             /* Keywords are self-evaluating (like :Point, :x, :Cons) */
             cell_retain(expr);
             return expr;
+        }
+
+        /* Check for dot-qualified access (e.g., m.sin) */
+        const char* dot = strchr(name, '.');
+        if (dot && dot != name && dot[1] != '\0') {
+            /* Split at first dot: prefix.suffix */
+            size_t prefix_len = (size_t)(dot - name);
+            char prefix[256];
+            if (prefix_len >= sizeof(prefix)) prefix_len = sizeof(prefix) - 1;
+            memcpy(prefix, name, prefix_len);
+            prefix[prefix_len] = '\0';
+            const char* suffix = dot + 1;
+
+            /* Resolve alias to module path */
+            const char* module_path = module_registry_resolve_alias(prefix);
+            if (module_path) {
+                /* Check export boundary */
+                if (!module_registry_is_exported(module_path, suffix)) {
+                    Cell* var_name = cell_symbol(name);
+                    Cell* result = cell_error_at("not-exported", var_name, expr->span);
+                    cell_release(var_name);
+                    return result;
+                }
+                Cell* value = module_registry_lookup(module_path, suffix);
+                if (value) return value;
+                /* Fall through to normal lookup if not found in module */
+            }
+            /* If no alias matched, fall through to normal lookup */
         }
 
         /* Regular symbols: variable lookup */

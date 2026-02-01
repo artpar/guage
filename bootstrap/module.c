@@ -14,6 +14,11 @@ static const char* current_loading_module = NULL;
 /* Load order counter (increments with each module load) */
 static size_t load_order_counter = 0;
 
+/* Release Cell* stored in local_env StrTable */
+static void free_cell_value(void* p) {
+    if (p) cell_release((Cell*)p);
+}
+
 /* Free a ModuleEntry (callback for strtable_free) */
 static void free_module_entry(void* p) {
     ModuleEntry* entry = (ModuleEntry*)p;
@@ -24,6 +29,10 @@ static void free_module_entry(void* p) {
         strtable_free(entry->export_set, NULL);
         free(entry->export_set);
     }
+    if (entry->local_env) {
+        strtable_free(entry->local_env, free_cell_value);
+        free(entry->local_env);
+    }
     cell_release(entry->dependencies);
     if (entry->version) free(entry->version);
     if (entry->cached_result) cell_release(entry->cached_result);
@@ -33,6 +42,7 @@ static void free_module_entry(void* p) {
 void module_registry_init(void) {
     strtable_init(&registry.modules, 64);
     strtable_init(&registry.symbol_index, 256);
+    strtable_init(&registry.alias_table, 32);
     registry.count = 0;
 }
 
@@ -60,6 +70,7 @@ void module_registry_add(const char* module_name) {
     cell_retain(entry->symbols);
     entry->exports = NULL;
     entry->export_set = NULL;
+    entry->local_env = NULL;
     entry->dependencies = cell_nil();
     cell_retain(entry->dependencies);
     entry->version = NULL;
@@ -193,10 +204,16 @@ Cell* module_registry_get_dependencies(const char* module_name) {
     return entry->dependencies;
 }
 
+/* Free alias table values (strdup'd module paths) */
+static void free_alias_value(void* p) {
+    free(p);
+}
+
 void module_registry_free(void) {
     strtable_free(&registry.modules, free_module_entry);
     /* symbol_index values are entry->name pointers owned by entries — don't double-free */
     strtable_free(&registry.symbol_index, NULL);
+    strtable_free(&registry.alias_table, free_alias_value);
     registry.count = 0;
 }
 
@@ -294,6 +311,51 @@ int module_registry_is_exported(const char* module_name, const char* symbol) {
 
     /* O(1) lookup */
     return strtable_get(entry->export_set, search_name) != NULL;
+}
+
+/* Module-local environment: store symbol→Cell* in module's local_env */
+void module_registry_define(const char* module_name, const char* symbol, Cell* value) {
+    if (!module_name || !symbol || !value) return;
+
+    ModuleEntry* entry = (ModuleEntry*)strtable_get(&registry.modules, module_name);
+    if (!entry) return;
+
+    /* Allocate local_env on first use */
+    if (!entry->local_env) {
+        entry->local_env = malloc(sizeof(StrTable));
+        strtable_init(entry->local_env, 32);
+    }
+
+    /* Retain new value, release old if replacing */
+    cell_retain(value);
+    Cell* old = (Cell*)strtable_put(entry->local_env, symbol, value);
+    if (old) cell_release(old);
+}
+
+/* Lookup symbol in module's local_env */
+Cell* module_registry_lookup(const char* module_name, const char* symbol) {
+    if (!module_name || !symbol) return NULL;
+
+    ModuleEntry* entry = (ModuleEntry*)strtable_get(&registry.modules, module_name);
+    if (!entry || !entry->local_env) return NULL;
+
+    Cell* value = (Cell*)strtable_get(entry->local_env, symbol);
+    if (value) cell_retain(value);
+    return value;
+}
+
+/* Alias table: alias → module path */
+void module_registry_set_alias(const char* alias, const char* module_path) {
+    if (!alias || !module_path) return;
+
+    /* Free old value if replacing */
+    char* old = (char*)strtable_put(&registry.alias_table, alias, strdup(module_path));
+    if (old) free(old);
+}
+
+const char* module_registry_resolve_alias(const char* alias) {
+    if (!alias) return NULL;
+    return (const char*)strtable_get(&registry.alias_table, alias);
 }
 
 /* Cycle detection using DFS */

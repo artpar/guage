@@ -8069,6 +8069,9 @@ Cell* prim_load(Cell* args) {
         module_registry_add_dependency(parent_module, filename);
     }
 
+    /* Save parent entry's name pointer for restoration (entry->name is stable) */
+    ModuleEntry* parent_entry = parent_module ? module_registry_get_entry(parent_module) : NULL;
+
     module_set_current_loading(filename);
 
     /* Get current context */
@@ -8106,7 +8109,7 @@ Cell* prim_load(Cell* args) {
 
         if (cell_is_error(result)) {
             if (entry) entry->load_state = MODULE_UNLOADED;
-            module_set_current_loading(NULL);
+            module_set_current_loading(parent_entry ? parent_entry->name : NULL);
             free(buffer);
             return result;
         }
@@ -8122,8 +8125,8 @@ Cell* prim_load(Cell* args) {
         cell_retain(result);
     }
 
-    /* Clear current loading module */
-    module_set_current_loading(NULL);
+    /* Restore parent loading module */
+    module_set_current_loading(parent_entry ? parent_entry->name : NULL);
 
     free(buffer);
     return result;
@@ -8595,6 +8598,59 @@ Cell* prim_module_define(Cell* args) {
     /* Set exports on module */
     module_registry_set_exports(target, export_list);
 
+    /* Retroactively remove non-exported symbols from global env.
+     * Walk the global alist and rebuild without non-exported symbols
+     * that came from this module. Cons keepers into a temp list (reversed),
+     * then reverse into the final env to preserve lookup order. */
+    EvalContext* ctx = eval_get_current_context();
+    if (ctx) {
+        ModuleEntry* entry = module_registry_get_entry(target);
+        if (entry && entry->local_env && entry->export_set) {
+            Cell* old_env = ctx->env;
+            cell_retain(old_env);
+
+            /* Pass 1: collect keepers in reverse order */
+            Cell* reversed = cell_nil();
+            Cell* cursor = old_env;
+            while (cell_is_pair(cursor)) {
+                Cell* binding = cell_car(cursor);
+                int should_remove = 0;
+                if (cell_is_pair(binding)) {
+                    Cell* var = cell_car(binding);
+                    if (cell_is_symbol(var)) {
+                        const char* var_name = cell_get_symbol(var);
+                        /* Remove if from this module AND not exported */
+                        if (strtable_get(entry->local_env, var_name) &&
+                            !strtable_get(entry->export_set, var_name)) {
+                            should_remove = 1;
+                        }
+                    }
+                }
+                if (!should_remove) {
+                    Cell* old_rev = reversed;
+                    reversed = cell_cons(binding, reversed);
+                    cell_release(old_rev);
+                }
+                cursor = cell_cdr(cursor);
+            }
+
+            /* Pass 2: reverse to restore original order */
+            Cell* new_env = cell_nil();
+            cursor = reversed;
+            while (cell_is_pair(cursor)) {
+                Cell* binding = cell_car(cursor);
+                Cell* old_new = new_env;
+                new_env = cell_cons(binding, new_env);
+                cell_release(old_new);
+                cursor = cell_cdr(cursor);
+            }
+            cell_release(reversed);
+
+            ctx->env = new_env;
+            cell_release(old_env);
+        }
+    }
+
     /* Check for optional version (third arg) */
     Cell* rest = cell_cdr(cell_cdr(args));
     if (rest && cell_is_pair(rest)) {
@@ -8607,7 +8663,7 @@ Cell* prim_module_define(Cell* args) {
     return cell_symbol(":ok");
 }
 
-/* ⋘⊳ - module-import with export validation */
+/* ⋘⊳ - module-import with export validation, aliasing, selective import */
 Cell* prim_module_import_validated(Cell* args) {
     Cell* mod_path = arg1(args);
 
@@ -8616,30 +8672,102 @@ Cell* prim_module_import_validated(Cell* args) {
     }
 
     /* Load module (will use cache if already loaded) */
-    Cell* load_result = prim_load(args);
+    Cell* load_args = cell_cons(mod_path, cell_nil());
+    Cell* load_result = prim_load(load_args);
+    cell_release(load_args);
     if (cell_is_error(load_result)) {
         return load_result;
     }
 
-    /* If second argument provided, validate requested symbols against exports */
-    Cell* rest = cell_cdr(args);
-    if (rest && cell_is_pair(rest)) {
-        Cell* requested = cell_car(rest);
-        const char* mod_name = cell_get_string(mod_path);
+    const char* mod_name = cell_get_string(mod_path);
 
-        /* Walk requested symbol list, check each is exported */
-        Cell* curr = requested;
-        while (curr && cell_is_pair(curr)) {
-            Cell* sym = cell_car(curr);
-            if (cell_is_symbol(sym)) {
-                const char* sym_name = cell_get_symbol(sym);
-                if (!module_registry_is_exported(mod_name, sym_name)) {
+    /* Process keyword options from rest of args */
+    Cell* rest = cell_cdr(args);
+    while (rest && cell_is_pair(rest)) {
+        Cell* key = cell_car(rest);
+
+        if (cell_is_symbol(key)) {
+            const char* key_name = cell_get_symbol(key);
+
+            /* :⊜ alias — register alias for qualified access */
+            if (strcmp(key_name, ":⊜") == 0) {
+                rest = cell_cdr(rest);
+                if (!rest || !cell_is_pair(rest)) {
                     cell_release(load_result);
-                    return cell_error(":not-exported", sym);
+                    return cell_error(":⊜ requires an alias name", key);
                 }
+                Cell* alias_cell = cell_car(rest);
+                const char* alias = NULL;
+                if (cell_is_symbol(alias_cell)) {
+                    alias = cell_get_symbol(alias_cell);
+                    if (alias[0] == ':') alias++;
+                } else if (cell_is_string(alias_cell)) {
+                    alias = cell_get_string(alias_cell);
+                }
+                if (!alias) {
+                    cell_release(load_result);
+                    return cell_error(":⊜ alias must be a symbol or string", alias_cell);
+                }
+                module_registry_set_alias(alias, mod_name);
+                rest = cell_cdr(rest);
+                continue;
             }
-            curr = cell_cdr(curr);
+
+            /* :⊏ select — import only specific symbols to global */
+            if (strcmp(key_name, ":⊏") == 0) {
+                rest = cell_cdr(rest);
+                if (!rest || !cell_is_pair(rest)) {
+                    cell_release(load_result);
+                    return cell_error(":⊏ requires a list of symbols", key);
+                }
+                Cell* select_list = cell_car(rest);
+                EvalContext* ctx = eval_get_current_context();
+
+                /* Walk the selection list, import each to global */
+                Cell* curr = select_list;
+                while (curr && cell_is_pair(curr)) {
+                    Cell* sym = cell_car(curr);
+                    if (cell_is_symbol(sym)) {
+                        const char* sym_name = cell_get_symbol(sym);
+                        if (sym_name[0] == ':') sym_name++;
+                        /* Check export boundary */
+                        if (!module_registry_is_exported(mod_name, sym_name)) {
+                            cell_release(load_result);
+                            return cell_error(":not-exported", sym);
+                        }
+                        /* Lookup in module local_env and promote to global */
+                        Cell* val = module_registry_lookup(mod_name, sym_name);
+                        if (val) {
+                            Cell* bind_sym = cell_symbol(sym_name);
+                            Cell* binding = cell_cons(bind_sym, val);
+                            ctx->env = cell_cons(binding, ctx->env);
+                            cell_release(val);
+                        }
+                    }
+                    curr = cell_cdr(curr);
+                }
+                rest = cell_cdr(rest);
+                continue;
+            }
         }
+
+        /* Legacy: plain list as second arg = validate requested symbols */
+        if (cell_is_pair(key)) {
+            Cell* curr = key;
+            while (curr && cell_is_pair(curr)) {
+                Cell* sym = cell_car(curr);
+                if (cell_is_symbol(sym)) {
+                    const char* sym_name = cell_get_symbol(sym);
+                    if (!module_registry_is_exported(mod_name, sym_name)) {
+                        cell_release(load_result);
+                        return cell_error(":not-exported", sym);
+                    }
+                }
+                curr = cell_cdr(curr);
+            }
+        }
+
+        rest = cell_cdr(rest);
     }
 
     return load_result;

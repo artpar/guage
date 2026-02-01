@@ -30,6 +30,7 @@ typedef struct ModuleEntry {
     Cell* symbols;           // List of defined symbol names (as keywords)
     Cell* exports;           // List of exported symbol names (NULL = all exported)
     StrTable* export_set;    // O(1) export lookup (NULL = export all)
+    StrTable* local_env;     // Module-local symbol→Cell* bindings (NULL until first define)
     Cell* dependencies;      // List of module names this module depends on
     char* version;           // Semantic version string (NULL if unset)
     time_t loaded_at;        // When loaded (Unix timestamp)
@@ -42,6 +43,7 @@ typedef struct ModuleEntry {
 typedef struct {
     StrTable modules;        // module_name → ModuleEntry*
     StrTable symbol_index;   // symbol_name → module_name (char*)
+    StrTable alias_table;    // alias → module_path (char*, owned strdup)
     size_t count;
 } ModuleRegistry;
 
@@ -155,5 +157,27 @@ void module_set_current_loading(const char* module_name);
  * Returns: Module name or NULL if not loading
  */
 const char* module_get_current_loading(void);
+
+/**
+ * Store a symbol→value binding in a module's local environment
+ */
+void module_registry_define(const char* module_name, const char* symbol, Cell* value);
+
+/**
+ * Lookup a symbol in a module's local environment
+ * Returns: Cell* value (retained) or NULL if not found
+ */
+Cell* module_registry_lookup(const char* module_name, const char* symbol);
+
+/**
+ * Register a module alias (e.g., "m" → "math.scm")
+ */
+void module_registry_set_alias(const char* alias, const char* module_path);
+
+/**
+ * Resolve a module alias to its path
+ * Returns: Module path string or NULL if alias not found
+ */
+const char* module_registry_resolve_alias(const char* alias);
 
 #endif // MODULE_H
