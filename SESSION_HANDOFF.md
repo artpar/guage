@@ -50,6 +50,11 @@ Fix suspend/wake path gaps across all suspend reasons. Ensure HFT-grade correctn
 - Two copies in the deque → two workers running the same actor concurrently → SIGSEGV
 - **Fix:** Added `g_sched_running` flag. `sched_enqueue_new_actor` is a no-op when `sched_run_all` is not active. Set true after `sched_distribute_actors`, false before worker shutdown.
 
+**Fix 9: Multi-scheduler termination deadlock when all actors blocked** - When actors are alive but permanently blocked (e.g., waiting on empty mailbox/channel with no sender), S0 and workers both park via eventcount with no wake signal
+- S0's park path only broke on `alive <= 0`, but alive > 0 with all actors in FIBER_SUSPENDED
+- Worker finishes last actor (which blocks), decrements `g_running_actors`, but nobody wakes S0
+- **Fix (3 parts):** (a) Bounded 10ms timeout on `__ulock_wait` in `guage_park_tiered` (park.c) — prevents permanent deadlock; (b) Worker sends `ec_notify_one` when `g_running_actors` transitions 1->0 with a blocked actor; (c) S0 idle path breaks when `!timer_any_pending()` (not just `alive <= 0`)
+
 ### Infrastructure: Compile-Time Log Levels (log.h) - Created `bootstrap/log.h` with LOG_TRACE/DEBUG/INFO/WARN/ERROR macros
 - Build-time `-DLOG_LEVEL=0..5` controls which levels compile in
 - Production (default LOG_LEVEL=2): LOG_TRACE/DEBUG compile to `((void)0)` — zero cost
@@ -62,7 +67,7 @@ Fix suspend/wake path gaps across all suspend reasons. Ensure HFT-grade correctn
 | `bootstrap/actor.c` | alive_dec_and_notify helper, 4 decrement sites replaced, actor_add_monitor→bool, g_alive_actors reset |
 | `bootstrap/actor.h` | actor_add_monitor signature: void → bool |
 | `bootstrap/primitives.c` | prim_receive 2-phase commit, prim_actor_monitor TOCTOU fix, SELECT waiter comment, `sched_enqueue_new_actor` calls in prim_spawn/prim_task |
-| `bootstrap/scheduler.c` | **Fix 6:** return -1 for wait-based suspensions; **Fix 7:** `sched_enqueue_new_actor`; **Fix 8:** `g_sched_running` guard |
+| `bootstrap/scheduler.c` | **Fix 6:** return -1 for wait-based suspensions; **Fix 7:** `sched_enqueue_new_actor`; **Fix 8:** `g_sched_running` guard; **Fix 9:** ec_notify_one on last-running-actor-blocks, timer_any_pending in S0 idle path |
 | `bootstrap/scheduler.h` | `sched_enqueue_new_actor` declaration |
 | `bootstrap/fiber.c` | suspend_send_value leak fix in fiber_destroy |
 | `bootstrap/park.c` | Bounded ulock wait (10ms) to prevent permanent deadlock |
