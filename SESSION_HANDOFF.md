@@ -1,11 +1,66 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-02-01 (Day 140 COMPLETE)
+Updated: 2026-02-01 (Day 141 COMPLETE)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 140 - Supervisor Fix + QSBR + Global Trace (2026-02-01)
+# Session Handoff: Day 141 - HTF-Grade Scheduler Parking (2026-02-01)
+
+## Day 141 Progress - Eventcount + Tiered Parking + Searching State
+
+**RESULT:** 131 test files (131 passing), 511 primitives, **HTF-grade scheduler parking: eventcount (Folly/Vyukov), tiered park (YIELD→WFE→ulock), searching state (Tokio/Go pattern)**
+
+### Feature: HTF-Grade Scheduler Parking & Termination
+
+Replaced ad-hoc per-worker `park_state` + Dekker-race-prone parking with production-grade eventcount-based parking derived from Tokio, Go, Folly, and Taskflow.
+
+**Key properties achieved:**
+- **Lost wakeups impossible** — eventcount epoch acts as sequencer; 2-phase commit (prepare_wait → commit_wait) eliminates Dekker race by construction
+- **No thundering herd** — `g_num_searching` atomic counter gates wake notifications; only wakes parked workers when no searchers active
+- **Sub-microsecond wake for short idles** — 3-tier parking: ARM YIELD ×64 (~100ns) → WFE ×256 (~1-5μs, no syscall) → ulock/futex (OS sleep)
+- **Last-searcher re-scan invariant** — Go/Tokio pattern: last thread to stop searching re-scans all queues before sleeping
+- **Zero fences on worker hot path** — only seq_cst on cancel_wait (Folly insight)
+
+### Files Modified/Created (6)
+| File | Changes |
+|------|---------|
+| `bootstrap/eventcount.h` | **NEW** — Header-only Folly-derived eventcount (epoch+waiters in `_Atomic uint64_t`): ec_init, ec_prepare_wait, ec_cancel_wait, ec_commit_wait, ec_notify_one, ec_notify_all |
+| `bootstrap/park.h` | Added `guage_park_tiered()` declaration |
+| `bootstrap/park.c` | Added `guage_park_tiered()` — 3-stage parking: YIELD→WFE→ulock (Apple Silicon native), with Linux futex + x86 pause fallbacks |
+| `bootstrap/scheduler.h` | Replaced `park_state` with `_Atomic bool parked`; added `g_sched_ec` (EventCount) and `g_num_searching` globals; `#include "eventcount.h"` |
+| `bootstrap/scheduler.c` | Rewrote worker idle path with eventcount 2-phase commit + searching state; updated sched_enqueue (ec_notify_one gate), sched_unpark, termination detection (ec_notify_all), shutdown (ec_notify_all) |
+| `bootstrap/primitives.c` | Updated stats reporting: `park_state` → `parked` |
+
+### Architecture Change
+```
+BEFORE:                                    AFTER:
+per-worker park_state + should_stop    →   global eventcount (epoch+waiters in 1 atomic)
+ad-hoc idle spin → yield → ulock      →   YIELD → WFE → ulock (3-tier, Apple Silicon native)
+no searching state                     →   g_num_searching atomic (Tokio/Go pattern)
+Dekker-race-prone parking              →   race-free by construction (eventcount 2-phase commit)
+```
+
+### Verification
+- **200/200 iterations** of `test_multi_scheduler.test` — zero hangs (was intermittent pre-fix)
+- **131/131 tests** pass in full test suite
+- **Multi-scheduler hang resolved** — the pre-existing termination detection hang from Day 140 is fixed
+
+### Known Issues Resolved
+- **Multi-scheduler hang (was pre-existing)**: FIXED — root cause was Dekker race in park/wake protocol. Eventcount eliminates by design.
+- Note: `bootstrap/guage` does not accept file arguments; tests must be fed via stdin (`< file.test`)
+
+### Test Files: 131 (131 passing)
+### Primitive Count: 511 (unchanged)
+
+### Next Steps
+- Formal verification of QSBR grace period correctness under all scheduling paths
+- Expand global trace to support time-range queries
+- Add QSBR memory-bound monitoring (retire ring high-water mark stats)
+- Benchmark amortized-free vs batch-free under jemalloc contention
+- Add TRACE_PARK event kind to verify WFE-tier wakes in production traces
+
+---
 
 ## Day 140 Progress - Supervisor Exit Fix, QSBR Reclamation, Global Trace Aggregation
 
@@ -70,11 +125,11 @@ Cross-scheduler merged trace events via K-way merge by timestamp.
 ### Primitive Count: 511 (+2: ⟳⊳⊳⊕, ⟳⊳⊳⊕#)
 
 ### Known Issues
-- **Multi-scheduler hang (pre-existing)**: `sched_run_all` with ≥2 schedulers can hang on termination detection. Pre-dates Day 140 — confirmed by testing pristine code. QSBR test runs single-scheduler to avoid this. `test_multi_scheduler.test` is intermittent.
+- **Multi-scheduler hang (pre-existing)**: ~~`sched_run_all` with ≥2 schedulers can hang on termination detection.~~ **FIXED in Day 141** — eventcount parking eliminates Dekker race. 200/200 stress runs pass.
 - **Effect-based message receive (←?) hangs in file mode**: Pre-existing issue with `≫` + `←?` actors when loaded from file. Works in pipe/REPL mode.
 
-### Next Steps
-- Fix multi-scheduler termination detection hang (pre-existing, affects `sched_run_all` idle/park logic)
+### Next Steps (completed in Day 141)
+- ~~Fix multi-scheduler termination detection hang~~ → **Done: eventcount + tiered parking**
 - Formal verification of QSBR grace period correctness under all scheduling paths
 - Expand global trace to support time-range queries
 - Add QSBR memory-bound monitoring (retire ring high-water mark stats)

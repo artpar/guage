@@ -2640,7 +2640,7 @@ Cell* prim_sched_stats(Cell* args) {
         stats = cell_cons(cell_cons(cell_symbol(":ctx-sw"), cell_number((double)s->stat_context_switches)), stats);
         stats = cell_cons(cell_cons(cell_symbol(":reds"), cell_number((double)s->stat_reductions)), stats);
         stats = cell_cons(cell_cons(cell_symbol(":queue"), cell_number((double)ws_size(&s->deque))), stats);
-        stats = cell_cons(cell_cons(cell_symbol(":parked"), cell_bool(atomic_load_explicit(&s->park_state, memory_order_relaxed) == 1)), stats);
+        stats = cell_cons(cell_cons(cell_symbol(":parked"), cell_bool(atomic_load_explicit(&s->parked, memory_order_relaxed))), stats);
         Cell* entry = cell_cons(cell_number((double)i), stats);
         result = cell_cons(entry, result);
     }

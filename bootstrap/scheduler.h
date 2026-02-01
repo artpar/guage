@@ -8,6 +8,7 @@
 #include "cell.h"
 #include "eval.h"
 #include "park.h"
+#include "eventcount.h"
 
 /* Cache line size — 128B for Apple Silicon SoC safety, also safe on x86 (64B) */
 #define CACHE_LINE 128
@@ -118,8 +119,8 @@ struct Scheduler {
     uint64_t stat_steals;
     uint64_t stat_actors_run;
 
-    /* ── Park/wake — 4-byte futex/ulock (own cache line) ── */
-    _Alignas(CACHE_LINE) _Atomic uint32_t park_state;  /* 0=running, 1=parked */
+    /* ── Park/wake — eventcount-based (own cache line) ── */
+    _Alignas(CACHE_LINE) _Atomic bool parked;  /* true when committed to eventcount sleep */
 
     /* ── Stack pool (own cache line) ── */
     _Alignas(CACHE_LINE) char* stack_pool[STACK_POOL_MAX];
@@ -188,6 +189,10 @@ Cell* sched_prepare_resume(Actor* actor);
 
 /* ── Alive actor counter (atomic, for termination detection) ── */
 extern _Atomic int g_alive_actors;
+
+/* ── Eventcount-based parking (HTF-grade scheduler) ── */
+extern EventCount g_sched_ec;               /* Global eventcount (all workers share) */
+extern _Atomic uint32_t g_num_searching;    /* Workers actively scanning for work */
 
 /* ── QSBR API ── */
 

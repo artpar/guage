@@ -28,6 +28,10 @@ _Atomic int g_alive_actors = 0;
 /* ── Currently-executing actor counter (for idle detection) ── */
 static _Atomic int g_running_actors = 0;
 
+/* ── Eventcount-based parking (HTF-grade scheduler) ── */
+EventCount g_sched_ec;
+_Atomic uint32_t g_num_searching = 0;
+
 /* ── Trace event ring buffer (Day 135) ── */
 _Thread_local TraceEvent tls_trace_buf[TRACE_BUF_CAP];
 _Thread_local uint32_t tls_trace_pos = 0;
@@ -653,12 +657,16 @@ void sched_init(int num_schedulers) {
 
         ws_init(&s->deque);
 
-        /* Platform-adaptive parking: 4-byte atomic state */
-        atomic_init(&s->park_state, 0);
+        /* Eventcount-based parking */
+        atomic_init(&s->parked, false);
 
         /* Stack pool starts empty */
         s->stack_pool_count = 0;
     }
+
+    /* Initialize global eventcount + searching state */
+    ec_init(&g_sched_ec);
+    atomic_init(&g_num_searching, 0);
 
     /* Initialize QSBR subsystem */
     qsbr_init(num_schedulers);
@@ -677,8 +685,8 @@ void sched_shutdown(void) {
     for (int i = 0; i < g_num_schedulers; i++) {
         Scheduler* s = &g_schedulers[i];
         atomic_store_explicit(&s->should_stop, true, memory_order_release);
-        sched_unpark(i);
     }
+    ec_notify_all(&g_sched_ec);
 
     /* Wait for worker threads (not scheduler 0 = main thread) */
     for (int i = 1; i < g_num_schedulers; i++) {
@@ -729,22 +737,11 @@ void sched_enqueue(Scheduler* sched, Actor* actor) {
     /* ws_steal has a fallback path that steals directly from the
      * owner's active block, so no force_grant needed per-push. */
 
-    /* Wake parked schedulers */
+    /* Notify parked workers via eventcount (no thundering herd —
+     * only wake if no workers are actively searching for work) */
     if (g_num_schedulers > 1) {
-        if (!is_owner) {
-            /* Cross-thread enqueue: unpark the target scheduler */
-            if (atomic_load_explicit(&sched->park_state, memory_order_acquire) == 1) {
-                sched_unpark(sched->id);
-            }
-        }
-        /* Always try to unpark a parked scheduler (handles global queue overflow
-         * and ensures work-conservation when actors are newly enqueued) */
-        for (int i = 0; i < g_num_schedulers; i++) {
-            if (i != (int)tls_scheduler_id &&
-                atomic_load_explicit(&g_schedulers[i].park_state, memory_order_acquire) == 1) {
-                sched_unpark(i);
-                break;
-            }
+        if (atomic_load_explicit(&g_num_searching, memory_order_acquire) == 0) {
+            ec_notify_one(&g_sched_ec);
         }
     }
 }
@@ -784,9 +781,10 @@ Actor* sched_try_steal(Scheduler* thief) {
 void sched_unpark(int scheduler_id) {
     if (scheduler_id < 0 || scheduler_id >= g_num_schedulers) return;
     Scheduler* s = &g_schedulers[scheduler_id];
-    if (atomic_load_explicit(&s->park_state, memory_order_acquire) == 1) {
-        atomic_store_explicit(&s->park_state, 0, memory_order_release);
-        guage_wake(&s->park_state);
+    if (atomic_load_explicit(&s->parked, memory_order_acquire)) {
+        /* Targeted wake via eventcount — bump epoch wakes all parked workers,
+         * but only the target will find work on its queue. */
+        ec_notify_one(&g_sched_ec);
     }
 }
 
@@ -1025,6 +1023,7 @@ static void* scheduler_worker_main(void* arg) {
     qsbr_thread_online(sched->id);
 
     int idle_spins = 0;
+    bool was_searching = false;
     while (!atomic_load_explicit(&sched->should_stop, memory_order_acquire)) {
         Actor* actor = NULL;
 
@@ -1048,37 +1047,74 @@ static void* scheduler_worker_main(void* arg) {
         actor = sched_try_steal(sched);
         if (actor) goto run;
 
-        /* 5. Adaptive idle: spin → yield → park */
+        /* 5. Adaptive idle: spin → eventcount → tiered park */
         idle_spins++;
         if (idle_spins < 64) {
+            /* Stage 1: spin with YIELD hint */
 #if defined(__aarch64__)
-            __builtin_arm_yield();  /* ARM YIELD hint */
+            __builtin_arm_yield();
 #elif defined(__x86_64__)
-            __asm__ volatile("pause");  /* x86 PAUSE hint */
+            __asm__ volatile("pause");
 #endif
-        } else if (idle_spins < 256) {
+        } else if (idle_spins < 128) {
             sched_yield();
         } else {
-            /* Check termination before parking */
-            if (atomic_load_explicit(&g_alive_actors, memory_order_acquire) <= 0) break;
-            qsbr_thread_offline(sched->id);  /* QSBR: go offline before park */
-            atomic_store_explicit(&sched->park_state, 1, memory_order_release);
-            /* Re-check should_stop AFTER publishing park_state=1.
-             * Prevents race: main sets should_stop + unpark, but we
-             * haven't parked yet, so the unpark is lost. */
-            if (atomic_load_explicit(&sched->should_stop, memory_order_acquire)) {
-                atomic_store_explicit(&sched->park_state, 0, memory_order_release);
+            /* Transition: searching → preparing to park.
+             * Decrement num_searching. If we were the last searcher,
+             * re-scan all queues one final time (Go/Tokio invariant). */
+            if (was_searching) {
+                uint32_t prev = atomic_fetch_sub_explicit(&g_num_searching, 1, memory_order_acq_rel);
+                was_searching = false;
+                if (prev == 1) {
+                    /* Last searcher: re-scan before committing to sleep */
+                    actor = ws_pop(&sched->deque);
+                    if (!actor) actor = global_queue_pop();
+                    if (!actor) actor = sched_try_steal(sched);
+                    if (actor) { idle_spins = 0; goto run; }
+                }
+            }
+
+            /* Eventcount 2-phase commit */
+            uint32_t epoch = ec_prepare_wait(&g_sched_ec);
+
+            /* Between prepare and commit: check ALL termination/work conditions.
+             * Any notification between prepare and commit bumps the epoch,
+             * causing commit_wait to return immediately. NO LOST WAKEUPS. */
+            if (atomic_load_explicit(&sched->should_stop, memory_order_acquire) ||
+                atomic_load_explicit(&g_alive_actors, memory_order_acquire) <= 0) {
+                ec_cancel_wait(&g_sched_ec);
                 break;
             }
-            guage_park(&sched->park_state, 1);
-            atomic_store_explicit(&sched->park_state, 0, memory_order_release);
-            qsbr_thread_online(sched->id);  /* QSBR: back online after wake */
+
+            /* One final check for work (belt-and-suspenders) */
+            actor = ws_pop(&sched->deque);
+            if (!actor) actor = global_queue_pop();
+            if (!actor) actor = sched_try_steal(sched);
+            if (actor) {
+                ec_cancel_wait(&g_sched_ec);
+                idle_spins = 0;
+                goto run;
+            }
+
+            /* Commit to sleep — tiered park (YIELD → WFE → ulock) */
+            qsbr_thread_offline(sched->id);
+            atomic_store_explicit(&sched->parked, true, memory_order_release);
+            ec_commit_wait(&g_sched_ec, epoch);
+            atomic_store_explicit(&sched->parked, false, memory_order_release);
+            qsbr_thread_online(sched->id);
             idle_spins = 0;
         }
         continue;
 
     run:
         idle_spins = 0;
+        /* If we just found work and aren't marked searching, try to become a searcher.
+         * Cap at num_schedulers/2 to prevent contention. */
+        if (!was_searching &&
+            atomic_load_explicit(&g_num_searching, memory_order_relaxed) < (uint32_t)(g_num_schedulers / 2)) {
+            atomic_fetch_add_explicit(&g_num_searching, 1, memory_order_relaxed);
+            was_searching = true;
+        }
         atomic_fetch_add_explicit(&g_running_actors, 1, memory_order_relaxed);
         int result = sched_run_one_quantum(sched, actor);
         if (result != 0) {  /* alive (1=did work, -1=blocked) */
@@ -1091,6 +1127,11 @@ static void* scheduler_worker_main(void* arg) {
         /* QSBR: declare quiescent state + drip-free retired actors */
         qsbr_quiescent(sched->id);
         qsbr_reclaim_amortized(sched);
+    }
+
+    /* Clean up searching state on exit */
+    if (was_searching) {
+        atomic_fetch_sub_explicit(&g_num_searching, 1, memory_order_relaxed);
     }
 
     qsbr_thread_offline(sched->id);
@@ -1145,10 +1186,14 @@ int sched_run_all(int max_ticks) {
     /* Distribute actors to schedulers */
     sched_distribute_actors();
 
+    /* Reset global eventcount + searching state for this run */
+    ec_init(&g_sched_ec);
+    atomic_store_explicit(&g_num_searching, 0, memory_order_relaxed);
+
     /* Spawn workers 1..N-1 */
     for (int i = 1; i < g_num_schedulers; i++) {
         atomic_store_explicit(&g_schedulers[i].should_stop, false, memory_order_release);
-        atomic_store_explicit(&g_schedulers[i].park_state, 0, memory_order_release);
+        atomic_store_explicit(&g_schedulers[i].parked, false, memory_order_release);
         pthread_create(&g_schedulers[i].thread, NULL, scheduler_worker_main, &g_schedulers[i]);
     }
 
@@ -1195,8 +1240,14 @@ int sched_run_all(int max_ticks) {
                 bool no_running = atomic_load_explicit(&g_running_actors, memory_order_acquire) <= 0;
                 if (no_running &&
                     atomic_load_explicit(&g_alive_actors, memory_order_acquire) <= 0 &&
-                    sched_all_idle()) break;
-                if (no_running && !timer_any_pending() && sched_all_idle()) break;
+                    sched_all_idle()) {
+                    ec_notify_all(&g_sched_ec);
+                    break;
+                }
+                if (no_running && !timer_any_pending() && sched_all_idle()) {
+                    ec_notify_all(&g_sched_ec);
+                    break;
+                }
             }
         }
 
@@ -1217,14 +1268,12 @@ int sched_run_all(int max_ticks) {
 
     qsbr_thread_offline(0);
 
-    /* Shutdown workers — must set should_stop THEN unconditionally wake.
-     * Setting park_state=0 ensures guage_park returns immediately if the
-     * worker enters it after our wake (ulock compares *addr vs expected). */
+    /* Shutdown workers — set should_stop THEN wake all via eventcount.
+     * The epoch bump ensures any worker in prepare/commit sees the change. */
     for (int i = 1; i < g_num_schedulers; i++) {
         atomic_store_explicit(&g_schedulers[i].should_stop, true, memory_order_release);
-        atomic_store_explicit(&g_schedulers[i].park_state, 0, memory_order_release);
-        guage_wake(&g_schedulers[i].park_state);
     }
+    ec_notify_all(&g_sched_ec);
     for (int i = 1; i < g_num_schedulers; i++) {
         pthread_join(g_schedulers[i].thread, NULL);
     }
@@ -1278,7 +1327,7 @@ void sched_set_count(int n) {
         s->runnext_consecutive = 0;
         s->rng = (uint32_t)(i + 1) * 2654435761u;
         ws_init(&s->deque);
-        atomic_init(&s->park_state, 0);
+        atomic_init(&s->parked, false);
         s->stack_pool_count = 0;
     }
 
