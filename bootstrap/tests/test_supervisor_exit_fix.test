@@ -1,0 +1,116 @@
+; Day 140: Supervisor exit fix — proper stripe lock + g_alive_actors + actor_notify_exit
+; Tests one-for-all and rest-for-one kill paths
+
+(⟳∅)
+
+; ── Test 1: One-for-all — all children restarted, g_alive_actors correct ──
+
+(≔ worker (λ (self) (←?)))  ; Block waiting for a message
+
+(≔ crasher (λ (self)
+  (≫ (←?) (λ (msg)
+    (? (≡ msg :crash)
+       (⚠ :crashed :boom)
+       msg)))))
+
+(≔ sup1 (⟳⊛ :one-for-all (⟨⟩ crasher (⟨⟩ worker (⟨⟩ worker ∅)))))
+(⟳! #200)
+
+; Get children before crash
+(≔ kids1 (⟳⊛? sup1))
+(≔ c1 (◁ kids1))
+(≔ c2 (◁ (▷ kids1)))
+(≔ c3 (◁ (▷ (▷ kids1))))
+
+; All 3 should be alive
+(⊨ (⌜ :ofa-3-children-alive)
+  #t
+  (∧ (⟳? c1) (∧ (⟳? c2) (⟳? c3))))
+
+; Crash the first child
+(→! c1 :crash)
+(⟳! #400)
+
+; After restart, new children should be alive
+(≔ kids1b (⟳⊛? sup1))
+(≔ n1 (◁ kids1b))
+(≔ n2 (◁ (▷ kids1b)))
+(≔ n3 (◁ (▷ (▷ kids1b))))
+
+(⊨ (⌜ :ofa-new-children-alive)
+  #t
+  (∧ (⟳? n1) (∧ (⟳? n2) (⟳? n3))))
+
+; Original non-crashed children should be dead (replaced)
+(⊨ (⌜ :ofa-old-c2-dead) #f (⟳? c2))
+(⊨ (⌜ :ofa-old-c3-dead) #f (⟳? c3))
+
+
+; ── Test 2: Rest-for-one — only later children killed/restarted ──
+
+(⟳∅)
+
+(≔ stable (λ (self) (←?)))
+
+(≔ crasher2 (λ (self)
+  (≫ (←?) (λ (msg)
+    (? (≡ msg :crash)
+       (⚠ :crashed :boom)
+       msg)))))
+
+; 3 children: stable, crasher, stable
+(≔ sup2 (⟳⊛ :rest-for-one (⟨⟩ stable (⟨⟩ crasher2 (⟨⟩ stable ∅)))))
+(⟳! #200)
+
+(≔ kids2 (⟳⊛? sup2))
+(≔ s1 (◁ kids2))
+(≔ cr (◁ (▷ kids2)))
+(≔ s2 (◁ (▷ (▷ kids2))))
+
+; Crash middle child
+(→! cr :crash)
+(⟳! #400)
+
+(≔ kids2b (⟳⊛? sup2))
+(≔ s1b (◁ kids2b))
+(≔ crb (◁ (▷ kids2b)))
+(≔ s2b (◁ (▷ (▷ kids2b))))
+
+; First child (before crasher) should be unchanged
+(⊨ (⌜ :rfo-first-unchanged) #t (≡ s1 s1b))
+
+; Old third child should be dead (it was after the crashed one)
+(⊨ (⌜ :rfo-old-third-dead) #f (⟳? s2))
+
+; New third child should be alive
+(⊨ (⌜ :rfo-new-third-alive) #t (⟳? s2b))
+
+
+; ── Test 3: One-for-one does NOT kill siblings ──
+
+(⟳∅)
+
+(≔ crasher3 (λ (self)
+  (≫ (←?) (λ (msg)
+    (? (≡ msg :crash)
+       (⚠ :crashed :boom)
+       msg)))))
+
+(≔ worker3 (λ (self) (←?)))
+
+(≔ sup3 (⟳⊛ :one-for-one (⟨⟩ crasher3 (⟨⟩ worker3 ∅))))
+(⟳! #200)
+
+(≔ kids3 (⟳⊛? sup3))
+(≔ cr3 (◁ kids3))
+(≔ w3 (◁ (▷ kids3)))
+
+; Crash the first child
+(→! cr3 :crash)
+(⟳! #400)
+
+; Second child should be unchanged (one-for-one doesn't touch it)
+(≔ kids3b (⟳⊛? sup3))
+(≔ w3b (◁ (▷ kids3b)))
+(⊨ (⌜ :ofo-sibling-unchanged) #t (≡ w3 w3b))
+(⊨ (⌜ :ofo-sibling-alive) #t (⟳? w3b))

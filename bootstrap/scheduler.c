@@ -85,6 +85,9 @@ static _Atomic bool g_sched_initialized = false;
 static EvalContext* g_shared_eval_ctx = NULL;
 static size_t g_page_size = 0;
 
+/* ── QSBR global state (Day 140) ── */
+QsbrState g_qsbr;
+
 /* ── BWoS Work-Stealing Deque (OSDI 2023, NVIDIA stdexec-derived) ──
  * 4-cursor block design. Owner and thieves operate on DIFFERENT blocks.
  * Zero seq_cst on owner fast path. Two-phase steal: reserve (CAS) + commit (FAA). */
@@ -550,6 +553,74 @@ void sched_stack_free(Scheduler* s, char* stack, size_t stack_size) {
     }
 }
 
+/* ── QSBR Implementation (Day 140 — PPoPP 2024 amortized-free) ── */
+
+void qsbr_init(int num_schedulers) {
+    atomic_init(&g_qsbr.global_epoch, 1);  /* Start at 1 so epoch 0 means "never seen" */
+    g_qsbr.thread_count = num_schedulers;
+    for (int i = 0; i < num_schedulers; i++) {
+        atomic_init(&g_qsbr.threads[i].epoch, 0);
+        atomic_init(&g_qsbr.threads[i].online, false);
+    }
+}
+
+void qsbr_thread_online(int sched_id) {
+    /* Publish current epoch so we don't block grace periods immediately */
+    uint64_t ge = atomic_load_explicit(&g_qsbr.global_epoch, memory_order_relaxed);
+    atomic_store_explicit(&g_qsbr.threads[sched_id].epoch, ge, memory_order_relaxed);
+    atomic_store_explicit(&g_qsbr.threads[sched_id].online, true, memory_order_release);
+}
+
+void qsbr_thread_offline(int sched_id) {
+    atomic_store_explicit(&g_qsbr.threads[sched_id].online, false, memory_order_release);
+}
+
+void qsbr_retire(Scheduler* s, Actor* actor) {
+    RetireRing* r = &s->retire_ring;
+    uint32_t idx = r->tail & RETIRE_MASK;
+    r->actors[idx] = actor;
+    r->epochs[idx] = atomic_load_explicit(&g_qsbr.global_epoch, memory_order_relaxed);
+    r->tail++;
+
+    /* If ring is full, force-drain oldest entry (shouldn't happen in practice
+     * with RETIRE_CAP=256 and amortized reclaim every quantum) */
+    if (r->tail - r->head >= RETIRE_CAP) {
+        uint32_t hi = r->head & RETIRE_MASK;
+        r->actors[hi] = NULL;
+        r->head++;
+    }
+}
+
+void qsbr_reclaim_amortized(Scheduler* s) {
+    RetireRing* r = &s->retire_ring;
+    /* Drip-reclaim at most 2 actors per call (PPoPP 2024 amortized pattern).
+     * Once safe, the actor pointer is guaranteed not to be dereferenced by
+     * any scheduler's deque/runnext. Actor memory stays in the registry
+     * for result queries — actual free is deferred to actor_reset_all. */
+    int freed = 0;
+    while (r->head != r->tail && freed < 2) {
+        uint32_t hi = r->head & RETIRE_MASK;
+        if (!qsbr_safe(r->epochs[hi])) break;  /* Not yet safe */
+        r->actors[hi] = NULL;
+        r->head++;
+        freed++;
+    }
+}
+
+void qsbr_drain_all(void) {
+    /* Called after all workers joined — single-threaded.
+     * Clear retire rings. Actor memory stays in registry for result queries;
+     * actual free is deferred to actor_reset_all. */
+    for (int i = 0; i < g_num_schedulers; i++) {
+        RetireRing* r = &g_schedulers[i].retire_ring;
+        while (r->head != r->tail) {
+            uint32_t hi = r->head & RETIRE_MASK;
+            r->actors[hi] = NULL;
+            r->head++;
+        }
+    }
+}
+
 /* ── Scheduler initialization ── */
 
 void sched_init(int num_schedulers) {
@@ -588,6 +659,13 @@ void sched_init(int num_schedulers) {
         /* Stack pool starts empty */
         s->stack_pool_count = 0;
     }
+
+    /* Initialize QSBR subsystem */
+    qsbr_init(num_schedulers);
+
+    /* Publish scheduler 0 trace pointers (main thread — always available) */
+    g_schedulers[0].trace_buf_ptr = tls_trace_buf;
+    g_schedulers[0].trace_pos_ptr = &tls_trace_pos;
 
     /* Calibrate TSC for trace timestamp conversion */
     tsc_calibrate();
@@ -904,6 +982,10 @@ int sched_run_one_quantum(Scheduler* sched, Actor* actor) {
          * Returns false if actor_exit_signal already killed it. */
         actor_finish(actor, fiber->result);
 
+        /* QSBR: retire actor for deferred destroy (other schedulers may
+         * still hold stale pointers in deques/runnext). */
+        qsbr_retire(sched, actor);
+
         /* Restore */
         actor_set_current(prev_actor);
         fiber_set_current(prev_fiber);
@@ -934,6 +1016,13 @@ static void* scheduler_worker_main(void* arg) {
     eval_set_current_context(&sched->eval_ctx);
 
     atomic_store_explicit(&sched->running, true, memory_order_release);
+
+    /* Publish trace buffer pointers for cross-scheduler merge */
+    sched->trace_buf_ptr = tls_trace_buf;
+    sched->trace_pos_ptr = &tls_trace_pos;
+
+    /* QSBR: declare this thread online */
+    qsbr_thread_online(sched->id);
 
     int idle_spins = 0;
     while (!atomic_load_explicit(&sched->should_stop, memory_order_acquire)) {
@@ -972,6 +1061,7 @@ static void* scheduler_worker_main(void* arg) {
         } else {
             /* Check termination before parking */
             if (atomic_load_explicit(&g_alive_actors, memory_order_acquire) <= 0) break;
+            qsbr_thread_offline(sched->id);  /* QSBR: go offline before park */
             atomic_store_explicit(&sched->park_state, 1, memory_order_release);
             /* Re-check should_stop AFTER publishing park_state=1.
              * Prevents race: main sets should_stop + unpark, but we
@@ -982,6 +1072,7 @@ static void* scheduler_worker_main(void* arg) {
             }
             guage_park(&sched->park_state, 1);
             atomic_store_explicit(&sched->park_state, 0, memory_order_release);
+            qsbr_thread_online(sched->id);  /* QSBR: back online after wake */
             idle_spins = 0;
         }
         continue;
@@ -996,8 +1087,13 @@ static void* scheduler_worker_main(void* arg) {
         /* Decrement AFTER enqueue so the actor is never in a gap state
          * (not running, not queued) which would fool idle detection. */
         atomic_fetch_sub_explicit(&g_running_actors, 1, memory_order_release);
+
+        /* QSBR: declare quiescent state + drip-free retired actors */
+        qsbr_quiescent(sched->id);
+        qsbr_reclaim_amortized(sched);
     }
 
+    qsbr_thread_offline(sched->id);
     atomic_store_explicit(&sched->running, false, memory_order_release);
     return NULL;
 }
@@ -1061,8 +1157,16 @@ int sched_run_all(int max_ticks) {
     tls_scheduler_id = 0;
     atomic_store_explicit(&s0->running, true, memory_order_release);
 
+    /* Publish trace buffer pointers for scheduler 0 */
+    s0->trace_buf_ptr = tls_trace_buf;
+    s0->trace_pos_ptr = &tls_trace_pos;
+
+    /* QSBR: scheduler 0 online */
+    qsbr_thread_online(0);
+
     int ticks = 0;
     int idle_spins = 0;
+    int epoch_counter = 0;
     while (ticks < max_ticks) {
         Actor* actor = NULL;
 
@@ -1096,10 +1200,22 @@ int sched_run_all(int max_ticks) {
             }
         }
 
+        /* QSBR: declare quiescent + amortized reclaim */
+        qsbr_quiescent(0);
+        qsbr_reclaim_amortized(s0);
+
+        /* Advance global QSBR epoch every ~100 ticks (scheduler 0 only) */
+        if (++epoch_counter >= 100) {
+            qsbr_advance_epoch();
+            epoch_counter = 0;
+        }
+
         /* Tick timers + budget each round (matches single-scheduler semantics) */
         timer_tick_all();
         ticks++;
     }
+
+    qsbr_thread_offline(0);
 
     /* Shutdown workers — must set should_stop THEN unconditionally wake.
      * Setting park_state=0 ensures guage_park returns immediately if the
@@ -1114,6 +1230,9 @@ int sched_run_all(int max_ticks) {
     }
 
     atomic_store_explicit(&s0->running, false, memory_order_release);
+
+    /* QSBR: drain all retire rings now that workers are joined */
+    qsbr_drain_all();
 
     /* Drain all queues so no stale actor pointers survive across runs.
      * Workers are joined, so this is single-threaded and safe.
@@ -1164,4 +1283,74 @@ void sched_set_count(int n) {
     }
 
     g_num_schedulers = n;
+
+    /* Update QSBR thread count to match new scheduler count */
+    g_qsbr.thread_count = n;
+    /* Initialize QSBR state for new threads */
+    for (int i = 0; i < n; i++) {
+        atomic_store_explicit(&g_qsbr.threads[i].online, false, memory_order_relaxed);
+        atomic_store_explicit(&g_qsbr.threads[i].epoch, 0, memory_order_relaxed);
+    }
+}
+
+/* ── Global trace merge (Day 140) ──
+ * K-way merge by timestamp across all scheduler trace buffers.
+ * Only safe when workers are parked/joined (post-sched_run_all). */
+
+int sched_trace_merge(TraceEvent* out, int out_cap, int filter_kind) {
+    if (!out || out_cap <= 0) return 0;
+
+    /* Per-scheduler iteration state */
+    uint32_t counts[MAX_SCHEDULERS];
+    uint32_t starts[MAX_SCHEDULERS];
+    uint32_t cursors[MAX_SCHEDULERS];
+    TraceEvent* bufs[MAX_SCHEDULERS];
+    int active = 0;
+
+    for (int i = 0; i < g_num_schedulers; i++) {
+        Scheduler* s = &g_schedulers[i];
+        if (!s->trace_buf_ptr || !s->trace_pos_ptr) continue;
+
+        uint32_t pos = *s->trace_pos_ptr;
+        uint32_t cnt = pos < TRACE_BUF_CAP ? pos : TRACE_BUF_CAP;
+        if (cnt == 0) continue;
+
+        bufs[active] = s->trace_buf_ptr;
+        counts[active] = cnt;
+        starts[active] = pos > TRACE_BUF_CAP ? (pos - TRACE_BUF_CAP) : 0;
+        cursors[active] = 0;
+        active++;
+    }
+
+    if (active == 0) return 0;
+
+    /* K-way merge: repeatedly pick the event with smallest timestamp */
+    int written = 0;
+    while (written < out_cap) {
+        int best = -1;
+        uint64_t best_ts = UINT64_MAX;
+
+        for (int i = 0; i < active; i++) {
+            if (cursors[i] >= counts[i]) continue;
+            uint32_t idx = (starts[i] + cursors[i]) & (TRACE_BUF_CAP - 1);
+            TraceEvent* ev = &bufs[i][idx];
+            if (filter_kind >= 0 && ev->kind != (uint8_t)filter_kind) {
+                cursors[i]++;
+                i--;  /* Re-check this scheduler with next event */
+                continue;
+            }
+            if (ev->timestamp < best_ts) {
+                best_ts = ev->timestamp;
+                best = i;
+            }
+        }
+
+        if (best < 0) break;  /* All exhausted */
+
+        uint32_t idx = (starts[best] + cursors[best]) & (TRACE_BUF_CAP - 1);
+        out[written++] = bufs[best][idx];
+        cursors[best]++;
+    }
+
+    return written;
 }

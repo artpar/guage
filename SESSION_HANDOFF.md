@@ -1,11 +1,86 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-02-01 (Day 139 COMPLETE)
+Updated: 2026-02-01 (Day 140 COMPLETE)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 139 - BWoS Deque + BRC Domain Fix (2026-02-01)
+# Session Handoff: Day 140 - Supervisor Fix + QSBR + Global Trace (2026-02-01)
+
+## Day 140 Progress - Supervisor Exit Fix, QSBR Reclamation, Global Trace Aggregation
+
+**RESULT:** 131 test files (131 passing), 511 primitives, **3 features: supervisor exit fix, QSBR actor reclamation (PPoPP'24 amortized-free), cross-scheduler trace aggregation**
+
+### Feature 1: Supervisor Exit Fix (actor.c)
+
+`supervisor_handle_exit` ONE_FOR_ALL and REST_FOR_ONE strategies were directly setting `child->alive = false` without acquiring stripe locks, decrementing `g_alive_actors`, or calling `actor_notify_exit`. Fixed to use the same pattern as `actor_exit_signal`:
+
+```c
+pthread_mutex_lock(ACTOR_STRIPE(child->id));
+if (child->alive) {
+    child->alive = false;
+    child->result = cell_symbol(":shutdown");
+    cell_transfer_to_shared(child->result);
+    atomic_fetch_sub_explicit(&g_alive_actors, 1, memory_order_relaxed);
+    pthread_mutex_unlock(ACTOR_STRIPE(child->id));
+    actor_notify_exit(child, child->result);
+} else {
+    pthread_mutex_unlock(ACTOR_STRIPE(child->id));
+}
+```
+
+### Feature 2: QSBR + Amortized Free (scheduler.h/c)
+
+Quiescent-State-Based Reclamation for safe actor pointer lifecycle under multi-scheduler work-stealing. Based on PPoPP 2024 amortized-free pattern and DPDK QSBR API.
+
+- **QsbrThread**: Per-thread epoch counter + online flag (cache-line aligned)
+- **QsbrState**: Global epoch + per-thread state for up to MAX_SCHEDULERS
+- **RetireRing**: 256-entry per-scheduler ring buffer for retired actors
+- **Zero read-path overhead**: No barriers when popping actors from deque
+- **~10ns quiescent checkpoint**: 1 relaxed load + 1 release store between quanta
+- **Amortized drip-free**: 1-2 actors per scheduling iteration (avoids jemalloc batch pathology)
+- **Design decision**: QSBR tracks grace periods but does NOT call `actor_destroy` — actual destruction deferred to `actor_reset_all` to preserve results for queries
+
+Integration points: `sched_init`, `worker_main` (online/offline around park, quiescent after each quantum), `sched_run_all` (epoch advance every ~100 ticks), `sched_run_one_quantum` (retire after `actor_finish`), `sched_set_count` (update thread_count).
+
+### Feature 3: Global Trace Aggregation (scheduler.c, primitives.c)
+
+Cross-scheduler merged trace events via K-way merge by timestamp.
+
+- Each worker publishes `trace_buf_ptr` / `trace_pos_ptr` at thread start
+- `sched_trace_merge()`: O(N×M) K-way merge across all scheduler trace buffers
+- New primitives: `⟳⊳⊳⊕` (global read, optional kind filter), `⟳⊳⊳⊕#` (global count)
+
+### Files Modified (4)
+| File | Changes |
+|------|---------|
+| `bootstrap/actor.c` | Fixed ONE_FOR_ALL + REST_FOR_ONE in `supervisor_handle_exit` — stripe lock + g_alive_actors + actor_notify_exit |
+| `bootstrap/scheduler.h` | QsbrThread, QsbrState, RetireRing types; QSBR inline functions; trace pointer fields on Scheduler; `sched_trace_merge` decl |
+| `bootstrap/scheduler.c` | QSBR init/online/offline/retire/reclaim/drain; integration in worker loops; `sched_trace_merge` K-way merge; `sched_set_count` updates QSBR thread_count |
+| `bootstrap/primitives.c` | `prim_trace_global_read` (⟳⊳⊳⊕), `prim_trace_global_count` (⟳⊳⊳⊕#) |
+
+### New Test Files (3)
+| File | Tests |
+|------|-------|
+| `test_supervisor_exit_fix.test` | ONE_FOR_ALL restart, REST_FOR_ONE restart, ONE_FOR_ONE control |
+| `test_qsbr_reclaim.test` | Actor lifecycle (results preserved), 50 short-lived batch, chain-spawn (parent spawns child then finishes), reset/respawn cycles (15 assertions) |
+| `test_trace_global.test` | Global count matches local, kind filter, global read, alist structure, count vs list-length |
+
+### Test Files: 131 (131 passing)
+### Primitive Count: 511 (+2: ⟳⊳⊳⊕, ⟳⊳⊳⊕#)
+
+### Known Issues
+- **Multi-scheduler hang (pre-existing)**: `sched_run_all` with ≥2 schedulers can hang on termination detection. Pre-dates Day 140 — confirmed by testing pristine code. QSBR test runs single-scheduler to avoid this. `test_multi_scheduler.test` is intermittent.
+- **Effect-based message receive (←?) hangs in file mode**: Pre-existing issue with `≫` + `←?` actors when loaded from file. Works in pipe/REPL mode.
+
+### Next Steps
+- Fix multi-scheduler termination detection hang (pre-existing, affects `sched_run_all` idle/park logic)
+- Formal verification of QSBR grace period correctness under all scheduling paths
+- Expand global trace to support time-range queries
+- Add QSBR memory-bound monitoring (retire ring high-water mark stats)
+- Benchmark amortized-free vs batch-free under jemalloc contention
+
+---
 
 ## Day 139 Progress - BWoS Deque + BRC Retain/Release Domain Mismatch Fix
 

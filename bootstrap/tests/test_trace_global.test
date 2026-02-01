@@ -1,0 +1,97 @@
+; Day 140: Global trace aggregation — cross-scheduler merged trace events
+; Tests ⟳⊳⊳⊕ (global read) and ⟳⊳⊳⊕# (global count)
+
+(⟳∅)
+
+; ── Test 1: Single scheduler — global count matches local count ──
+
+(⟳⊳⊳! #t)   ; Enable tracing
+(⟳⊳⊳∅)       ; Clear trace buffer
+
+(≔ a1 (⟳ (λ (self) :traced)))
+(⟳! #200)
+
+; Local count
+(≔ local-count (⟳⊳⊳#))
+
+; Global count (should match since single scheduler)
+(≔ global-count (⟳⊳⊳⊕#))
+
+(⊨ (⌜ :single-sched-counts-match)
+  #t
+  (≡ local-count global-count))
+
+; Global count should be > 0 (at least SPAWN + RESUME + DIE events)
+(⊨ (⌜ :single-sched-has-events)
+  #t
+  (> global-count #0))
+
+
+; ── Test 2: Global count with kind filter ──
+
+(⟳∅)
+(⟳⊳⊳! #t)
+(⟳⊳⊳∅)
+
+(≔ a2 (⟳ (λ (self) :done)))
+(⟳! #200)
+
+(≔ spawn-count (⟳⊳⊳⊕# :SPAWN))
+(≔ die-count (⟳⊳⊳⊕# :DIE))
+
+; At least 1 spawn and 1 die event
+(⊨ (⌜ :global-spawn-count) #t (≥ spawn-count #1))
+(⊨ (⌜ :global-die-count) #t (≥ die-count #1))
+
+
+; ── Test 3: Global read returns non-empty list ──
+
+(⟳∅)
+(⟳⊳⊳! #t)
+(⟳⊳⊳∅)
+
+(≔ a3 (⟳ (λ (self) :done)))
+(≔ a4 (⟳ (λ (self) :done)))
+(⟳! #400)
+
+(≔ events (⟳⊳⊳⊕))
+
+; Events list should not be empty
+(⊨ (⌜ :global-read-nonempty)
+  #t
+  (¬ (≡ events ∅)))
+
+
+; ── Test 4: Filtered global read returns only matching kind ──
+
+(≔ spawns (⟳⊳⊳⊕ :SPAWN))
+
+(⊨ (⌜ :filtered-global-read-nonempty)
+  #t
+  (¬ (≡ spawns ∅)))
+
+; Each event is an alist — first pair should have :ts key
+(≔ first-event (◁ spawns))
+(≔ first-key (◁ (◁ first-event)))  ; car of first pair = key
+
+(⊨ (⌜ :event-has-ts-key)
+  :ts
+  first-key)
+
+
+; ── Test 5: Global count of filtered matches list length ──
+
+(≔ spawn-list (⟳⊳⊳⊕ :SPAWN))
+(≔ spawn-count-2 (⟳⊳⊳⊕# :SPAWN))
+
+(≔ list-len (λ (lst)
+  (? (≡ lst ∅) #0
+     (⊕ #1 (list-len (▷ lst))))))
+
+(⊨ (⌜ :count-matches-list-length)
+  #t
+  (≡ spawn-count-2 (list-len spawn-list)))
+
+
+; ── Cleanup ──
+(⟳⊳⊳! #f)  ; Disable tracing

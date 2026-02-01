@@ -599,10 +599,17 @@ void supervisor_handle_exit(Supervisor* sup, int dead_id, Cell* reason) {
         for (int i = 0; i < sup->child_count; i++) {
             if (i == dead_index) continue;
             Actor* child = actor_lookup(sup->child_ids[i]);
-            if (child && child->alive) {
+            if (!child) continue;
+            pthread_mutex_lock(ACTOR_STRIPE(child->id));
+            if (child->alive) {
                 child->alive = false;
                 child->result = cell_symbol(":shutdown");
                 cell_transfer_to_shared(child->result);
+                atomic_fetch_sub_explicit(&g_alive_actors, 1, memory_order_relaxed);
+                pthread_mutex_unlock(ACTOR_STRIPE(child->id));
+                actor_notify_exit(child, child->result);
+            } else {
+                pthread_mutex_unlock(ACTOR_STRIPE(child->id));
             }
         }
         /* Respawn all children */
@@ -613,10 +620,17 @@ void supervisor_handle_exit(Supervisor* sup, int dead_id, Cell* reason) {
         /* Kill children after dead_index, then restart from dead_index onward */
         for (int i = dead_index + 1; i < sup->child_count; i++) {
             Actor* child = actor_lookup(sup->child_ids[i]);
-            if (child && child->alive) {
+            if (!child) continue;
+            pthread_mutex_lock(ACTOR_STRIPE(child->id));
+            if (child->alive) {
                 child->alive = false;
                 child->result = cell_symbol(":shutdown");
                 cell_transfer_to_shared(child->result);
+                atomic_fetch_sub_explicit(&g_alive_actors, 1, memory_order_relaxed);
+                pthread_mutex_unlock(ACTOR_STRIPE(child->id));
+                actor_notify_exit(child, child->result);
+            } else {
+                pthread_mutex_unlock(ACTOR_STRIPE(child->id));
             }
         }
         /* Respawn from dead_index to end */

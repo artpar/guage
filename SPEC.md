@@ -801,6 +801,8 @@ Multi-scheduler architecture: N:M scheduling with one OS thread per scheduler. S
 | `⟳⊳⊳⊛` | `() → [event] \| ℕ → [event]` | Flight recorder snapshot (all or last N) | ✅ |
 | `⟳⊳⊳⊗` | `() → ∅` | Enable causal tracing on current actor | ✅ |
 | `⟳⊳⊳⊞` | `() → ℕ` | Buffer capacity (4096) | ✅ |
+| `⟳⊳⊳⊕` | `() → [event] \| :kind → [event]` | Merged trace from ALL schedulers (optional kind filter) | ✅ |
+| `⟳⊳⊳⊕#` | `() → ℕ \| :kind → ℕ` | Count events across ALL schedulers (optional filter) | ✅ |
 
 Per-thread ring buffer (4096 events, 64KB, L1 resident). 16-byte TraceEvent: timestamp(8) + sched_id(2) + actor_id(2) + kind(1) + pad(1) + detail(2). `rdtscp`/ISB serialized timestamps. Trace kinds: SPAWN, SEND, RECV, DIE, STEAL, YIELD, WAKE, RESUME, LINK, MONITOR, EXIT_SIGNAL, TIMER_FIRE, CHAN_SEND, CHAN_RECV, CHAN_CLOSE. Causal token propagation through actor messages.
 

@@ -27,6 +27,12 @@
 /* Stack pool max per scheduler */
 #define STACK_POOL_MAX 64
 
+/* ── QSBR (Quiescent-State-Based Reclamation) ──
+ * PPoPP 2024 amortized-free pattern. Zero read-path overhead.
+ * DPDK-style design adapted for actor scheduling. */
+#define RETIRE_CAP 256   /* Power of 2 — per-scheduler retire ring */
+#define RETIRE_MASK (RETIRE_CAP - 1)
+
 /* Global overflow queue capacity (Vyukov MPMC) */
 #define GLOBAL_QUEUE_CAP 1024
 
@@ -39,6 +45,7 @@ extern _Thread_local uint16_t tls_scheduler_id;
 /* Forward declarations */
 typedef struct Scheduler Scheduler;
 typedef struct Actor Actor;
+struct TraceEvent_s;  /* Forward declaration — defined below */
 
 /* ── BWoS Work-Stealing Deque (OSDI 2023, NVIDIA stdexec-derived) ──
  * 4-cursor block design: owner and thieves operate on DIFFERENT blocks.
@@ -63,6 +70,26 @@ void    ws_push(WSDeque* dq, Actor* actor);
 Actor*  ws_pop(WSDeque* dq);
 Actor*  ws_steal(WSDeque* dq);
 int64_t ws_size(WSDeque* dq);
+
+/* ── QSBR per-thread state (cache-line aligned to prevent false sharing) ── */
+typedef struct {
+    _Alignas(CACHE_LINE) _Atomic uint64_t epoch;   /* Last observed global epoch */
+    _Atomic bool online;                             /* false when parked */
+} QsbrThread;
+
+typedef struct {
+    _Alignas(CACHE_LINE) _Atomic uint64_t global_epoch;
+    QsbrThread threads[MAX_SCHEDULERS];
+    int thread_count;
+} QsbrState;
+
+/* Per-scheduler retire ring with amortized free (PPoPP 2024 pattern) */
+typedef struct {
+    Actor*   actors[RETIRE_CAP];
+    uint64_t epochs[RETIRE_CAP];   /* Global epoch at retire time */
+    uint32_t head;                  /* Oldest pending (consumer) */
+    uint32_t tail;                  /* Next write slot (producer) */
+} RetireRing;
 
 /* ── Scheduler (128B-aligned, no false sharing) ── */
 struct Scheduler {
@@ -97,6 +124,13 @@ struct Scheduler {
     /* ── Stack pool (own cache line) ── */
     _Alignas(CACHE_LINE) char* stack_pool[STACK_POOL_MAX];
     int stack_pool_count;
+
+    /* ── QSBR retire ring (own cache line) ── */
+    _Alignas(CACHE_LINE) RetireRing retire_ring;
+
+    /* ── Trace buffer pointers (for cross-scheduler merge) ── */
+    struct TraceEvent_s* trace_buf_ptr;  /* Points to worker's tls_trace_buf */
+    uint32_t*   trace_pos_ptr;           /* Points to worker's tls_trace_pos */
 };
 
 /* ── Scheduler API ── */
@@ -155,6 +189,55 @@ Cell* sched_prepare_resume(Actor* actor);
 /* ── Alive actor counter (atomic, for termination detection) ── */
 extern _Atomic int g_alive_actors;
 
+/* ── QSBR API ── */
+
+/* Initialize QSBR subsystem — called from sched_init() */
+void qsbr_init(int num_schedulers);
+
+/* Thread lifecycle — called from worker_main */
+void qsbr_thread_online(int sched_id);
+void qsbr_thread_offline(int sched_id);
+
+/* Retire an actor — add to per-scheduler ring (call instead of immediate destroy) */
+void qsbr_retire(Scheduler* s, Actor* actor);
+
+/* Amortized reclaim — free at most 2 actors per call (PPoPP 2024 pattern) */
+void qsbr_reclaim_amortized(Scheduler* s);
+
+/* Drain all retire rings — called at end of sched_run_all after workers joined */
+void qsbr_drain_all(void);
+
+/* Global QSBR state (defined in scheduler.c) */
+extern QsbrState g_qsbr;
+
+/* Quiescent checkpoint — THE hot path, ~10ns.
+ * Single relaxed load + release store. No barrier on x86 TSO. */
+static inline void qsbr_quiescent(int sched_id) {
+    uint64_t ge = atomic_load_explicit(&g_qsbr.global_epoch,
+                                        memory_order_relaxed);
+    atomic_store_explicit(&g_qsbr.threads[sched_id].epoch,
+                          ge, memory_order_release);
+}
+
+/* Advance global epoch — called by scheduler 0 periodically */
+static inline void qsbr_advance_epoch(void) {
+    atomic_fetch_add_explicit(&g_qsbr.global_epoch, 1,
+                              memory_order_release);
+}
+
+/* Grace period check — is it safe to free actors retired at retire_epoch? */
+static inline bool qsbr_safe(uint64_t retire_epoch) {
+    for (int i = 0; i < g_qsbr.thread_count; i++) {
+        if (!atomic_load_explicit(&g_qsbr.threads[i].online,
+                                   memory_order_acquire))
+            continue;  /* Parked — doesn't block */
+        if (atomic_load_explicit(&g_qsbr.threads[i].epoch,
+                                  memory_order_acquire) <= retire_epoch)
+            return false;  /* This thread hasn't passed quiescent state */
+    }
+    return true;
+}
+
 /* ── Trace Event Ring Buffer (Day 135) ──
  * Thread-local, zero-synchronization trace events. */
 
@@ -176,7 +259,7 @@ typedef enum {
     TRACE_CHAN_CLOSE,   /* Channel closed — detail: channel ID */
 } TraceEventKind;
 
-typedef struct {
+typedef struct TraceEvent_s {
     uint64_t timestamp;     /* rdtscp/cntvct for ns resolution */
     uint16_t scheduler_id;
     uint16_t actor_id;
@@ -230,5 +313,11 @@ static inline void trace_record(TraceEventKind kind, uint16_t actor_id, uint16_t
     tls_trace_buf[idx].detail = detail;
     tls_trace_pos++;
 }
+
+/* ── Global trace merge API ── */
+
+/* K-way merge by timestamp across all scheduler trace buffers.
+ * Only safe when workers are parked/joined. Returns event count. */
+int sched_trace_merge(TraceEvent* out, int out_cap, int filter_kind);
 
 #endif /* GUAGE_SCHEDULER_H */

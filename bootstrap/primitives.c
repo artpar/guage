@@ -2888,6 +2888,69 @@ Cell* prim_trace_capacity(Cell* args) {
     return cell_number((double)TRACE_BUF_CAP);
 }
 
+/* ⟳⊳⊳⊕ — global trace read: merged events from ALL schedulers (Day 140)
+ * Only safe after sched_run_all returns (workers joined).
+ * Optional kind filter arg. */
+Cell* prim_trace_global_read(Cell* args) {
+    int filter_kind = -1;
+    if (args && args->type == CELL_PAIR) {
+        Cell* first = cell_car(args);
+        if (first && first->type == CELL_ATOM_SYMBOL) {
+            filter_kind = trace_symbol_to_kind(first);
+        }
+    }
+
+    /* Allocate merge buffer on stack (max 16 * 4096 = 65536, but cap at 8192) */
+    int merge_cap = 8192;
+    TraceEvent* merged = malloc(sizeof(TraceEvent) * (size_t)merge_cap);
+    if (!merged) return cell_error("trace-global-oom", cell_nil());
+
+    int count = sched_trace_merge(merged, merge_cap, filter_kind);
+
+    Cell* list = cell_nil();
+    for (int i = count - 1; i >= 0; i--) {
+        Cell* alist = build_trace_alist(&merged[i]);
+        Cell* tmp = cell_cons(alist, list);
+        cell_release(alist);
+        cell_release(list);
+        list = tmp;
+    }
+    free(merged);
+    return list;
+}
+
+/* ⟳⊳⊳⊕# — global trace count across ALL schedulers (Day 140) */
+Cell* prim_trace_global_count(Cell* args) {
+    int filter_kind = -1;
+    if (args && args->type == CELL_PAIR) {
+        Cell* first = cell_car(args);
+        if (first && first->type == CELL_ATOM_SYMBOL) {
+            filter_kind = trace_symbol_to_kind(first);
+        }
+    }
+
+    /* Sum across all schedulers */
+    uint32_t total = 0;
+    for (int i = 0; i < sched_count(); i++) {
+        Scheduler* s = sched_get(i);
+        if (!s || !s->trace_buf_ptr || !s->trace_pos_ptr) continue;
+
+        uint32_t pos = *s->trace_pos_ptr;
+        uint32_t cnt = pos < TRACE_BUF_CAP ? pos : TRACE_BUF_CAP;
+
+        if (filter_kind < 0) {
+            total += cnt;
+        } else {
+            uint32_t start = pos > TRACE_BUF_CAP ? (pos - TRACE_BUF_CAP) : 0;
+            for (uint32_t j = 0; j < cnt; j++) {
+                uint32_t idx = (start + j) & (TRACE_BUF_CAP - 1);
+                if (s->trace_buf_ptr[idx].kind == (uint8_t)filter_kind) total++;
+            }
+        }
+    }
+    return cell_number((double)total);
+}
+
 /* ============ Supervision Primitives ============ */
 
 /* ⟳⊗ - link current actor to target
@@ -14082,6 +14145,10 @@ static Primitive primitives[] = {
     {"⟳⊳⊳⊛", prim_trace_snapshot, -1, {"Flight recorder snapshot (all or last N)", "[ℕ] → [⟨⟩]"}},
     {"⟳⊳⊳⊗", prim_trace_causal, 1, {"Enable causal tracing on current actor", "𝔹 → 𝔹|⚠"}},
     {"⟳⊳⊳⊞", prim_trace_capacity, 0, {"Return trace buffer capacity", "→ ℕ"}},
+
+    /* Global trace primitives (Day 140 — cross-scheduler aggregation) */
+    {"⟳⊳⊳⊕", prim_trace_global_read, -1, {"Merged trace from ALL schedulers (optional kind filter)", "[:sym] → [⟨⟩]"}},
+    {"⟳⊳⊳⊕#", prim_trace_global_count, -1, {"Count events across ALL schedulers", "[:sym] → ℕ"}},
 
     {NULL, NULL, 0, {NULL, NULL}}
 };

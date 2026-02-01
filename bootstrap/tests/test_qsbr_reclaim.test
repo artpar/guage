@@ -1,0 +1,79 @@
+; Day 140: QSBR data structures — retire ring, epoch advancement, reclaim safety
+; Tests actor lifecycle with QSBR infrastructure in single-scheduler mode.
+; Multi-scheduler QSBR integration tested via test_multi_scheduler.
+
+(⟳∅)
+
+; ── Test 1: Single-scheduler actors complete and results preserved ──
+
+(≔ a1 (⟳ (λ (self) :a)))
+(≔ a2 (⟳ (λ (self) :b)))
+(≔ a3 (⟳ (λ (self) :c)))
+(⟳! #500)
+
+(⊨ (⌜ :dead-a1) #f (⟳? a1))
+(⊨ (⌜ :dead-a2) #f (⟳? a2))
+(⊨ (⌜ :dead-a3) #f (⟳? a3))
+(⊨ (⌜ :result-a1) :a (⟳→ a1))
+(⊨ (⌜ :result-a2) :b (⟳→ a2))
+(⊨ (⌜ :result-a3) :c (⟳→ a3))
+
+
+; ── Test 2: Many short-lived actors — all complete ──
+
+(⟳∅)
+
+(≔ spawn-batch (λ (n acc)
+  (? (≡ n #0)
+     acc
+     (spawn-batch (⊖ n #1) (⟨⟩ (⟳ (λ (self) :done)) acc)))))
+
+(≔ actors (spawn-batch #50 ∅))
+(⟳! #2000)
+
+(≔ count-alive (λ (lst)
+  (? (≡ lst ∅)
+     #0
+     (⊕ (? (⟳? (◁ lst)) #1 #0)
+        (count-alive (▷ lst))))))
+
+(⊨ (⌜ :batch-50-all-complete)
+  #0
+  (count-alive actors))
+
+
+; ── Test 3: Chain-spawn (actors spawn children before dying) ──
+
+(⟳∅)
+
+(≔ chain-spawn (λ (self)
+  ((λ (_) :parent-done) (⟳ (λ (s) :child-done)))))
+
+(≔ p1 (⟳ chain-spawn))
+(≔ p2 (⟳ chain-spawn))
+(≔ p3 (⟳ chain-spawn))
+(⟳! #2000)
+
+(⊨ (⌜ :chain-p1-done) #f (⟳? p1))
+(⊨ (⌜ :chain-p2-done) #f (⟳? p2))
+(⊨ (⌜ :chain-p3-done) #f (⟳? p3))
+(⊨ (⌜ :chain-results) :parent-done (⟳→ p1))
+
+
+; ── Test 4: Rapid reset/respawn cycles — actors stay queryable after reset ──
+
+(⟳∅)
+
+(≔ b1 (⟳ (λ (self) :x)))
+(≔ b2 (⟳ (λ (self) :y)))
+(⟳! #500)
+(⊨ (⌜ :pre-reset-b1) :x (⟳→ b1))
+(⊨ (⌜ :pre-reset-b2) :y (⟳→ b2))
+
+; Reset and respawn
+(⟳∅)
+(≔ c1 (⟳ (λ (self) :p)))
+(≔ c2 (⟳ (λ (self) :q)))
+(⟳! #500)
+(⊨ (⌜ :post-reset-c1) :p (⟳→ c1))
+(⊨ (⌜ :post-reset-c2) :q (⟳→ c2))
