@@ -1,0 +1,107 @@
+; ═══════════════════════════════════════════════════════════════
+; Extended Trait Protocol Tests (Day 143)
+; Mappable, Foldable, Semigroup, Monoid, Filterable, Hashable
+; ═══════════════════════════════════════════════════════════════
+
+(⋘ "bootstrap/stdlib/list.scm")
+(⋘ "bootstrap/stdlib/sort.scm")
+(⋘ "bootstrap/stdlib/traits.scm")
+
+(≋ "Testing Extended Trait Protocols...")
+
+; Helper: list equality
+(≔ list= (λ (a) (λ (b)
+  (? (∅? a) (∅? b)
+     (? (∅? b) #f
+        (? (≡ (◁ a) (◁ b))
+           ((list= (▷ a)) (▷ b))
+           #f))))))
+
+; Helper
+(≔ double (λ (x) (⊗ x #2)))
+(≔ even? (λ (x) (≡ (% x #2) #0)))
+
+; ────────────────────────────────────────────────────────────────
+; :Mappable
+; ────────────────────────────────────────────────────────────────
+
+(⊨ :map-list
+   #t
+   ((list= ((⊧↦ double) (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅)))))
+           (⟨⟩ #2 (⟨⟩ #4 (⟨⟩ #6 ∅)))))
+
+(⊨ :map-nil  #t  (∅? ((⊧↦ double) ∅)))
+
+; ────────────────────────────────────────────────────────────────
+; :Foldable
+; ────────────────────────────────────────────────────────────────
+
+(⊨ :fold-left-sum
+   #6
+   (((⊧⊕← (λ (acc) (λ (x) (⊕ acc x)))) #0) (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅)))))
+
+(⊨ :fold-left-nil
+   #0
+   (((⊧⊕← (λ (acc) (λ (x) (⊕ acc x)))) #0) ∅))
+
+(⊨ :fold-right-cons
+   #t
+   ((list= (((⊧⊕→ (λ (x) (λ (acc) (⟨⟩ x acc)))) (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅)))) ∅))
+           (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅)))))
+
+; ────────────────────────────────────────────────────────────────
+; :Semigroup
+; ────────────────────────────────────────────────────────────────
+
+(⊨ :combine-numbers  #7     ((⊧⊕⊕ #3) #4))
+(⊨ :combine-strings  "abcd" ((⊧⊕⊕ "ab") "cd"))
+(⊨ :combine-lists
+   #t
+   ((list= ((⊧⊕⊕ (⟨⟩ #1 (⟨⟩ #2 ∅))) (⟨⟩ #3 (⟨⟩ #4 ∅))))
+           (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 (⟨⟩ #4 ∅))))))
+
+; ────────────────────────────────────────────────────────────────
+; :Monoid
+; ────────────────────────────────────────────────────────────────
+
+(⊨ :empty-number  #0  (⊧∅ #42))
+(⊨ :empty-string  ""  (⊧∅ "hello"))
+
+(⊨ :mconcat-numbers  #6  (⊧mconcat (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅)))))
+
+; ────────────────────────────────────────────────────────────────
+; :Filterable
+; ────────────────────────────────────────────────────────────────
+
+(⊨ :filter-evens
+   #t
+   ((list= ((⊧⊲ even?) (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 (⟨⟩ #4 ∅))))))
+           (⟨⟩ #2 (⟨⟩ #4 ∅))))
+
+(⊨ :filter-nil  #t  (∅? ((⊧⊲ even?) ∅)))
+
+; ────────────────────────────────────────────────────────────────
+; :Hashable
+; ────────────────────────────────────────────────────────────────
+
+(⊨ :hash-number  #42  ((⊧→! #42 :Hashable :hash) #42))
+
+(≔ str-hash ((⊧→! "hello" :Hashable :hash) "hello"))
+(⊨ :hash-string-is-number  #t  (≡ (⊧∈ str-hash) :Number))
+
+(≔ sym-hash ((⊧→! :foo :Hashable :hash) :foo))
+(⊨ :hash-symbol-is-number  #t  (≡ (⊧∈ sym-hash) :Number))
+
+; ────────────────────────────────────────────────────────────────
+; Trait checks (⊧?)
+; ────────────────────────────────────────────────────────────────
+
+(⊨ :check-mappable-pair    #t  (⊧? :Pair :Mappable))
+(⊨ :check-mappable-nil     #t  (⊧? :Nil :Mappable))
+(⊨ :check-foldable-pair    #t  (⊧? :Pair :Foldable))
+(⊨ :check-foldable-number  #f  (⊧? :Number :Foldable))
+(⊨ :check-semigroup-num    #t  (⊧? :Number :Semigroup))
+(⊨ :check-monoid-string    #t  (⊧? :String :Monoid))
+(⊨ :check-hashable-number  #t  (⊧? :Number :Hashable))
+
+(≋ "\nExtended trait protocol tests complete.")

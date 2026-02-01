@@ -2000,6 +2000,29 @@ Full pattern matching with guards, as-patterns, or-patterns, and view patterns. 
 (⚡↺ #3 (may-fail))             ; Try up to 3 times
 ```
 
+### Trait Protocols (stdlib/traits.scm) - FDT DISPATCH
+| Symbol | Description | Status |
+|--------|-------------|--------|
+| `⊧≔` | Define trait (ops list) | ✅ |
+| `⊧⊕` | Implement trait for type | ✅ |
+| `⊧→` | Dispatch trait op by type symbol | ✅ |
+| `⊧→!` | Fused dispatch (value → trait → op → fn) | ✅ |
+| `⊧?` | Check if type implements trait | ✅ |
+| `⊧∈` | Runtime type-of (FDT array index) | ✅ |
+
+**Stdlib Traits:**
+| Trait | Ops | Convenience | Types |
+|-------|-----|-------------|-------|
+| Showable | show | ⊧show | Number, Bool, Symbol, Nil, String, Error, Pair, Lambda |
+| Equatable | equal? | ⊧≡ | Number, Bool, Symbol, Nil, String |
+| Comparable | compare | ⊧compare, ⊧<, ⊧≤, ⊧>, ⊧≥ | Number, String |
+| Mappable | map | ⊧↦ | Pair, Nil, Vector |
+| Foldable | fold-left, fold-right | ⊧⊕←, ⊧⊕→ | Pair, Nil |
+| Semigroup | combine | ⊧⊕⊕ | Number, String, Pair, Nil |
+| Monoid | empty | ⊧∅, ⊧mconcat | Number, String, Pair, Nil |
+| Filterable | filter | ⊧⊲ | Pair, Nil |
+| Hashable | hash | — | Number, String, Symbol |
+
 ### Generic Programming (3) - PARAMETRIC POLYMORPHISM
 | Symbol | Type | Meaning | Status |
 |--------|------|---------|--------|
