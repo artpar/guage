@@ -118,6 +118,7 @@ Cell* cell_lambda(Cell* env, Cell* body, int arity, const char* source_module, i
     c->data.lambda.arity = arity;
     c->data.lambda.source_module = source_module ? strdup(source_module) : NULL;  /* Day 27 */
     c->data.lambda.source_line = source_line;  /* Day 27 */
+    c->data.lambda.constraints = NULL;
 
     if (env) cell_retain(env);
     cell_retain(body);
@@ -444,6 +445,9 @@ static void cell_free_children(Cell* c) {
                 cell_release(c->data.lambda.body);
                 if (c->data.lambda.source_module) {
                     free((void*)c->data.lambda.source_module);  /* Day 27 */
+                }
+                if (c->data.lambda.constraints) {
+                    cell_release(c->data.lambda.constraints);
                 }
                 break;
             case CELL_ATOM_SYMBOL:

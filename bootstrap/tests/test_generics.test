@@ -17,6 +17,36 @@
    #t
    ((id :Bool) #t))
 
+; --- ⊧∈ runtime type-of ---
+
+(⊨ :type-of-number
+   :Number
+   (⊧∈ #42))
+
+(⊨ :type-of-bool
+   :Bool
+   (⊧∈ #t))
+
+(⊨ :type-of-nil
+   :Nil
+   (⊧∈ ∅))
+
+(⊨ :type-of-lambda
+   :Lambda
+   (⊧∈ (λ (x) x)))
+
+(⊨ :type-of-pair
+   :Pair
+   (⊧∈ (⟨⟩ #1 #2)))
+
+(⊨ :type-of-symbol
+   :Symbol
+   (⊧∈ :foo))
+
+(⊨ :type-of-error
+   :Error
+   (⊧∈ (⚠ :test ∅)))
+
 ; --- ⊧≔ trait define ---
 
 ; Define trait with quoted list of required ops
@@ -56,5 +86,53 @@
 (⊨ :trait-dispatch-missing-error
    #t
    (⚠? (⊧→ :String :Showable :show)))
+
+; --- Trait defaults ---
+
+; Define trait with defaults
+(≔ default-show (λ (x) x))
+(≔ default-fmt (λ (x) x))
+(⊧≔ :Printable
+     (⟨⟩ :show (⟨⟩ :format ∅))
+     (⟨⟩ (⟨⟩ :show default-show) (⟨⟩ (⟨⟩ :format default-fmt) ∅)))
+
+; Override only :show for :Number
+(≔ num-show (λ (x) x))
+(⊧⊕ :Number :Printable
+     (⟨⟩ (⟨⟩ :show num-show) ∅))
+
+; Dispatch :show should use override
+(⊨ :trait-dispatch-override
+   #42
+   ((⊧→ :Number :Printable :show) #42))
+
+; Dispatch :format should fall back to default
+(⊨ :trait-dispatch-default-fallback
+   #99
+   ((⊧→ :Number :Printable :format) #99))
+
+; ⊧⊙? returns defaults alist
+(⊨ :trait-defaults-exists
+   #t
+   (⟨⟩? (⊧⊙? :Printable)))
+
+(⊨ :trait-defaults-nil-for-unknown
+   #t
+   (∅? (⊧⊙? :NonExistent)))
+
+; --- Trait constraints ---
+
+; Define constrained generic: (⊳ T :Showable) constrains T
+(≔ show-it (λ (⊳ T :Showable) (λ (x) ((⊧→ T :Showable :show) x))))
+
+; :Number implements :Showable — should work
+(⊨ :constraint-satisfied
+   #42
+   ((show-it :Number) #42))
+
+; :String does NOT implement :Showable — should error
+(⊨ :constraint-unsatisfied
+   #t
+   (⚠? (show-it :String)))
 
 (≋ "\nGenerics & traits tests complete.")

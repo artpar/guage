@@ -1818,25 +1818,31 @@ Cell* prim_type_of(Cell* args) {
     Cell* value = arg1(args);
     const char* type_name = "unknown";
 
-    if (cell_is_number(value)) type_name = "number";
-    else if (cell_is_bool(value)) type_name = "bool";
-    else if (cell_is_symbol(value)) type_name = "symbol";
-    else if (cell_is_nil(value)) type_name = "nil";
-    else if (cell_is_pair(value)) type_name = "pair";
-    else if (cell_is_lambda(value)) type_name = "lambda";
-    else if (cell_is_error(value)) type_name = "error";
-    else if (cell_is_actor(value)) type_name = "actor";
-    else if (cell_is_channel(value)) type_name = "channel";
-    else if (cell_is_box(value)) type_name = "box";
-    else if (cell_is_weak_ref(value)) type_name = "weak-ref";
-    else if (cell_is_hashmap(value)) type_name = "hashmap";
-    else if (cell_is_hashset(value)) type_name = "set";
-    else if (cell_is_deque(value)) type_name = "deque";
-    else if (cell_is_buffer(value)) type_name = "buffer";
-    else if (cell_is_vector(value)) type_name = "vector";
-    else if (cell_is_heap(value)) type_name = "heap";
-    else if (cell_is_sorted_map(value)) type_name = "sorted-map";
-    else if (cell_is_trie(value)) type_name = "trie";
+    if (cell_is_number(value)) type_name = ":Number";
+    else if (cell_is_bool(value)) type_name = ":Bool";
+    else if (cell_is_symbol(value)) type_name = ":Symbol";
+    else if (cell_is_nil(value)) type_name = ":Nil";
+    else if (cell_is_pair(value)) type_name = ":Pair";
+    else if (cell_is_lambda(value)) type_name = ":Lambda";
+    else if (cell_is_error(value)) type_name = ":Error";
+    else if (cell_is_actor(value)) type_name = ":Actor";
+    else if (cell_is_channel(value)) type_name = ":Channel";
+    else if (cell_is_box(value)) type_name = ":Box";
+    else if (cell_is_weak_ref(value)) type_name = ":WeakRef";
+    else if (cell_is_hashmap(value)) type_name = ":HashMap";
+    else if (cell_is_hashset(value)) type_name = ":Set";
+    else if (cell_is_deque(value)) type_name = ":Deque";
+    else if (cell_is_buffer(value)) type_name = ":Buffer";
+    else if (cell_is_vector(value)) type_name = ":Vector";
+    else if (cell_is_heap(value)) type_name = ":Heap";
+    else if (cell_is_sorted_map(value)) type_name = ":SortedMap";
+    else if (cell_is_trie(value)) type_name = ":Trie";
+    else if (cell_is_struct(value)) type_name = ":Struct";
+    else if (cell_is_graph(value)) type_name = ":Graph";
+    else if (cell_is_iterator(value)) type_name = ":Iterator";
+    else if (cell_is_port(value)) type_name = ":Port";
+    else if (cell_is_ffi_ptr(value)) type_name = ":FFIPtr";
+    else type_name = ":Unknown";
 
     return cell_symbol(type_name);
 }
@@ -13637,7 +13643,7 @@ static void trait_ensure_init(void) {
     }
 }
 
-/* ⊧≔ - define trait: (⊧≔ :TraitName (:op1 :op2 ...)) */
+/* ⊧≔ - define trait: (⊧≔ :TraitName (:op1 :op2 ...)) or (⊧≔ :TraitName (:op1 :op2 ...) defaults_alist) */
 Cell* prim_trait_define(Cell* args) {
     trait_ensure_init();
 
@@ -13650,9 +13656,17 @@ Cell* prim_trait_define(Cell* args) {
     const char* trait_name = cell_get_symbol(name_cell);
     if (trait_name[0] == ':') trait_name++;
 
-    /* Retain ops list — trait_defs owns it */
-    cell_retain(ops);
-    Cell* old = (Cell*)strtable_put(&trait_defs, trait_name, ops);
+    /* Optional 3rd arg: defaults alist */
+    Cell* defaults = cell_nil();
+    Cell* rest3 = cell_cdr(cell_cdr(args));
+    if (cell_is_pair(rest3)) {
+        defaults = cell_car(rest3);
+    }
+
+    /* Store as (ops . defaults) pair — trait_defs owns it */
+    Cell* stored = cell_cons(ops, defaults);
+    cell_retain(stored);
+    Cell* old = (Cell*)strtable_put(&trait_defs, trait_name, stored);
     if (old) cell_release(old);
 
     return name_cell;
@@ -13733,9 +13747,11 @@ Cell* prim_trait_ops(Cell* args) {
     const char* trait_name = cell_get_symbol(name_cell);
     if (trait_name[0] == ':') trait_name++;
 
-    Cell* ops = (Cell*)strtable_get(&trait_defs, trait_name);
-    if (!ops) return cell_nil();
+    Cell* stored = (Cell*)strtable_get(&trait_defs, trait_name);
+    if (!stored) return cell_nil();
 
+    /* stored is (ops . defaults) pair */
+    Cell* ops = cell_car(stored);
     cell_retain(ops);
     return ops;
 }
@@ -13766,25 +13782,125 @@ Cell* prim_trait_dispatch(Cell* args) {
     Cell* impl_alist = (Cell*)strtable_get(&trait_impls, compound);
     free(compound);
 
-    if (!impl_alist) return cell_error("trait-not-implemented", trait_cell);
-
-    /* Walk alist looking for op */
     const char* op_name = cell_get_symbol(op_cell);
-    Cell* curr = impl_alist;
-    while (curr && !cell_is_nil(curr)) {
-        Cell* pair = cell_car(curr);
-        if (cell_is_pair(pair)) {
-            Cell* key = cell_car(pair);
-            if (cell_is_symbol(key) && strcmp(cell_get_symbol(key), op_name) == 0) {
-                Cell* val = cell_cdr(pair);
-                cell_retain(val);
-                return val;
+
+    /* Walk type-specific impl alist looking for op */
+    if (impl_alist) {
+        Cell* curr = impl_alist;
+        while (curr && !cell_is_nil(curr)) {
+            Cell* pair = cell_car(curr);
+            if (cell_is_pair(pair)) {
+                Cell* key = cell_car(pair);
+                if (cell_is_symbol(key) && strcmp(cell_get_symbol(key), op_name) == 0) {
+                    Cell* val = cell_cdr(pair);
+                    cell_retain(val);
+                    return val;
+                }
             }
+            curr = cell_cdr(curr);
         }
-        curr = cell_cdr(curr);
     }
 
+    /* Fall back to trait defaults */
+    Cell* trait_stored = (Cell*)strtable_get(&trait_defs, trait_name);
+    if (trait_stored) {
+        Cell* defaults = cell_cdr(trait_stored);
+        Cell* curr = defaults;
+        while (curr && !cell_is_nil(curr)) {
+            Cell* pair = cell_car(curr);
+            if (cell_is_pair(pair)) {
+                Cell* key = cell_car(pair);
+                if (cell_is_symbol(key) && strcmp(cell_get_symbol(key), op_name) == 0) {
+                    Cell* val = cell_cdr(pair);
+                    cell_retain(val);
+                    return val;
+                }
+            }
+            curr = cell_cdr(curr);
+        }
+    }
+
+    if (!impl_alist) return cell_error("trait-not-implemented", trait_cell);
     return cell_error("trait-op-not-found", op_cell);
+}
+
+/* ⊧⊙? - trait defaults: (⊧⊙? :TraitName) → defaults alist or ∅ */
+Cell* prim_trait_defaults(Cell* args) {
+    trait_ensure_init();
+
+    Cell* name_cell = cell_car(args);
+    if (!cell_is_symbol(name_cell))
+        return cell_error("type-error", name_cell);
+
+    const char* trait_name = cell_get_symbol(name_cell);
+    if (trait_name[0] == ':') trait_name++;
+
+    Cell* stored = (Cell*)strtable_get(&trait_defs, trait_name);
+    if (!stored) return cell_nil();
+
+    Cell* defaults = cell_cdr(stored);
+    if (!defaults || cell_is_nil(defaults)) return cell_nil();
+
+    cell_retain(defaults);
+    return defaults;
+}
+
+/* Check if a type satisfies a trait (has impl or trait has defaults for all ops) */
+bool trait_type_satisfies(const char* type, const char* trait) {
+    trait_ensure_init();
+
+    /* Strip leading colons */
+    if (type[0] == ':') type++;
+    if (trait[0] == ':') trait++;
+
+    /* Check direct implementation */
+    size_t tlen = strlen(type);
+    size_t rlen = strlen(trait);
+    char* compound = malloc(tlen + 1 + rlen + 1);
+    memcpy(compound, type, tlen);
+    compound[tlen] = ':';
+    memcpy(compound + tlen + 1, trait, rlen + 1);
+
+    int found = strtable_get(&trait_impls, compound) != NULL;
+    free(compound);
+
+    if (found) return true;
+
+    /* Check if trait has defaults for all ops */
+    Cell* stored = (Cell*)strtable_get(&trait_defs, trait);
+    if (!stored) return false;
+
+    Cell* ops = cell_car(stored);
+    Cell* defaults = cell_cdr(stored);
+
+    /* If no ops required, trivially satisfied */
+    if (!ops || cell_is_nil(ops)) return true;
+
+    /* Check each required op has a default */
+    Cell* op_curr = ops;
+    while (op_curr && !cell_is_nil(op_curr)) {
+        Cell* op = cell_car(op_curr);
+        const char* op_name = cell_get_symbol(op);
+        bool has_default = false;
+
+        Cell* def_curr = defaults;
+        while (def_curr && !cell_is_nil(def_curr)) {
+            Cell* pair = cell_car(def_curr);
+            if (cell_is_pair(pair)) {
+                Cell* key = cell_car(pair);
+                if (cell_is_symbol(key) && strcmp(cell_get_symbol(key), op_name) == 0) {
+                    has_default = true;
+                    break;
+                }
+            }
+            def_curr = cell_cdr(def_curr);
+        }
+
+        if (!has_default) return false;
+        op_curr = cell_cdr(op_curr);
+    }
+
+    return true;
 }
 
 /* Primitive table - PURE SYMBOLS ONLY
@@ -14466,11 +14582,13 @@ static Primitive primitives[] = {
     {"⟳⊳⊳⊕#", prim_trace_global_count, -1, {"Count events across ALL schedulers", "[:sym] → ℕ"}},
 
     /* Trait/Typeclass primitives (StrTable-backed O(1) dispatch) */
-    {"⊧≔", prim_trait_define, 2, {"Define trait with required ops", ":sym → [:sym] → :sym"}},
+    {"⊧≔", prim_trait_define, -1, {"Define trait with required ops and optional defaults", ":sym → [:sym] → [⟨:sym . λ⟩]? → :sym"}},
     {"⊧⊕", prim_trait_implement, 3, {"Implement trait for type", ":sym → :sym → [⟨:sym . λ⟩] → 𝔹"}},
     {"⊧?", prim_trait_check, 2, {"Check if type implements trait", ":sym → :sym → 𝔹"}},
     {"⊧⊙", prim_trait_ops, 1, {"List required ops for trait", ":sym → [:sym]"}},
     {"⊧→", prim_trait_dispatch, 3, {"Dispatch trait op for type", ":sym → :sym → :sym → λ|⚠"}},
+    {"⊧∈", prim_type_of, 1, {"Get runtime type name", "α → :sym"}},
+    {"⊧⊙?", prim_trait_defaults, 1, {"Get trait default implementations", ":sym → [⟨:sym . λ⟩]|∅"}},
 
     {NULL, NULL, 0, {NULL, NULL}}
 };

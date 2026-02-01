@@ -188,6 +188,7 @@ struct Cell {
             int arity;     /* Number of parameters */
             const char* source_module;  /* Module/file where defined - Day 27 */
             int source_line;            /* Line number in source - Day 27 */
+            Cell* constraints;          /* List of (param_idx . :TraitName) pairs, or NULL */
         } lambda;
         struct {
             const char* message;  /* Error type/message (interned symbol string) */

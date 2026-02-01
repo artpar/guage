@@ -119,7 +119,7 @@ Cell* debruijn_convert(Cell* expr, NameContext* ctx) {
                 Cell* params = cell_car(rest);
                 Cell* body_expr = cell_car(cell_cdr(rest));
 
-                /* Count actual parameters (handling ⊳ markers and : annotations) */
+                /* Count actual parameters (handling ⊳ markers, constraints, and : annotations) */
                 int param_count = 0;
                 Cell* count_iter = params;
                 while (cell_is_pair(count_iter)) {
@@ -129,6 +129,16 @@ Cell* debruijn_convert(Cell* expr, NameContext* ctx) {
                         if (cell_is_pair(count_iter)) {
                             param_count++;
                             count_iter = cell_cdr(count_iter);
+                            /* Skip optional constraint (:CapitalizedSymbol) */
+                            if (cell_is_pair(count_iter)) {
+                                Cell* mc = cell_car(count_iter);
+                                if (cell_is_symbol(mc)) {
+                                    const char* cs = cell_get_symbol(mc);
+                                    if (cs[0] == ':' && cs[1] >= 'A' && cs[1] <= 'Z') {
+                                        count_iter = cell_cdr(count_iter);
+                                    }
+                                }
+                            }
                         }
                     } else {
                         param_count++;
@@ -154,6 +164,16 @@ Cell* debruijn_convert(Cell* expr, NameContext* ctx) {
                         if (cell_is_pair(param_iter)) {
                             param_names[pi++] = cell_get_symbol(cell_car(param_iter));
                             param_iter = cell_cdr(param_iter);
+                            /* Skip optional constraint */
+                            if (cell_is_pair(param_iter)) {
+                                Cell* mc = cell_car(param_iter);
+                                if (cell_is_symbol(mc)) {
+                                    const char* cs = cell_get_symbol(mc);
+                                    if (cs[0] == ':' && cs[1] >= 'A' && cs[1] <= 'Z') {
+                                        param_iter = cell_cdr(param_iter);
+                                    }
+                                }
+                            }
                         }
                     } else {
                         param_names[pi++] = cell_get_symbol(p);

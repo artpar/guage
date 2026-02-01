@@ -487,6 +487,11 @@ Cell* prim_trait_implement(Cell* args);  /* ⊧⊕ - implement trait for type */
 Cell* prim_trait_check(Cell* args);      /* ⊧? - check if type implements trait */
 Cell* prim_trait_ops(Cell* args);        /* ⊧⊙ - list trait required ops */
 Cell* prim_trait_dispatch(Cell* args);   /* ⊧→ - dispatch trait op for type */
+Cell* prim_trait_defaults(Cell* args);   /* ⊧⊙? - get trait default implementations */
+Cell* prim_type_of(Cell* args);          /* ⊧∈ - get runtime type name */
+
+/* Trait constraint checking */
+bool trait_type_satisfies(const char* type, const char* trait);
 
 /* Primitive documentation structure */
 typedef struct {

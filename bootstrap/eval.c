@@ -859,11 +859,21 @@ int list_length(Cell* list) {
     return count;
 }
 
+/* Forward declaration */
+const char** extract_param_names_with_constraints(Cell* params, int* out_count, Cell** out_constraints);
+
 /* Extract parameter names from list, handling ⊳ markers and : annotations.
  * (⊳ T) — skip ⊳, use T as param name (generic type param marker)
  * (x : T) — use x, skip : and T (type annotation)
  * Returns extracted names array; sets *out_count to actual param count. */
 const char** extract_param_names_counted(Cell* params, int* out_count) {
+    return extract_param_names_with_constraints(params, out_count, NULL);
+}
+
+/* Extract param names and optionally collect trait constraints.
+ * If out_constraints is non-NULL, builds a list of (param_idx . :TraitName) pairs.
+ * Syntax: (⊳ T :Showable) — :Showable constrains T (colon-prefixed symbol after T) */
+const char** extract_param_names_with_constraints(Cell* params, int* out_count, Cell** out_constraints) {
     /* First pass: count actual params */
     int count = 0;
     Cell* current = params;
@@ -875,6 +885,16 @@ const char** extract_param_names_counted(Cell* params, int* out_count) {
             if (cell_is_pair(current)) {
                 count++;
                 current = cell_cdr(current);
+                /* Skip optional constraint (colon-prefixed symbol) */
+                if (cell_is_pair(current)) {
+                    Cell* maybe_constraint = cell_car(current);
+                    if (cell_is_symbol(maybe_constraint)) {
+                        const char* cs = cell_get_symbol(maybe_constraint);
+                        if (cs[0] == ':' && cs[1] >= 'A' && cs[1] <= 'Z') {
+                            current = cell_cdr(current);
+                        }
+                    }
+                }
             }
         } else if (cell_is_symbol(param)) {
             count++;
@@ -899,7 +919,8 @@ const char** extract_param_names_counted(Cell* params, int* out_count) {
     const char** names = (const char**)malloc(count * sizeof(char*));
     *out_count = count;
 
-    /* Second pass: extract names */
+    /* Second pass: extract names and constraints */
+    Cell* constraints = cell_nil();
     current = params;
     int i = 0;
     while (cell_is_pair(current) && i < count) {
@@ -907,8 +928,22 @@ const char** extract_param_names_counted(Cell* params, int* out_count) {
         if (cell_is_symbol(param) && param->sym_id == SYM_ID_GENERIC_PARAM) {
             current = cell_cdr(current);
             if (cell_is_pair(current)) {
-                names[i++] = cell_get_symbol(cell_car(current));
+                names[i] = cell_get_symbol(cell_car(current));
                 current = cell_cdr(current);
+                /* Check for constraint */
+                if (out_constraints && cell_is_pair(current)) {
+                    Cell* maybe_constraint = cell_car(current);
+                    if (cell_is_symbol(maybe_constraint)) {
+                        const char* cs = cell_get_symbol(maybe_constraint);
+                        if (cs[0] == ':' && cs[1] >= 'A' && cs[1] <= 'Z') {
+                            Cell* pair = cell_cons(cell_number((double)i), maybe_constraint);
+                            constraints = cell_cons(pair, constraints);
+                            cell_release(pair);
+                            current = cell_cdr(current);
+                        }
+                    }
+                }
+                i++;
             }
         } else if (cell_is_symbol(param)) {
             names[i++] = cell_get_symbol(param);
@@ -928,6 +963,16 @@ const char** extract_param_names_counted(Cell* params, int* out_count) {
             current = cell_cdr(current);
         }
     }
+
+    if (out_constraints) {
+        if (cell_is_nil(constraints)) {
+            *out_constraints = NULL;
+        } else {
+            *out_constraints = constraints;
+            cell_retain(constraints);
+        }
+    }
+    cell_release(constraints);
 
     return names;
 }
@@ -1662,9 +1707,10 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                  * retain so we can safely release later */
                 cell_retain(expanded_body);
 
-                /* Count parameters and extract names (handles ⊳ and : annotations) */
+                /* Count parameters and extract names (handles ⊳, : annotations, and constraints) */
                 int arity = 0;
-                const char** param_names = extract_param_names_counted(params, &arity);
+                Cell* constraints = NULL;
+                const char** param_names = extract_param_names_with_constraints(params, &arity, &constraints);
 
                 /* Create conversion context */
                 NameContext* ctx_convert = context_new(param_names, arity, NULL);
@@ -1685,6 +1731,11 @@ tail_call:  /* TCO: loop back here instead of recursive call */
 
                 Cell* lambda = cell_lambda(closure_env, converted_body, arity,
                                           module_get_current_loading(), source_line);
+
+                /* Attach constraints if any */
+                if (constraints) {
+                    lambda->data.lambda.constraints = constraints;
+                }
 
                 /* Cleanup */
                 context_free(ctx_convert);
@@ -2636,6 +2687,35 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                 cell_release(fn);
                 cell_release(args);
                 return cell_error_at("arity-mismatch", data, expr->span);
+            }
+
+            /* Check trait constraints if any */
+            if (fn->data.lambda.constraints) {
+                Cell* clist = fn->data.lambda.constraints;
+                while (clist && !cell_is_nil(clist)) {
+                    Cell* cpair = cell_car(clist);
+                    int idx = (int)cell_get_number(cell_car(cpair));
+                    const char* trait = cell_get_symbol(cell_cdr(cpair));
+
+                    /* Get the arg at this index (it should be a type symbol) */
+                    Cell* arg_at = args;
+                    for (int ci = 0; ci < idx && arg_at && !cell_is_nil(arg_at); ci++) {
+                        arg_at = cell_cdr(arg_at);
+                    }
+                    if (arg_at && !cell_is_nil(arg_at)) {
+                        Cell* type_arg = cell_car(arg_at);
+                        if (cell_is_symbol(type_arg)) {
+                            const char* type_name = cell_get_symbol(type_arg);
+                            if (!trait_type_satisfies(type_name, trait)) {
+                                Cell* data = cell_cons(type_arg, cell_symbol(trait));
+                                cell_release(fn);
+                                cell_release(args);
+                                return cell_error_at("trait-constraint-unsatisfied", data, expr->span);
+                            }
+                        }
+                    }
+                    clist = cell_cdr(clist);
+                }
             }
 
             /* Retain body before releasing fn (body points into fn) */

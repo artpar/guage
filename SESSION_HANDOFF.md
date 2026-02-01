@@ -1,11 +1,67 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-02-01 (Day 142 Session 2 COMPLETE)
+Updated: 2026-02-01 (Day 142 Session 3 COMPLETE)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 142 Session 2 - HFT-Aligned Realignment (2026-02-01)
+# Session Handoff: Day 142 Session 3 - Trait System Expansion (2026-02-01)
+
+## Day 142 Session 3 — Type-of, Defaults, Constraints (COMPLETE)
+
+**STATUS:** 137/137 test files passing ✅ (all including 3 previously-failing restored)
+
+### What Was Done
+
+Expanded the trait/generics system with 3 features building on the Day 142 StrTable + trait foundation.
+
+### Feature 1: Register `⊧∈` (runtime type-of for trait dispatch)
+
+- `prim_type_of` return values changed to colon-prefixed capitalized symbols matching trait convention: `:Number`, `:Bool`, `:Pair`, `:Lambda`, `:Error`, `:Symbol`, `:Nil`, `:Actor`, `:Channel`, `:Box`, `:WeakRef`, `:HashMap`, `:Set`, `:Deque`, `:Buffer`, `:Vector`, `:Heap`, `:SortedMap`, `:Trie`, `:Struct`, `:Graph`, `:Iterator`, `:Port`, `:FFIPtr`, `:Unknown`
+- Registered as `⊧∈` in primitive table (1 arg)
+
+### Feature 2: Trait Default Implementations
+
+- `⊧≔` now accepts optional 3rd arg (defaults alist). Arity changed from 2 to -1 (variadic).
+- `trait_defs` value changed from bare ops list to `(ops . defaults)` pair.
+- `prim_trait_ops` extracts `cell_car(stored)` for ops.
+- `prim_trait_dispatch` falls back to defaults alist when type-specific impl doesn't have the op.
+- New `prim_trait_defaults` registered as `⊧⊙?` (1 arg, returns defaults alist or ∅).
+- New `trait_type_satisfies(type, trait)` helper checks trait_impls then trait_defs defaults.
+
+### Feature 3: Trait Constraints on Generic Params
+
+- Syntax: `(λ (⊳ T :Showable) ...)` — `:Showable` constrains T.
+- `cell.h`: Added `Cell* constraints` field to lambda struct (list of `(param_idx . :TraitName)` pairs, or NULL).
+- `cell.c`: Initialize `constraints = NULL`, release in dealloc.
+- `eval.c`: New `extract_param_names_with_constraints()` detects `:CapitalizedSymbol` after `⊳ T`. Lambda creation sets constraints. Application path checks constraints via `trait_type_satisfies()` before body eval, returns `trait-constraint-unsatisfied` error if violated.
+- `debruijn.c`: Skip constraint symbols in both counting and extraction passes.
+
+### Modified Files
+
+| File | Changes |
+|------|---------|
+| `bootstrap/cell.h` | Added `Cell* constraints` to lambda struct |
+| `bootstrap/cell.c` | Init constraints=NULL, release in dealloc |
+| `bootstrap/eval.c` | `extract_param_names_with_constraints()`, constraint checking at application |
+| `bootstrap/debruijn.c` | Skip constraint symbols after `⊳ T` |
+| `bootstrap/primitives.h` | Added `prim_trait_defaults`, `prim_type_of`, `trait_type_satisfies` declarations |
+| `bootstrap/primitives.c` | Updated `prim_type_of` returns, `prim_trait_define` variadic+defaults, `prim_trait_ops` extracts from pair, `prim_trait_dispatch` defaults fallback, new `prim_trait_defaults`, new `trait_type_satisfies`, registered `⊧∈` and `⊧⊙?` |
+| `bootstrap/tests/test_generics.test` | Expanded from 8 to 20 assertions |
+
+### Test Results
+
+- 137/137 passing
+- `test_generics.test`: 20/20 assertions pass (was 8)
+
+### Pre-existing Test Failures (for reference)
+
+These 3 test files have pre-existing issues (not caused by recent sessions):
+- `test_conversions.test` — Abort trap in `cell_car` assertion (crash during symbol roundtrip test)
+- `test_line_numbers.test` — Abort trap (crash)
+- `test_module_system.test` — 4 assertion failures: `module-loaded-after-load`, `cached-load-no-reeval`, `module-define-exists`, `validated-import-basic`
+
+---
 
 ## Day 142 Session 2 — StrTable, Trait Registry, Generics (COMPLETE)
 
