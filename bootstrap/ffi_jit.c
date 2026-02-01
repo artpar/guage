@@ -1,4 +1,5 @@
 #include "ffi_jit.h"
+#include "eval.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -97,6 +98,184 @@ FFICType ffi_parse_type_symbol(const char* sym) {
     if (strcmp(sym, "size_t") == 0) return FFI_SIZE_T;
     if (strcmp(sym, "buffer") == 0) return FFI_BUFFER;
     return FFI_VOID; /* fallback */
+}
+
+/* === FFI Struct Layout (Step 4) === */
+
+CallbackStub g_callbacks[FFI_MAX_CALLBACKS] = {{0}};
+
+uint32_t ffi_type_size(FFICType t) {
+    switch (t) {
+        case FFI_BOOL:    return 1;
+        case FFI_INT32:   return 4;
+        case FFI_UINT32:  return 4;
+        case FFI_FLOAT:   return 4;
+        case FFI_INT64:   return 8;
+        case FFI_UINT64:  return 8;
+        case FFI_DOUBLE:  return 8;
+        case FFI_PTR:     return 8;
+        case FFI_CSTRING: return 8;
+        case FFI_SIZE_T:  return sizeof(size_t);
+        case FFI_BUFFER:  return 8;
+        default:          return 0;
+    }
+}
+
+uint32_t ffi_type_align(FFICType t) {
+    /* Natural alignment = size for all standard C types */
+    return ffi_type_size(t);
+}
+
+FFIStructLayout* ffi_compute_layout(Cell* field_list) {
+    FFIStructLayout* layout = (FFIStructLayout*)calloc(1, sizeof(FFIStructLayout));
+    if (!layout) return NULL;
+
+    uint32_t offset = 0;
+    uint32_t max_align = 1;
+    Cell* cur = field_list;
+
+    while (cur && cell_is_pair(cur) && layout->n_fields < 32) {
+        Cell* spec = cell_car(cur);
+        if (!cell_is_pair(spec)) { cur = cell_cdr(cur); continue; }
+
+        Cell* name_cell = cell_car(spec);
+        Cell* type_cell = cell_cdr(spec);
+        /* Handle both (name . type) and (name type) */
+        if (cell_is_pair(type_cell)) type_cell = cell_car(type_cell);
+
+        if (!cell_is_symbol(name_cell) || !cell_is_symbol(type_cell)) {
+            cur = cell_cdr(cur);
+            continue;
+        }
+
+        FFICType ct = ffi_parse_type_symbol(cell_get_symbol(type_cell));
+        uint32_t sz = ffi_type_size(ct);
+        uint32_t al = ffi_type_align(ct);
+        if (al == 0) al = 1;
+        if (al > max_align) max_align = al;
+
+        /* Align offset */
+        offset = (offset + al - 1) & ~(al - 1);
+
+        FFIField* f = &layout->fields[layout->n_fields];
+        f->name = cell_get_symbol(name_cell);
+        f->type = ct;
+        f->offset = offset;
+        f->size = sz;
+
+        offset += sz;
+        layout->n_fields++;
+        cur = cell_cdr(cur);
+    }
+
+    /* Tail padding for struct alignment */
+    layout->alignment = max_align;
+    layout->total_size = (offset + max_align - 1) & ~(max_align - 1);
+    return layout;
+}
+
+/* === FFI Callbacks (Step 5) === */
+
+int ffi_callback_alloc(Cell* closure, FFISig* sig) {
+    for (int i = 0; i < FFI_MAX_CALLBACKS; i++) {
+        if (!g_callbacks[i].active) {
+            g_callbacks[i].closure = closure;
+            cell_retain(closure);
+            g_callbacks[i].sig = *sig;
+            g_callbacks[i].active = true;
+            g_callbacks[i].trampoline = NULL; /* Set by platform emitter */
+            return i;
+        }
+    }
+    return -1; /* No free slots */
+}
+
+void ffi_callback_free(int slot) {
+    if (slot < 0 || slot >= FFI_MAX_CALLBACKS) return;
+    CallbackStub* cb = &g_callbacks[slot];
+    if (!cb->active) return;
+
+    if (cb->closure) {
+        cell_release(cb->closure);
+        cb->closure = NULL;
+    }
+    if (cb->trampoline) {
+        long page_size = sysconf(_SC_PAGESIZE);
+        size_t alloc_size = (cb->trampoline_size + (size_t)page_size - 1) & ~((size_t)page_size - 1);
+        munmap(cb->trampoline, alloc_size);
+        cb->trampoline = NULL;
+    }
+    cb->active = false;
+}
+
+Cell* ffi_callback_dispatch(int slot, uint64_t* raw_args) {
+    if (slot < 0 || slot >= FFI_MAX_CALLBACKS || !g_callbacks[slot].active)
+        return cell_error("callback-invalid-slot", cell_number(slot));
+
+    CallbackStub* cb = &g_callbacks[slot];
+
+    /* Marshal C args to Guage list */
+    Cell* args = cell_nil();
+    for (int i = cb->sig.n_args - 1; i >= 0; i--) {
+        Cell* arg;
+        switch (cb->sig.arg_types[i]) {
+            case FFI_INT32:
+                arg = cell_integer((int64_t)(int32_t)raw_args[i]);
+                break;
+            case FFI_INT64:
+                arg = cell_integer((int64_t)raw_args[i]);
+                break;
+            case FFI_UINT32:
+                arg = cell_integer((int64_t)(uint32_t)raw_args[i]);
+                break;
+            case FFI_UINT64:
+                arg = cell_integer((int64_t)raw_args[i]);
+                break;
+            case FFI_DOUBLE: {
+                double d;
+                memcpy(&d, &raw_args[i], sizeof(double));
+                arg = cell_number(d);
+                break;
+            }
+            case FFI_FLOAT: {
+                float f;
+                memcpy(&f, &raw_args[i], sizeof(float));
+                arg = cell_number((double)f);
+                break;
+            }
+            case FFI_PTR:
+            case FFI_BUFFER:
+                arg = cell_ffi_ptr((void*)raw_args[i], NULL, "callback-arg");
+                break;
+            case FFI_CSTRING:
+                arg = raw_args[i] ? cell_string((const char*)raw_args[i]) : cell_nil();
+                break;
+            case FFI_BOOL:
+                arg = cell_bool(raw_args[i] != 0);
+                break;
+            default:
+                arg = cell_nil();
+                break;
+        }
+        args = cell_cons(arg, args);
+    }
+
+    /* Reverse the args list (it was built in reverse via cons) */
+    Cell* reversed = cell_nil();
+    Cell* cur = args;
+    while (cell_is_pair(cur)) {
+        reversed = cell_cons(cell_car(cur), reversed);
+        cur = cell_cdr(cur);
+    }
+
+    /* Build application expression: (closure arg1 arg2 ...) */
+    Cell* app = cell_cons(cb->closure, reversed);
+
+    /* Evaluate through the standard eval path */
+    EvalContext* ctx = eval_context_new();
+    Cell* result = eval(ctx, app);
+    eval_context_free(ctx);
+    return result;
 }
 
 /* === Platform mmap helpers === */

@@ -71,6 +71,7 @@ static const char* celltype_names[FDT_MAX_TYPES] = {
     [CELL_PORT]         = ":Port",
     [CELL_DIR]          = ":Dir",
     [CELL_FFI_PTR]      = ":FFIPtr",
+    [CELL_ATOM_INTEGER] = ":Integer",
 };
 
 /* Helper: get first argument */
@@ -237,94 +238,232 @@ Cell* prim_not(Cell* args) {
 Cell* prim_add(Cell* args) {
     Cell* a = arg1(args);
     Cell* b = arg2(args);
-    assert(cell_is_number(a) && cell_is_number(b));
-    return cell_number(cell_get_number(a) + cell_get_number(b));
+    /* Fast path: both integer → int64 + overflow check */
+    if (LIKELY(cell_is_integer(a) && cell_is_integer(b))) {
+        int64_t result;
+        if (UNLIKELY(__builtin_add_overflow(a->data.atom.integer, b->data.atom.integer, &result)))
+            return cell_error("integer-overflow", args);
+        return cell_integer(result);
+    }
+    /* Mixed or both double → promote to double */
+    assert(cell_is_numeric(a) && cell_is_numeric(b));
+    return cell_number(cell_to_double(a) + cell_to_double(b));
 }
 
 /* ⊖ - subtraction */
 Cell* prim_sub(Cell* args) {
     Cell* a = arg1(args);
     Cell* b = arg2(args);
-    assert(cell_is_number(a) && cell_is_number(b));
-    return cell_number(cell_get_number(a) - cell_get_number(b));
+    if (LIKELY(cell_is_integer(a) && cell_is_integer(b))) {
+        int64_t result;
+        if (UNLIKELY(__builtin_sub_overflow(a->data.atom.integer, b->data.atom.integer, &result)))
+            return cell_error("integer-overflow", args);
+        return cell_integer(result);
+    }
+    assert(cell_is_numeric(a) && cell_is_numeric(b));
+    return cell_number(cell_to_double(a) - cell_to_double(b));
 }
 
 /* ⊗ - multiplication */
 Cell* prim_mul(Cell* args) {
     Cell* a = arg1(args);
     Cell* b = arg2(args);
-    assert(cell_is_number(a) && cell_is_number(b));
-    return cell_number(cell_get_number(a) * cell_get_number(b));
+    if (LIKELY(cell_is_integer(a) && cell_is_integer(b))) {
+        int64_t result;
+        if (UNLIKELY(__builtin_mul_overflow(a->data.atom.integer, b->data.atom.integer, &result)))
+            return cell_error("integer-overflow", args);
+        return cell_integer(result);
+    }
+    assert(cell_is_numeric(a) && cell_is_numeric(b));
+    return cell_number(cell_to_double(a) * cell_to_double(b));
 }
 
 /* ⊘ - division */
 Cell* prim_div(Cell* args) {
     Cell* a = arg1(args);
     Cell* b = arg2(args);
-    assert(cell_is_number(a) && cell_is_number(b));
-    double divisor = cell_get_number(b);
+    assert(cell_is_numeric(a) && cell_is_numeric(b));
+    double divisor = cell_to_double(b);
     if (divisor == 0.0) {
         return cell_error("div-by-zero", b);
     }
-    return cell_number(cell_get_number(a) / divisor);
+    return cell_number(cell_to_double(a) / divisor);
 }
 
 /* ÷ - integer division (quotient/floor division) */
 Cell* prim_quot(Cell* args) {
     Cell* a = arg1(args);
     Cell* b = arg2(args);
-    assert(cell_is_number(a) && cell_is_number(b));
-    double divisor = cell_get_number(b);
+    /* Fast path: both integer → exact integer division */
+    if (LIKELY(cell_is_integer(a) && cell_is_integer(b))) {
+        int64_t db = b->data.atom.integer;
+        if (db == 0) return cell_error("quot-by-zero", b);
+        /* INT64_MIN / -1 overflows */
+        if (UNLIKELY(a->data.atom.integer == INT64_MIN && db == -1))
+            return cell_error("integer-overflow", args);
+        return cell_integer(a->data.atom.integer / db);
+    }
+    assert(cell_is_numeric(a) && cell_is_numeric(b));
+    double divisor = cell_to_double(b);
     if (divisor == 0.0) {
         return cell_error("quot-by-zero", b);
     }
-    /* Use floor to get integer quotient */
-    return cell_number(floor(cell_get_number(a) / divisor));
+    return cell_number(floor(cell_to_double(a) / divisor));
 }
 
 /* % - modulo (remainder) */
 Cell* prim_mod(Cell* args) {
     Cell* a = arg1(args);
     Cell* b = arg2(args);
-    assert(cell_is_number(a) && cell_is_number(b));
-    double divisor = cell_get_number(b);
+    if (LIKELY(cell_is_integer(a) && cell_is_integer(b))) {
+        int64_t db = b->data.atom.integer;
+        if (db == 0) return cell_error("mod-by-zero", b);
+        return cell_integer(a->data.atom.integer % db);
+    }
+    assert(cell_is_numeric(a) && cell_is_numeric(b));
+    double divisor = cell_to_double(b);
     if (divisor == 0.0) {
         return cell_error("mod-by-zero", b);
     }
-    /* Use fmod for floating point modulo */
-    return cell_number(fmod(cell_get_number(a), divisor));
+    return cell_number(fmod(cell_to_double(a), divisor));
 }
 
 /* < - less than */
 Cell* prim_lt(Cell* args) {
     Cell* a = arg1(args);
     Cell* b = arg2(args);
-    assert(cell_is_number(a) && cell_is_number(b));
-    return cell_bool(cell_get_number(a) < cell_get_number(b));
+    if (LIKELY(cell_is_integer(a) && cell_is_integer(b)))
+        return cell_bool(a->data.atom.integer < b->data.atom.integer);
+    assert(cell_is_numeric(a) && cell_is_numeric(b));
+    return cell_bool(cell_to_double(a) < cell_to_double(b));
 }
 
 /* > - greater than */
 Cell* prim_gt(Cell* args) {
     Cell* a = arg1(args);
     Cell* b = arg2(args);
-    assert(cell_is_number(a) && cell_is_number(b));
-    return cell_bool(cell_get_number(a) > cell_get_number(b));
+    if (LIKELY(cell_is_integer(a) && cell_is_integer(b)))
+        return cell_bool(a->data.atom.integer > b->data.atom.integer);
+    assert(cell_is_numeric(a) && cell_is_numeric(b));
+    return cell_bool(cell_to_double(a) > cell_to_double(b));
 }
 
 /* ≤ - less than or equal */
 Cell* prim_le(Cell* args) {
     Cell* a = arg1(args);
     Cell* b = arg2(args);
-    assert(cell_is_number(a) && cell_is_number(b));
-    return cell_bool(cell_get_number(a) <= cell_get_number(b));
+    if (LIKELY(cell_is_integer(a) && cell_is_integer(b)))
+        return cell_bool(a->data.atom.integer <= b->data.atom.integer);
+    assert(cell_is_numeric(a) && cell_is_numeric(b));
+    return cell_bool(cell_to_double(a) <= cell_to_double(b));
 }
 
 /* ≥ - greater than or equal */
 Cell* prim_ge(Cell* args) {
     Cell* a = arg1(args);
     Cell* b = arg2(args);
-    assert(cell_is_number(a) && cell_is_number(b));
-    return cell_bool(cell_get_number(a) >= cell_get_number(b));
+    if (LIKELY(cell_is_integer(a) && cell_is_integer(b)))
+        return cell_bool(a->data.atom.integer >= b->data.atom.integer);
+    assert(cell_is_numeric(a) && cell_is_numeric(b));
+    return cell_bool(cell_to_double(a) >= cell_to_double(b));
+}
+
+/* ===== Bitwise Primitives (Step 2) — single CPU instruction hot path ===== */
+
+/* ⊓ - bitwise AND */
+Cell* prim_bit_and(Cell* args) {
+    return cell_integer(cell_to_int64(arg1(args)) & cell_to_int64(arg2(args)));
+}
+
+/* ⊔ - bitwise OR */
+Cell* prim_bit_or(Cell* args) {
+    return cell_integer(cell_to_int64(arg1(args)) | cell_to_int64(arg2(args)));
+}
+
+/* ⊻ - bitwise XOR */
+Cell* prim_bit_xor(Cell* args) {
+    return cell_integer(cell_to_int64(arg1(args)) ^ cell_to_int64(arg2(args)));
+}
+
+/* ⊬ - bitwise NOT */
+Cell* prim_bit_not(Cell* args) {
+    return cell_integer(~cell_to_int64(arg1(args)));
+}
+
+/* ≪ - left shift */
+Cell* prim_bit_shl(Cell* args) {
+    int64_t v = cell_to_int64(arg1(args));
+    int64_t n = cell_to_int64(arg2(args));
+    if (UNLIKELY(n < 0 || n >= 64)) return cell_error("shift-out-of-range", arg2(args));
+    return cell_integer(v << n);
+}
+
+/* ≫ - arithmetic right shift (sign-extending) */
+Cell* prim_bit_shr(Cell* args) {
+    int64_t v = cell_to_int64(arg1(args));
+    int64_t n = cell_to_int64(arg2(args));
+    if (UNLIKELY(n < 0 || n >= 64)) return cell_error("shift-out-of-range", arg2(args));
+    return cell_integer(v >> n);
+}
+
+/* ≫ᵤ - logical right shift (zero-fill) */
+Cell* prim_bit_ushr(Cell* args) {
+    uint64_t v = (uint64_t)cell_to_int64(arg1(args));
+    int64_t n = cell_to_int64(arg2(args));
+    if (UNLIKELY(n < 0 || n >= 64)) return cell_error("shift-out-of-range", arg2(args));
+    return cell_integer((int64_t)(v >> n));
+}
+
+/* ⊓# - popcount */
+Cell* prim_bit_popcount(Cell* args) {
+    return cell_integer((int64_t)__builtin_popcountll((uint64_t)cell_to_int64(arg1(args))));
+}
+
+/* ⊓◁ - count leading zeros */
+Cell* prim_bit_clz(Cell* args) {
+    uint64_t v = (uint64_t)cell_to_int64(arg1(args));
+    return cell_integer(v == 0 ? 64 : (int64_t)__builtin_clzll(v));
+}
+
+/* ⊓▷ - count trailing zeros */
+Cell* prim_bit_ctz(Cell* args) {
+    uint64_t v = (uint64_t)cell_to_int64(arg1(args));
+    return cell_integer(v == 0 ? 64 : (int64_t)__builtin_ctzll(v));
+}
+
+/* ⊓⟲ - rotate left */
+Cell* prim_bit_rotl(Cell* args) {
+    uint64_t v = (uint64_t)cell_to_int64(arg1(args));
+    int64_t n = cell_to_int64(arg2(args)) & 63;
+    return cell_integer((int64_t)((v << n) | (v >> (64 - n))));
+}
+
+/* ⊓⟳ - rotate right */
+Cell* prim_bit_rotr(Cell* args) {
+    uint64_t v = (uint64_t)cell_to_int64(arg1(args));
+    int64_t n = cell_to_int64(arg2(args)) & 63;
+    return cell_integer((int64_t)((v >> n) | (v << (64 - n))));
+}
+
+/* →ℤ - to integer (truncate double) */
+Cell* prim_to_integer(Cell* args) {
+    Cell* a = arg1(args);
+    if (cell_is_integer(a)) return a;
+    assert(cell_is_numeric(a));
+    return cell_integer(cell_to_int64(a));
+}
+
+/* →ℝ - to double (widen int64) */
+Cell* prim_to_double(Cell* args) {
+    Cell* a = arg1(args);
+    if (cell_is_number(a)) return a;
+    assert(cell_is_numeric(a));
+    return cell_number(cell_to_double(a));
+}
+
+/* ℤ? - is integer? */
+Cell* prim_is_integer(Cell* args) {
+    return cell_bool(cell_is_integer(arg1(args)));
 }
 
 /* Math operations */
@@ -332,8 +471,8 @@ Cell* prim_ge(Cell* args) {
 /* √ - square root */
 Cell* prim_sqrt(Cell* args) {
     Cell* a = arg1(args);
-    assert(cell_is_number(a));
-    double val = cell_get_number(a);
+    assert(cell_is_numeric(a));
+    double val = cell_to_double(a);
     if (val < 0.0) {
         return cell_error("sqrt-negative", a);
     }
@@ -14151,6 +14290,264 @@ bool trait_type_satisfies(const char* type, const char* trait) {
     return true;
 }
 
+/* ===== FFI Struct Primitives (Step 4) ===== */
+
+#include "signal_handler.h"
+
+/* ⌁⊙ - Define struct layout */
+Cell* prim_ffi_struct_define(Cell* args) {
+    FFIStructLayout* layout = ffi_compute_layout(args);
+    if (!layout) return cell_error("ffi-struct-layout-failed", args);
+    return cell_ffi_ptr(layout, free, "struct-layout");
+}
+
+/* ⌁⊙→ - Read field from struct pointer */
+Cell* prim_ffi_struct_read(Cell* args) {
+    Cell* ptr_cell = arg1(args);
+    Cell* layout_cell = arg2(args);
+    Cell* name_cell = arg3(args);
+
+    if (!cell_is_ffi_ptr(ptr_cell)) return cell_error("type-error", ptr_cell);
+    if (!cell_is_ffi_ptr(layout_cell)) return cell_error("type-error", layout_cell);
+    if (!cell_is_symbol(name_cell)) return cell_error("type-error", name_cell);
+
+    void* ptr = cell_ffi_ptr_get(ptr_cell);
+    FFIStructLayout* layout = (FFIStructLayout*)cell_ffi_ptr_get(layout_cell);
+    const char* fname = cell_get_symbol(name_cell);
+    if (fname[0] == ':') fname++;
+
+    /* Linear scan over fields (≤32, branch-predicted) */
+    for (int i = 0; i < layout->n_fields; i++) {
+        const char* fn = layout->fields[i].name;
+        if (fn[0] == ':') fn++;
+        if (strcmp(fn, fname) == 0) {
+            uint8_t* base = (uint8_t*)ptr + layout->fields[i].offset;
+            switch (layout->fields[i].type) {
+                case FFI_INT32:   return cell_integer((int64_t)*(int32_t*)base);
+                case FFI_UINT32:  return cell_integer((int64_t)*(uint32_t*)base);
+                case FFI_INT64:   return cell_integer(*(int64_t*)base);
+                case FFI_UINT64:  return cell_integer((int64_t)*(uint64_t*)base);
+                case FFI_DOUBLE:  return cell_number(*(double*)base);
+                case FFI_FLOAT:   return cell_number((double)*(float*)base);
+                case FFI_BOOL:    return cell_bool(*(uint8_t*)base != 0);
+                case FFI_PTR:
+                case FFI_BUFFER:  return cell_ffi_ptr(*(void**)base, NULL, "field-ptr");
+                case FFI_CSTRING: {
+                    char* s = *(char**)base;
+                    return s ? cell_string(s) : cell_nil();
+                }
+                case FFI_SIZE_T:  return cell_integer((int64_t)*(size_t*)base);
+                default:          return cell_nil();
+            }
+        }
+    }
+    return cell_error("ffi-field-not-found", name_cell);
+}
+
+/* ⌁⊙← - Write field to struct pointer */
+Cell* prim_ffi_struct_write(Cell* args) {
+    Cell* ptr_cell = arg1(args);
+    Cell* layout_cell = arg2(args);
+    Cell* name_cell = arg3(args);
+    Cell* val_cell = cell_car(cell_cdr(cell_cdr(cell_cdr(args))));
+
+    if (!cell_is_ffi_ptr(ptr_cell)) return cell_error("type-error", ptr_cell);
+    if (!cell_is_ffi_ptr(layout_cell)) return cell_error("type-error", layout_cell);
+    if (!cell_is_symbol(name_cell)) return cell_error("type-error", name_cell);
+
+    void* ptr = cell_ffi_ptr_get(ptr_cell);
+    FFIStructLayout* layout = (FFIStructLayout*)cell_ffi_ptr_get(layout_cell);
+    const char* fname = cell_get_symbol(name_cell);
+    if (fname[0] == ':') fname++;
+
+    for (int i = 0; i < layout->n_fields; i++) {
+        const char* fn = layout->fields[i].name;
+        if (fn[0] == ':') fn++;
+        if (strcmp(fn, fname) == 0) {
+            uint8_t* base = (uint8_t*)ptr + layout->fields[i].offset;
+            switch (layout->fields[i].type) {
+                case FFI_INT32:   *(int32_t*)base = (int32_t)cell_to_int64(val_cell); break;
+                case FFI_UINT32:  *(uint32_t*)base = (uint32_t)cell_to_int64(val_cell); break;
+                case FFI_INT64:   *(int64_t*)base = cell_to_int64(val_cell); break;
+                case FFI_UINT64:  *(uint64_t*)base = (uint64_t)cell_to_int64(val_cell); break;
+                case FFI_DOUBLE:  *(double*)base = cell_to_double(val_cell); break;
+                case FFI_FLOAT:   *(float*)base = (float)cell_to_double(val_cell); break;
+                case FFI_BOOL:    *(uint8_t*)base = cell_get_bool(val_cell) ? 1 : 0; break;
+                case FFI_PTR:
+                case FFI_BUFFER:
+                    if (cell_is_ffi_ptr(val_cell))
+                        *(void**)base = cell_ffi_ptr_get(val_cell);
+                    break;
+                case FFI_CSTRING:
+                    if (cell_is_string(val_cell))
+                        *(const char**)base = cell_get_string(val_cell);
+                    break;
+                case FFI_SIZE_T:  *(size_t*)base = (size_t)cell_to_int64(val_cell); break;
+                default: break;
+            }
+            return cell_nil();
+        }
+    }
+    return cell_error("ffi-field-not-found", name_cell);
+}
+
+/* ⌁⊙⊞ - Allocate struct */
+Cell* prim_ffi_struct_alloc(Cell* args) {
+    Cell* layout_cell = arg1(args);
+    if (!cell_is_ffi_ptr(layout_cell)) return cell_error("type-error", layout_cell);
+    FFIStructLayout* layout = (FFIStructLayout*)cell_ffi_ptr_get(layout_cell);
+    void* ptr = calloc(1, layout->total_size);
+    if (!ptr) return cell_error("ffi-alloc-failed", cell_nil());
+    return cell_ffi_ptr(ptr, free, "struct");
+}
+
+/* ⌁⊙# - Get struct total size */
+Cell* prim_ffi_struct_size(Cell* args) {
+    Cell* layout_cell = arg1(args);
+    if (!cell_is_ffi_ptr(layout_cell)) return cell_error("type-error", layout_cell);
+    FFIStructLayout* layout = (FFIStructLayout*)cell_ffi_ptr_get(layout_cell);
+    return cell_integer((int64_t)layout->total_size);
+}
+
+/* ⌁⊙⊳ - Read whole struct to Guage ⊙ record */
+Cell* prim_ffi_struct_to_guage(Cell* args) {
+    Cell* ptr_cell = arg1(args);
+    Cell* layout_cell = arg2(args);
+    if (!cell_is_ffi_ptr(ptr_cell) || !cell_is_ffi_ptr(layout_cell))
+        return cell_error("type-error", args);
+
+    FFIStructLayout* layout = (FFIStructLayout*)cell_ffi_ptr_get(layout_cell);
+    void* ptr = cell_ffi_ptr_get(ptr_cell);
+
+    Cell* fields = cell_nil();
+    for (int i = layout->n_fields - 1; i >= 0; i--) {
+        /* Build (field-name . value) alist */
+        Cell* read_args = cell_cons(ptr_cell,
+            cell_cons(layout_cell,
+                cell_cons(cell_symbol(layout->fields[i].name), cell_nil())));
+        Cell* val = prim_ffi_struct_read(read_args);
+        Cell* pair = cell_cons(cell_symbol(layout->fields[i].name), val);
+        fields = cell_cons(pair, fields);
+    }
+    return cell_struct(STRUCT_LEAF, cell_symbol("ffi-struct"), cell_nil(), fields);
+}
+
+/* ⌁⊙⊲ - Write Guage ⊙ to allocated ptr */
+Cell* prim_ffi_struct_from_guage(Cell* args) {
+    Cell* struct_cell = arg1(args);
+    Cell* layout_cell = arg2(args);
+    if (!cell_is_struct(struct_cell) || !cell_is_ffi_ptr(layout_cell))
+        return cell_error("type-error", args);
+
+    FFIStructLayout* layout = (FFIStructLayout*)cell_ffi_ptr_get(layout_cell);
+    void* ptr = calloc(1, layout->total_size);
+    if (!ptr) return cell_error("ffi-alloc-failed", cell_nil());
+    Cell* ptr_cell = cell_ffi_ptr(ptr, free, "struct");
+
+    /* Walk struct fields, write each */
+    Cell* sfields = cell_struct_fields(struct_cell);
+    while (sfields && cell_is_pair(sfields)) {
+        Cell* pair = cell_car(sfields);
+        if (cell_is_pair(pair)) {
+            Cell* write_args = cell_cons(ptr_cell,
+                cell_cons(layout_cell,
+                    cell_cons(cell_car(pair),
+                        cell_cons(cell_cdr(pair), cell_nil()))));
+            prim_ffi_struct_write(write_args);
+        }
+        sfields = cell_cdr(sfields);
+    }
+    return ptr_cell;
+}
+
+/* ===== FFI Callback Primitives (Step 5) ===== */
+
+/* ⌁⤺ - Create C-callable callback from lambda + type sig */
+Cell* prim_ffi_callback_create(Cell* args) {
+    Cell* closure = arg1(args);
+    Cell* ret_type_cell = arg2(args);
+    Cell* arg_types_cell = arg3(args);
+
+    if (!cell_is_lambda(closure)) return cell_error("type-error", closure);
+    if (!cell_is_symbol(ret_type_cell)) return cell_error("type-error", ret_type_cell);
+
+    FFISig sig = {0};
+    sig.ret_type = ffi_parse_type_symbol(cell_get_symbol(ret_type_cell));
+
+    /* Parse arg types list */
+    Cell* cur = arg_types_cell;
+    while (cur && cell_is_pair(cur) && sig.n_args < FFI_MAX_ARGS) {
+        Cell* at = cell_car(cur);
+        if (cell_is_symbol(at)) {
+            sig.arg_types[sig.n_args++] = ffi_parse_type_symbol(cell_get_symbol(at));
+        }
+        cur = cell_cdr(cur);
+    }
+
+    int slot = ffi_callback_alloc(closure, &sig);
+    if (slot < 0) return cell_error("ffi-callback-slots-full", cell_nil());
+
+    /* Return slot wrapped as FFI ptr — the trampoline JIT is platform-specific
+     * and optional. For now, return the slot index for use with dispatch. */
+    Cell* result = cell_ffi_ptr((void*)(intptr_t)slot, NULL, "callback");
+    return result;
+}
+
+/* ⌁⤺× - Free callback */
+Cell* prim_ffi_callback_free(Cell* args) {
+    Cell* slot_cell = arg1(args);
+    if (!cell_is_ffi_ptr(slot_cell)) return cell_error("type-error", slot_cell);
+    int slot = (int)(intptr_t)cell_ffi_ptr_get(slot_cell);
+    ffi_callback_free(slot);
+    return cell_nil();
+}
+
+/* ===== Signal Primitives (Step 6) ===== */
+
+/* ⚡⟳ - Register actor for POSIX signal */
+Cell* prim_signal_register(Cell* args) {
+    Cell* sig_cell = arg1(args);
+    Cell* actor_cell = arg2(args);
+
+    if (!cell_is_symbol(sig_cell)) return cell_error("type-error", sig_cell);
+    if (!cell_is_actor(actor_cell)) return cell_error("type-error", actor_cell);
+
+    int signum = signal_name_to_num(cell_get_symbol(sig_cell));
+    if (signum < 0) return cell_error("unknown-signal", sig_cell);
+
+    int actor_id = cell_get_actor_id(actor_cell);
+    return cell_bool(signal_register(signum, actor_id));
+}
+
+/* ⚡× - Unregister signal handler */
+Cell* prim_signal_unregister(Cell* args) {
+    Cell* sig_cell = arg1(args);
+    if (!cell_is_symbol(sig_cell)) return cell_error("type-error", sig_cell);
+
+    int signum = signal_name_to_num(cell_get_symbol(sig_cell));
+    if (signum < 0) return cell_error("unknown-signal", sig_cell);
+
+    return cell_bool(signal_unregister(signum));
+}
+
+/* ⚡? - List registered signal handlers */
+Cell* prim_signal_list(Cell* args) {
+    (void)args;
+    SignalRegistration regs[SIGNAL_MAX_HANDLERS];
+    int count = signal_list_handlers(regs, SIGNAL_MAX_HANDLERS);
+
+    Cell* result = cell_nil();
+    for (int i = count - 1; i >= 0; i--) {
+        const char* name = signal_num_to_name(regs[i].signum);
+        Cell* pair = cell_cons(
+            cell_symbol(name ? name : "unknown"),
+            cell_actor(regs[i].actor_id)
+        );
+        result = cell_cons(pair, result);
+    }
+    return result;
+}
+
 /* Primitive table - PURE SYMBOLS ONLY
  * EVERY primitive MUST have documentation */
 static Primitive primitives[] = {
@@ -14838,6 +15235,41 @@ static Primitive primitives[] = {
     {"⊧→!", prim_trait_dispatch_fast, 3, {"Fused type-of + dispatch (value → :Trait → :op → fn)", "α → :sym → :sym → λ|⚠"}},
     {"⊧∈", prim_type_of, 1, {"Get runtime type name (FDT array index)", "α → :sym"}},
     {"⊧⊙?", prim_trait_defaults, 1, {"Get trait default implementations", ":sym → [⟨:sym . λ⟩]|∅"}},
+
+    /* Bitwise primitives (Step 2) — single CPU instruction hot path */
+    {"⊓", prim_bit_and, 2, {"Bitwise AND", "ℤ → ℤ → ℤ"}},
+    {"⊔", prim_bit_or, 2, {"Bitwise OR", "ℤ → ℤ → ℤ"}},
+    {"⊻", prim_bit_xor, 2, {"Bitwise XOR", "ℤ → ℤ → ℤ"}},
+    {"⊬", prim_bit_not, 1, {"Bitwise NOT", "ℤ → ℤ"}},
+    {"≪", prim_bit_shl, 2, {"Left shift", "ℤ → ℤ → ℤ"}},
+    {"⊓≫", prim_bit_shr, 2, {"Arithmetic right shift", "ℤ → ℤ → ℤ"}},
+    {"⊓≫ᵤ", prim_bit_ushr, 2, {"Logical right shift (zero-fill)", "ℤ → ℤ → ℤ"}},
+    {"⊓#", prim_bit_popcount, 1, {"Population count (number of set bits)", "ℤ → ℤ"}},
+    {"⊓◁", prim_bit_clz, 1, {"Count leading zeros", "ℤ → ℤ"}},
+    {"⊓▷", prim_bit_ctz, 1, {"Count trailing zeros", "ℤ → ℤ"}},
+    {"⊓⟲", prim_bit_rotl, 2, {"Rotate left", "ℤ → ℤ → ℤ"}},
+    {"⊓⟳", prim_bit_rotr, 2, {"Rotate right", "ℤ → ℤ → ℤ"}},
+    {"→ℤ", prim_to_integer, 1, {"Convert to integer (truncate double)", "ℝ|ℤ → ℤ"}},
+    {"→ℝ", prim_to_double, 1, {"Convert to double (widen integer)", "ℤ|ℝ → ℝ"}},
+    {"ℤ?", prim_is_integer, 1, {"Is native integer?", "α → 𝔹"}},
+
+    /* FFI Struct primitives (Step 4) */
+    {"⌁⊙⊜", prim_ffi_struct_define, -1, {"Define struct layout from field specs", "[⟨:name :type⟩ ...] → ⌁[struct-layout]"}},
+    {"⌁⊙→", prim_ffi_struct_read, 3, {"Read struct field", "⌁ → ⌁[layout] → :sym → α"}},
+    {"⌁⊙←", prim_ffi_struct_write, 4, {"Write struct field", "⌁ → ⌁[layout] → :sym → α → ∅"}},
+    {"⌁⊙⊞", prim_ffi_struct_alloc, 1, {"Allocate struct (calloc)", "⌁[layout] → ⌁[struct]"}},
+    {"⌁⊙#", prim_ffi_struct_size, 1, {"Get struct total size", "⌁[layout] → ℤ"}},
+    {"⌁⊙⊳", prim_ffi_struct_to_guage, 2, {"Read whole struct to Guage record", "⌁ → ⌁[layout] → ⊙"}},
+    {"⌁⊙⊲", prim_ffi_struct_from_guage, 2, {"Write Guage record to allocated ptr", "⊙ → ⌁[layout] → ⌁[struct]"}},
+
+    /* FFI Callback primitives (Step 5) */
+    {"⌁⤺", prim_ffi_callback_create, -1, {"Create C-callable callback from lambda", "λ → :ret → [:arg ...] → ⌁[callback]"}},
+    {"⌁⤺×", prim_ffi_callback_free, 1, {"Free callback trampoline", "⌁[callback] → ∅"}},
+
+    /* Signal primitives (Step 6) */
+    {"⚡⟳", prim_signal_register, 2, {"Register actor for POSIX signal", ":sym → ⟳ → 𝔹"}},
+    {"⚡×", prim_signal_unregister, 1, {"Unregister signal handler", ":sym → 𝔹"}},
+    {"⚡?", prim_signal_list, 0, {"List registered signal handlers", "→ [⟨:sym ⟳⟩]"}},
 
     {NULL, NULL, 0, {NULL, NULL}}
 };

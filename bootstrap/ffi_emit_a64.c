@@ -272,6 +272,48 @@ static bool ffi_is_int_arg_a64(FFICType t) {
     }
 }
 
+/* B.EQ — returns offset for patching */
+static size_t emit_beq(EmitCtx* ctx) {
+    size_t off = ctx->pos;
+    emit_inst(ctx, 0x54000000); /* b.eq +0 (placeholder) */
+    return off;
+}
+
+/* Patch B.EQ */
+static void patch_beq(EmitCtx* ctx, size_t off) {
+    int32_t delta = (int32_t)(ctx->pos - off) / 4;
+    uint32_t imm19 = (uint32_t)delta & 0x7FFFF;
+    uint32_t inst = 0x54000000 | (imm19 << 5);
+    memcpy(&ctx->buf[off], &inst, 4);
+}
+
+/* B (unconditional) — returns offset for patching */
+static size_t emit_b(EmitCtx* ctx) {
+    size_t off = ctx->pos;
+    emit_inst(ctx, 0x14000000); /* b +0 (placeholder) */
+    return off;
+}
+
+/* Patch B (unconditional) */
+static void patch_b(EmitCtx* ctx, size_t off) {
+    int32_t delta = (int32_t)(ctx->pos - off) / 4;
+    uint32_t imm26 = (uint32_t)delta & 0x3FFFFFF;
+    uint32_t inst = 0x14000000 | imm26;
+    memcpy(&ctx->buf[off], &inst, 4);
+}
+
+/* Is this a numeric FFI type that can accept both NUMBER and INTEGER cells? */
+static bool ffi_is_numeric_type_a64(FFICType t) {
+    switch (t) {
+        case FFI_DOUBLE: case FFI_FLOAT:
+        case FFI_INT32: case FFI_INT64: case FFI_UINT32: case FFI_UINT64:
+        case FFI_SIZE_T:
+            return true;
+        default:
+            return false;
+    }
+}
+
 /* Total frame size: 16 (FP+LR) + 32 (X19-X22) + 64 (doubles) + 64 (ints) = 176, round to 176 */
 #define FRAME_SIZE 176
 #define SAVE_X19_OFF 16
@@ -306,7 +348,6 @@ bool emit_a64_stub(EmitCtx* ctx, FFISig* sig) {
 
     for (int i = 0; i < sig->n_args; i++) {
         FFICType at = sig->arg_types[i];
-        int expected = ffi_expected_cell_type_a64(at);
 
         /* X21 = car(X19) = [X19 + CELL_OFF_DATA] */
         emit_ldr_x(ctx, 21, 19, CELL_OFF_DATA);
@@ -314,23 +355,51 @@ bool emit_a64_stub(EmitCtx* ctx, FFISig* sig) {
         /* W22 = [X21 + 0] (cell->type) */
         emit_ldr_w(ctx, 22, 21, 0);
 
-        /* CMP W22, #expected */
-        emit_cmp_w_imm(ctx, 22, expected);
-        error_patches[i] = emit_bne(ctx);
+        if (ffi_is_numeric_type_a64(at)) {
+            /* Dual type check: INTEGER (zero-conversion fast path) or NUMBER */
+            emit_cmp_w_imm(ctx, 22, CELL_ATOM_INTEGER);
+            size_t int_patch = emit_beq(ctx);
 
-        if (at == FFI_DOUBLE || at == FFI_FLOAT) {
-            /* Load double from [X21 + CELL_OFF_DATA], store to scratch */
-            emit_ldr_d(ctx, 0, 21, CELL_OFF_DATA);
-            emit_str_d(ctx, 0, 20, DOUBLE_BASE + fp_idx * 8);
-            fp_idx++;
-        } else if (ffi_is_int_arg_a64(at)) {
-            if (at == FFI_PTR || at == FFI_CSTRING || at == FFI_BUFFER || at == FFI_BOOL) {
-                /* Load pointer/bool directly from [X21 + CELL_OFF_DATA] */
-                emit_ldr_x(ctx, 22, 21, CELL_OFF_DATA);
+            /* Not INTEGER — check NUMBER */
+            emit_cmp_w_imm(ctx, 22, CELL_ATOM_NUMBER);
+            error_patches[i] = emit_bne(ctx);
+
+            /* === NUMBER path === */
+            if (at == FFI_DOUBLE || at == FFI_FLOAT) {
+                emit_ldr_d(ctx, 0, 21, CELL_OFF_DATA);
+                emit_str_d(ctx, 0, 20, DOUBLE_BASE + fp_idx * 8);
             } else {
-                /* Load double, convert to int64 */
+                /* Load double from NUMBER, convert to int64 via FCVTZS */
                 emit_ldr_d(ctx, 0, 21, CELL_OFF_DATA);
                 emit_fcvtzs_x_d(ctx, 22, 0);
+                emit_str_x(ctx, 22, 20, INT_BASE + int_idx * 8);
+            }
+            size_t done_patch = emit_b(ctx);
+
+            /* === INTEGER path (zero-conversion) === */
+            patch_beq(ctx, int_patch);
+            if (at == FFI_DOUBLE || at == FFI_FLOAT) {
+                /* Load int64 from INTEGER cell, promote to double via SCVTF */
+                emit_ldr_x(ctx, 22, 21, CELL_OFF_DATA);
+                emit_scvtf_d_x(ctx, 0, 22);
+                emit_str_d(ctx, 0, 20, DOUBLE_BASE + fp_idx * 8);
+            } else {
+                /* Zero-conversion: load int64 directly — no FP round-trip */
+                emit_ldr_x(ctx, 22, 21, CELL_OFF_DATA);
+                emit_str_x(ctx, 22, 20, INT_BASE + int_idx * 8);
+            }
+            patch_b(ctx, done_patch);
+
+            if (at == FFI_DOUBLE || at == FFI_FLOAT) fp_idx++;
+            else int_idx++;
+        } else {
+            /* Non-numeric: single type check */
+            int expected = ffi_expected_cell_type_a64(at);
+            emit_cmp_w_imm(ctx, 22, expected);
+            error_patches[i] = emit_bne(ctx);
+
+            if (at == FFI_PTR || at == FFI_CSTRING || at == FFI_BUFFER || at == FFI_BOOL) {
+                emit_ldr_x(ctx, 22, 21, CELL_OFF_DATA);
             }
             emit_str_x(ctx, 22, 20, INT_BASE + int_idx * 8);
             int_idx++;
@@ -378,8 +447,8 @@ bool emit_a64_stub(EmitCtx* ctx, FFISig* sig) {
         }
         case FFI_INT32: case FFI_INT64: case FFI_UINT32: case FFI_UINT64:
         case FFI_SIZE_T: {
-            emit_scvtf_d_x(ctx, 0, 0);
-            emit_imm64(ctx, 8, (uint64_t)(uintptr_t)cell_number);
+            /* X0 already has int64 result. Return as native integer cell. */
+            emit_imm64(ctx, 8, (uint64_t)(uintptr_t)cell_integer);
             emit_blr(ctx, 8);
             break;
         }

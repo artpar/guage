@@ -1142,6 +1142,12 @@ tail_call:  /* TCO: loop back here instead of recursive call */
         return expr;
     }
 
+    /* Native integers are always self-evaluating (never De Bruijn indices) */
+    if (cell_is_integer(expr)) {
+        cell_retain(expr);
+        return expr;
+    }
+
     /* Self-evaluating literals */
     if (cell_is_bool(expr) || cell_is_nil(expr) || cell_is_string(expr)) {
         cell_retain(expr);

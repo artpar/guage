@@ -1,11 +1,122 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-02-01 (Day 143 COMPLETE)
+Updated: 2026-02-01 (Day 144 COMPLETE)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 143 - Extended Trait Protocols (2026-02-01)
+# Session Handoff: Day 144 - HFT-Grade Low-Level Capabilities (2026-02-01)
+
+## Day 144 — HFT-Grade Low-Level Capabilities (COMPLETE)
+
+**STATUS:** 139/139 test files passing ✅
+
+### What Was Done
+
+Implemented all 6 steps of the HFT-grade low-level capabilities plan: native integers, bitwise ops, FFI JIT integer support, FFI struct marshalling, FFI callbacks, and signal handling. 27 new primitives total.
+
+### Step 1: Native Integer Type (CELL_ATOM_INTEGER)
+
+- New cell type `CELL_ATOM_INTEGER` with `int64_t` storage
+- Integer literals: `#42i`, hex `#xFFi`, `#x1A2Bi`
+- Cross-type equality: `(≡ #42i #42)` → `#t`
+- Consistent hashing: integer-valued doubles hash the same as equivalent integers
+- Dual-type arithmetic: integer+integer = integer (with `__builtin_*_overflow` detection), mixed = double promotion
+- Self-evaluating in eval (not treated as De Bruijn indices)
+
+### Step 2: Bitwise Primitives (15 ops)
+
+| Symbol | Operation |
+|--------|-----------|
+| `⊓` | AND |
+| `⊔` | OR |
+| `⊻` | XOR |
+| `⊬` | NOT |
+| `≪` | Left shift |
+| `⊓≫` | Arithmetic right shift |
+| `⊓≫ᵤ` | Logical right shift |
+| `⊓#` | Popcount |
+| `⊓◁` | Count leading zeros |
+| `⊓▷` | Count trailing zeros |
+| `⊓⟲` | Rotate left |
+| `⊓⟳` | Rotate right |
+| `→ℤ` | To integer |
+| `→ℝ` | To double |
+| `ℤ?` | Is integer? |
+
+Note: `≫` was already taken by effect-bind, so bitwise right shifts use `⊓≫` prefix.
+
+### Step 3: FFI JIT Integer Support
+
+- Both ARM64 and x86-64 emitters updated with dual type-check
+- Zero-conversion fast path: INTEGER cells loaded as int64 directly (no FP round-trip)
+- NUMBER cells still work via CVTSD2SI/FCVTZS conversion
+- Integer FFI returns now produce `cell_integer` instead of `cell_number`
+
+### Step 4: FFI Struct Marshalling (7 primitives)
+
+| Symbol | Purpose |
+|--------|---------|
+| `⌁⊙⊜` | Define struct layout from field specs |
+| `⌁⊙→` | Read struct field |
+| `⌁⊙←` | Write struct field |
+| `⌁⊙⊞` | Allocate struct (calloc) |
+| `⌁⊙#` | Get struct total size |
+| `⌁⊙⊳` | Read whole struct → Guage record |
+| `⌁⊙⊲` | Write Guage record → allocated ptr |
+
+Note: `⌁⊙` was already taken by FFI type-tag, so struct define uses `⌁⊙⊜`.
+
+### Step 5: FFI Callbacks (2 primitives)
+
+| Symbol | Purpose |
+|--------|---------|
+| `⌁⤺` | Create C-callable callback from lambda + type sig |
+| `⌁⤺×` | Free callback trampoline |
+
+- 64-slot callback registry, dispatch through eval system
+- Marshals C args to Guage cells, calls closure, extracts return
+
+### Step 6: Signal Handling (3 primitives + 2 new files)
+
+| Symbol | Purpose |
+|--------|---------|
+| `⚡⟳` | Register actor for POSIX signal |
+| `⚡×` | Unregister signal handler |
+| `⚡?` | List registered signal handlers |
+
+- Self-pipe pattern (async-signal-safe)
+- Signals delivered as actor messages `(:signal :sigterm)`
+- Integrated into scheduler idle loop (zero overhead when no signals)
+- 14 POSIX signals supported
+
+### Files Changed
+
+| File | Changes |
+|------|---------|
+| `bootstrap/cell.h` | `CELL_ATOM_INTEGER` in enum, `int64_t integer` in union, inline helpers |
+| `bootstrap/cell.c` | `cell_integer()`, cross-type equality/hash/compare/print |
+| `bootstrap/main.c` | Integer literal parsing (`#42i`, `#xFFi`) |
+| `bootstrap/eval.c` | INTEGER self-evaluating (not De Bruijn index) |
+| `bootstrap/primitives.c` | Dual-type arithmetic (10 ops), 27 new primitives, `celltype_names` |
+| `bootstrap/ffi_jit.h` | FFIStructLayout, CallbackStub types, declarations |
+| `bootstrap/ffi_jit.c` | Layout computation, callback dispatch via eval, `#include "eval.h"` |
+| `bootstrap/ffi_emit_a64.c` | Dual type-check, zero-conversion INTEGER path, `cell_integer` returns |
+| `bootstrap/ffi_emit_x64.c` | Same for x86-64 |
+| `bootstrap/scheduler.c` | `signal_init/shutdown/poll` integration |
+| `bootstrap/signal_handler.h` | **NEW** — signal subsystem API |
+| `bootstrap/signal_handler.c` | **NEW** — self-pipe, registration, dispatch |
+| `Makefile` | Added `signal_handler.c` to SOURCES + dependencies |
+
+### Primitive Count
+
+Previous: 511 primitives → Now: 538 primitives (+27)
+
+### Test Results
+
+139/139 test files passing. All existing tests unaffected by changes.
+
+---
 
 ## Day 143 — Extended Trait Protocols (COMPLETE)
 

@@ -65,6 +65,12 @@ static Cell* cell_alloc(CellType type) {
 }
 
 /* Cell creation */
+Cell* cell_integer(int64_t n) {
+    Cell* c = cell_alloc(CELL_ATOM_INTEGER);
+    c->data.atom.integer = n;
+    return c;
+}
+
 Cell* cell_number(double n) {
     Cell* c = cell_alloc(CELL_ATOM_NUMBER);
     c->data.atom.number = n;
@@ -686,6 +692,15 @@ bool cell_is_number(Cell* c) {
     return c && c->type == CELL_ATOM_NUMBER;
 }
 
+bool cell_is_integer(Cell* c) {
+    return c && c->type == CELL_ATOM_INTEGER;
+}
+
+int64_t cell_get_integer(Cell* c) {
+    assert(c && c->type == CELL_ATOM_INTEGER);
+    return c->data.atom.integer;
+}
+
 bool cell_is_bool(Cell* c) {
     return c && c->type == CELL_ATOM_BOOL;
 }
@@ -1088,11 +1103,23 @@ Cell* cell_graph_set_exit(Cell* graph, Cell* exit) {
 bool cell_equal(Cell* a, Cell* b) {
     if (a == b) return true;
     if (a == NULL || b == NULL) return false;
+
+    /* Cross-type numeric equality: int 42 == double 42.0 */
+    if (cell_is_numeric(a) && cell_is_numeric(b)) {
+        /* Both integer → exact int64 compare (no FP noise) */
+        if (a->type == CELL_ATOM_INTEGER && b->type == CELL_ATOM_INTEGER)
+            return a->data.atom.integer == b->data.atom.integer;
+        /* Mixed or both double → compare as double */
+        return cell_to_double(a) == cell_to_double(b);
+    }
+
     if (a->type != b->type) return false;
 
     switch (a->type) {
         case CELL_ATOM_NUMBER:
             return a->data.atom.number == b->data.atom.number;
+        case CELL_ATOM_INTEGER:
+            return a->data.atom.integer == b->data.atom.integer;
         case CELL_ATOM_BOOL:
             return a->data.atom.boolean == b->data.atom.boolean;
         case CELL_ATOM_SYMBOL:
@@ -1177,6 +1204,9 @@ void cell_print(Cell* c) {
     switch (c->type) {
         case CELL_ATOM_NUMBER:
             printf("#%g", c->data.atom.number);
+            break;
+        case CELL_ATOM_INTEGER:
+            printf("#%lldi", (long long)c->data.atom.integer);
             break;
         case CELL_ATOM_BOOL:
             printf(c->data.atom.boolean ? "#t" : "#f");
@@ -1344,7 +1374,16 @@ uint64_t cell_hash(Cell* c) {
     switch (c->type) {
         case CELL_ATOM_NUMBER: {
             double n = c->data.atom.number;
+            /* If integer-valued double, hash as int64 for cross-type consistency */
+            if (n == (double)(int64_t)n && n >= (double)INT64_MIN && n <= (double)INT64_MAX) {
+                int64_t iv = (int64_t)n;
+                return guage_siphash(&iv, sizeof(iv));
+            }
             return guage_siphash(&n, sizeof(n));
+        }
+        case CELL_ATOM_INTEGER: {
+            int64_t iv = c->data.atom.integer;
+            return guage_siphash(&iv, sizeof(iv));
         }
         case CELL_ATOM_SYMBOL:
             return intern_hash_by_id(c->sym_id);
@@ -2731,11 +2770,24 @@ int cell_compare(Cell* a, Cell* b) {
     if (!a) return -1;
     if (!b) return 1;
 
+    /* Cross-type numeric comparison: INTEGER and NUMBER share ordering slot */
+    if (cell_is_numeric(a) && cell_is_numeric(b)) {
+        /* Both integer → exact int64 compare */
+        if (a->type == CELL_ATOM_INTEGER && b->type == CELL_ATOM_INTEGER) {
+            int64_t ia = a->data.atom.integer, ib = b->data.atom.integer;
+            return (ia < ib) ? -1 : (ia > ib) ? 1 : 0;
+        }
+        /* Mixed or both double → compare as double */
+        double da = cell_to_double(a), db = cell_to_double(b);
+        return (da < db) ? -1 : (da > db) ? 1 : 0;
+    }
+
     /* Type ordering */
     static const int type_order[] = {
         [CELL_ATOM_NIL] = 0,
         [CELL_ATOM_BOOL] = 1,
         [CELL_ATOM_NUMBER] = 2,
+        [CELL_ATOM_INTEGER] = 2,  /* Same slot as NUMBER */
         [CELL_ATOM_SYMBOL] = 3,
         [CELL_ATOM_STRING] = 4,
         [CELL_PAIR] = 5,
@@ -2779,6 +2831,10 @@ int cell_compare(Cell* a, Cell* b) {
             double db = b->data.atom.number;
             return (da < db) ? -1 : (da > db) ? 1 : 0;
         }
+        case CELL_ATOM_INTEGER: {
+            int64_t ia = a->data.atom.integer, ib = b->data.atom.integer;
+            return (ia < ib) ? -1 : (ia > ib) ? 1 : 0;
+        }
         case CELL_ATOM_SYMBOL: {
             return strcmp(a->data.atom.symbol, b->data.atom.symbol);
         }
@@ -2808,6 +2864,7 @@ static uint64_t cell_sort_key(Cell* c) {
         case CELL_ATOM_NIL:    return tag;
         case CELL_ATOM_BOOL:   return tag | (uint64_t)c->data.atom.boolean;
         case CELL_ATOM_NUMBER: return tag | (double_to_sortkey(c->data.atom.number) >> 4);
+        case CELL_ATOM_INTEGER: return tag | (double_to_sortkey((double)c->data.atom.integer) >> 4);
         case CELL_ATOM_SYMBOL: {
             uint64_t prefix = 0;
             const char* s = c->data.atom.symbol;

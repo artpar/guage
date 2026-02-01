@@ -77,6 +77,49 @@ Cell* ffi_arity_error(int expected, int got);
 /* === Type symbol parsing === */
 FFICType ffi_parse_type_symbol(const char* sym);
 
+/* === FFI Struct Layout (Step 4) === */
+
+typedef struct {
+    const char* name;     /* Field name (interned) */
+    FFICType    type;     /* C type */
+    uint32_t    offset;   /* Computed byte offset */
+    uint32_t    size;     /* sizeof(type) */
+} FFIField;
+
+typedef struct {
+    FFIField fields[32];  /* Max 32 fields */
+    int      n_fields;
+    uint32_t total_size;  /* With tail padding */
+    uint32_t alignment;   /* Max field alignment */
+} FFIStructLayout;
+
+/* Compute struct layout from field list */
+FFIStructLayout* ffi_compute_layout(Cell* field_list);
+
+/* Field size/alignment for C types */
+uint32_t ffi_type_size(FFICType t);
+uint32_t ffi_type_align(FFICType t);
+
+/* === FFI Callbacks (Step 5) — C→Guage trampolines === */
+
+typedef struct {
+    void*    trampoline;      /* JIT'd C-callable code */
+    size_t   trampoline_size;
+    Cell*    closure;          /* Retained Guage lambda */
+    FFISig   sig;
+    bool     active;
+} CallbackStub;
+
+#define FFI_MAX_CALLBACKS 64
+extern CallbackStub g_callbacks[FFI_MAX_CALLBACKS];
+
+/* Dispatch function called from JIT trampoline */
+Cell* ffi_callback_dispatch(int slot, uint64_t* raw_args);
+
+/* Allocate a callback slot */
+int ffi_callback_alloc(Cell* closure, FFISig* sig);
+void ffi_callback_free(int slot);
+
 /* === Platform emitters (implemented per-arch) === */
 #if defined(__x86_64__) || defined(_M_X64)
 bool emit_x64_stub(EmitCtx* ctx, FFISig* sig);

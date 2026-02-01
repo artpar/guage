@@ -121,7 +121,9 @@ static Cell* parse_list(Parser* p) {
 static Cell* parse_number(Parser* p) {
     BytePos lo = parser_pos(p);
     double value = 0;
+    int64_t ival = 0;
     int is_negative = 0;
+    int has_decimal = 0;
 
     if (p->input[p->pos] == '-') {
         is_negative = 1;
@@ -131,12 +133,14 @@ static Cell* parse_number(Parser* p) {
 
     while (p->input[p->pos] >= '0' && p->input[p->pos] <= '9') {
         value = value * 10 + (p->input[p->pos] - '0');
+        ival = ival * 10 + (p->input[p->pos] - '0');
         p->pos++;
         p->column++;
     }
 
     /* Handle decimal point */
     if (p->input[p->pos] == '.') {
+        has_decimal = 1;
         p->pos++;
         p->column++;
         double fraction = 0;
@@ -150,9 +154,53 @@ static Cell* parse_number(Parser* p) {
         value += fraction;
     }
 
-    if (is_negative) value = -value;
+    if (is_negative) { value = -value; ival = -ival; }
+
+    /* Integer suffix 'i' — no decimal allowed */
+    if (!has_decimal && p->input[p->pos] == 'i') {
+        p->pos++;
+        p->column++;
+        Cell* c = cell_integer(ival);
+        c->span = span_new(lo, parser_pos(p));
+        return c;
+    }
 
     Cell* c = cell_number(value);
+    c->span = span_new(lo, parser_pos(p));
+    return c;
+}
+
+/* Parse hex integer literal: digits already started after '#x' prefix */
+static Cell* parse_hex_integer(Parser* p) {
+    BytePos lo = parser_pos(p);
+    int64_t value = 0;
+    int is_negative = 0;
+
+    if (p->input[p->pos] == '-') {
+        is_negative = 1;
+        p->pos++;
+        p->column++;
+    }
+
+    while (1) {
+        char ch = p->input[p->pos];
+        if (ch >= '0' && ch <= '9')      { value = (value << 4) | (ch - '0'); }
+        else if (ch >= 'a' && ch <= 'f') { value = (value << 4) | (ch - 'a' + 10); }
+        else if (ch >= 'A' && ch <= 'F') { value = (value << 4) | (ch - 'A' + 10); }
+        else break;
+        p->pos++;
+        p->column++;
+    }
+
+    if (is_negative) value = -value;
+
+    /* Require 'i' suffix for hex integers */
+    if (p->input[p->pos] == 'i') {
+        p->pos++;
+        p->column++;
+    }
+
+    Cell* c = cell_integer(value);
     c->span = span_new(lo, parser_pos(p));
     return c;
 }
@@ -262,6 +310,14 @@ static Cell* parse_expr(Parser* p) {
             p->pos++;
             p->column++;
             Cell* c = cell_bool(false);
+            c->span = span_new(lo, parser_pos(p));
+            return c;
+        }
+        /* Hex integer literal: #xFFi or #xFF */
+        else if (p->input[p->pos] == 'x' || p->input[p->pos] == 'X') {
+            p->pos++;
+            p->column++;
+            Cell* c = parse_hex_integer(p);
             c->span = span_new(lo, parser_pos(p));
             return c;
         }

@@ -26,7 +26,7 @@ endif
 SOURCES = cell.c intern.c span.c primitives.c debruijn.c debug.c eval.c cfg.c dfg.c \
           pattern.c pattern_check.c type.c testgen.c module.c macro.c \
           fiber.c actor.c channel.c scheduler.c park.c linenoise.c diagnostic.c \
-          ffi_jit.c ffi_emit_x64.c ffi_emit_a64.c ring.c main.c
+          ffi_jit.c ffi_emit_x64.c ffi_emit_a64.c ring.c signal_handler.c main.c
 
 # Platform-specific assembly (fcontext context switch)
 UNAME_M := $(shell uname -m 2>/dev/null || echo unknown)
@@ -285,6 +285,8 @@ $(BOOTSTRAP_DIR)/scheduler.o: $(BOOTSTRAP_DIR)/scheduler.c $(BOOTSTRAP_DIR)/sche
                                $(BOOTSTRAP_DIR)/actor.h $(BOOTSTRAP_DIR)/channel.h \
                                $(BOOTSTRAP_DIR)/log.h
 $(BOOTSTRAP_DIR)/park.o: $(BOOTSTRAP_DIR)/park.c $(BOOTSTRAP_DIR)/park.h
+$(BOOTSTRAP_DIR)/signal_handler.o: $(BOOTSTRAP_DIR)/signal_handler.c $(BOOTSTRAP_DIR)/signal_handler.h \
+                                    $(BOOTSTRAP_DIR)/cell.h $(BOOTSTRAP_DIR)/actor.h
 $(BOOTSTRAP_DIR)/ring.o: $(BOOTSTRAP_DIR)/ring.c $(BOOTSTRAP_DIR)/ring.h
 $(BOOTSTRAP_DIR)/main.o: $(BOOTSTRAP_DIR)/main.c $(BOOTSTRAP_DIR)/cell.h \
                           $(BOOTSTRAP_DIR)/span.h $(BOOTSTRAP_DIR)/primitives.h \

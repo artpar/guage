@@ -1,6 +1,7 @@
 #include "scheduler.h"
 #include "actor.h"
 #include "channel.h"
+#include "signal_handler.h"
 #include "log.h"
 #include <stdlib.h>
 #include <stdio.h>
@@ -635,6 +636,9 @@ void sched_init(int num_schedulers) {
     /* Calibrate TSC for trace timestamp conversion */
     tsc_calibrate();
 
+    /* Initialize signal subsystem (self-pipe pattern) */
+    signal_init();
+
     atomic_store(&g_sched_initialized, true);
 }
 
@@ -670,6 +674,7 @@ void sched_shutdown(void) {
         s->stack_pool_count = 0;
     }
 
+    signal_shutdown();
     actor_locks_destroy();
     atomic_store(&g_sched_initialized, false);
 }
@@ -1037,6 +1042,8 @@ static void* scheduler_worker_main(void* arg) {
         if (actor) goto run;
 
         /* 5. Adaptive idle: spin → eventcount → tiered park */
+        /* Poll signals (zero overhead when none pending — just EAGAIN read) */
+        signal_poll();
         idle_spins++;
         if (idle_spins < 64) {
             /* Stage 1: spin with YIELD hint */

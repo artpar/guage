@@ -260,6 +260,35 @@ static bool ffi_is_int_arg(FFICType t) {
     }
 }
 
+/* JE rel32 */
+static size_t emit_je_rel32(EmitCtx* ctx) {
+    emit_u8(ctx, 0x0F);
+    emit_u8(ctx, 0x84);
+    size_t patch = ctx->pos;
+    emit_u32(ctx, 0);
+    return patch;
+}
+
+/* JMP rel32 */
+static size_t emit_jmp_rel32(EmitCtx* ctx) {
+    emit_u8(ctx, 0xE9);
+    size_t patch = ctx->pos;
+    emit_u32(ctx, 0);
+    return patch;
+}
+
+/* Is this a numeric FFI type that can accept both NUMBER and INTEGER cells? */
+static bool ffi_is_numeric_type(FFICType t) {
+    switch (t) {
+        case FFI_DOUBLE: case FFI_FLOAT:
+        case FFI_INT32: case FFI_INT64: case FFI_UINT32: case FFI_UINT64:
+        case FFI_SIZE_T:
+            return true;
+        default:
+            return false;
+    }
+}
+
 bool emit_x64_stub(EmitCtx* ctx, FFISig* sig) {
     /* Prologue: save callee-saved regs we need */
     emit_push(ctx, RBP);
@@ -296,50 +325,69 @@ bool emit_x64_stub(EmitCtx* ctx, FFISig* sig) {
 
     for (int i = 0; i < sig->n_args; i++) {
         FFICType at = sig->arg_types[i];
-        int expected_ct = ffi_expected_cell_type(at);
 
         /* RAX = car(R12) = [R12 + CELL_OFF_DATA] — the arg cell */
         emit_mov_rm_disp8(ctx, RAX, R12, CELL_OFF_DATA);
 
-        /* Type check: cmp dword [RAX], expected_cell_type */
-        emit_cmp_dword_mem_imm8(ctx, RAX, (uint8_t)expected_ct);
-        error_patches[i] = emit_jne_rel32(ctx);
+        if (ffi_is_numeric_type(at)) {
+            /* Dual type check: INTEGER (zero-conversion fast path) or NUMBER */
+            emit_cmp_dword_mem_imm8(ctx, RAX, (uint8_t)CELL_ATOM_INTEGER);
+            size_t int_patch = emit_je_rel32(ctx);
 
-        /* Extract value based on FFI type */
-        if (at == FFI_DOUBLE) {
-            /* movsd xmm0, [RAX+CELL_OFF_DATA] — stash to stack */
-            emit_movsd_xmm_mem(ctx, 0, RAX, CELL_OFF_DATA); /* XMM0 = double value */
-            /* movsd [RSP + offset], xmm0 */
-            emit_u8(ctx, 0xF2); emit_u8(ctx, 0x0F); emit_u8(ctx, 0x11);
-            emit_u8(ctx, 0x44); emit_u8(ctx, 0x24);
-            emit_u8(ctx, (uint8_t)(float_reg_idx * 8));
-            float_reg_idx++;
-        } else if (at == FFI_FLOAT) {
-            /* Load double, will convert to float before call */
-            emit_movsd_xmm_mem(ctx, 0, RAX, CELL_OFF_DATA);
-            emit_u8(ctx, 0xF2); emit_u8(ctx, 0x0F); emit_u8(ctx, 0x11);
-            emit_u8(ctx, 0x44); emit_u8(ctx, 0x24);
-            emit_u8(ctx, (uint8_t)(float_reg_idx * 8));
-            float_reg_idx++;
-        } else if (ffi_is_int_arg(at)) {
-            if (at == FFI_PTR || at == FFI_CSTRING || at == FFI_BUFFER) {
-                /* Pointer types: load [RAX+CELL_OFF_DATA] directly as pointer */
-                emit_mov_rm_disp8(ctx, R13, RAX, CELL_OFF_DATA);
-            } else if (at == FFI_BOOL) {
-                /* Load boolean from [RAX+CELL_OFF_DATA] */
-                emit_mov_rm_disp8(ctx, R13, RAX, CELL_OFF_DATA);
+            /* Not INTEGER — check NUMBER */
+            emit_cmp_dword_mem_imm8(ctx, RAX, (uint8_t)CELL_ATOM_NUMBER);
+            error_patches[i] = emit_jne_rel32(ctx);
+
+            /* === NUMBER path === */
+            if (at == FFI_DOUBLE || at == FFI_FLOAT) {
+                /* Load double directly from NUMBER cell */
+                emit_movsd_xmm_mem(ctx, 0, RAX, CELL_OFF_DATA);
+                emit_u8(ctx, 0xF2); emit_u8(ctx, 0x0F); emit_u8(ctx, 0x11);
+                emit_u8(ctx, 0x44); emit_u8(ctx, 0x24);
+                emit_u8(ctx, (uint8_t)(float_reg_idx * 8));
             } else {
-                /* Integer types: load double from [RAX+CELL_OFF_DATA], convert to int64 */
+                /* Load double from NUMBER, convert to int64 via CVTSD2SI */
                 emit_movsd_xmm_mem(ctx, 0, RAX, CELL_OFF_DATA);
                 emit_cvtsd2si(ctx, R13, 0);
+                emit_u8(ctx, 0x4C); emit_u8(ctx, 0x89);
+                emit_u8(ctx, 0x6C); emit_u8(ctx, 0x24);
+                emit_u8(ctx, (uint8_t)(64 + int_reg_idx * 8));
             }
-            /* Store int value at [RSP + 64 + int_reg_idx*8] */
-            /* mov [RSP + offset], R13 */
-            uint8_t rex2 = 0x4C; /* REX.WR for R13 */
-            emit_u8(ctx, rex2);
-            emit_u8(ctx, 0x89);
-            emit_u8(ctx, 0x6C); /* R13 = 5, ModRM = 01 101 100 = 0x6C */
-            emit_u8(ctx, 0x24);
+            size_t done_patch = emit_jmp_rel32(ctx);
+
+            /* === INTEGER path (zero-conversion) === */
+            patch_rel32(ctx, int_patch);
+            if (at == FFI_DOUBLE || at == FFI_FLOAT) {
+                /* Load int64 from INTEGER cell, promote to double via CVTSI2SD */
+                emit_mov_rm_disp8(ctx, R13, RAX, CELL_OFF_DATA);
+                emit_cvtsi2sd(ctx, 0, R13);
+                emit_u8(ctx, 0xF2); emit_u8(ctx, 0x0F); emit_u8(ctx, 0x11);
+                emit_u8(ctx, 0x44); emit_u8(ctx, 0x24);
+                emit_u8(ctx, (uint8_t)(float_reg_idx * 8));
+            } else {
+                /* Zero-conversion: load int64 directly — no FP round-trip */
+                emit_mov_rm_disp8(ctx, R13, RAX, CELL_OFF_DATA);
+                emit_u8(ctx, 0x4C); emit_u8(ctx, 0x89);
+                emit_u8(ctx, 0x6C); emit_u8(ctx, 0x24);
+                emit_u8(ctx, (uint8_t)(64 + int_reg_idx * 8));
+            }
+            patch_rel32(ctx, done_patch);
+
+            if (at == FFI_DOUBLE || at == FFI_FLOAT) float_reg_idx++;
+            else int_reg_idx++;
+        } else {
+            /* Non-numeric types: single type check */
+            int expected_ct = ffi_expected_cell_type(at);
+            emit_cmp_dword_mem_imm8(ctx, RAX, (uint8_t)expected_ct);
+            error_patches[i] = emit_jne_rel32(ctx);
+
+            if (at == FFI_PTR || at == FFI_CSTRING || at == FFI_BUFFER) {
+                emit_mov_rm_disp8(ctx, R13, RAX, CELL_OFF_DATA);
+            } else if (at == FFI_BOOL) {
+                emit_mov_rm_disp8(ctx, R13, RAX, CELL_OFF_DATA);
+            }
+            emit_u8(ctx, 0x4C); emit_u8(ctx, 0x89);
+            emit_u8(ctx, 0x6C); emit_u8(ctx, 0x24);
             emit_u8(ctx, (uint8_t)(64 + int_reg_idx * 8));
             int_reg_idx++;
         }
@@ -410,9 +458,9 @@ bool emit_x64_stub(EmitCtx* ctx, FFISig* sig) {
         case FFI_UINT32:
         case FFI_UINT64:
         case FFI_SIZE_T: {
-            /* Result in RAX as integer. Convert to double, then cell_number. */
-            emit_cvtsi2sd(ctx, 0, RAX);
-            emit_mov_imm64(ctx, RAX, (uint64_t)(uintptr_t)cell_number);
+            /* Result in RAX as integer. Return as native integer cell. */
+            emit_mov_r64_r64(ctx, RDI, RAX);
+            emit_mov_imm64(ctx, RAX, (uint64_t)(uintptr_t)cell_integer);
             emit_call_reg(ctx, RAX);
             break;
         }

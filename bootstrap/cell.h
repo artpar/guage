@@ -80,7 +80,8 @@ typedef enum {
     CELL_ITERATOR,       /* ⊣ - iterator (morsel-driven batch iteration) */
     CELL_PORT,           /* ⊞⊳ - I/O port (FILE* wrapper) */
     CELL_DIR,            /* ≋⊙ - directory stream (DIR* wrapper) */
-    CELL_FFI_PTR         /* ⌁ - opaque C pointer with GC finalizer */
+    CELL_FFI_PTR,        /* ⌁ - opaque C pointer with GC finalizer */
+    CELL_ATOM_INTEGER    /* #42i - native int64 (HFT-grade zero-conversion) */
 } CellType;
 
 /* Port Type Flags */
@@ -144,6 +145,7 @@ typedef struct {
 /* Atom data (stored inline in Cell) */
 typedef union {
     double number;
+    int64_t integer;     /* Native int64 (HFT-grade, zero-conversion FFI path) */
     bool boolean;
     const char* symbol;
     const char* string;  /* Immutable string (strdup'd) */
@@ -299,6 +301,7 @@ struct Cell {
 };
 
 /* Cell creation functions */
+Cell* cell_integer(int64_t n);
 Cell* cell_number(double n);
 Cell* cell_bool(bool b);
 Cell* cell_symbol(const char* sym);
@@ -322,6 +325,7 @@ Cell* cell_ffi_ptr(void* ptr, void (*finalizer)(void*), const char* type_tag);
 
 /* Cell accessors */
 double cell_get_number(Cell* c);
+int64_t cell_get_integer(Cell* c);
 bool cell_get_bool(Cell* c);
 const char* cell_get_symbol(Cell* c);
 uint16_t cell_get_symbol_id(Cell* c);
@@ -345,6 +349,21 @@ Cell* cell_borrow(Cell* c); /* Temporary borrow */
 
 /* Type predicates */
 bool cell_is_number(Cell* c);
+bool cell_is_integer(Cell* c);
+/* True for NUMBER or INTEGER — unified numeric check */
+static inline bool cell_is_numeric(Cell* c) {
+    return c && (c->type == CELL_ATOM_NUMBER || c->type == CELL_ATOM_INTEGER);
+}
+/* Extract double from either NUMBER or INTEGER */
+static inline double cell_to_double(Cell* c) {
+    if (c->type == CELL_ATOM_INTEGER) return (double)c->data.atom.integer;
+    return c->data.atom.number;
+}
+/* Extract int64 from either NUMBER or INTEGER (truncate double) */
+static inline int64_t cell_to_int64(Cell* c) {
+    if (c->type == CELL_ATOM_INTEGER) return c->data.atom.integer;
+    return (int64_t)c->data.atom.number;
+}
 bool cell_is_bool(Cell* c);
 bool cell_is_symbol(Cell* c);
 bool cell_is_string(Cell* c);
