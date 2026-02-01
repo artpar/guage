@@ -1,0 +1,114 @@
+;;;
+;;; Deep Integration: Traits + Pattern Matching + ADTs + Closures + Recursion
+;;;
+
+;;; --- ADT definitions ---
+
+(⊚≔ :Shape (⌜ (:Circle :radius)) (⌜ (:Rect :width :height)))
+(⊚≔ :Maybe (⌜ (:Just :value)) (⌜ (:Nothing)))
+(⊚≔ :Tree  (⌜ (:Leaf :value)) (⌜ (:Branch :left :right)))
+
+;;; --- Helper: list append ---
+(≔ append (λ (xs ys)
+  (? (∅? xs) ys
+     (⟨⟩ (◁ xs) (append (▷ xs) ys)))))
+
+;;; --- Shape area via pattern match ---
+
+(≔ area (λ (s)
+  (∇ s (⌜ (
+    ((⊚ :Shape :Circle r) (⊗ #3 (⊗ r r)))
+    ((⊚ :Shape :Rect w h)  (⊗ w h)))))))
+
+(⊨ :circle-area #75 (area (⊚ :Shape :Circle #5)))
+(⊨ :rect-area   #24 (area (⊚ :Shape :Rect #4 #6)))
+
+;;; --- Maybe unwrap-or ---
+
+(≔ unwrap-or (λ (m default)
+  (∇ m (⌜ (
+    ((⊚ :Maybe :Just v) v)
+    ((⊚ :Maybe :Nothing) default))))))
+
+(⊨ :unwrap-just    #42 (unwrap-or (⊚ :Maybe :Just #42) #0))
+(⊨ :unwrap-nothing #0  (unwrap-or (⊚ :Maybe :Nothing) #0))
+
+;;; --- maybe-map: use conditional to avoid De Bruijn issue with closures in ∇ ---
+
+(≔ maybe-map (λ (m f)
+  (? (⊚? m :Maybe :Just)
+     (⊚ :Maybe :Just (f (⊚→ m :value)))
+     (⊚ :Maybe :Nothing))))
+
+(⊨ :maybe-map-just #t
+  (⊚? (maybe-map (⊚ :Maybe :Just #10) (λ (x) (⊗ x #2))) :Maybe :Just))
+(⊨ :maybe-map-just-val #20
+  (⊚→ (maybe-map (⊚ :Maybe :Just #10) (λ (x) (⊗ x #2))) :value))
+(⊨ :maybe-map-nothing #t
+  (⊚? (maybe-map (⊚ :Maybe :Nothing) (λ (x) (⊗ x #2))) :Maybe :Nothing))
+
+;;; --- Recursive tree-sum via pattern match (no outer vars needed) ---
+
+(≔ tree-sum (λ (t)
+  (∇ t (⌜ (
+    ((⊚ :Tree :Leaf v)       v)
+    ((⊚ :Tree :Branch l r)   (⊕ (tree-sum l) (tree-sum r))))))))
+
+(≔ t1 (⊚ :Tree :Branch
+  (⊚ :Tree :Leaf #10)
+  (⊚ :Tree :Branch
+    (⊚ :Tree :Leaf #20)
+    (⊚ :Tree :Leaf #30))))
+
+(⊨ :tree-sum #60 (tree-sum t1))
+
+;;; --- tree-map: use conditional to reference closure param ---
+
+(≔ tree-map (λ (t f)
+  (? (⊚? t :Tree :Leaf)
+     (⊚ :Tree :Leaf (f (⊚→ t :value)))
+     (⊚ :Tree :Branch (tree-map (⊚→ t :left) f) (tree-map (⊚→ t :right) f)))))
+
+(≔ t2 (tree-map t1 (λ (x) (⊗ x #2))))
+(⊨ :tree-map-doubles #120 (tree-sum t2))
+
+;;; --- tree-to-list (only uses globals, no outer vars) ---
+
+(≔ tree-to-list (λ (t)
+  (∇ t (⌜ (
+    ((⊚ :Tree :Leaf v)       (⟨⟩ v ∅))
+    ((⊚ :Tree :Branch l r)   (append (tree-to-list l) (tree-to-list r))))))))
+
+(≔ flat (tree-to-list t1))
+(⊨ :tree-to-list-head #10 (◁ flat))
+
+;;; --- Guard on ADT computed field ---
+
+(≔ big-circle? (λ (s)
+  (∇ s (⌜ (
+    (((⊚ :Shape :Circle r) | (> (⊗ #3 (⊗ r r)) #50)) #t)
+    (_ #f))))))
+
+(⊨ :big-circle-yes #t (big-circle? (⊚ :Shape :Circle #5)))
+(⊨ :big-circle-no  #f (big-circle? (⊚ :Shape :Circle #2)))
+
+;;; --- List of ADTs processed by recursive sum-areas ---
+
+(≔ sum-areas (λ (shapes)
+  (? (∅? shapes) #0
+     (⊕ (area (◁ shapes)) (sum-areas (▷ shapes))))))
+
+(≔ shapes (⟨⟩ (⊚ :Shape :Circle #5)
+  (⟨⟩ (⊚ :Shape :Rect #4 #6)
+    (⟨⟩ (⊚ :Shape :Circle #3) ∅))))
+
+(⊨ :sum-areas #126 (sum-areas shapes))
+
+;;; --- Trait-based sort (needs stdlib) ---
+
+(⋘ "bootstrap/stdlib/sort.scm")
+(⋘ "bootstrap/stdlib/traits.scm")
+
+(⊨ :trait-sort #t
+  (≟ (⊧sort (⟨⟩ #3 (⟨⟩ #1 (⟨⟩ #5 (⟨⟩ #2 (⟨⟩ #4 ∅))))))
+     (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 (⟨⟩ #4 (⟨⟩ #5 ∅)))))))

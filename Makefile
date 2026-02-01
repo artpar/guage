@@ -113,6 +113,39 @@ test-summary: build
 	@$(BOOTSTRAP_DIR)/run_tests.sh 2>&1 | grep -A 10 "Test Summary"
 
 # ============================================================================
+# Stress testing targets
+# ============================================================================
+
+.PHONY: stress-test stress-load stress-load-all
+
+# Run all stress tests (correctness check with 60s timeout each)
+stress-test: build
+	@echo "═══ Guage Stress Tests ═══"
+	@PASS=0; FAIL=0; \
+	for f in $(TESTS_DIR)/test_stress_*.test; do \
+		name=$$(basename $$f); \
+		if timeout 60 $(BOOTSTRAP_EXECUTABLE) --test "$$f" 2>/dev/null >/dev/null; then \
+			PASS=$$((PASS+1)); printf "  \033[32mPASS\033[0m %s\n" "$$name"; \
+		else \
+			FAIL=$$((FAIL+1)); printf "  \033[31mFAIL\033[0m %s\n" "$$name"; \
+		fi; \
+	done; \
+	echo ""; echo "$$PASS passed, $$FAIL failed"; [ "$$FAIL" -eq 0 ]
+
+# Run a single stress test under load (usage: make stress-load FILE=... [ITERS=100] [WORKERS=4])
+stress-load: build
+	@if [ -z "$(FILE)" ]; then echo "Usage: make stress-load FILE=... [ITERS=100] [WORKERS=4]"; exit 1; fi
+	$(BOOTSTRAP_EXECUTABLE) --load-test $(FILE) --iterations $${ITERS:-100} --workers $${WORKERS:-4} --warmup $${WARMUP:-5}
+
+# Run all stress tests under load
+stress-load-all: build
+	@for f in $(TESTS_DIR)/test_stress_*.test; do \
+		echo "═══ Load: $$(basename $$f) ═══"; \
+		$(BOOTSTRAP_EXECUTABLE) --load-test "$$f" --iterations $${ITERS:-50} --workers $${WORKERS:-4} --warmup $${WARMUP:-3}; \
+		echo ""; \
+	done
+
+# ============================================================================
 # Running targets
 # ============================================================================
 
@@ -217,6 +250,11 @@ help:
 	@echo "  make test-json    - Run tests, write JSON to test-results.jsonl"
 	@echo "  make test-summary - Show only test results summary"
 	@echo "  make smoke        - Quick smoke test"
+	@echo ""
+	@echo "Stress Testing:"
+	@echo "  make stress-test     - Run all stress tests (60s timeout each)"
+	@echo "  make stress-load FILE=x - Load test a single file (ITERS=N WORKERS=N)"
+	@echo "  make stress-load-all - Load test all stress files"
 	@echo ""
 	@echo "Running:"
 	@echo "  make repl         - Start the REPL"

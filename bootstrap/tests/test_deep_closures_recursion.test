@@ -1,0 +1,109 @@
+;;;
+;;; Deep Integration: Closures + Recursion (TCO) + Effects + Box (mutable refs) + Sequencing
+;;;
+
+;;; --- Closure-returned function used as effect handler operation ---
+
+(⟪ :Compute :calc)
+
+(≔ make-doubler (λ () (λ (x) (⊗ x #2))))
+
+(⊨ :closure-in-handler #20
+  (⟪⟫ (↯ :Compute :calc #10)
+    (:Compute
+      (:calc (make-doubler)))))
+
+;;; --- Recursive function that yields values via resumable effect (countdown yield-collect) ---
+
+(⟪ :Yield :value)
+
+(≔ countdown-yield (λ (n)
+  (? (≡ n #0) ∅
+     (⪢ (↯ :Yield :value n) (countdown-yield (⊖ n #1))))))
+
+(⊨ :yield-countdown (⟨⟩ #3 (⟨⟩ #2 (⟨⟩ #1 ∅)))
+  (⟪↺⟫ (countdown-yield #3)
+    (:Yield
+      (:value (λ (k v) (⟨⟩ v (k ∅)))))))
+
+;;; --- TCO with large N via accumulator ---
+
+(≔ sum-acc (λ (n acc)
+  (? (≡ n #0) acc
+     (sum-acc (⊖ n #1) (⊕ acc n)))))
+
+(⊨ :tco-large #50005000 (sum-acc #10000 #0))
+
+;;; --- Box mutation inside recursive function ---
+
+(≔ counter (□ #0))
+(≔ inc-n (λ (n)
+  (? (≡ n #0) (□→ counter)
+     (⪢ (□← counter (⊕ (□→ counter) #1))
+         (inc-n (⊖ n #1))))))
+
+(inc-n #100)
+(⊨ :box-recursive #100 (□→ counter))
+
+;;; --- Box mutation inside effect handler ---
+
+(≔ log-box (□ ∅))
+
+(⟪ :Logger :log)
+
+(⊨ :box-in-handler :logged
+  (⟪⟫
+    (⪢ (↯ :Logger :log :hello) :logged)
+    (:Logger
+      (:log (λ (msg) (⪢ (□← log-box msg) :logged))))))
+
+(⊨ :box-after-handler :hello (□→ log-box))
+
+;;; --- Higher-order: make-adder → apply-n-times recursive ---
+
+(≔ make-adder (λ (n) (λ (x) (⊕ x n))))
+(≔ add5 (make-adder #5))
+
+(≔ apply-n-times (λ (f n x)
+  (? (≡ n #0) x
+     (apply-n-times f (⊖ n #1) (f x)))))
+
+(⊨ :apply-n-times #50 (apply-n-times add5 #10 #0))
+
+;;; --- Mutual recursion (even?/odd?) ---
+
+(≔ my-even? (λ (n)
+  (? (≡ n #0) #t (my-odd? (⊖ n #1)))))
+
+(≔ my-odd? (λ (n)
+  (? (≡ n #0) #f (my-even? (⊖ n #1)))))
+
+(⊨ :mutual-even #t (my-even? #10))
+(⊨ :mutual-odd  #t (my-odd? #7))
+
+;;; --- Recursive map over list using closure ---
+
+(≔ my-map (λ (f lst)
+  (? (∅? lst) ∅
+     (⟨⟩ (f (◁ lst)) (my-map f (▷ lst))))))
+
+(⊨ :map-closure #t
+  (≟ (my-map (λ (x) (⊗ x #3)) (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅))))
+     (⟨⟩ #3 (⟨⟩ #6 (⟨⟩ #9 ∅)))))
+
+;;; --- Recursive effect accumulation (counter via resumable) ---
+
+(⟪ :Counter :inc :get)
+
+(⊨ :effect-counter #5
+  (⟪↺⟫
+    (⪢
+      (↯ :Counter :inc)
+      (↯ :Counter :inc)
+      (↯ :Counter :inc)
+      (↯ :Counter :inc)
+      (↯ :Counter :inc)
+      (↯ :Counter :get))
+    (:Counter
+      (:inc (λ (k) (⊕ #1 (k ∅))))
+      (:get (λ (k) (k #0))))))

@@ -1,0 +1,222 @@
+;;; Stress: Real-World Scenario — Order Processing System
+;;; Tier 3 — ADT + GenServer + Supervisor + Channel + Effects + Pattern Match + HashMap + ETS
+
+(⟳∅)
+(⟿∅)
+
+;;; --- ADT definitions ---
+
+(⊚≔ :OrderStatus
+  (⌜ (:Pending))
+  (⌜ (:Validating))
+  (⌜ (:Processing))
+  (⌜ (:Shipped))
+  (⌜ (:Failed :reason)))
+
+(⊚≔ :OrderMsg
+  (⌜ (:Submit :order-id :data))
+  (⌜ (:GetStatus :order-id)))
+
+;;; --- Effect declarations ---
+
+(⟪ :Validate :check)
+
+;;; --- ETS for persistence ---
+
+(⟳⊞⊕ :orders)
+(⟳⊞⊕ :stats)
+(⟳⊞⊙ :stats :submitted #0)
+(⟳⊞⊙ :stats :shipped #0)
+(⟳⊞⊙ :stats :failed #0)
+
+;;; --- Notification channel ---
+
+(≔ notify-ch (⟿⊚))
+
+;;; --- Order processing server ---
+
+(≔ order-server-fn (λ (self)
+  (≔ process-order (λ (order-id data)
+    (⪢
+      ;; Set to Pending
+      (⟳⊞⊙ :orders order-id (⊚ :OrderStatus :Pending))
+      (⟳⊞⊙ :stats :submitted (⊕ (⟳⊞? :stats :submitted) #1))
+
+      ;; Validate
+      (⟳⊞⊙ :orders order-id (⊚ :OrderStatus :Validating))
+      (≔ valid (? (> data #0) #t #f))
+
+      (? valid
+         (⪢
+           ;; Process
+           (⟳⊞⊙ :orders order-id (⊚ :OrderStatus :Processing))
+           ;; Ship
+           (⟳⊞⊙ :orders order-id (⊚ :OrderStatus :Shipped))
+           (⟳⊞⊙ :stats :shipped (⊕ (⟳⊞? :stats :shipped) #1))
+           :shipped)
+         (⪢
+           ;; Failed
+           (⟳⊞⊙ :orders order-id (⊚ :OrderStatus :Failed :invalid-data))
+           (⟳⊞⊙ :stats :failed (⊕ (⟳⊞? :stats :failed) #1))
+           :failed)))))
+
+  ;; Server loop
+  (≔ srv-loop (λ ()
+    (≫ (←?) (λ (msg)
+      (⪢
+        (≔ caller (◁ (▷ msg)))
+        (≔ req (◁ (▷ (▷ msg))))
+        (≔ response
+          (? (⟨⟩? req)
+             (process-order (◁ req) (◁ (▷ req)))
+             :unknown))
+        (≫ (⟳⇅! caller response) (λ (_)
+          (srv-loop))))))))
+  (srv-loop)))
+
+;;; --- Supervisor wrapping the server ---
+
+(≔ order-sup (⟳⊛ :one-for-one (⟨⟩ order-server-fn ∅)))
+(⟳! #500)
+
+;;; --- Client submitting orders ---
+
+(≔ submit-orders (λ (server n total-shipped total-failed)
+  (? (≡ n #0) (⟨⟩ total-shipped total-failed)
+     (≫ (⟳⇅ server (⟨⟩ n (? (≡ (⊛% n #10) #0) (⊖ #0 #1) n))) (λ (r)
+       (? (≡ r :shipped)
+          (submit-orders server (⊖ n #1) (⊕ total-shipped #1) total-failed)
+          (submit-orders server (⊖ n #1) total-shipped (⊕ total-failed #1))))))))
+
+;;; --- Test 1: Process 500 orders through full pipeline ---
+
+(≔ kids (⟳⊛? order-sup))
+(≔ server (◁ kids))
+
+(≔ client1 (⟳ (λ (self)
+  (submit-orders server #500 #0 #0))))
+
+(⟳! #200000)
+
+(≔ result1 (⟳→ client1))
+(≔ shipped1 (◁ result1))
+(≔ failed1 (◁ (▷ result1)))
+
+;; Every 10th order fails (data = -1), so 50 failures, 450 shipped
+(⊨ :rw-shipped-450 #450 shipped1)
+(⊨ :rw-failed-50 #50 failed1)
+(⊨ :rw-total-500 #500 (⊕ shipped1 failed1))
+
+;;; --- Test 2: Verify ETS stats ---
+
+(⊨ :rw-ets-submitted #500 (⟳⊞? :stats :submitted))
+(⊨ :rw-ets-shipped #450 (⟳⊞? :stats :shipped))
+(⊨ :rw-ets-failed #50 (⟳⊞? :stats :failed))
+
+;;; --- Test 3: Crash server, supervisor restarts, continue processing ---
+
+;; Reset stats for round 2
+(⟳⊞⊙ :stats :submitted #0)
+(⟳⊞⊙ :stats :shipped #0)
+(⟳⊞⊙ :stats :failed #0)
+
+;; Crash the server
+(→! server (⟨⟩ :call server :crash-now))
+(⟳! #5000)
+
+;; Get new server after restart
+(≔ kids2 (⟳⊛? order-sup))
+(≔ server2 (◁ kids2))
+
+;; Process another 500 orders
+(≔ client2 (⟳ (λ (self)
+  (submit-orders server2 #500 #0 #0))))
+
+(⟳! #200000)
+
+(≔ result2 (⟳→ client2))
+(⊨ :rw-post-crash-total #500 (⊕ (◁ result2) (◁ (▷ result2))))
+
+;;; --- Test 4: Query order statuses from ETS ---
+
+;; Spot check some orders
+(≔ order-100 (⟳⊞? :orders #100))
+(⊨ :rw-order-exists #t (¬ (∅? order-100)))
+
+;;; --- Test 5: Verify counts are consistent ---
+
+(≔ final-submitted (⟳⊞? :stats :submitted))
+(≔ final-shipped (⟳⊞? :stats :shipped))
+(≔ final-failed (⟳⊞? :stats :failed))
+
+(⊨ :rw-counts-consistent #t
+  (≡ final-submitted (⊕ final-shipped final-failed)))
+
+;;; --- Test 6: Concurrent clients (5 clients × 100 orders each) ---
+
+(⟳∅)
+(⟿∅)
+
+(⟳⊞⊕ :orders2)
+(⟳⊞⊕ :stats2)
+(⟳⊞⊙ :stats2 :submitted #0)
+(⟳⊞⊙ :stats2 :shipped #0)
+(⟳⊞⊙ :stats2 :failed #0)
+
+;; New server for concurrent test
+(≔ conc-server-fn (λ (self)
+  (≔ srv-loop (λ ()
+    (≫ (←?) (λ (msg)
+      (⪢
+        (≔ caller (◁ (▷ msg)))
+        (≔ req (◁ (▷ (▷ msg))))
+        (≔ order-id (? (⟨⟩? req) (◁ req) #0))
+        (≔ data (? (⟨⟩? req) (◁ (▷ req)) #0))
+        ;; Simple processing
+        (⟳⊞⊙ :stats2 :submitted (⊕ (⟳⊞? :stats2 :submitted) #1))
+        (? (> data #0)
+           (⪢ (⟳⊞⊙ :stats2 :shipped (⊕ (⟳⊞? :stats2 :shipped) #1))
+               (⟳⇅! caller :shipped))
+           (⪢ (⟳⊞⊙ :stats2 :failed (⊕ (⟳⊞? :stats2 :failed) #1))
+               (⟳⇅! caller :failed)))
+        (srv-loop))))))
+  (srv-loop)))
+
+(≔ conc-sup (⟳⊛ :one-for-one (⟨⟩ conc-server-fn ∅)))
+(⟳! #500)
+
+(≔ conc-kids (⟳⊛? conc-sup))
+(≔ conc-server (◁ conc-kids))
+
+;; Done channel for synchronization
+(≔ done-ch (⟿⊚))
+
+;; Spawn 5 client actors
+(≔ spawn-clients (λ (n)
+  (? (≡ n #0) :done
+     (⪢
+       (⟳ (λ (self)
+         (≔ cl (λ (i)
+           (? (≡ i #0) (⟿→ done-ch :done)
+              (≫ (⟳⇅ conc-server (⟨⟩ (⊕ (⊗ n #1000) i) i)) (λ (r)
+                (cl (⊖ i #1)))))))
+         (cl #100)))
+       (spawn-clients (⊖ n #1))))))
+
+(spawn-clients #5)
+
+;; Wait for all 5 to finish
+(≔ done-waiter (⟳ (λ (self)
+  (≔ wait (λ (n)
+    (? (≡ n #0) :all-done
+       (≫ (⟿← done-ch) (λ (_)
+         (wait (⊖ n #1)))))))
+  (wait #5))))
+
+(⟳! #500000)
+
+(⊨ :rw-concurrent-done :all-done (⟳→ done-waiter))
+(⊨ :rw-concurrent-submitted #500 (⟳⊞? :stats2 :submitted))
+(⊨ :rw-concurrent-consistent #t
+  (≡ (⟳⊞? :stats2 :submitted)
+     (⊕ (⟳⊞? :stats2 :shipped) (⟳⊞? :stats2 :failed))))

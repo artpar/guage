@@ -1,0 +1,183 @@
+;;;
+;;; Deep Integration: ADTs + Pattern Matching + Recursion + Effects + Closures + HashMap + Error Handling
+;;; A mini-interpreter for an expression language
+;;;
+
+;;; --- AST defined as ADT ---
+
+(⊚≔ :Expr
+  (⌜ (:Lit :val))
+  (⌜ (:Var :name))
+  (⌜ (:Plus :left :right))
+  (⌜ (:Times :left :right))
+  (⌜ (:IfZ :cond :then :else))
+  (⌜ (:Let :var :val :body))
+  (⌜ (:Lam :param :body))
+  (⌜ (:App :fn :arg)))
+
+;;; --- Environment via HashMap (copy-on-extend for immutability) ---
+
+(≔ empty-env (⊞))
+
+(≔ env-lookup (λ (env name)
+  (⪢
+    (≔ elv (⊞→ env name))
+    (? (∅? elv) (⚠ :undefined-var name) elv))))
+
+(≔ env-extend (λ (env name val)
+  (⪢
+    (≔ nenv (⊞))
+    (≔ ekeys (⊞⊙ env))
+    (≔ ecopy (λ (ks)
+      (? (∅? ks) ∅
+         (⪢ (⊞← nenv (◁ ks) (⊞→ env (◁ ks)))
+             (ecopy (▷ ks))))))
+    (ecopy ekeys)
+    (⊞← nenv name val)
+    nenv)))
+
+;;; --- Forward declaration stub (will be redefined) ---
+(≔ interp (λ (expr env) ∅))
+
+;;; --- Evaluator helpers (one per node type to avoid deep nesting) ---
+
+(≔ interp-plus (λ (expr env)
+  (⪢
+    (≔ ipL (interp (⊚→ expr :left) env))
+    (≔ ipR (interp (⊚→ expr :right) env))
+    (? (⚠? ipL) ipL (? (⚠? ipR) ipR (⊕ ipL ipR))))))
+
+(≔ interp-times (λ (expr env)
+  (⪢
+    (≔ itL (interp (⊚→ expr :left) env))
+    (≔ itR (interp (⊚→ expr :right) env))
+    (? (⚠? itL) itL (? (⚠? itR) itR (⊗ itL itR))))))
+
+(≔ interp-ifz (λ (expr env)
+  (⪢
+    (≔ icv (interp (⊚→ expr :cond) env))
+    (? (⚠? icv) icv
+       (? (≡ icv #0)
+          (interp (⊚→ expr :then) env)
+          (interp (⊚→ expr :else) env))))))
+
+(≔ interp-let (λ (expr env)
+  (⪢
+    (≔ ilv (interp (⊚→ expr :val) env))
+    (? (⚠? ilv) ilv
+       (interp (⊚→ expr :body)
+               (env-extend env (⊚→ expr :var) ilv))))))
+
+(≔ interp-app (λ (expr env)
+  (⪢
+    (≔ iafv (interp (⊚→ expr :fn) env))
+    (≔ iaav (interp (⊚→ expr :arg) env))
+    (? (⚠? iafv) iafv
+       (? (⚠? iaav) iaav
+          (? (∧ (⟨⟩? iafv) (≡ (◁ iafv) :closure))
+             (⪢
+               (≔ iap (◁ (▷ iafv)))
+               (≔ iab (◁ (▷ (▷ iafv))))
+               (≔ iae (◁ (▷ (▷ (▷ iafv)))))
+               (interp iab (env-extend iae iap iaav)))
+             (⚠ :not-a-function iafv)))))))
+
+;;; --- Main evaluator dispatcher ---
+
+(≔ interp (λ (expr env)
+  (? (⊚? expr :Expr :Lit)   (⊚→ expr :val)
+  (? (⊚? expr :Expr :Var)   (env-lookup env (⊚→ expr :name))
+  (? (⊚? expr :Expr :Plus)  (interp-plus expr env)
+  (? (⊚? expr :Expr :Times) (interp-times expr env)
+  (? (⊚? expr :Expr :IfZ)   (interp-ifz expr env)
+  (? (⊚? expr :Expr :Let)   (interp-let expr env)
+  (? (⊚? expr :Expr :Lam)
+     (⟨⟩ :closure (⟨⟩ (⊚→ expr :param) (⟨⟩ (⊚→ expr :body) (⟨⟩ env ∅))))
+  (? (⊚? expr :Expr :App)   (interp-app expr env)
+     (⚠ :unknown-expr expr)))))))))))
+
+;;; --- Test: literal ---
+(⊨ :interp-lit #42
+  (interp (⊚ :Expr :Lit #42) empty-env))
+
+;;; --- Test: addition ---
+(⊨ :interp-add #8
+  (interp (⊚ :Expr :Plus (⊚ :Expr :Lit #3) (⊚ :Expr :Lit #5)) empty-env))
+
+;;; --- Test: multiplication ---
+(⊨ :interp-times #15
+  (interp (⊚ :Expr :Times (⊚ :Expr :Lit #3) (⊚ :Expr :Lit #5)) empty-env))
+
+;;; --- Test: nested arithmetic: (2 + 3) * 4 ---
+(⊨ :interp-nested #20
+  (interp (⊚ :Expr :Times
+    (⊚ :Expr :Plus (⊚ :Expr :Lit #2) (⊚ :Expr :Lit #3))
+    (⊚ :Expr :Lit #4))
+  empty-env))
+
+;;; --- Test: if-zero true branch ---
+(⊨ :interp-ifz-true #10
+  (interp (⊚ :Expr :IfZ (⊚ :Expr :Lit #0) (⊚ :Expr :Lit #10) (⊚ :Expr :Lit #20))
+  empty-env))
+
+;;; --- Test: if-zero false branch ---
+(⊨ :interp-ifz-false #20
+  (interp (⊚ :Expr :IfZ (⊚ :Expr :Lit #1) (⊚ :Expr :Lit #10) (⊚ :Expr :Lit #20))
+  empty-env))
+
+;;; --- Test: let binding ---
+(⊨ :interp-let #12
+  (interp (⊚ :Expr :Let :x (⊚ :Expr :Lit #5)
+    (⊚ :Expr :Plus (⊚ :Expr :Var :x) (⊚ :Expr :Lit #7)))
+  empty-env))
+
+;;; --- Test: nested let ---
+(⊨ :interp-nested-let #11
+  (interp (⊚ :Expr :Let :x (⊚ :Expr :Lit #3)
+    (⊚ :Expr :Let :y (⊚ :Expr :Lit #8)
+      (⊚ :Expr :Plus (⊚ :Expr :Var :x) (⊚ :Expr :Var :y))))
+  empty-env))
+
+;;; --- Test: lambda + application ---
+(⊨ :interp-lam-app #10
+  (interp (⊚ :Expr :App
+    (⊚ :Expr :Lam :x (⊚ :Expr :Times (⊚ :Expr :Var :x) (⊚ :Expr :Lit #2)))
+    (⊚ :Expr :Lit #5))
+  empty-env))
+
+;;; --- Test: closure captures environment ---
+(⊨ :interp-closure #15
+  (interp (⊚ :Expr :Let :y (⊚ :Expr :Lit #10)
+    (⊚ :Expr :App
+      (⊚ :Expr :Lam :x (⊚ :Expr :Plus (⊚ :Expr :Var :x) (⊚ :Expr :Var :y)))
+      (⊚ :Expr :Lit #5)))
+  empty-env))
+
+;;; --- Test: undefined variable error ---
+(⊨ :interp-undef-var #t
+  (⚠? (interp (⊚ :Expr :Var :z) empty-env)))
+
+;;; --- Test: non-function application error ---
+(⊨ :interp-not-fn #t
+  (⚠? (interp (⊚ :Expr :App (⊚ :Expr :Lit #42) (⊚ :Expr :Lit #1)) empty-env)))
+
+;;; --- Test: complex expression: let f = λx.(x+1) in f(f(3)) ---
+(⊨ :interp-complex #5
+  (interp (⊚ :Expr :Let :f
+    (⊚ :Expr :Lam :x (⊚ :Expr :Plus (⊚ :Expr :Var :x) (⊚ :Expr :Lit #1)))
+    (⊚ :Expr :App (⊚ :Expr :Var :f)
+      (⊚ :Expr :App (⊚ :Expr :Var :f) (⊚ :Expr :Lit #3))))
+  empty-env))
+
+;;; --- Test: evaluator wrapped in effect handler ---
+
+(⟪ :InterpLog :eval)
+
+(⊨ :interp-with-effect #8
+  (⟪⟫
+    (interp (⊚ :Expr :Plus
+      (⊚ :Expr :Lit (↯ :InterpLog :eval #3))
+      (⊚ :Expr :Lit (↯ :InterpLog :eval #5)))
+    empty-env)
+    (:InterpLog
+      (:eval (λ (v) v)))))

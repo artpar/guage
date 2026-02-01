@@ -1,0 +1,117 @@
+;;;
+;;; Deep Integration: Macros + Effects + Pattern Matching + Closures
+;;;
+
+;;; --- Define macros ---
+
+(⧉ when (c b) (⌞̃ (? (~ c) (~ b) ∅)))
+(⧉ unless (c b) (⌞̃ (? (~ c) ∅ (~ b))))
+(⧉ twice (e) (⌞̃ (⊕ (~ e) (~ e))))
+
+;;; --- Effect declarations ---
+
+(⟪ :State :get :put)
+(⟪ :Logger :log)
+
+;;; --- `when` macro inside effect handler → performs effect when true ---
+
+(⊨ :when-true-effect :got-it
+  (⟪⟫
+    (when #t (↯ :Logger :log :hello))
+    (:Logger
+      (:log (λ (msg) :got-it)))))
+
+;;; --- `when` macro with false → returns ∅, skipping effect ---
+
+(⊨ :when-false-nil ∅
+  (⟪⟫
+    (when #f (↯ :Logger :log :hello))
+    (:Logger
+      (:log (λ (msg) :should-not-reach)))))
+
+;;; --- `unless` macro inside effect handler ---
+
+(⊨ :unless-false-effect :triggered
+  (⟪⟫
+    (unless #f (↯ :Logger :log :world))
+    (:Logger
+      (:log (λ (msg) :triggered)))))
+
+(⊨ :unless-true-nil ∅
+  (⟪⟫
+    (unless #t (↯ :Logger :log :world))
+    (:Logger
+      (:log (λ (msg) :should-not-reach)))))
+
+;;; --- ⪢ sequencing multiple effect performs ---
+
+(⊨ :seq-effects (⟨⟩ :a (⟨⟩ :b (⟨⟩ :c ∅)))
+  (⟪↺⟫
+    (⪢ (↯ :Yield :value :a)
+        (↯ :Yield :value :b)
+        (↯ :Yield :value :c)
+        ∅)
+    (:Yield
+      (:value (λ (k v) (⟨⟩ v (k ∅)))))))
+
+;;; --- Custom macro `get-state` expands to effect perform ---
+
+(⧉ get-state () (⌞̃ (↯ :State :get)))
+
+(⊨ :custom-macro-effect #42
+  (⟪↺⟫ (get-state)
+    (:State
+      (:get (λ (k) (k #42)))
+      (:put (λ (k v) (k ∅))))))
+
+;;; --- Custom macro wrapping effect with error fallback ---
+
+(⧉ safe-fetch (eff op arg fallback)
+  (⌞̃ (≔ sf-result (↯ (~ eff) (~ op) (~ arg)))
+      (? (⚠? sf-result) (~ fallback) sf-result)))
+
+;;; --- `twice` macro duplicating effect perform → handler called twice ---
+
+(⊨ :twice-effect #20
+  (⟪↺⟫ (twice (↯ :State :get))
+    (:State
+      (:get (λ (k) (k #10)))
+      (:put (λ (k v) (k ∅))))))
+
+;;; --- Custom `let1` macro with effect perform as bound value ---
+
+(⧉ let1 (var val body) (⌞̃ ((λ ((~ var)) (~ body)) (~ val))))
+
+(⊨ :let1-effect #52
+  (⟪↺⟫ (let1 x (↯ :State :get) (⊕ x #10))
+    (:State
+      (:get (λ (k) (k #42)))
+      (:put (λ (k v) (k ∅))))))
+
+;;; --- ⪢ + yield-collect pattern ---
+
+(⟪ :Yield :value)
+
+(⊨ :seq-yield-collect (⟨⟩ #10 (⟨⟩ #20 (⟨⟩ #30 ∅)))
+  (⟪↺⟫
+    (⪢ (↯ :Yield :value #10)
+        (↯ :Yield :value #20)
+        (↯ :Yield :value #30)
+        ∅)
+    (:Yield
+      (:value (λ (k v) (⟨⟩ v (k ∅)))))))
+
+;;; --- Nested `twice` macros applied to value ---
+
+(⊨ :nested-twice #84 (twice (twice #21)))
+
+;;; --- Macro-generated pattern classification ---
+
+(⧉ classify-num (n)
+  (⌞̃ (? (> (~ n) #0) :positive
+        (? (< (~ n) #0) :negative
+           :zero))))
+
+(⊨ :classify-pos :positive (classify-num #5))
+(⊨ :classify-neg :negative (classify-num (⊖ #0 #3)))
+(⊨ :classify-zero :zero (classify-num #0))

@@ -1,0 +1,80 @@
+;;; Stress: String Operations
+;;; Tier 1 — String manipulation at scale
+
+;;; --- 1. Build 10,000-char string via concatenation loop ---
+
+(≔ build-str (λ (n acc)
+  (? (≡ n #0) acc
+     (build-str (⊖ n #1) (⊕≋ acc "abcdefghij")))))
+
+(≔ big-str (build-str #10000 ""))
+
+(⊨ :str-build-len #100000 (≋# big-str))
+
+;;; --- 2. Reverse string, double-reverse equals original ---
+
+(≔ short-str (build-str #100 ""))
+(≔ reversed (≋⊖ short-str))
+(≔ double-rev (≋⊖ reversed))
+
+(⊨ :str-double-reverse #t (≡ short-str double-rev))
+
+;;; --- 3. Contains search in large string ---
+
+(≔ haystack (build-str #1000 ""))
+
+(≔ search-loop (λ (n acc)
+  (? (≡ n #0) acc
+     (search-loop (⊖ n #1)
+       (⊕ acc (? (≋? haystack "efghij") #1 #0))))))
+
+(⊨ :str-contains-1k #1000 (search-loop #1000 #0))
+
+;;; --- 4. String repeat and verify length ---
+
+(≔ repeated (≋× "X" #50000))
+(⊨ :str-repeat-50k #50000 (≋# repeated))
+
+;;; --- 5. Concatenation loop building string char by char ---
+
+(≔ char-build (λ (n acc)
+  (? (≡ n #0) acc
+     (char-build (⊖ n #1) (⊕≋ acc "a")))))
+
+(≔ char-str (char-build #5000 ""))
+(⊨ :str-char-build-5k #5000 (≋# char-str))
+
+;;; --- 6. String split on large string ---
+
+(≔ split-str (build-str #1000 ""))
+;; "abcdefghij" repeated 1000 times = 10000 chars
+;; Split on "f" — appears every 10 chars
+
+(≔ parts (≈÷ split-str "f"))
+
+;; Count parts
+(≔ count-parts (λ (lst n)
+  (? (∅? lst) n
+     (count-parts (▷ lst) (⊕ n #1)))))
+
+(⊨ :str-split-parts-positive #t (> (count-parts parts #0) #0))
+
+;;; --- 7. String comparison loop ---
+
+(≔ cmp-loop (λ (n acc)
+  (? (≡ n #0) acc
+     (cmp-loop (⊖ n #1)
+       (⊕ acc (? (≡ "hello" "hello") #1 #0))))))
+
+(⊨ :str-cmp-10k #10000 (cmp-loop #10000 #0))
+
+;;; --- 8. Number-to-string conversion loop ---
+
+(≔ num-str-loop (λ (n acc)
+  (? (≡ n #0) acc
+     (num-str-loop (⊖ n #1)
+       (⊕ acc (≋# (→≋ n)))))))
+
+;; Each number converted to string; just verify it completes and sum > 0
+(≔ num-str-result (num-str-loop #10000 #0))
+(⊨ :str-num-convert-10k #t (> num-str-result #0))

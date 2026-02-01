@@ -1,0 +1,131 @@
+;;;
+;;; Deep Integration: Effects + Actors + Channels + Resumable Effects + GenServer
+;;;
+
+(⟳∅)
+(⟿∅)
+
+;;; --- Effect declarations ---
+
+(⟪ :Compute :calc)
+(⟪ :State :get :put)
+(⟪ :Logger :log)
+(⟪ :Yield :value)
+
+;;; --- Actor body uses non-resumable effect handler → returns computed result ---
+
+(≔ a1 (⟳ (λ (self)
+  (⟪⟫ (↯ :Compute :calc #7)
+    (:Compute
+      (:calc (λ (x) (⊗ x #3))))))))
+
+(⟳! #100)
+(⊨ :actor-effect-basic #21 (⟳→ a1))
+
+;;; --- Actor body uses resumable effect handler ---
+
+(≔ a2 (⟳ (λ (self)
+  (⟪↺⟫ (⊕ (↯ :State :get) #10)
+    (:State
+      (:get (λ (k) (k #5)))
+      (:put (λ (k v) (k ∅))))))))
+
+(⟳! #100)
+(⊨ :actor-resumable #15 (⟳→ a2))
+
+;;; --- Actor receives message, uses it inside effect handler ---
+
+(≔ a3 (⟳ (λ (self)
+  (≫ (←?) (λ (msg)
+    (⟪⟫ (↯ :Compute :calc msg)
+      (:Compute
+        (:calc (λ (x) (⊗ x #2))))))))))
+
+(→! a3 #25)
+(⟳! #100)
+(⊨ :actor-msg-effect #50 (⟳→ a3))
+
+;;; --- Two actors: producer performs effect, sends result via channel to consumer ---
+
+(≔ ch1 (⟿⊚))
+
+(≔ producer (⟳ (λ (self)
+  (⪢
+    (≔ pval (⟪⟫ (↯ :Compute :calc #8)
+      (:Compute
+        (:calc (λ (x) (⊕ x #100))))))
+    (⟿→ ch1 pval)))))
+
+(≔ consumer (⟳ (λ (self)
+  (⟿← ch1))))
+
+(⟳! #200)
+(⊨ :producer-consumer #108 (⟳→ consumer))
+
+;;; --- Actor with nested effect handlers (:State + :Logger) ---
+
+(≔ a5 (⟳ (λ (self)
+  (⟪⟫
+    (⟪↺⟫
+      (⪢ (↯ :State :put #42)
+          (↯ :Logger :log :started)
+          (↯ :State :get))
+      (:State
+        (:get (λ (k) (k #42)))
+        (:put (λ (k v) (k ∅)))))
+    (:Logger
+      (:log (λ (msg) msg)))))))
+
+(⟳! #100)
+(⊨ :nested-handlers #42 (⟳→ a5))
+
+;;; --- Resumable effect with multiple performs inside actor ---
+
+(≔ a6 (⟳ (λ (self)
+  (⟪↺⟫
+    (⊕ (↯ :State :get) (↯ :State :get))
+    (:State
+      (:get (λ (k) (k #20)))
+      (:put (λ (k v) (k ∅))))))))
+
+(⟳! #100)
+(⊨ :multi-perform #40 (⟳→ a6))
+
+;;; --- GenServer-style call/reply where server uses effect to compute reply ---
+
+(≔ gs-server (⟳ (λ (self)
+  (≫ (←?) (λ (msg)
+    (≫ (⟳⇅! (◁ (▷ msg))
+      (⟪⟫ (↯ :Compute :calc (◁ (▷ (▷ msg))))
+        (:Compute
+          (:calc (λ (x) (⊕ x #100))))))
+    (λ (_) :done)))))))
+
+(≔ gs-client (⟳ (λ (self)
+  (⟳⇅ gs-server #5))))
+
+(⟳! #100)
+(⊨ :genserver-effect #105 (⟳→ gs-client))
+
+;;; --- Unhandled effect in actor → error result ---
+
+(≔ a8 (⟳ (λ (self)
+  (↯ :Compute :calc #99))))
+
+(⟳! #100)
+(⊨ :unhandled-effect #t (⚠? (⟳→ a8)))
+
+;;; --- Yield-collect pattern inside actor body ---
+
+(≔ a10 (⟳ (λ (self)
+  (⟪↺⟫
+    (⪢ (↯ :Yield :value #1)
+        (↯ :Yield :value #2)
+        (↯ :Yield :value #3)
+        ∅)
+    (:Yield
+      (:value (λ (k v) (⟨⟩ v (k ∅)))))))))
+
+(⟳! #100)
+(⊨ :actor-yield-collect #t
+  (≟ (⟳→ a10) (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅)))))

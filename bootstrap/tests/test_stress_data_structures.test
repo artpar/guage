@@ -1,0 +1,176 @@
+;;; Stress: Data Structures
+;;; Tier 1 — HashMap, Vector, Deque, Set, Trie, SortedMap, PriorityQueue, ByteBuffer
+
+;;; --- 1. HashMap: insert 10,000 key-value pairs, verify lookups ---
+
+(≔ hm (⊞))
+
+(≔ hm-fill (λ (i)
+  (? (≡ i #0) :done
+     (⪢ (⊞← hm i (⊗ i #10))
+         (hm-fill (⊖ i #1))))))
+
+(hm-fill #10000)
+
+(⊨ :hm-size #10000 (⊞# hm))
+(⊨ :hm-lookup-1 #10 (⊞→ hm #1))
+(⊨ :hm-lookup-5000 #50000 (⊞→ hm #5000))
+(⊨ :hm-lookup-10000 #100000 (⊞→ hm #10000))
+
+;;; --- 2. Vector: push 50,000 elements, verify access ---
+
+(≔ vec (⟦⟧))
+
+(≔ vec-fill (λ (i)
+  (? (≡ i #50000) :done
+     (⪢ (⟦⊕ vec i)
+         (vec-fill (⊕ i #1))))))
+
+(vec-fill #0)
+
+(⊨ :vec-size #50000 (⟦# vec))
+(⊨ :vec-first #0 (⟦→ vec #0))
+(⊨ :vec-mid #25000 (⟦→ vec #25000))
+(⊨ :vec-last #49999 (⟦→ vec #49999))
+
+;;; --- 3. Deque: push 10,000 front + 10,000 back, drain all FIFO ---
+
+(≔ dq (⊟))
+
+(≔ dq-fill-front (λ (i)
+  (? (≡ i #0) :done
+     (⪢ (⊟◁ dq i)
+         (dq-fill-front (⊖ i #1))))))
+
+(≔ dq-fill-back (λ (i)
+  (? (≡ i #10001) :done
+     (⪢ (⊟▷ dq i)
+         (dq-fill-back (⊕ i #1))))))
+
+(dq-fill-front #10000)
+(dq-fill-back #1)
+
+(⊨ :dq-size #20000 (⊟# dq))
+
+;; Drain from front, count elements
+(≔ dq-drain-count (λ (n)
+  (? (≡ (⊟# dq) #0) n
+     (⪢ (⊟⊖◁ dq)
+         (dq-drain-count (⊕ n #1))))))
+
+(⊨ :dq-drain-all #20000 (dq-drain-count #0))
+
+;;; --- 4. Set: insert 10,000 elements with 3,000 duplicates ---
+
+(≔ st (⊍))
+
+(≔ set-fill (λ (i)
+  (? (≡ i #0) :done
+     (⪢ (⊍← st i)
+         (set-fill (⊖ i #1))))))
+
+(set-fill #10000)
+
+;; Insert duplicates (1..3000 again)
+(≔ set-dup (λ (i)
+  (? (≡ i #0) :done
+     (⪢ (⊍← st i)
+         (set-dup (⊖ i #1))))))
+
+(set-dup #3000)
+
+(⊨ :set-size-dedup #10000 (⊍# st))
+(⊨ :set-has-1 #t (⊍? st #1))
+(⊨ :set-has-10000 #t (⊍? st #10000))
+
+;;; --- 5. Trie: insert 3,000 symbol keys, verify lookups ---
+
+(≔ tr (⊮))
+
+(≔ trie-fill (λ (i)
+  (? (≡ i #0) :done
+     (⪢ (⊮← tr (⊕≋ "key" (→≋ i)) i)
+         (trie-fill (⊖ i #1))))))
+
+(trie-fill #3000)
+
+(⊨ :trie-size #3000 (⊮# tr))
+(⊨ :trie-lookup-1 #1 (⊮→ tr "key1"))
+(⊨ :trie-lookup-3000 #3000 (⊮→ tr "key3000"))
+
+;;; --- 6. SortedMap: insert 10,000 keys out of order, verify sorted ---
+
+(≔ sm (⋔))
+
+;; Insert in reverse order
+(≔ sm-fill (λ (i)
+  (? (≡ i #0) :done
+     (⪢ (⋔← sm i (⊗ i #2))
+         (sm-fill (⊖ i #1))))))
+
+(sm-fill #10000)
+
+(⊨ :sm-size #10000 (⋔# sm))
+(⊨ :sm-min #2 (⋔→ sm #1))
+(⊨ :sm-max #20000 (⋔→ sm #10000))
+
+;;; --- 7. PriorityQueue: insert 10,000 items, extract-min verify ascending ---
+
+(≔ pq (△))
+
+(≔ pq-fill (λ (i)
+  (? (≡ i #0) :done
+     (⪢ (△← pq (⊖ #10001 i))
+         (pq-fill (⊖ i #1))))))
+
+(pq-fill #10000)
+
+(⊨ :pq-size #10000 (△# pq))
+
+;; Extract first (should be 1)
+(≔ pq-min (△⊖ pq))
+(⊨ :pq-min-is-1 #1 pq-min)
+
+;; Drain remaining and count
+(≔ pq-drain (λ (n prev ok)
+  (? (≡ (△# pq) #0) (⟨⟩ n ok)
+     (⪢ (≔ v (△⊖ pq))
+         (pq-drain (⊕ n #1) v (∧ ok (≥ v prev)))))))
+
+(≔ pq-result (pq-drain #1 pq-min #t))
+(⊨ :pq-drain-count #10000 (◁ pq-result))
+(⊨ :pq-ascending #t (◁ (▷ pq-result)))
+
+;;; --- 8. ByteBuffer: write 50,000 bytes, verify integrity ---
+
+(≔ bb (◈))
+
+(≔ bb-fill (λ (i)
+  (? (≡ i #50000) :done
+     (⪢ (◈← bb (⊛% i #256))
+         (bb-fill (⊕ i #1))))))
+
+(bb-fill #0)
+
+(⊨ :bb-size #50000 (◈# bb))
+
+;;; --- 9. Mixed: HashMap of Vectors — 100 keys × 100 elements ---
+
+(≔ mixed-map (⊞))
+
+(≔ build-mixed (λ (k)
+  (? (≡ k #0) :done
+     (⪢
+       (≔ mv (⟦⟧))
+       (≔ fill-mv (λ (j)
+         (? (≡ j #100) :done
+            (⪢ (⟦⊕ mv (⊕ (⊗ k #100) j))
+                (fill-mv (⊕ j #1))))))
+       (fill-mv #0)
+       (⊞← mixed-map k mv)
+       (build-mixed (⊖ k #1))))))
+
+(build-mixed #100)
+
+(⊨ :mixed-map-size #100 (⊞# mixed-map))
+(⊨ :mixed-vec-size #100 (⟦# (⊞→ mixed-map #1)))

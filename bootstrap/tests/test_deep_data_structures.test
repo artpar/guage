@@ -1,0 +1,91 @@
+;;;
+;;; Deep Integration: HashMap + Vector + Closures + Recursion + Box + Pattern Matching
+;;;
+
+;;; --- Build HashMap imperatively from list of pairs ---
+
+(≔ m1 (⊞ (⟨⟩ :a #1) (⟨⟩ :b #2) (⟨⟩ :c #3)))
+
+(⊨ :map-from-list-size #3 (⊞# m1))
+(⊨ :map-from-list-a    #1 (⊞→ m1 :a))
+(⊨ :map-from-list-c    #3 (⊞→ m1 :c))
+
+;;; --- Vector as stack: push 3, pop 3 in LIFO order ---
+
+(≔ v1 (⟦⟧))
+(⟦⊕ v1 #10)
+(⟦⊕ v1 #20)
+(⟦⊕ v1 #30)
+
+(⊨ :vec-stack-size #3 (⟦# v1))
+(≔ p3 (⟦⊖ v1))
+(≔ p2 (⟦⊖ v1))
+(≔ p1 (⟦⊖ v1))
+(⊨ :vec-lifo-order (⟨⟩ #30 (⟨⟩ #20 (⟨⟩ #10 ∅)))
+  (⟨⟩ p3 (⟨⟩ p2 (⟨⟩ p1 ∅))))
+
+;;; --- Box containing HashMap for mutable key-value store ---
+
+(≔ store-map (⊞))
+(≔ store (□ store-map))
+(⊞← (□→ store) :x #10)
+(⊞← (□→ store) :y #20)
+
+(⊨ :box-map-x #10 (⊞→ (□→ store) :x))
+(⊨ :box-map-y #20 (⊞→ (□→ store) :y))
+
+;;; --- Count occurrences in list -> HashMap of frequencies ---
+
+(≔ freq-map (⊞))
+(≔ freq-loop (λ (l)
+  (? (∅? l) freq-map
+     (⪢
+       (≔ fk (◁ l))
+       (≔ fold (⊞→ freq-map fk))
+       (⊞← freq-map fk (? (∅? fold) #1 (⊕ fold #1)))
+       (freq-loop (▷ l))))))
+
+(freq-loop (⟨⟩ :a (⟨⟩ :b (⟨⟩ :a (⟨⟩ :c (⟨⟩ :a (⟨⟩ :b ∅)))))))
+
+(⊨ :freq-a #3 (⊞→ freq-map :a))
+(⊨ :freq-b #2 (⊞→ freq-map :b))
+(⊨ :freq-c #1 (⊞→ freq-map :c))
+
+;;; --- Vector collects range of numbers ---
+
+(≔ vr (⟦⟧))
+(≔ range-loop (λ (i n)
+  (? (> i n) vr
+     (⪢ (⟦⊕ vr i) (range-loop (⊕ i #1) n)))))
+
+(range-loop #1 #5)
+
+(⊨ :vec-range-size  #5 (⟦# vr))
+(⊨ :vec-range-first #1 (⟦→ vr #0))
+(⊨ :vec-range-last  #5 (⟦→ vr #4))
+
+;;; --- HashMap lookup with nil-check fallback ---
+
+(≔ get-or-default (λ (m key default)
+  (⪢
+    (≔ gov (⊞→ m key))
+    (? (∅? gov) default gov))))
+
+(≔ m2 (⊞))
+(⊞← m2 :name "alice")
+
+(⊨ :get-found   "alice"   (get-or-default m2 :name "unknown"))
+(⊨ :get-missing "unknown" (get-or-default m2 :age "unknown"))
+
+;;; --- Recursive list-to-vector conversion ---
+
+(≔ l2v (⟦⟧))
+(≔ list-to-vec (λ (lst)
+  (? (∅? lst) l2v
+     (⪢ (⟦⊕ l2v (◁ lst)) (list-to-vec (▷ lst))))))
+
+(list-to-vec (⟨⟩ #100 (⟨⟩ #200 (⟨⟩ #300 ∅))))
+
+(⊨ :list-to-vec-size #3 (⟦# l2v))
+(⊨ :list-to-vec-0 #100 (⟦→ l2v #0))
+(⊨ :list-to-vec-2 #300 (⟦→ l2v #2))

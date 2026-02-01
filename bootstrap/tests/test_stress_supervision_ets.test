@@ -1,0 +1,163 @@
+;;; Stress: Supervision + ETS
+;;; Tier 2 — Two-feature combination stress test
+
+;;; --- 1. Supervisor with 32 children (max), crash 16, verify all restarted ---
+
+(⟳∅)
+(⟿∅)
+
+(≔ make-child (λ ()
+  (λ (self)
+    (≫ (←?) (λ (msg)
+      (? (≡ msg :crash)
+         (⚠ :crashed :boom)
+         msg))))))
+
+(≔ build-child-list (λ (n acc)
+  (? (≡ n #0) acc
+     (build-child-list (⊖ n #1) (⟨⟩ (make-child) acc)))))
+
+(≔ children-32 (build-child-list #32 ∅))
+(≔ sup32 (⟳⊛ :one-for-one children-32))
+(⟳! #500)
+
+;; Verify all 32 alive
+(≔ kids32 (⟳⊛? sup32))
+(≔ count-alive (λ (lst acc)
+  (? (∅? lst) acc
+     (count-alive (▷ lst) (⊕ acc (? (⟳? (◁ lst)) #1 #0))))))
+
+(⊨ :sup-32-children #32 (count-alive kids32 #0))
+
+;; Crash first 16 children
+(≔ crash-n (λ (lst n)
+  (? (≡ n #0) :done
+     (? (∅? lst) :done
+        (⪢ (→! (◁ lst) :crash)
+            (crash-n (▷ lst) (⊖ n #1)))))))
+
+(crash-n kids32 #16)
+(⟳! #5000)
+
+;; All should be alive again after restart
+(≔ kids32b (⟳⊛? sup32))
+(⊨ :sup-32-restarted #32 (count-alive kids32b #0))
+
+;;; --- 2. One-for-all: 20 children, crash 1, verify all 20 restarted ---
+
+(⟳∅)
+
+(≔ children-20 (build-child-list #20 ∅))
+(≔ sup-all (⟳⊛ :one-for-all children-20))
+(⟳! #500)
+
+(≔ kids-all (⟳⊛? sup-all))
+(⊨ :sup-ofa-20-alive #20 (count-alive kids-all #0))
+
+;; Crash just the first child
+(→! (◁ kids-all) :crash)
+(⟳! #5000)
+
+;; All should be restarted
+(≔ kids-all-b (⟳⊛? sup-all))
+(⊨ :sup-ofa-all-restarted #20 (count-alive kids-all-b #0))
+
+;;; --- 3. ETS table survives crash/restart cycles ---
+
+(⟳∅)
+
+(⟳⊞⊕ :crash-counter)
+(⟳⊞⊙ :crash-counter :count #0)
+
+(≔ crash-child (λ (self)
+  (⪢
+    ;; Increment ETS counter
+    (≔ cur (⟳⊞? :crash-counter :count))
+    (⟳⊞⊙ :crash-counter :count (⊕ cur #1))
+    ;; Wait for crash signal
+    (≫ (←?) (λ (msg) (⚠ :crash msg))))))
+
+(≔ ets-sup (⟳⊛ :one-for-one (⟨⟩ crash-child ∅)))
+(⟳! #500)
+
+;; Crash and restart 20 times
+(≔ crash-cycle (λ (n)
+  (? (≡ n #0) :done
+     (⪢
+       (≔ ck (⟳⊛? ets-sup))
+       (→! (◁ ck) :die)
+       (⟳! #1000)
+       (crash-cycle (⊖ n #1))))))
+
+(crash-cycle #20)
+
+;; Counter should be 21 (initial + 20 restarts)
+(⊨ :sup-ets-survives #21 (⟳⊞? :crash-counter :count))
+
+;;; --- 4. Rapid crash loop: child crashes 50 times in succession ---
+
+(⟳∅)
+
+(≔ always-crash-fn (λ (self) (⚠ :crash :always)))
+(≔ rapid-sup (⟳⊛ :one-for-one (⟨⟩ always-crash-fn ∅)))
+(⟳! #10000)
+
+;; Supervisor should have hit many restarts
+(⊨ :sup-rapid-crash #t (> (⟳⊛! rapid-sup) #4))
+
+;;; --- 5. Multiple ETS tables with entries ---
+
+(⟳∅)
+
+(≔ create-ets-tables (λ (i)
+  (? (≡ i #0) :done
+     (⪢ (⟳⊞⊕ i)
+         (create-ets-tables (⊖ i #1))))))
+
+(create-ets-tables #50)
+
+;; Fill each table with entries
+(≔ fill-ets (λ (table-id entries)
+  (? (≡ entries #0) :done
+     (⪢ (⟳⊞⊙ table-id entries (⊗ entries #3))
+         (fill-ets table-id (⊖ entries #1))))))
+
+(≔ fill-all-tables (λ (i)
+  (? (≡ i #0) :done
+     (⪢ (fill-ets i #200)
+         (fill-all-tables (⊖ i #1))))))
+
+(fill-all-tables #50)
+
+;; Verify a table has correct size and data
+(⊨ :ets-multi-table-size #200 (⟳⊞# #1))
+(⊨ :ets-multi-table-lookup #300 (⟳⊞? #1 #100))
+
+;;; --- 6. ETS concurrent access: 10 actors all read/write same table ---
+
+(⟳∅)
+
+(⟳⊞⊕ :shared-ets)
+(⟳⊞⊙ :shared-ets :counter #0)
+
+(≔ ets-worker (λ (n)
+  (⟳ (λ (self)
+    (≔ ets-loop (λ (i)
+      (? (≡ i #0) :done
+         (⪢
+           (≔ cur (⟳⊞? :shared-ets :counter))
+           (⟳⊞⊙ :shared-ets :counter (⊕ cur #1))
+           (ets-loop (⊖ i #1))))))
+    (ets-loop n)))))
+
+;; 10 workers each doing 100 operations
+(≔ spawn-ets-workers (λ (n)
+  (? (≡ n #0) :done
+     (⪢ (ets-worker #100)
+         (spawn-ets-workers (⊖ n #1))))))
+
+(spawn-ets-workers #10)
+(⟳! #50000)
+
+;; Counter should be > 0 (exact value depends on interleaving)
+(⊨ :ets-concurrent-access #t (> (⟳⊞? :shared-ets :counter) #0))

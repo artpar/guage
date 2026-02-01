@@ -1,0 +1,155 @@
+;;;
+;;; Deep Integration: Pattern Matching (guards/as-patterns/view patterns) + Effects + ADTs + Error Handling
+;;;
+
+;;; --- ADT definitions ---
+
+(⊚≔ :Result (⌜ (:Ok :value)) (⌜ (:Err :error)))
+
+;;; --- Pattern match on ADT variant inside effect handler ---
+
+(⟪ :Provider :fetch)
+
+(⊨ :adt-in-handler :got-ok
+  (⟪⟫
+    (∇ (↯ :Provider :fetch :data) (⌜ (
+      ((⊚ :Result :Ok v) :got-ok)
+      ((⊚ :Result :Err e) :got-err))))
+    (:Provider
+      (:fetch (λ (key) (⊚ :Result :Ok #42))))))
+
+;;; --- Effect handler returns ADT, pattern match outside ---
+
+(≔ handler-res (⟪⟫ (↯ :Provider :fetch :data)
+  (:Provider
+    (:fetch (λ (key) (⊚ :Result :Ok #99))))))
+
+(⊨ :adt-from-handler #99
+  (∇ handler-res (⌜ (
+    ((⊚ :Result :Ok v) v)
+    ((⊚ :Result :Err e) #0)))))
+
+;;; --- Guard depends on constant threshold ---
+
+(⊨ :guard-threshold :high
+  (⟪⟫
+    (∇ (⊚ :Result :Ok (↯ :Provider :fetch :temp)) (⌜ (
+      (((⊚ :Result :Ok v) | (> v #50)) :high)
+      ((⊚ :Result :Ok v) :low)
+      ((⊚ :Result :Err e) :error))))
+    (:Provider
+      (:fetch (λ (key) #75)))))
+
+;;; --- Resumable effect result matched by pattern with guard ---
+
+(⟪ :State :get :put)
+
+(⊨ :resumable-guard :big
+  (⟪↺⟫
+    (∇ (↯ :State :get) (⌜ (
+      ((n | (> n #50)) :big)
+      (n :small))))
+    (:State
+      (:get (λ (k) (k #100)))
+      (:put (λ (k v) (k ∅))))))
+
+;;; --- ADT construction inside resumable handler, destructured outside ---
+
+(⊨ :adt-from-resumable #t
+  (⊚? (⟪↺⟫ (⊚ :Result :Ok (↯ :State :get))
+    (:State
+      (:get (λ (k) (k #77)))
+      (:put (λ (k v) (k ∅)))))
+  :Result :Ok))
+
+(⊨ :adt-from-resumable-val #77
+  (⊚→ (⟪↺⟫ (⊚ :Result :Ok (↯ :State :get))
+    (:State
+      (:get (λ (k) (k #77)))
+      (:put (λ (k v) (k ∅)))))
+  :value))
+
+;;; --- View pattern with classify function on effect-returned value ---
+
+(≔ classify (λ (n)
+  (? (> n #100) :hot
+     (? (> n #50) :warm
+        :cold))))
+
+(⊨ :view-pattern-effect :warm
+  (⟪⟫
+    (∇ (↯ :Provider :fetch :temp) (⌜ (
+      ((→ classify :hot) :hot)
+      ((→ classify :warm) :warm)
+      (_ :other))))
+    (:Provider
+      (:fetch (λ (key) #75)))))
+
+;;; --- Nested pattern match + effect perform in one branch ---
+
+(⊨ :nested-match-effect :inner-ok
+  (⟪⟫
+    (∇ (↯ :Provider :fetch :outer) (⌜ (
+      ((⊚ :Result :Ok v)
+        (∇ (⊚ :Result :Ok (⊕ v #10)) (⌜ (
+          ((⊚ :Result :Ok w) :inner-ok)
+          (_ :inner-other)))))
+      (_ :outer-fail))))
+    (:Provider
+      (:fetch (λ (key) (⊚ :Result :Ok #5))))))
+
+;;; --- As-pattern captures full ADT while destructuring fields ---
+
+(⊨ :as-pattern-adt #t
+  (∇ (⊚ :Result :Ok #42) (⌜ (
+    ((whole @ (⊚ :Result :Ok v)) (∧ (⊚? whole :Result :Ok) (≡ v #42)))))))
+
+;;; --- Guard on ADT field value ---
+
+(⊨ :guard-adt-field :large-ok
+  (∇ (⊚ :Result :Ok #150) (⌜ (
+    (((⊚ :Result :Ok v) | (> v #100)) :large-ok)
+    ((⊚ :Result :Ok v) :small-ok)
+    ((⊚ :Result :Err e) :error)))))
+
+;;; --- Recursive AST evaluator using ADT + pattern matching + error handling ---
+
+(⊚≔ :Expr
+  (⌜ (:Num :val))
+  (⌜ (:Add :left :right))
+  (⌜ (:Div :numer :denom)))
+
+(≔ eval-expr (λ (e)
+  (? (⊚? e :Expr :Num)
+     (⊚→ e :val)
+     (? (⊚? e :Expr :Add)
+        (⊕ (eval-expr (⊚→ e :left)) (eval-expr (⊚→ e :right)))
+        (? (⊚? e :Expr :Div)
+           (⪢
+             (≔ d (eval-expr (⊚→ e :denom)))
+             (? (≡ d #0)
+                (⚠ :div-by-zero ∅)
+                (⊘ (eval-expr (⊚→ e :numer)) d)))
+           (⚠ :unknown-expr e))))))
+
+(⊨ :eval-num #5 (eval-expr (⊚ :Expr :Num #5)))
+
+(⊨ :eval-add #8
+  (eval-expr (⊚ :Expr :Add (⊚ :Expr :Num #3) (⊚ :Expr :Num #5))))
+
+(⊨ :eval-div #4
+  (eval-expr (⊚ :Expr :Div (⊚ :Expr :Num #20) (⊚ :Expr :Num #5))))
+
+(⊨ :eval-div-zero #t
+  (⚠? (eval-expr (⊚ :Expr :Div (⊚ :Expr :Num #10) (⊚ :Expr :Num #0)))))
+
+;;; --- Evaluator wrapped in effect handler ---
+
+(⊨ :eval-in-handler #8
+  (⟪⟫ (eval-expr (⊚ :Expr :Add
+    (⊚ :Expr :Num (↯ :Provider :fetch :x))
+    (⊚ :Expr :Num (↯ :Provider :fetch :y))))
+    (:Provider
+      (:fetch (λ (key)
+        (? (≡ key :x) #3
+           (? (≡ key :y) #5 #0)))))))

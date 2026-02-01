@@ -1,0 +1,77 @@
+;;; Stress: Modules + Effects
+;;; Tier 2 — Two-feature combination stress test
+
+;;; --- Load stdlib modules ---
+
+(⋘ "bootstrap/stdlib/math.scm")
+
+;;; --- Effect declarations ---
+
+(⟪ :Compute :calc)
+(⟪ :Logger :log)
+
+;;; --- 1. Module function used inside effect handler, 1,000 iterations ---
+
+(≔ mod-eff-loop (λ (n acc)
+  (? (≡ n #0) acc
+     (⪢
+       (≔ result
+         (⟪⟫ (↯ :Compute :calc n)
+           (:Compute
+             (:calc (λ (x) (⊗ x #2))))))
+       (mod-eff-loop (⊖ n #1) (⊕ acc result))))))
+
+;; Sum of 2*i for i=1..1000 = 2 * 500500 = 1001000
+(⊨ :me-module-in-handler #1001000 (mod-eff-loop #1000 #0))
+
+;;; --- 2. Effect handler wrapping computation 10,000 times ---
+
+(≔ wrap-loop (λ (n acc)
+  (? (≡ n #0) acc
+     (wrap-loop (⊖ n #1)
+       (⊕ acc
+         (⟪⟫ (↯ :Compute :calc #1)
+           (:Compute (:calc (λ (x) x)))))))))
+
+(⊨ :me-wrap-10k #10000 (wrap-loop #10000 #0))
+
+;;; --- 3. Cross-module computation with effect ---
+
+(≔ compute-with-effect (λ (x)
+  (⟪⟫ (↯ :Compute :calc x)
+    (:Compute (:calc (λ (v) (⊕ v (⊗ v v))))))))
+
+(≔ cross-loop (λ (n acc)
+  (? (≡ n #0) acc
+     (cross-loop (⊖ n #1)
+       (⊕ acc (compute-with-effect n))))))
+
+;; Each iteration: n + n*n = n(1+n)
+;; Sum of n(1+n) for n=1..1000
+(≔ cross-result (cross-loop #1000 #0))
+(⊨ :me-cross-module #t (> cross-result #0))
+
+;;; --- 4. Nested effects with module functions ---
+
+(⊨ :me-nested-effects #42
+  (⟪⟫
+    (⟪⟫ (↯ :Compute :calc #21)
+      (:Compute (:calc (λ (x) (⊗ x #2)))))
+    (:Logger (:log (λ (msg) msg)))))
+
+;;; --- 5. Namespace isolation: same-named functions in different contexts ---
+
+(≔ local-add (λ (x y) (⊕ x y)))
+
+(≔ ns-loop (λ (n acc)
+  (? (≡ n #0) acc
+     (⪢
+       (≔ r1 (⟪⟫ (↯ :Compute :calc n)
+                 (:Compute (:calc (λ (x) (local-add x #1))))))
+       (≔ r2 (⟪⟫ (↯ :Compute :calc n)
+                 (:Compute (:calc (λ (x) (⊗ x #2))))))
+       (ns-loop (⊖ n #1) (⊕ acc (⊕ r1 r2)))))))
+
+;; Each iteration: (n+1) + (n*2) = 3n+1
+;; Sum of (3n+1) for n=1..1000 = 3*500500 + 1000 = 1502500
+(⊨ :me-namespace-1k #1502500 (ns-loop #1000 #0))

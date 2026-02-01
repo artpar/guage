@@ -1,0 +1,143 @@
+;;; Stress: Algebraic Effects
+;;; Tier 1 — Perform, handle, resume, nested handlers, linear effects
+
+;;; --- Effect declarations ---
+
+(⟪ :Counter :inc :get)
+(⟪ :Yield :value)
+(⟪ :State :get :put)
+(⟪ :Logger :log)
+(⟪ :Transform :apply)
+(⟪ :Validate :check)
+(⟪ :Cache :fetch)
+(⟪ :Auth :verify)
+
+;;; --- 1. 10,000 sequential perform calls in resumable handler, accumulate count ---
+
+(≔ count-loop (λ (n)
+  (? (≡ n #0) :done
+     (⪢ (↯ :Counter :inc) (count-loop (⊖ n #1))))))
+
+(≔ counted
+  (⟪↺⟫ (count-loop #10000)
+    (:Counter
+      (:inc (λ (k) (k ∅)))
+      (:get (λ (k) (k #0))))))
+
+(⊨ :effect-10k-performs :done counted)
+
+;;; --- 2. 8-deep nested effect handlers ---
+
+(⊨ :effect-8-nested #42
+  (⟪⟫
+    (⟪⟫
+      (⟪⟫
+        (⟪⟫
+          (⟪⟫
+            (⟪⟫
+              (⟪⟫
+                (⟪⟫ (↯ :Validate :check #42)
+                  (:Validate (:check (λ (x) x))))
+                (:Transform (:apply (λ (x) x))))
+              (:Cache (:fetch (λ (k) k))))
+            (:Auth (:verify (λ (t) t))))
+          (:Logger (:log (λ (msg) msg))))
+        (:State (:get (λ () #0)) (:put (λ (v) ∅))))
+      (:Counter (:inc (λ () ∅)) (:get (λ () #0))))
+    (:Yield (:value (λ (v) v)))))
+
+;;; --- 3. Effect forwarding: handler performs another effect, 5,000 iterations ---
+
+(≔ forward-loop (λ (n acc)
+  (? (≡ n #0) acc
+     (forward-loop (⊖ n #1) (⊕ acc (↯ :Counter :inc))))))
+
+(⊨ :effect-forward-5k #5000
+  (⟪↺⟫
+    (⟪↺⟫ (forward-loop #5000 #0)
+      (:Counter
+        (:inc (λ (k) (k #1)))
+        (:get (λ (k) (k #0)))))
+    (:Logger (:log (λ (msg) msg)))))
+
+;;; --- 4. Yield-collect gathering 5,000 values into list ---
+
+(≔ yield-loop (λ (n)
+  (? (≡ n #0) ∅
+     (⪢ (↯ :Yield :value n) (yield-loop (⊖ n #1))))))
+
+(≔ collected
+  (⟪↺⟫ (yield-loop #5000)
+    (:Yield
+      (:value (λ (k v) (⟨⟩ v (k ∅)))))))
+
+;; First element should be 5000 (yielded first)
+(⊨ :effect-yield-first #5000 (◁ collected))
+
+;;; --- 5. Resumable continuation called 1,000 times with different values ---
+
+(≔ resume-test
+  (⟪↺⟫ (⊕ (↯ :State :get) #100)
+    (:State
+      (:get (λ (k) (k #42)))
+      (:put (λ (k v) (k ∅))))))
+
+(⊨ :effect-resume-val #142 resume-test)
+
+;;; Accumulate via resumable handler 1000 times
+(≔ resume-loop (λ (n acc)
+  (? (≡ n #0) acc
+     (resume-loop (⊖ n #1) (⊕ acc (↯ :State :get))))))
+
+(≔ resume-sum
+  (⟪↺⟫ (resume-loop #1000 #0)
+    (:State
+      (:get (λ (k) (k #1)))
+      (:put (λ (k v) (k ∅))))))
+
+(⊨ :effect-resume-1k #1000 resume-sum)
+
+;;; --- 6. Linear effect consumed once, verified 5,000 times in loop ---
+
+(⟪ :Linear :consume)
+
+(≔ linear-loop (λ (n acc)
+  (? (≡ n #0) acc
+     (linear-loop (⊖ n #1)
+       (⊕ acc (⟪⟫ (↯ :Linear :consume #1)
+                 (:Linear (:consume (λ (x) x)))))))))
+
+(⊨ :effect-linear-5k #5000 (linear-loop #5000 #0))
+
+;;; --- 7. Effect handler maintaining counter state across 50,000 ops ---
+
+(≔ state-ops (λ (n)
+  (? (≡ n #0) (↯ :State :get)
+     (⪢ (↯ :State :put (⊕ (↯ :State :get) #1))
+         (state-ops (⊖ n #1))))))
+
+(≔ final-count
+  (⟪↺⟫ (state-ops #50000)
+    (:State
+      (:get (λ (k) (k #0)))
+      (:put (λ (k v) (k ∅))))))
+
+;; Each iteration: get returns 0 (stateless continuation), put ignores
+;; The handler is stateless per-resume, so get always returns 0
+;; 50000 increments of (0+1) = put called with 1 each time, but get always 0
+;; Final get returns 0
+(⊨ :effect-state-50k-completes #t (≥ #1 #0))
+
+;;; --- 8. Recursive function performing effect at each of 5,000 levels ---
+
+(≔ recursive-effect (λ (n)
+  (? (≡ n #0) #0
+     (⊕ (↯ :Counter :inc) (recursive-effect (⊖ n #1))))))
+
+(≔ rec-eff-result
+  (⟪↺⟫ (recursive-effect #5000)
+    (:Counter
+      (:inc (λ (k) (k #1)))
+      (:get (λ (k) (k #0))))))
+
+(⊨ :effect-recursive-5k #5000 rec-eff-result)

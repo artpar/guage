@@ -1,11 +1,77 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-02-01 (Day 146 COMPLETE)
+Updated: 2026-02-02 (Day 147 COMPLETE)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 146 - Deep Parallelism & Load Testing (2026-02-01)
+# Session Handoff: Day 147 - Pure Guage Stdlib & Deep Integration Tests (2026-02-02)
+
+## Day 147 — Pure Guage Stdlib & Deep Integration Tests (COMPLETE)
+
+**STATUS:** 129/148 test files passing ✅ (same pre-existing failures, 0 regressions)
+
+### What Was Done
+
+Created two new pure-Guage stdlib modules via FFI (process.scm) and recursive descent parsing (json.scm). Fixed bash 3.2 compatibility in test runner. All 8 deep integration tests verified passing (105 assertions).
+
+### New Stdlib: `bootstrap/stdlib/process.scm` (7/7 tests pass)
+
+FFI-based subprocess management using libc popen/pclose/system:
+- `process-capture` — run command, capture stdout as string
+- `process-run` — run command via system(), return exit status
+- `process-capture-status` — run command, return ⟨exit-status output⟩
+- Symbolic aliases: `⊙⌂⊛`, `⊙⌂⊛!`, `⊙⌂⊛⊙`
+- Uses calloc/fgets/memset for safe null-terminated buffer reads
+- FFI bindings: popen, pclose, fgets, system, calloc, free, memset
+
+### New Stdlib: `bootstrap/stdlib/json.scm` (56/56 tests pass)
+
+Pure Guage JSON parser (recursive descent) and serializer:
+- `json-parse` — parse JSON string → Guage values (HashMap, Vector, numbers, strings, booleans, nil)
+- `json-serialize` — serialize Guage values → JSON string
+- Symbolic aliases: `⊞⊳json` (parse), `⊞→json` (serialize)
+- Handles: objects, arrays, strings (with escape chars), numbers (int/float/negative/exponent), true/false/null
+- Full escape support: `\"`, `\\`, `\n`, `\t`, `\/`
+- Round-trip: parse→serialize→parse preserves values
+
+### Key Technical Learnings
+
+- **`?` takes exactly 3 args** — multi-expression else branches need `⪢` wrapping
+- **`λ` takes exactly 1 body** — multi-expression bodies need `⪢` wrapping
+- **Cannot `≔`-rebind lambda params** — De Bruijn conversion turns params into indices; use fresh names
+- **FFI type symbols**: `:char*` (not `:str`), `:void*` (not `:ptr`), `:size_t`, `:int`, `:void`
+- **`⌁⊳ "libc"`** works; `⌁⊳ ∅` does NOT (requires string arg)
+- **`fgets` > `fread`** for FFI string reads — auto null-terminates
+
+### Deep Integration Tests (8 files, 105 assertions, all pass)
+
+| Test File | Pass | Description |
+|-----------|------|-------------|
+| test_deep_closures_recursion.test | 11 | Closure capture, mutual recursion, Y combinator |
+| test_deep_data_structures.test | 18 | HashMap, Vector, Deque, Trie, SortedMap operations |
+| test_deep_effects_actors.test | 9 | Algebraic effects + actor message passing |
+| test_deep_genserver_supervision.test | 11 | GenServer + supervisor trees |
+| test_deep_interpreter.test | 14 | Mini interpreter written in Guage |
+| test_deep_macros_effects.test | 13 | Macro expansion + effect handlers |
+| test_deep_patterns_effects_adt.test | 15 | Pattern matching + effects + ADTs |
+| test_deep_traits_adt.test | 14 | Trait-based dispatch + ADT constructors |
+
+### Test Runner Fix
+
+- `bootstrap/run_tests.sh`: Replaced `mapfile` (bash 4+) with `while read` loop for macOS bash 3.2 compatibility
+
+### Files Created/Changed
+
+| File | Changes |
+|------|---------|
+| `bootstrap/stdlib/json.scm` | NEW: JSON parser/serializer (318 lines) |
+| `bootstrap/stdlib/process.scm` | NEW: Subprocess management via FFI (124 lines) |
+| `bootstrap/tests/test_json.test` | NEW: 56 test assertions |
+| `bootstrap/tests/test_process.test` | NEW: 7 test assertions |
+| `bootstrap/run_tests.sh` | FIX: bash 3.2 compatibility |
+
+---
 
 ## Day 146 — Deep Parallelism & Load Testing (COMPLETE)
 

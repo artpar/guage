@@ -21,8 +21,11 @@ if [ ! -f "$GUAGE" ]; then
     exit 1
 fi
 
-# Discover test files
-mapfile -t FILES < <(find "$TESTS_DIR" -name "$FILTER" -type f 2>/dev/null | sort)
+# Discover test files (compatible with bash 3.2)
+FILES=()
+while IFS= read -r line; do
+    FILES+=("$line")
+done < <(find "$TESTS_DIR" -name "$FILTER" -type f 2>/dev/null | sort)
 TOTAL=${#FILES[@]}
 
 if [ "$TOTAL" -eq 0 ]; then

@@ -1,0 +1,114 @@
+;;; Stress: Recursion + Effects
+;;; Tier 2 — Two-feature combination stress test
+
+;;; --- Effect declarations ---
+
+(⟪ :Counter :inc :get)
+(⟪ :State :get :put)
+(⟪ :Yield :value)
+
+;;; --- 1. Recursive fn performing effect each step, 10,000 deep with resumable handler ---
+
+(≔ recursive-count (λ (n)
+  (? (≡ n #0) #0
+     (⊕ (↯ :Counter :inc) (recursive-count (⊖ n #1))))))
+
+(≔ rc-result
+  (⟪↺⟫ (recursive-count #10000)
+    (:Counter
+      (:inc (λ (k) (k #1)))
+      (:get (λ (k) (k #0))))))
+
+(⊨ :re-recursive-effect-10k #10000 rc-result)
+
+;;; --- 2. Binary tree traversal (depth 13 = 8191 nodes) with effect at each node ---
+
+(⊚≔ :BTree (⌜ (:BLeaf :val)) (⌜ (:BNode :left :right)))
+
+(≔ build-btree (λ (depth)
+  (? (≡ depth #0) (⊚ :BTree :BLeaf #1)
+     (⊚ :BTree :BNode (build-btree (⊖ depth #1)) (build-btree (⊖ depth #1))))))
+
+(≔ btree13 (build-btree #13))
+
+(≔ traverse-tree (λ (t)
+  (∇ t (⌜ (
+    ((⊚ :BTree :BLeaf v) (↯ :Counter :inc))
+    ((⊚ :BTree :BNode l r) (⊕ (traverse-tree l) (traverse-tree r))))))))
+
+(≔ tree-count
+  (⟪↺⟫ (traverse-tree btree13)
+    (:Counter
+      (:inc (λ (k) (k #1)))
+      (:get (λ (k) (k #0))))))
+
+;; 2^13 = 8192 leaves
+(⊨ :re-tree-traverse #8192 tree-count)
+
+;;; --- 3. Mutual recursion where each fn performs different effect ---
+
+(≔ mut-a (λ (n)
+  (? (≡ n #0) #0
+     (⊕ (↯ :Counter :inc) (mut-b (⊖ n #1))))))
+
+(≔ mut-b (λ (n)
+  (? (≡ n #0) #0
+     (⊕ (↯ :Counter :inc) (mut-a (⊖ n #1))))))
+
+(≔ mut-result
+  (⟪↺⟫ (mut-a #10000)
+    (:Counter
+      (:inc (λ (k) (k #1)))
+      (:get (λ (k) (k #0))))))
+
+(⊨ :re-mutual-effect-10k #10000 mut-result)
+
+;;; --- 4. TCO loop with effect perform in non-tail position, 50,000 iterations ---
+
+(≔ tco-eff-loop (λ (n acc)
+  (? (≡ n #0) acc
+     (tco-eff-loop (⊖ n #1) (⊕ acc (↯ :Counter :inc))))))
+
+(≔ tco-eff-result
+  (⟪↺⟫ (tco-eff-loop #50000 #0)
+    (:Counter
+      (:inc (λ (k) (k #1)))
+      (:get (λ (k) (k #0))))))
+
+(⊨ :re-tco-effect-50k #50000 tco-eff-result)
+
+;;; --- 5. Recursive accumulator collecting effect results into list ---
+
+(≔ collect-effects (λ (n)
+  (? (≡ n #0) ∅
+     (⟨⟩ (↯ :Counter :inc) (collect-effects (⊖ n #1))))))
+
+(≔ collected-list
+  (⟪↺⟫ (collect-effects #5000)
+    (:Counter
+      (:inc (λ (k) (k #1)))
+      (:get (λ (k) (k #0))))))
+
+;; First element should be 1
+(⊨ :re-collect-first #1 (◁ collected-list))
+
+;; Count list length
+(≔ list-len (λ (lst n)
+  (? (∅? lst) n
+     (list-len (▷ lst) (⊕ n #1)))))
+
+(⊨ :re-collect-5k #5000 (list-len collected-list #0))
+
+;;; --- 6. Fibonacci with effect at each step ---
+
+(≔ fib-eff (λ (n a b)
+  (? (≡ n #0) (⪢ (↯ :Counter :inc) a)
+     (fib-eff (⊖ n #1) b (⊕ a b)))))
+
+(≔ fib-eff-result
+  (⟪↺⟫ (fib-eff #10000 #0 #1)
+    (:Counter
+      (:inc (λ (k) (k #1)))
+      (:get (λ (k) (k #0))))))
+
+(⊨ :re-fib-effect-completes #t (> fib-eff-result #0))

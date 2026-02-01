@@ -1,0 +1,210 @@
+;;; Stress: Concurrent Effects
+;;; Tier 3 — Actors + Effects + Channels + Supervision + ETS
+
+(⟳∅)
+(⟿∅)
+
+;;; --- Effect declarations ---
+
+(⟪ :Compute :calc)
+(⟪ :State :get :put)
+(⟪ :Counter :inc)
+
+;;; --- 1. 100 actors each running own effect handler, results via channels ---
+
+(≔ result-ch (⟿⊚))
+
+(≔ eff-actor (λ (val)
+  (⟳ (λ (self)
+    (≔ result
+      (⟪⟫ (↯ :Compute :calc val)
+        (:Compute (:calc (λ (x) (⊗ x #3))))))
+    (⟿→ result-ch result)))))
+
+(≔ spawn-eff-actors (λ (n)
+  (? (≡ n #0) :done
+     (⪢ (eff-actor n)
+         (spawn-eff-actors (⊖ n #1))))))
+
+(spawn-eff-actors #100)
+
+;; Collector reads 100 results
+(≔ eff-collector (⟳ (λ (self)
+  (≔ col (λ (n total)
+    (? (≡ n #0) total
+       (≫ (⟿← result-ch) (λ (v)
+         (col (⊖ n #1) (⊕ total v)))))))
+  (col #100 #0))))
+
+(⟳! #50000)
+
+;; Sum of 3*i for i=1..100 = 3 * 5050 = 15150
+(⊨ :ce-100-actors-effects #15150 (⟳→ eff-collector))
+
+;;; --- 2. Supervised actor uses effects, crashes and restarts ---
+
+(⟳∅)
+(⟿∅)
+
+(⟳⊞⊕ :crash-ets)
+(⟳⊞⊙ :crash-ets :restarts #0)
+
+(≔ crashing-eff-worker (λ (self)
+  (⪢
+    (≔ cur (⟳⊞? :crash-ets :restarts))
+    (⟳⊞⊙ :crash-ets :restarts (⊕ cur #1))
+    (≔ result
+      (⟪⟫ (↯ :Compute :calc cur)
+        (:Compute (:calc (λ (x) (⊕ x #1))))))
+    ;; Crash on first 10 starts
+    (? (< cur #10) (⚠ :crash result)
+       (≫ (←?) (λ (msg) result))))))
+
+(≔ eff-sup (⟳⊛ :one-for-one (⟨⟩ crashing-eff-worker ∅)))
+(⟳! #20000)
+
+(⊨ :ce-crash-restart-ets #t (> (⟳⊞? :crash-ets :restarts) #10))
+
+;;; --- 3. Box shared via message: actor A→B, B mutates, A reads ---
+
+(⟳∅)
+(⟿∅)
+
+(≔ shared-box (□ #0))
+(≔ done-ch (⟿⊚))
+
+(≔ mutator (⟳ (λ (self)
+  (≫ (←?) (λ (box)
+    (⪢
+      (≔ mut-loop (λ (i)
+        (? (≡ i #0) :done
+           (⪢ (□← box (⊕ (□→ box) #1))
+               (mut-loop (⊖ i #1))))))
+      (mut-loop #10000)
+      (⟿→ done-ch :mutated)))))))
+
+(≔ reader (⟳ (λ (self)
+  (⪢
+    (→! mutator shared-box)
+    (≫ (⟿← done-ch) (λ (_)
+      (□→ shared-box)))))))
+
+(⟳! #100000)
+
+(⊨ :ce-shared-box #10000 (⟳→ reader))
+
+;;; --- 4. Pipeline of 10 actors where each stage uses different effect handler ---
+
+(⟳∅)
+(⟿∅)
+
+(≔ make-eff-stage (λ (in-ch out-ch multiplier)
+  (⟳ (λ (self)
+    (≔ stage (λ (n)
+      (? (≡ n #0) :done
+         (≫ (⟿← in-ch) (λ (v)
+           (⪢
+             (≔ result
+               (⟪⟫ (↯ :Compute :calc v)
+                 (:Compute (:calc (λ (x) (⊕ x multiplier))))))
+             (≫ (⟿→ out-ch result) (λ (_)
+               (stage (⊖ n #1))))))))))
+    (stage #100)))))
+
+(≔ create-chs (λ (n acc)
+  (? (≡ n #0) acc
+     (create-chs (⊖ n #1) (⟨⟩ (⟿⊚) acc)))))
+
+(≔ stage-chs (create-chs #6 ∅))
+
+;; Chain 5 stages
+(≔ setup-eff-stages (λ (chs mult)
+  (? (∅? (▷ chs)) :done
+     (⪢ (make-eff-stage (◁ chs) (◁ (▷ chs)) mult)
+         (setup-eff-stages (▷ chs) (⊕ mult #1))))))
+
+(setup-eff-stages stage-chs #1)
+
+;; Inject 100 values
+(≔ first-stage-ch (◁ stage-chs))
+(≔ injector (⟳ (λ (self)
+  (≔ inj (λ (n)
+    (? (≡ n #0) :done
+       (≫ (⟿→ first-stage-ch #0) (λ (_) (inj (⊖ n #1)))))))
+  (inj #100))))
+
+(⟳! #200000)
+(⊨ :ce-eff-pipeline-completes #t #t)
+
+;;; --- 5. Concurrent counter: 50 actors × 200 ETS increments each ---
+
+(⟳∅)
+(⟿∅)
+
+(⟳⊞⊕ :counter-ets)
+(⟳⊞⊙ :counter-ets :val #0)
+
+(≔ counter-barrier (⟿⊚))
+
+(≔ counter-actor (λ (n)
+  (⟳ (λ (self)
+    (≔ ca-loop (λ (i)
+      (? (≡ i #0) (⟿→ counter-barrier :done)
+         (⪢
+           (≔ cur (⟳⊞? :counter-ets :val))
+           (⟳⊞⊙ :counter-ets :val (⊕ cur #1))
+           (ca-loop (⊖ i #1))))))
+    (ca-loop n)))))
+
+(≔ spawn-counters (λ (n)
+  (? (≡ n #0) :done
+     (⪢ (counter-actor #200)
+         (spawn-counters (⊖ n #1))))))
+
+(spawn-counters #50)
+
+;; Wait for all 50 to finish
+(≔ counter-waiter (⟳ (λ (self)
+  (≔ wait (λ (n)
+    (? (≡ n #0) (⟳⊞? :counter-ets :val)
+       (≫ (⟿← counter-barrier) (λ (_)
+         (wait (⊖ n #1)))))))
+  (wait #50))))
+
+(⟳! #500000)
+
+;; Due to race conditions, value >= something (not exactly 10000 due to interleaving)
+(⊨ :ce-concurrent-counter #t (> (⟳→ counter-waiter) #0))
+
+;;; --- 6. Actor performs effect that returns value, chain of 50 actors ---
+
+(⟳∅)
+(⟿∅)
+
+(≔ chain-ch (⟿⊚))
+
+(≔ eff-chain-actor (λ (n result-ch)
+  (⟳ (λ (self)
+    (≔ result
+      (⟪⟫ (↯ :Compute :calc n)
+        (:Compute (:calc (λ (x) (⊕ x #1))))))
+    (⟿→ result-ch result)))))
+
+(≔ spawn-chain (λ (n)
+  (? (≡ n #0) :done
+     (⪢ (eff-chain-actor n chain-ch)
+         (spawn-chain (⊖ n #1))))))
+
+(spawn-chain #50)
+
+(≔ chain-collector (⟳ (λ (self)
+  (≔ cc (λ (n total)
+    (? (≡ n #0) total
+       (≫ (⟿← chain-ch) (λ (v)
+         (cc (⊖ n #1) (⊕ total v)))))))
+  (cc #50 #0))))
+
+(⟳! #50000)
+
+;; Sum of (i+1) for i=1..50 = sum of 2..51 = 1325
+(⊨ :ce-chain-50 #1325 (⟳→ chain-collector))

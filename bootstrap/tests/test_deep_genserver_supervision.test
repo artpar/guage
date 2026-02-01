@@ -1,0 +1,125 @@
+;;;
+;;; Deep Integration: GenServer + Supervisors + Pattern Matching + Channels + ETS
+;;;
+
+(⟳∅)
+(⟿∅)
+
+;;; --- Supervisor creates GenServer child, client calls it ---
+
+(≔ echo-server (λ (self)
+  (≫ (←?) (λ (msg)
+    (≫ (⟳⇅! (◁ (▷ msg)) (◁ (▷ (▷ msg)))) (λ (_) :done))))))
+
+(≔ sup1 (⟳⊛ :one-for-one (⟨⟩ echo-server ∅)))
+(⟳! #100)
+
+(≔ kids1 (⟳⊛? sup1))
+(≔ srv1 (◁ kids1))
+
+(≔ c1 (⟳ (λ (self) (⟳⇅ srv1 :ping))))
+(⟳! #100)
+
+(⊨ :sup-genserver-call :ping (⟳→ c1))
+
+;;; --- GenServer crashes, supervisor restarts → new incarnation ---
+
+(≔ crash-server (λ (self)
+  (≫ (←?) (λ (msg)
+    (? (≡ msg :crash)
+       (⊘ #1 #0)
+       msg)))))
+
+(≔ sup2 (⟳⊛ :one-for-one (⟨⟩ crash-server ∅)))
+(⟳! #100)
+
+(≔ kids2a (⟳⊛? sup2))
+(≔ old-srv (◁ kids2a))
+
+;;; Crash it
+(→! old-srv :crash)
+(⟳! #200)
+
+;;; --- Old incarnation dead, new incarnation alive after restart ---
+(≔ kids2b (⟳⊛? sup2))
+(≔ new-srv (◁ kids2b))
+
+(⊨ :old-dead  #f (⟳? old-srv))
+(⊨ :new-alive #t (⟳? new-srv))
+(⊨ :different-ids #f (≡ old-srv new-srv))
+
+;;; --- GenServer dispatches on message shape (pair vs atom) ---
+
+(≔ dispatch-server (λ (self)
+  (≫ (←?) (λ (msg)
+    (≫ (⟳⇅! (◁ (▷ msg))
+      (? (⟨⟩? (◁ (▷ (▷ msg))))
+         (⊕ (◁ (◁ (▷ (▷ msg)))) (▷ (◁ (▷ (▷ msg)))))
+         (⊗ (◁ (▷ (▷ msg))) #2)))
+    (λ (_) (dispatch-server self)))))))
+
+(≔ disp-srv (⟳ dispatch-server))
+(⟳! #50)
+
+(≔ c2 (⟳ (λ (self) (⟳⇅ disp-srv (⟨⟩ #3 #4)))))
+(⟳! #100)
+(⊨ :dispatch-pair #7 (⟳→ c2))
+
+(≔ c3 (⟳ (λ (self) (⟳⇅ disp-srv #5))))
+(⟳! #100)
+(⊨ :dispatch-atom #10 (⟳→ c3))
+
+;;; --- Two GenServers communicate via channel pipeline ---
+
+(≔ ch3 (⟿⊚))
+
+(≔ adder-server (λ (self)
+  (≫ (←?) (λ (msg)
+    (≫ (⟳⇅! (◁ (▷ msg)) (⊕ (◁ (▷ (▷ msg))) #100))
+    (λ (_) :done))))))
+
+(≔ pipeline-client (⟳ (λ (self)
+  (⪢
+    (≔ g1 (⟳ adder-server))
+    (⟳! #50)
+    (≔ r1 (⟳⇅ g1 #5))
+    (⟿→ ch3 r1)))))
+
+(⟳! #300)
+
+(⊨ :pipeline-channel #105 (⟿← ch3))
+
+;;; --- ETS table preserves state across supervisor restarts ---
+
+(⟳⊞⊕ :persist)
+(⟳⊞⊙ :persist :counter #0)
+
+(≔ ets-server (λ (self)
+  (≫ (←?) (λ (msg)
+    (? (≡ (◁ (▷ (▷ msg))) :inc)
+       (⪢
+         (≔ ets-old (⟳⊞? :persist :counter))
+         (⟳⊞⊙ :persist :counter (⊕ ets-old #1))
+         (⟳⇅! (◁ (▷ msg)) (⊕ ets-old #1)))
+       (⟳⇅! (◁ (▷ msg)) (⟳⊞? :persist :counter)))))))
+
+(≔ sup3 (⟳⊛ :one-for-one (⟨⟩ ets-server ∅)))
+(⟳! #100)
+
+(≔ kids3 (⟳⊛? sup3))
+(≔ es1 (◁ kids3))
+
+;;; Increment once
+(≔ c4 (⟳ (λ (self) (⟳⇅ es1 :inc))))
+(⟳! #100)
+(⊨ :ets-inc #1 (⟳→ c4))
+
+;;; Verify ETS directly
+(⊨ :ets-direct #1 (⟳⊞? :persist :counter))
+
+;;; --- Send to dead actor returns error ---
+
+(≔ dead-actor (⟳ (λ (self) :done)))
+(⟳! #100)
+(⊨ :dead-actor-done #f (⟳? dead-actor))
+(⊨ :send-to-dead #t (⚠? (→! dead-actor :hello)))

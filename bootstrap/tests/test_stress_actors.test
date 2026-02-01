@@ -1,0 +1,176 @@
+;;; Stress: Actor Model
+;;; Tier 1 — Spawn, message passing, lifecycle, mailbox saturation
+
+;;; --- 1. Spawn 250 actors (near max 256), each returns a value ---
+
+(⟳∅)
+
+(≔ spawn-many (λ (i acc)
+  (? (≡ i #0) acc
+     (spawn-many (⊖ i #1) (⟨⟩ (⟳ (λ (self) i)) acc)))))
+
+(≔ actors-250 (spawn-many #250 ∅))
+(⟳! #50000)
+
+;; Count how many completed
+(≔ count-done (λ (lst acc)
+  (? (∅? lst) acc
+     (count-done (▷ lst)
+       (⊕ acc (? (¬ (⟳? (◁ lst))) #1 #0))))))
+
+(⊨ :actors-250-all-done #250 (count-done actors-250 #0))
+
+;;; --- 2. Single actor receives 250 messages, accumulates sum ---
+
+(⟳∅)
+
+(≔ accumulator (⟳ (λ (self)
+  (≔ acc-loop (λ (n total)
+    (? (≡ n #0) total
+       (≫ (←?) (λ (msg)
+         (acc-loop (⊖ n #1) (⊕ total msg)))))))
+  (acc-loop #250 #0))))
+
+;; Send 250 messages
+(≔ send-loop (λ (i)
+  (? (≡ i #0) :done
+     (⪢ (→! accumulator i)
+         (send-loop (⊖ i #1))))))
+
+(send-loop #250)
+(⟳! #10000)
+
+;; Sum of 1..250 = 31375
+(⊨ :actor-250-msgs #31375 (⟳→ accumulator))
+
+;;; --- 3. Ping-pong: 2 actors exchange 10,000 messages (5,000 each) ---
+
+(⟳∅)
+(≔ pp-ch (⟿⊚))
+
+(≔ pinger (⟳ (λ (self)
+  (≔ ping-loop (λ (n)
+    (? (≡ n #0) :ping-done
+       (≫ (←?) (λ (msg)
+         (≫ (→! (◁ msg) (⟨⟩ self :pong)) (λ (_)
+           (ping-loop (⊖ n #1)))))))))
+  (ping-loop #5000))))
+
+(≔ ponger (⟳ (λ (self)
+  (≔ pong-loop (λ (n)
+    (? (≡ n #0) :pong-done
+       (≫ (←?) (λ (msg)
+         (≫ (→! (◁ msg) (⟨⟩ self :ping)) (λ (_)
+           (pong-loop (⊖ n #1)))))))))
+  (pong-loop #5000))))
+
+;; Kick off by sending first message
+(→! pinger (⟨⟩ ponger :start))
+(⟳! #100000)
+
+(⊨ :actor-pingpong-pinger :ping-done (⟳→ pinger))
+(⊨ :actor-pingpong-ponger :pong-done (⟳→ ponger))
+
+;;; --- 4. Fan-out: 1 actor sends to 50 workers, each processes 100 msgs ---
+
+(⟳∅)
+
+(≔ make-worker (λ ()
+  (⟳ (λ (self)
+    (≔ w-loop (λ (n total)
+      (? (≡ n #0) total
+         (≫ (←?) (λ (msg)
+           (w-loop (⊖ n #1) (⊕ total msg)))))))
+    (w-loop #100 #0)))))
+
+(≔ spawn-workers (λ (n acc)
+  (? (≡ n #0) acc
+     (spawn-workers (⊖ n #1) (⟨⟩ (make-worker) acc)))))
+
+(≔ workers (spawn-workers #50 ∅))
+
+;; Send 100 messages to each worker
+(≔ fanout (λ (wlist msg-n)
+  (? (∅? wlist) :done
+     (⪢
+       (≔ send-to-worker (λ (w i)
+         (? (≡ i #0) :done
+            (⪢ (→! w #1) (send-to-worker w (⊖ i #1))))))
+       (send-to-worker (◁ wlist) msg-n)
+       (fanout (▷ wlist) msg-n)))))
+
+(fanout workers #100)
+(⟳! #100000)
+
+;; Each worker sums 100 x #1 = 100
+;; Count completed workers
+(≔ count-workers-done (λ (lst acc)
+  (? (∅? lst) acc
+     (count-workers-done (▷ lst)
+       (⊕ acc (? (¬ (⟳? (◁ lst))) #1 #0))))))
+
+(⊨ :actor-fanout-done #50 (count-workers-done workers #0))
+
+;;; --- 5. Rapid lifecycle: spawn→run→die cycle 200 times ---
+
+(⟳∅)
+
+(≔ lifecycle-loop (λ (n)
+  (? (≡ n #0) :done
+     (⪢
+       (⟳∅)
+       (≔ tmp (⟳ (λ (self) :bye)))
+       (⟳! #100)
+       (lifecycle-loop (⊖ n #1))))))
+
+(⊨ :actor-lifecycle-200 :done (lifecycle-loop #200))
+
+;;; --- 6. Actor spawns child actors 4 levels deep ---
+
+(⟳∅)
+
+(≔ tree-actor (λ (depth)
+  (⟳ (λ (self)
+    (? (≡ depth #0) #1
+       (⪢
+         (≔ c1 (tree-actor (⊖ depth #1)))
+         (≔ c2 (tree-actor (⊖ depth #1)))
+         (⟳! #5000)
+         (≔ r1 (⟳→ c1))
+         (≔ r2 (⟳→ c2))
+         (⊕ #1 (⊕ (? (⚠? r1) #0 r1) (? (⚠? r2) #0 r2)))))))))
+
+(≔ tree-root (tree-actor #4))
+(⟳! #50000)
+(≔ tree-result (⟳→ tree-root))
+
+;; Binary tree depth 4: 1+2+4+8+16 = 31 actors
+(⊨ :actor-tree-completes #t (¬ (⚠? tree-result)))
+
+;;; --- 7. Scheduler tick stress: 100K ticks, verify no crash ---
+
+(⟳∅)
+(≔ tick-actor (⟳ (λ (self) :survived)))
+(⟳! #100000)
+(⊨ :actor-100k-ticks :survived (⟳→ tick-actor))
+
+;;; --- 8. Mailbox fill: send 250 messages before processing ---
+
+(⟳∅)
+
+(≔ mailbox-actor (⟳ (λ (self)
+  (≔ drain (λ (n total)
+    (? (≡ n #0) total
+       (≫ (←?) (λ (msg)
+         (drain (⊖ n #1) (⊕ total msg)))))))
+  (drain #250 #0))))
+
+(≔ fill-mailbox (λ (i)
+  (? (≡ i #0) :done
+     (⪢ (→! mailbox-actor i)
+         (fill-mailbox (⊖ i #1))))))
+
+(fill-mailbox #250)
+(⟳! #10000)
+
+(⊨ :actor-mailbox-250 #31375 (⟳→ mailbox-actor))

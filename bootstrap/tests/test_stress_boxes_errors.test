@@ -1,0 +1,133 @@
+;;; Stress: Boxes (Mutable Refs) + Errors
+;;; Tier 2 — Two-feature combination stress test
+
+;;; --- 1. Box increment loop with division: 100,000 iterations, every 3rd is div-by-zero ---
+
+(≔ calc-box (□ #0))
+(≔ err-count-box (□ #0))
+
+(≔ div-loop (λ (i)
+  (? (≡ i #0) :done
+     (⪢
+       (≔ divisor (⊛% i #3))
+       (≔ result (? (≡ divisor #0) (⚠ :div-zero ∅) (⊘ i divisor)))
+       (? (⚠? result)
+          (□← err-count-box (⊕ (□→ err-count-box) #1))
+          (□← calc-box (⊕ (□→ calc-box) result)))
+       (div-loop (⊖ i #1))))))
+
+(div-loop #100000)
+
+;; ~33333 errors (every 3rd: 3,6,9,...99999)
+(⊨ :be-div-errors #33333 (□→ err-count-box))
+(⊨ :be-div-calc-positive #t (> (□→ calc-box) #0))
+
+;;; --- 2. Error-as-value chain: 1,000 operations, collect errors into list ---
+
+(≔ error-list-box (□ ∅))
+
+(≔ error-chain (λ (i)
+  (? (≡ i #0) :done
+     (⪢
+       (≔ result (? (≡ (⊛% i #3) #0) (⚠ :chain-err i) (⊕ i #10)))
+       (? (⚠? result)
+          (□← error-list-box (⟨⟩ result (□→ error-list-box)))
+          ∅)
+       (error-chain (⊖ i #1))))))
+
+(error-chain #1000)
+
+;; Count errors
+(≔ count-errors (λ (lst n)
+  (? (∅? lst) n
+     (count-errors (▷ lst) (⊕ n #1)))))
+
+(⊨ :be-error-chain #333 (count-errors (□→ error-list-box) #0))
+
+;;; --- 3. Transaction pattern: box backup→op→if error restore ---
+
+(≔ txn-box (□ #0))
+(≔ txn-success-box (□ #0))
+
+(≔ transaction (λ (i)
+  (? (≡ i #0) :done
+     (⪢
+       (≔ backup (□→ txn-box))
+       (≔ result (? (≡ (⊛% i #5) #0) (⚠ :txn-fail ∅) (⊕ backup #1)))
+       (? (⚠? result)
+          (□← txn-box backup)  ;; restore on error
+          (⪢ (□← txn-box result)
+              (□← txn-success-box (⊕ (□→ txn-success-box) #1))))
+       (transaction (⊖ i #1))))))
+
+(transaction #50000)
+
+;; 50000/5 = 10000 failures, 40000 successes
+(⊨ :be-txn-successes #40000 (□→ txn-success-box))
+(⊨ :be-txn-final-value #40000 (□→ txn-box))
+
+;;; --- 4. 10-deep function call chain, error bubbles through all levels ---
+
+(≔ deep-call (λ (depth val)
+  (? (≡ depth #0)
+     (? (≡ (⊛% val #7) #0) (⚠ :deep-err val) val)
+     (⪢
+       (≔ result (deep-call (⊖ depth #1) val))
+       (? (⚠? result) result (⊕ result #1))))))
+
+(≔ bubble-box (□ #0))
+
+(≔ bubble-loop (λ (i)
+  (? (≡ i #0) (□→ bubble-box)
+     (⪢
+       (≔ r (deep-call #10 i))
+       (? (⚠? r) ∅ (□← bubble-box (⊕ (□→ bubble-box) #1)))
+       (bubble-loop (⊖ i #1))))))
+
+(≔ non-error-count (bubble-loop #10000))
+
+;; 10000/7 ≈ 1428 errors, ~8572 successes
+(⊨ :be-bubble-positive #t (> non-error-count #0))
+
+;;; --- 5. Box of HashMap: insert keys, every 5th errors, map stays consistent ---
+
+(≔ hm-box (□ (⊞)))
+
+(≔ hm-err-loop (λ (i)
+  (? (≡ i #0) :done
+     (⪢
+       (≔ result (? (≡ (⊛% i #5) #0) (⚠ :skip ∅) i))
+       (? (⚠? result) ∅
+          (⊞← (□→ hm-box) i (⊗ i #2)))
+       (hm-err-loop (⊖ i #1))))))
+
+(hm-err-loop #10000)
+
+;; 10000 - 2000 errors = 8000 entries
+(⊨ :be-hm-size #8000 (⊞# (□→ hm-box)))
+
+;;; --- 6. Error accumulator: box holds error count, 50,000 operations ---
+
+(≔ acc-err-box (□ #0))
+
+(≔ acc-loop (λ (i)
+  (? (≡ i #0) (□→ acc-err-box)
+     (⪢
+       (≔ r (? (≡ (⊛% i #3) #0) (⚠ :err ∅) :ok))
+       (? (⚠? r) (□← acc-err-box (⊕ (□→ acc-err-box) #1)) ∅)
+       (acc-loop (⊖ i #1))))))
+
+;; 50000/3 ≈ 16666
+(⊨ :be-acc-errors #16666 (acc-loop #50000))
+
+;;; --- 7. Box swap stress: 1,000,000 swaps on single box ---
+
+(≔ swap-box (□ #0))
+
+(≔ swap-loop (λ (i)
+  (? (≡ i #0) (□→ swap-box)
+     (⪢ (□← swap-box i)
+         (swap-loop (⊖ i #1))))))
+
+;; Last swap sets it to 1
+(⊨ :be-swap-million #1 (swap-loop #1000000))

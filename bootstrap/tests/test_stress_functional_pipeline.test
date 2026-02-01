@@ -1,0 +1,177 @@
+;;; Stress: Functional Pipeline
+;;; Tier 3 — ADTs + Closures + Data Structures + Pattern Matching + Recursion
+
+;;; --- ADT definitions ---
+
+(⊚≔ :Category (⌜ (:CatA)) (⌜ (:CatB)) (⌜ (:CatC)) (⌜ (:CatD)) (⌜ (:CatE)))
+(⊚≔ :Item (⌜ (:MkItem :id :category :value)))
+
+;;; --- Utility functions ---
+
+(≔ list-len (λ (lst n)
+  (? (∅? lst) n
+     (list-len (▷ lst) (⊕ n #1)))))
+
+(≔ fold-list (λ (f init lst)
+  (? (∅? lst) init
+     (fold-list f (f init (◁ lst)) (▷ lst)))))
+
+(≔ map-list (λ (f lst)
+  (? (∅? lst) ∅
+     (⟨⟩ (f (◁ lst)) (map-list f (▷ lst))))))
+
+;;; --- 1. List of 10,000 ADTs → pattern match classify → group into HashMap ---
+
+(≔ category-map (⊞))
+
+(≔ make-item (λ (i)
+  (⊚ :Item :MkItem i
+    (? (≡ (⊛% i #5) #0) (⊚ :Category :CatA)
+       (? (≡ (⊛% i #5) #1) (⊚ :Category :CatB)
+          (? (≡ (⊛% i #5) #2) (⊚ :Category :CatC)
+             (? (≡ (⊛% i #5) #3) (⊚ :Category :CatD)
+                (⊚ :Category :CatE)))))
+    i)))
+
+(≔ classify-item (λ (item)
+  (∇ item (⌜ (
+    ((⊚ :Item :MkItem id (⊚ :Category :CatA) v) :a)
+    ((⊚ :Item :MkItem id (⊚ :Category :CatB) v) :b)
+    ((⊚ :Item :MkItem id (⊚ :Category :CatC) v) :c)
+    ((⊚ :Item :MkItem id (⊚ :Category :CatD) v) :d)
+    ((⊚ :Item :MkItem id (⊚ :Category :CatE) v) :e))))))
+
+(≔ group-items (λ (i)
+  (? (≡ i #0) :done
+     (⪢
+       (≔ item (make-item i))
+       (≔ cat (classify-item item))
+       (≔ cur (⊞→ category-map cat))
+       (⊞← category-map cat (? (∅? cur) #1 (⊕ cur #1)))
+       (group-items (⊖ i #1))))))
+
+(group-items #10000)
+
+(⊨ :fp-5-categories #5 (⊞# category-map))
+(⊨ :fp-each-category-2000 #2000 (⊞→ category-map :a))
+
+;;; --- 2. Recursive tree map + fold via closures ---
+
+(⊚≔ :Tree (⌜ (:Leaf :val)) (⌜ (:Node :left :right)))
+
+(≔ tree-map (λ (f t)
+  (∇ t (⌜ (
+    ((⊚ :Tree :Leaf v) (⊚ :Tree :Leaf (f v)))
+    ((⊚ :Tree :Node l r) (⊚ :Tree :Node (tree-map f l) (tree-map f r))))))))
+
+(≔ tree-fold (λ (f init t)
+  (∇ t (⌜ (
+    ((⊚ :Tree :Leaf v) (f init v))
+    ((⊚ :Tree :Node l r) (tree-fold f (tree-fold f init l) r)))))))
+
+(≔ build-tree (λ (depth)
+  (? (≡ depth #0) (⊚ :Tree :Leaf #1)
+     (⊚ :Tree :Node (build-tree (⊖ depth #1)) (build-tree (⊖ depth #1))))))
+
+;; Depth 14 = 16384 leaves
+(≔ big-tree (build-tree #14))
+
+;; Map: double every leaf
+(≔ doubled-tree (tree-map (λ (x) (⊗ x #2)) big-tree))
+
+;; Fold: sum all leaves
+(≔ tree-sum (tree-fold (λ (acc x) (⊕ acc x)) #0 doubled-tree))
+
+;; 16384 leaves * 2 = 32768
+(⊨ :fp-tree-map-fold #32768 tree-sum)
+
+;;; --- 3. Sort 10,000 elements via closure-based comparator ---
+
+;; Simple insertion sort (for stress testing, not efficiency)
+(≔ insert-sorted (λ (cmp x lst)
+  (? (∅? lst) (⟨⟩ x ∅)
+     (? (cmp x (◁ lst))
+        (⟨⟩ x lst)
+        (⟨⟩ (◁ lst) (insert-sorted cmp x (▷ lst)))))))
+
+(≔ sort-list (λ (cmp lst)
+  (? (∅? lst) ∅
+     (insert-sorted cmp (◁ lst) (sort-list cmp (▷ lst))))))
+
+;; Sort 500 elements (insertion sort is O(n²))
+(≔ unsorted (λ (n acc)
+  (? (≡ n #0) acc
+     (unsorted (⊖ n #1) (⟨⟩ (⊛% (⊗ n #7919) #10000) acc)))))
+
+(≔ unsorted-500 (unsorted #500 ∅))
+(≔ sorted (sort-list (λ (a b) (< a b)) unsorted-500))
+
+(⊨ :fp-sort-len #500 (list-len sorted #0))
+
+;; Verify sorted
+(≔ is-sorted (λ (lst)
+  (? (∅? lst) #t
+     (? (∅? (▷ lst)) #t
+        (? (≤ (◁ lst) (◁ (▷ lst)))
+           (is-sorted (▷ lst))
+           #f)))))
+
+(⊨ :fp-sort-ordered #t (is-sorted sorted))
+
+;;; --- 4. fold building SortedMap from pairs ---
+
+(≔ build-pairs (λ (n acc)
+  (? (≡ n #0) acc
+     (build-pairs (⊖ n #1) (⟨⟩ (⟨⟩ n (⊗ n #3)) acc)))))
+
+(≔ pairs-10k (build-pairs #10000 ∅))
+
+(≔ sm (⋔))
+(≔ build-sm (λ (lst)
+  (? (∅? lst) sm
+     (⪢ (⋔← sm (◁ (◁ lst)) (◁ (▷ (◁ lst))))
+         (build-sm (▷ lst))))))
+
+(build-sm pairs-10k)
+
+(⊨ :fp-sm-size #10000 (⋔# sm))
+(⊨ :fp-sm-min #3 (⋔→ sm #1))
+
+;;; --- 5. Higher-order: compose 10 functions, apply to 50,000 elements ---
+
+(≔ compose2 (λ (f g) (λ (x) (f (g x)))))
+
+(≔ compose-n (λ (fns)
+  (? (∅? fns) (λ (x) x)
+     (compose2 (◁ fns) (compose-n (▷ fns))))))
+
+(≔ add1 (λ (x) (⊕ x #1)))
+(≔ fns (⟨⟩ add1 (⟨⟩ add1 (⟨⟩ add1 (⟨⟩ add1 (⟨⟩ add1
+        (⟨⟩ add1 (⟨⟩ add1 (⟨⟩ add1 (⟨⟩ add1 (⟨⟩ add1 ∅)))))))))))
+
+(≔ composed (compose-n fns))
+
+;; Apply to 50,000 elements, sum results
+(≔ compose-sum (λ (n acc)
+  (? (≡ n #0) acc
+     (compose-sum (⊖ n #1) (⊕ acc (composed #0))))))
+
+;; Each application: 0 + 10 = 10; 50000 * 10 = 500000
+(⊨ :fp-compose-50k #500000 (compose-sum #50000 #0))
+
+;;; --- 6. ADT round-trip: build → serialize to list → count ---
+
+(≔ serialize-item (λ (item)
+  (∇ item (⌜ (
+    ((⊚ :Item :MkItem id cat val)
+     (⟨⟩ id (⟨⟩ (classify-item item) (⟨⟩ val ∅)))))))))
+
+(≔ roundtrip-loop (λ (n acc)
+  (? (≡ n #0) acc
+     (⪢
+       (≔ item (make-item n))
+       (≔ serialized (serialize-item item))
+       (roundtrip-loop (⊖ n #1) (⊕ acc (◁ serialized)))))))
+
+;; Sum of ids 1..5000
+(⊨ :fp-roundtrip-5k #12502500 (roundtrip-loop #5000 #0))
