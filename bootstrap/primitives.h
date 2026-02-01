@@ -61,6 +61,8 @@ Cell* prim_gen_bool(Cell* args);       /* gen-bool - random boolean */
 Cell* prim_gen_symbol(Cell* args);     /* gen-symbol - random from list */
 Cell* prim_gen_list(Cell* args);       /* gen-list - random list */
 Cell* prim_test_property(Cell* args);  /* ⊨-prop - property-based test */
+Cell* prim_gen_int_shrink(Cell* args); /* gen-int-shrink - int with integrated shrinking */
+Cell* prim_gen_list_shrink(Cell* args);/* gen-list-shrink - list with integrated shrinking */
 
 /* Type predicates */
 Cell* prim_is_number(Cell* args);
@@ -516,5 +518,9 @@ Cell* primitives_lookup(Cell* env, const char* sym);
 
 /* Lookup primitive by name (returns NULL if not found) */
 const Primitive* primitive_lookup_by_name(const char* name);
+
+/* Structured test output (called from main.c --test mode) */
+void test_emit_and_exit(const char* filename, int had_toplevel_error,
+                        double elapsed_us, uint64_t leaked_cells);
 
 #endif /* GUAGE_PRIMITIVES_H */

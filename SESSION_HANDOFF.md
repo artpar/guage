@@ -1,11 +1,101 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-02-01 (Day 144 Session 2 COMPLETE)
+Updated: 2026-02-01 (Day 145 COMPLETE)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 144 Session 2 - Module Namespacing & Qualified Access (2026-02-01)
+# Session Handoff: Day 145 - HFT-Grade Test Infrastructure (2026-02-01)
+
+## Day 145 — Structured Test Infrastructure (COMPLETE)
+
+**STATUS:** 148/148 test files passing ✅ (pending build verification)
+
+### What Was Done
+
+Replaced the grep-based test runner with a structured, exit-code-driven test infrastructure. The interpreter now has a `--test` mode that emits JSON Lines on stderr with per-test results, coverage data, leak detection, and deterministic scheduling. Property-based testing upgraded with integrated Hedgehog-style shrinking.
+
+### Part 1: Core Runner (`--test` mode)
+
+- **`main.c`**: Added `--test <file>` CLI flag and `run_test_file()` function
+  - Opens file, parses all expressions, evals them, drains scheduler
+  - Tracks `had_toplevel_error` flag for ⊢-only files
+  - Calls `test_emit_and_exit()` with timing, leak count, error flag
+- **`primitives.c`**: Added `test_emit_and_exit()` with JSON Lines output
+  - Walks `g_test_results` list, emits per-test JSON with name/status/elapsed/expected/actual
+  - Emits summary line with pass/fail/total/elapsed/sched_seed
+  - `json_escape_string()` and `cell_to_json_string()` helpers for safe output
+- **`run_tests.sh`**: Complete rewrite (81 lines)
+  - Exit-code driven (no more grep for "✗ FAIL")
+  - Per-file JSON Lines captured to temp dir
+  - `TEST_RESULTS` env var for CI integration
+- **`Makefile`**: Updated targets
+  - `test-one` now uses `--test` mode
+  - New `test-parallel`, `test-json` targets
+
+### Part 2: Refcount Leak Detection
+
+- **`cell.c`**: Added atomic `g_cell_alloc_count` counter, `cell_get_alloc_count()`
+- **`main.c`**: Records alloc count before/after file evaluation, reports delta
+- JSON output: `{"t":"leak","file":"...","leaked_cells":N}`
+
+### Part 3: Execution Coverage via Span Tracking
+
+- **`eval.c`**: Coverage bitmap (one bit per source byte), `coverage_init()`, `coverage_mark()`, `coverage_emit_json()`
+- `coverage_mark()` called in `eval_internal()` for every evaluated expression
+- JSON output: `{"t":"coverage","file":"...","covered_bytes":N,"total_bytes":N,"pct":85.2}`
+
+### Part 4: Deterministic Actor Scheduling
+
+- **`scheduler.c`**: `sched_set_deterministic()` seeds all scheduler RNGs via `sched_hash_seed()` (FNV-1a)
+- Same seed + same inputs = same execution order = reproducible tests
+- Seed included in JSON summary for reproduction
+
+### Part 5: Integrated Shrinking (Hedgehog-style)
+
+- **`primitives.c`**: Rewrote `prim_test_property` to detect `⟨value . shrink-fn⟩` pairs
+  - If shrink-fn present: calls it to get candidates, tests each, recurses on smallest failing
+  - Falls back to legacy type-based shrinking for plain values
+- New generators: `gen-int-shrink`, `gen-list-shrink` — return value+shrink-fn pairs
+- `builtin_shrink_int()`: produces {0, val/2, val-1} candidates
+- `builtin_shrink_list()`: produces {drop-head, first-half, empty} candidates
+
+### New Primitives (+2)
+
+| Symbol | Description |
+|--------|-------------|
+| `gen-int-shrink` | Integer generator with integrated shrink function |
+| `gen-list-shrink` | List generator with integrated shrink function |
+
+### Files Changed
+
+| File | Changes |
+|------|---------|
+| `bootstrap/main.c` | `--test` flag, `run_test_file()`, coverage init, deterministic sched |
+| `bootstrap/primitives.c` | `test_emit_and_exit()`, JSON helpers, integrated shrinking, new generators |
+| `bootstrap/primitives.h` | Declarations for `test_emit_and_exit`, `gen-int-shrink`, `gen-list-shrink` |
+| `bootstrap/eval.c` | Coverage bitmap globals, `coverage_init/mark/emit_json`, marking in eval loop |
+| `bootstrap/eval.h` | Coverage declarations, `extern g_coverage_bitmap` |
+| `bootstrap/cell.c` | Atomic alloc counter, `cell_get_alloc_count()` |
+| `bootstrap/cell.h` | `cell_get_alloc_count()` declaration |
+| `bootstrap/scheduler.c` | `sched_set_deterministic()`, `sched_hash_seed()` |
+| `bootstrap/scheduler.h` | Deterministic scheduling declarations |
+| `bootstrap/run_tests.sh` | Complete rewrite — exit-code driven, JSON Lines |
+| `Makefile` | Updated test targets (`test-one --test`, `test-parallel`, `test-json`) |
+
+### Primitive Count: 540 (was 538)
+
+### JSON Lines Format (stderr)
+
+```jsonl
+{"t":"result","name":"add-basic","status":"pass","elapsed_us":1.2}
+{"t":"result","name":"div-zero","status":"fail","elapsed_us":0.4,"expected":"⚠","actual":"#0"}
+{"t":"leak","file":"test.test","leaked_cells":42}
+{"t":"coverage","file":"test.test","covered_bytes":1024,"total_bytes":2048,"pct":50.0}
+{"t":"summary","file":"test.test","pass":4,"fail":1,"total":5,"elapsed_us":12345.6,"sched_seed":8472619}
+```
+
+---
 
 ## Day 144 Session 2 — Module Namespacing & Qualified Access (COMPLETE)
 

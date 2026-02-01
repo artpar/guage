@@ -31,10 +31,10 @@ Everything is a **Cell**:
 
 **See:** `KEYWORDS.md` for complete specification.
 
-## Runtime Primitives (453 Total)
+## Runtime Primitives (455 Total)
 
-**Status:** 453 primitives implemented and stable (123/123 test files passing)
-**Note:** All primitives fully working including graph algorithms, actors, channels, supervision, supervisors, registry, timers, GenServer, process dictionary, task async/await, mutable references, sequencing, SOTA error diagnostics, and FFI with JIT-compiled stubs
+**Status:** 455 primitives implemented and stable (148/148 test files passing)
+**Note:** All primitives fully working including graph algorithms, actors, channels, supervision, supervisors, registry, timers, GenServer, process dictionary, task async/await, mutable references, sequencing, SOTA error diagnostics, FFI with JIT-compiled stubs, and structured test infrastructure (--test mode, JSON Lines, coverage, leak detection, deterministic scheduling, integrated shrinking)
 
 ### Core Lambda Calculus (3) ✅
 | Symbol | Type | Meaning | Status |
@@ -579,7 +579,7 @@ Every Cell carries an 8-byte **Span** (Rust-style inline-or-intern encoding) tra
 | `⧉` | `λ → ℕ` | Get arity of lambda | ✅ DONE |
 | `⊛` | `λ → expression` | Get source code | ✅ DONE |
 
-### Testing (13) ✅
+### Testing (15) ✅
 | Symbol | Type | Meaning | Status |
 |--------|------|---------|--------|
 | `≟` | `α → α → 𝔹` | Deep equality test | ✅ DONE |
@@ -594,7 +594,9 @@ Every Cell carries an 8-byte **Span** (Rust-style inline-or-intern encoding) tra
 | `gen-bool` | `() → 𝔹` | Random boolean | ✅ DONE |
 | `gen-symbol` | `[α] → α` | Random symbol from list | ✅ DONE |
 | `gen-list` | `(() → α) → ℕ → [α]` | Generate random list | ✅ DONE |
-| `⊨-prop` | `:symbol → (α → 𝔹) → (() → α) → 𝔹 \| ⚠` | Property-based test with shrinking | ✅ DONE |
+| `⊨-prop` | `:symbol → (α → 𝔹) → (() → α) → 𝔹 \| ⚠` | Property-based test with integrated shrinking | ✅ DONE |
+| `gen-int-shrink` | `ℕ → ℕ → ⟨ℕ λ⟩` | Integer generator with shrink function (Hedgehog-style) | ✅ DONE |
+| `gen-list-shrink` | `(() → α) → ℕ → ⟨[α] λ⟩` | List generator with shrink function (Hedgehog-style) | ✅ DONE |
 
 ### Effects (9) - Algebraic Effect System & Delimited Continuations
 | Symbol | Type | Meaning | Status |

@@ -44,11 +44,19 @@ void art_destroy_node(void* node);
 /* Thread-local scheduler ID (defined here, declared extern in cell.h) */
 _Thread_local uint16_t tls_scheduler_id = 0;
 
+/* Allocation counter for leak detection */
+static _Atomic uint64_t g_cell_alloc_count = 0;
+
+uint64_t cell_get_alloc_count(void) {
+    return atomic_load_explicit(&g_cell_alloc_count, memory_order_relaxed);
+}
+
 /* Cell allocation */
 static Cell* cell_alloc(CellType type) {
     Cell* c = (Cell*)malloc(sizeof(Cell));
     assert(c != NULL);
     memset(c, 0, sizeof(Cell));
+    atomic_fetch_add_explicit(&g_cell_alloc_count, 1, memory_order_relaxed);
 
     c->type = type;
     /* Biased RC: owner = current thread, biased = 1, shared = 0 */

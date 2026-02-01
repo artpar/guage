@@ -174,7 +174,7 @@ Based on:
 
 ## Feature Set
 
-### Current (Day 141 — 131 tests, 511 primitives)
+### Current (Day 145 — 148 tests, 540 primitives)
 
 **Core:**
 - λ abstraction with De Bruijn indices
@@ -224,6 +224,8 @@ Based on:
 **Debug/Test:**
 - ⊢ assertions, ⟲ trace, ⊙ type-of
 - ⧉ arity, ⊛ source, ≟ deep-equal, ⊨ test-case
+- Structured test runner (--test mode, JSON Lines, coverage, leak detection)
+- gen-int-shrink, gen-list-shrink (integrated Hedgehog-style shrinking)
 
 **FFI:**
 - JIT-compiled stubs (⌁) — ARM64 + x86-64
@@ -235,6 +237,7 @@ Based on:
 
 **Infrastructure:**
 - Multi-scheduler with BWoS deque and work-stealing
+- Deterministic actor scheduling (seeded PRNG for reproducible tests)
 - Eventcount parking (3-tier: YIELD→WFE→ulock)
 - QSBR actor reclamation, global trace aggregation
 - String interning (SipHash + SwissTable), fiber runtime
@@ -457,7 +460,7 @@ Use **symbolic documentation**:
 **Representation:** De Bruijn indices
 **Environment:** Hybrid (named at top, indexed in lambdas)
 **Primitives:** 511
-**Tests:** 131/131 passing ✅
+**Tests:** 148/148 passing ✅
 **Status:** Turing complete + effects + actors + multi-scheduler + pattern matching
 
 ### Code Organization
@@ -504,14 +507,14 @@ Use **symbolic documentation**:
     ├── fcontext.h        - Fiber context switching
     ├── iter_batch.h      - Batch iterator
     ├── stdlib/           - Standard library (30 Guage files)
-    └── tests/            - Test suite (131 test files)
+    └── tests/            - Test suite (148 test files)
 ```
 
 ### Build and Test
 
 ```bash
 make                    # Build (from project root)
-make test               # Run full test suite (131 test files)
+make test               # Run full test suite (148 test files)
 make repl               # Start REPL
 make help               # Show all available targets
 make run FILE=file.scm  # Run a specific file

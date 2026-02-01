@@ -1,86 +1,81 @@
 #!/bin/bash
 
-# Guage Test Harness
-# Runs all .test files and reports results
+# Guage Test Harness — exit-code driven, structured JSON Lines
 # ALWAYS run from project root: /path/to/guage/
 
-set -e
+set -euo pipefail
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
-
-PASSED=0
-FAILED=0
-TOTAL=0
-
-# Verify we have the executable (must be at project root)
-if [ ! -f "bootstrap/guage" ]; then
-    echo "${RED}Error: bootstrap/guage not found${NC}"
-    echo "You must run this script from the project root directory"
-    echo "Current directory: $(pwd)"
-    exit 1
-fi
+NC='\033[0m'
 
 GUAGE="bootstrap/guage"
 TESTS_DIR="bootstrap/tests"
+TIMEOUT=${TIMEOUT:-10}
+FILTER="${1:-*.test}"
 
-echo "═══════════════════════════════════════"
-echo "  Guage Test Harness"
-echo "═══════════════════════════════════════"
-echo "  Root: $(pwd)"
-echo "  Executable: $GUAGE"
-echo "  Tests: $TESTS_DIR"
-echo "═══════════════════════════════════════"
-echo
-
-# Find all .test files (relative to project root)
-TEST_FILES=$(find "$TESTS_DIR" -name "*.test" -type f 2>/dev/null | sort)
-
-if [ -z "$TEST_FILES" ]; then
-    echo "${YELLOW}No .test files found in $TESTS_DIR${NC}"
-    exit 0
-fi
-
-# Run each test file (all paths relative to project root)
-for test_file in $TEST_FILES; do
-    echo "Running: $test_file"
-    TOTAL=$((TOTAL + 1))
-
-    # Run test with timeout (no cd, everything from project root)
-    if timeout 5 "$GUAGE" < "$test_file" > /tmp/guage_test_$$.out 2>&1; then
-        # Check for failures in output
-        if grep -q "✗ FAIL" /tmp/guage_test_$$.out || grep -q "⚠:test-failed" /tmp/guage_test_$$.out; then
-            echo "${RED}  ✗ FAILED${NC}"
-            FAILED=$((FAILED + 1))
-            cat /tmp/guage_test_$$.out
-        else
-            echo "${GREEN}  ✓ PASSED${NC}"
-            PASSED=$((PASSED + 1))
-        fi
-    else
-        echo "${RED}  ✗ TIMEOUT/ERROR${NC}"
-        FAILED=$((FAILED + 1))
-    fi
-    echo
-done
-
-rm -f /tmp/guage_test_$$.out
-
-# Summary
-echo "═══════════════════════════════════════"
-echo "  Test Summary"
-echo "═══════════════════════════════════════"
-echo "Total:  $TOTAL"
-echo "${GREEN}Passed: $PASSED${NC}"
-echo "${RED}Failed: $FAILED${NC}"
-echo
-
-if [ $FAILED -eq 0 ]; then
-    echo "${GREEN}All tests passed!${NC}"
-    exit 0
-else
-    echo "${RED}Some tests failed!${NC}"
+# Verify executable
+if [ ! -f "$GUAGE" ]; then
+    echo -e "${RED}Error: $GUAGE not found. Run 'make' first.${NC}"
     exit 1
 fi
+
+# Discover test files
+mapfile -t FILES < <(find "$TESTS_DIR" -name "$FILTER" -type f 2>/dev/null | sort)
+TOTAL=${#FILES[@]}
+
+if [ "$TOTAL" -eq 0 ]; then
+    echo -e "${YELLOW}No test files matching '$FILTER' in $TESTS_DIR${NC}"
+    exit 0
+fi
+
+# Temp dir for per-file JSON Lines
+JSON_DIR=$(mktemp -d)
+trap "rm -rf $JSON_DIR" EXIT
+
+PASSED=0
+FAILED=0
+ERRORS=()
+
+echo "═══ Guage Test Suite ═══"
+
+run_one() {
+    local f="$1" idx="$2"
+    if timeout "$TIMEOUT" "$GUAGE" --test "$f" 2>"$JSON_DIR/$idx.jsonl" >/dev/null; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+for i in "${!FILES[@]}"; do
+    f="${FILES[$i]}"
+    name="${f#$TESTS_DIR/}"
+    if run_one "$f" "$i"; then
+        ((PASSED++))
+        echo -e "  ${GREEN}PASS${NC} $name"
+    else
+        ((FAILED++))
+        ERRORS+=("$name")
+        echo -e "  ${RED}FAIL${NC} $name"
+    fi
+done
+
+echo ""
+echo "═══ $PASSED/$TOTAL passed ═══"
+
+if [ ${#ERRORS[@]} -gt 0 ]; then
+    echo ""
+    echo -e "${RED}Failed:${NC}"
+    for e in "${ERRORS[@]}"; do
+        echo "  $e"
+    done
+fi
+
+# Write combined JSON results if requested
+if [ -n "${TEST_RESULTS:-}" ]; then
+    cat "$JSON_DIR"/*.jsonl > "$TEST_RESULTS" 2>/dev/null || true
+fi
+
+[ "$FAILED" -eq 0 ]

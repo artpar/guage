@@ -11,6 +11,42 @@
 #include <string.h>
 #include <assert.h>
 
+/* ============ Coverage Bitmap (Part 3 — span tracking) ============ */
+
+uint8_t* g_coverage_bitmap = NULL;
+static uint32_t g_coverage_total_bytes = 0;
+
+void coverage_init(uint32_t total_bytes) {
+    if (g_coverage_bitmap) free(g_coverage_bitmap);
+    g_coverage_total_bytes = total_bytes;
+    uint32_t bitmap_bytes = (total_bytes + 7) / 8;
+    g_coverage_bitmap = (uint8_t*)calloc(bitmap_bytes, 1);
+}
+
+void coverage_mark(Span span) {
+    uint32_t lo = span.inline_span.lo;
+    uint32_t len = span.inline_span.len;
+    if (lo == 0 && len == 0) return;
+    uint32_t hi = lo + len;
+    if (hi > g_coverage_total_bytes) hi = g_coverage_total_bytes;
+    for (uint32_t i = lo; i < hi; i++) {
+        g_coverage_bitmap[i / 8] |= (1u << (i % 8));
+    }
+}
+
+void coverage_emit_json(FILE* out, const char* filename) {
+    if (!g_coverage_bitmap || g_coverage_total_bytes == 0) return;
+    uint32_t covered = 0;
+    for (uint32_t i = 0; i < g_coverage_total_bytes; i++) {
+        if (g_coverage_bitmap[i / 8] & (1u << (i % 8))) covered++;
+    }
+    double pct = (g_coverage_total_bytes > 0) ?
+        (100.0 * covered / g_coverage_total_bytes) : 0.0;
+    fprintf(out, "{\"t\":\"coverage\",\"file\":\"%s\",\"covered_bytes\":%u,"
+                 "\"total_bytes\":%u,\"pct\":%.1f}\n",
+            filename, covered, g_coverage_total_bytes, pct);
+}
+
 /* ============ Helper Data Structures for Dependency Extraction ============ */
 
 /* Set of symbols (for tracking parameters) */
@@ -1108,6 +1144,10 @@ tail_call:  /* TCO: loop back here instead of recursive call */
         }
     }
     /* Note: owned resources released right before setting new ones */
+    /* Coverage tracking: mark span of every evaluated expression */
+    if (expr && g_coverage_bitmap) {
+        coverage_mark(expr->span);
+    }
     /* Macro expansion pass - expand macros before evaluation */
     if (cell_is_pair(expr)) {
         Cell* first = cell_car(expr);

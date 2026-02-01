@@ -142,6 +142,10 @@ void sched_init(int num_schedulers);
 /* Shutdown all schedulers */
 void sched_shutdown(void);
 
+/* Deterministic scheduling mode for reproducible tests */
+void sched_set_deterministic(int enabled, uint32_t seed);
+uint32_t sched_hash_seed(const char* str);
+
 /* Enqueue actor onto scheduler's local deque (LIFO slot first) */
 void sched_enqueue(Scheduler* sched, Actor* actor);
 

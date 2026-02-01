@@ -11,10 +11,10 @@ Purpose: Project overview and quick start
 
 ## Current Status
 
-- **509 primitives** — all working
-- **127/127 test files passing** (100%)
+- **540 primitives** — all working
+- **148/148 test files passing** (100%)
 - **Turing complete** — lambda calculus with De Bruijn indices + TCO
-- **Day 137 complete** — multi-scheduler activation with HFT-grade concurrency
+- **Day 145 complete** — structured test infrastructure with JSON Lines, coverage, deterministic scheduling
 - **~40K lines of C** across 61 source files
 - See [`SESSION_HANDOFF.md`](SESSION_HANDOFF.md) for detailed progress
 
@@ -33,7 +33,7 @@ Purpose: Project overview and quick start
 | Buffers | `◈⊚ ◈→ ◈← ◈# ◈⊂ ◈≡ ◈⊕ ◈→≈` | Binary buffer operations |
 | I/O | `≋ ≋≈ ≋← ≋⊳ ≋⊲ ≋⊕ ≋? ≋∅?` | Console + file operations |
 | Errors | `⚠ ⚠? ⚠⊙ ⚠→ ⊢ ⟲` | First-class errors, assertions, tracing |
-| Testing | `≟ ⊨ ⊨-prop gen-int gen-bool gen-symbol gen-list` | Deep equality, property-based testing |
+| Testing | `≟ ⊨ ⊨-prop gen-int gen-bool gen-symbol gen-list gen-int-shrink gen-list-shrink` | Deep equality, property-based testing, integrated shrinking |
 | Structures | `⊙≔ ⊙ ⊙→ ⊙← ⊙?` | Leaf structures (records) |
 | ADTs | `⊚≔ ⊚ ⊚→ ⊚?` | Algebraic data types |
 | Graphs | `⊝≔ ⊝ ⊝⊕ ⊝⊗ ⊝→ ⊝? ⊝↦ ⊝⊃ ⊝⊚ ⊝⊙ ⊝⇝ ⊝∘` | Graph structures + BFS/DFS/Dijkstra/topo-sort |
@@ -75,7 +75,9 @@ Purpose: Project overview and quick start
 
 ```bash
 make              # Build (O2 optimized, 32MB stack)
-make test         # Run full test suite (127 test files)
+make test         # Run full test suite (148 test files, exit-code driven)
+make test-one TEST=bootstrap/tests/basic.test  # Single file (--test mode, JSON Lines on stderr)
+make test-json    # Run tests, write JSON results to test-results.jsonl
 make repl         # Start interactive REPL
 make clean        # Clean build artifacts
 make rebuild      # Clean + rebuild
@@ -192,14 +194,14 @@ N:M multi-scheduler built on assembly `fcontext` context switching (~4-20ns on A
 guage/
 ├── Makefile              # Build system (from root)
 ├── README.md             # This file
-├── SPEC.md               # Language specification (509 primitives)
+├── SPEC.md               # Language specification (540 primitives)
 ├── CLAUDE.md             # Philosophy and principles
 ├── SESSION_HANDOFF.md    # Current progress and status
 ├── bootstrap/            # C implementation (~40K lines)
 │   ├── cell.{c,h}       # Core data structures + biased refcounting
 │   ├── eval.{c,h}       # Evaluator + special forms + reduction counting
 │   ├── debruijn.{c,h}   # De Bruijn index conversion
-│   ├── primitives.{c,h} # All 509 primitive operations
+│   ├── primitives.{c,h} # All 540 primitive operations
 │   ├── debug.{c,h}      # Stack traces
 │   ├── macro.{c,h}      # Pattern-based macro system
 │   ├── pattern.{c,h}    # Pattern matching engine
@@ -223,8 +225,8 @@ guage/
 │   ├── diagnostic.{c,h} # Error diagnostics
 │   ├── main.c            # Parser, REPL with history/completion
 │   ├── stdlib/           # Standard library (Guage code)
-│   ├── tests/            # Test suite (127 test files)
-│   └── run_tests.sh      # Test runner
+│   ├── tests/            # Test suite (148 test files)
+│   └── run_tests.sh      # Test runner (exit-code driven, JSON Lines)
 └── docs/                 # Documentation
     ├── INDEX.md           # Navigation hub
     ├── reference/         # Technical deep-dives

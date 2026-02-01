@@ -17,6 +17,7 @@
 #include "linenoise.h"
 #include "diagnostic.h"
 #include "scheduler.h"
+#include <time.h>
 
 /* Evaluator uses goto-based tail call optimization (TCO) */
 
@@ -639,6 +640,89 @@ static const char* get_history_path(void) {
     return NULL;
 }
 
+/* ── Test file runner (--test mode) ── */
+static void run_test_file(const char* filename) {
+    /* Read file */
+    FILE* file = fopen(filename, "r");
+    if (!file) {
+        fprintf(stderr, "{\"t\":\"error\",\"file\":\"%s\",\"msg\":\"cannot open file\"}\n", filename);
+        exit(2);
+    }
+
+    fseek(file, 0, SEEK_END);
+    long file_size = ftell(file);
+    fseek(file, 0, SEEK_SET);
+
+    char* buffer = (char*)malloc(file_size + 1);
+    if (!buffer) {
+        fclose(file);
+        fprintf(stderr, "{\"t\":\"error\",\"file\":\"%s\",\"msg\":\"out of memory\"}\n", filename);
+        exit(2);
+    }
+
+    size_t bytes_read = fread(buffer, 1, file_size, file);
+    buffer[bytes_read] = '\0';
+    fclose(file);
+
+    /* Register with SourceMap */
+    uint32_t file_base = 0;
+    if (g_source_map) {
+        file_base = srcmap_add_file(g_source_map, filename, buffer, (uint32_t)bytes_read);
+    }
+
+    /* Initialize coverage bitmap for this file */
+    coverage_init((uint32_t)bytes_read);
+
+    /* Setup eval context */
+    EvalContext* ctx = eval_context_new();
+    module_registry_init();
+    module_registry_add("<test>");
+    eval_define(ctx, "#t", cell_bool(true));
+    eval_define(ctx, "#f", cell_bool(false));
+    eval_define(ctx, "∅", cell_nil());
+
+    /* Track alloc stats for leak detection */
+    uint64_t alloc_start = cell_get_alloc_count();
+
+    /* Parse and eval loop (same as repl non-interactive, but from buffer) */
+    int pos = 0;
+    int had_toplevel_error = 0;
+
+    struct timespec t_start, t_end;
+    clock_gettime(CLOCK_MONOTONIC, &t_start);
+
+    while (buffer[pos] != '\0') {
+        Cell* expr = parse_next(buffer, &pos, file_base);
+        if (!expr) break;
+
+        Cell* result = eval(ctx, expr);
+        cell_release(expr);
+
+        if (cell_is_error(result)) {
+            had_toplevel_error = 1;
+        }
+        cell_release(result);
+    }
+
+    /* Drain pending actor work */
+    sched_run_all(100000);
+
+    clock_gettime(CLOCK_MONOTONIC, &t_end);
+    double elapsed_us = (t_end.tv_sec - t_start.tv_sec) * 1e6 +
+                        (t_end.tv_nsec - t_start.tv_nsec) / 1e3;
+
+    /* Alloc stats for leak detection */
+    uint64_t alloc_end = cell_get_alloc_count();
+
+    /* Emit structured results and exit */
+    test_emit_and_exit(filename, had_toplevel_error, elapsed_us,
+                       alloc_end - alloc_start);
+
+    /* unreachable — test_emit_and_exit calls exit() */
+    free(buffer);
+    eval_context_free(ctx);
+}
+
 /* REPL */
 void repl(void) {
     char input[MAX_INPUT];
@@ -846,6 +930,15 @@ char** guage_get_argv(void) { return g_argv; }
 int main(int argc, char** argv) {
     g_argc = argc;
     g_argv = argv;
+
+    /* Parse --test flag */
+    const char* test_file = NULL;
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--test") == 0 && i + 1 < argc) {
+            test_file = argv[++i];
+        }
+    }
+
     guage_siphash_init();
     intern_init();
     intern_preload();
@@ -859,7 +952,13 @@ int main(int argc, char** argv) {
     /* Initialize scheduler subsystem (1 scheduler = main thread only) */
     sched_init(1);
 
-    repl();
+    if (test_file) {
+        /* Deterministic scheduling for reproducible tests */
+        sched_set_deterministic(1, sched_hash_seed(test_file));
+        run_test_file(test_file);
+    } else {
+        repl();
+    }
 
     sched_shutdown();
     srcmap_free(g_source_map);

@@ -118,6 +118,126 @@ static Cell* g_test_registry = NULL;  /* ⊮ Trie: name → ⊞{:fn λ, :tags �
 static Cell* g_tag_registry = NULL;   /* ⊮ Trie: "tag:name" → #t (inverted index) */
 static Cell* g_current_suite = NULL;  /* Current suite name for auto-prefixing */
 
+/* ── JSON escape helper for structured test output ── */
+static void json_escape_string(FILE* out, const char* str) {
+    fputc('"', out);
+    for (const char* p = str; *p; p++) {
+        switch (*p) {
+            case '"':  fputs("\\\"", out); break;
+            case '\\': fputs("\\\\", out); break;
+            case '\n': fputs("\\n", out); break;
+            case '\r': fputs("\\r", out); break;
+            case '\t': fputs("\\t", out); break;
+            default:
+                if ((unsigned char)*p < 0x20) {
+                    fprintf(out, "\\u%04x", (unsigned char)*p);
+                } else {
+                    fputc(*p, out);
+                }
+        }
+    }
+    fputc('"', out);
+}
+
+/* ── Cell to JSON string helper (for expected/actual fields) ── */
+static void cell_to_json_string(FILE* out, Cell* c) {
+    if (!c) { fputs("\"null\"", out); return; }
+    if (cell_is_number(c)) { fprintf(out, "%g", cell_get_number(c)); return; }
+    if (cell_is_integer(c)) { fprintf(out, "%lld", (long long)cell_get_integer(c)); return; }
+    if (cell_is_bool(c)) { fputs(cell_get_bool(c) ? "true" : "false", out); return; }
+    if (cell_is_nil(c)) { fputs("\"∅\"", out); return; }
+    if (cell_is_symbol(c)) { json_escape_string(out, cell_get_symbol(c)); return; }
+    if (cell_is_string(c)) { json_escape_string(out, cell_get_string(c)); return; }
+    if (cell_is_error(c)) {
+        fputs("\"⚠:", out);
+        const char* msg = cell_error_message(c);
+        /* Inline escape for error messages */
+        for (const char* p = msg; *p; p++) {
+            if (*p == '"') fputs("\\\"", out);
+            else if (*p == '\\') fputs("\\\\", out);
+            else fputc(*p, out);
+        }
+        fputs("\"", out);
+        return;
+    }
+    /* Fallback: print as symbol-like string */
+    fputs("\"<cell>\"", out);
+}
+
+/* ── Structured test exit (called from run_test_file in main.c) ── */
+void test_emit_and_exit(const char* filename, int had_toplevel_error,
+                        double elapsed_us, uint64_t leaked_cells) {
+    int total = g_pass_count + g_fail_count;
+    if (had_toplevel_error && g_fail_count == 0) g_fail_count = 1;
+    int code = (g_fail_count > 0) ? 1 : 0;
+
+    /* Per-test detail lines on stderr */
+    Cell* cur = g_test_results;
+    while (cur && cell_is_pair(cur)) {
+        Cell* m = cell_car(cur);
+        if (cell_is_hashmap(m)) {
+            Cell* name = cell_hashmap_get(m, cell_symbol(":name"));
+            Cell* status = cell_hashmap_get(m, cell_symbol(":status"));
+            Cell* elapsed = cell_hashmap_get(m, cell_symbol(":elapsed"));
+
+            fprintf(stderr, "{\"t\":\"result\",\"name\":");
+            if (name) cell_to_json_string(stderr, name);
+            else fputs("\"?\"", stderr);
+
+            fprintf(stderr, ",\"status\":");
+            if (status && cell_is_symbol(status)) {
+                const char* s = cell_get_symbol(status);
+                fprintf(stderr, "\"%s\"", strcmp(s, ":pass") == 0 ? "pass" : "fail");
+            } else {
+                fputs("\"unknown\"", stderr);
+            }
+
+            if (elapsed && cell_is_number(elapsed))
+                fprintf(stderr, ",\"elapsed_us\":%.1f", cell_get_number(elapsed));
+
+            /* On failure, include expected/actual */
+            if (status && cell_is_symbol(status) &&
+                strcmp(cell_get_symbol(status), ":fail") == 0) {
+                Cell* expected = cell_hashmap_get(m, cell_symbol(":expected"));
+                Cell* actual = cell_hashmap_get(m, cell_symbol(":actual"));
+                fprintf(stderr, ",\"expected\":");
+                cell_to_json_string(stderr, expected);
+                fprintf(stderr, ",\"actual\":");
+                cell_to_json_string(stderr, actual);
+                if (expected) cell_release(expected);
+                if (actual) cell_release(actual);
+            }
+
+            fprintf(stderr, "}\n");
+
+            if (name) cell_release(name);
+            if (status) cell_release(status);
+            if (elapsed) cell_release(elapsed);
+        }
+        cur = cell_cdr(cur);
+    }
+
+    /* Leak detection line */
+    if (leaked_cells > 0) {
+        fprintf(stderr, "{\"t\":\"leak\",\"file\":");
+        json_escape_string(stderr, filename);
+        fprintf(stderr, ",\"leaked_cells\":%llu}\n", (unsigned long long)leaked_cells);
+    }
+
+    /* Coverage line */
+    coverage_emit_json(stderr, filename);
+
+    /* Summary line */
+    fprintf(stderr, "{\"t\":\"summary\",\"file\":");
+    json_escape_string(stderr, filename);
+    fprintf(stderr, ",\"pass\":%d,\"fail\":%d,\"total\":%d,\"elapsed_us\":%.1f",
+            g_pass_count, g_fail_count, total, elapsed_us);
+    fprintf(stderr, ",\"sched_seed\":%u", sched_hash_seed(filename));
+    fprintf(stderr, "}\n");
+
+    exit(code);
+}
+
 /* Core Lambda Calculus */
 
 /* ⟨ ⟩ - construct cell */
@@ -756,6 +876,99 @@ Cell* prim_gen_list(Cell* args) {
     }
 
     return result;
+}
+
+/* gen-int-shrink — generate random int in range, return ⟨value shrink-fn⟩ */
+static Cell* builtin_shrink_int(Cell* args) {
+    Cell* x = arg1(args);
+    if (!cell_is_numeric(x)) return cell_nil();
+    double val = cell_to_double(x);
+    if (val == 0) return cell_nil();
+    /* Shrink toward zero: produce {0, val/2, val-1} */
+    Cell* result = cell_nil();
+    double half = (val > 0) ? floor(val / 2) : ceil(val / 2);
+    double toward = (val > 0) ? val - 1 : val + 1;
+    result = cell_cons(cell_number(0), result);
+    if (half != 0) result = cell_cons(cell_number(half), result);
+    if (toward != 0 && toward != half) result = cell_cons(cell_number(toward), result);
+    return result;
+}
+
+Cell* prim_gen_int_shrink(Cell* args) {
+    Cell* low = arg1(args);
+    Cell* high = arg2(args);
+
+    if (!cell_is_numeric(low) || !cell_is_numeric(high))
+        return cell_error("gen-int-shrink-invalid-args", cell_nil());
+
+    int low_val = (int)cell_to_double(low);
+    int high_val = (int)cell_to_double(high);
+    if (low_val > high_val)
+        return cell_error("gen-int-shrink-invalid-range", cell_nil());
+
+    int range = high_val - low_val + 1;
+    int val = low_val + (rand() % range);
+
+    /* Return ⟨value . shrink-fn⟩ */
+    Cell* shrink_fn = cell_builtin((void*)builtin_shrink_int);
+    return cell_cons(cell_number(val), shrink_fn);
+}
+
+/* gen-list-shrink — generate random list, return ⟨list shrink-fn⟩ */
+static Cell* builtin_shrink_list(Cell* args) {
+    Cell* xs = arg1(args);
+    if (!cell_is_pair(xs)) return cell_nil();
+    /* Shrink strategies: remove head, remove tail, take first half */
+    Cell* result = cell_nil();
+    /* Strategy 1: drop first element */
+    Cell* tail = cell_cdr(xs);
+    cell_retain(tail);
+    result = cell_cons(tail, result);
+    /* Strategy 2: take first half */
+    int len = list_length(xs);
+    if (len > 2) {
+        int half = len / 2;
+        Cell* half_list = cell_nil();
+        Cell* cur = xs;
+        for (int i = 0; i < half && cell_is_pair(cur); i++) {
+            half_list = cell_cons(cell_car(cur), half_list);
+            cur = cell_cdr(cur);
+        }
+        result = cell_cons(half_list, result);
+    }
+    /* Strategy 3: empty list */
+    result = cell_cons(cell_nil(), result);
+    return result;
+}
+
+Cell* prim_gen_list_shrink(Cell* args) {
+    Cell* gen_fn = arg1(args);
+    Cell* size_cell = arg2(args);
+
+    if (!cell_is_lambda(gen_fn))
+        return cell_error("gen-list-shrink-not-function", gen_fn);
+    if (!cell_is_numeric(size_cell))
+        return cell_error("gen-list-shrink-invalid-size", size_cell);
+
+    int size = (int)cell_to_double(size_cell);
+    if (size < 0)
+        return cell_error("gen-list-shrink-negative-size", size_cell);
+
+    EvalContext* ctx = eval_get_current_context();
+    if (!ctx) return cell_error("no-context", cell_nil());
+
+    /* Build random-length list (0..size) */
+    int actual_size = rand() % (size + 1);
+    Cell* lst = cell_nil();
+    for (int i = 0; i < actual_size; i++) {
+        Cell* generated = eval_internal(ctx, gen_fn->data.lambda.env, gen_fn->data.lambda.body);
+        if (cell_is_error(generated)) { cell_release(lst); return generated; }
+        lst = cell_cons(generated, lst);
+        cell_release(generated);
+    }
+
+    Cell* shrink_fn = cell_builtin((void*)builtin_shrink_list);
+    return cell_cons(lst, shrink_fn);
 }
 
 /* Type predicates */
@@ -2210,28 +2423,48 @@ Cell* prim_test_property(Cell* args) {
     Cell* failing_input = NULL;
 
     /* Run test cases */
+    Cell* failing_shrink_fn = NULL;  /* Integrated shrink fn from generator */
+
     for (int i = 0; i < num_tests; i++) {
         /* Generate test input: evaluate generator lambda body directly */
-        Cell* input = eval_internal(ctx, generator->data.lambda.env, generator->data.lambda.body);
+        Cell* gen_result = eval_internal(ctx, generator->data.lambda.env, generator->data.lambda.body);
 
-        if (cell_is_error(input)) {
+        if (cell_is_error(gen_result)) {
             printf("  Generator error: ");
-            cell_print(input);
+            cell_print(gen_result);
             printf("\n");
-            cell_release(input);
+            cell_release(gen_result);
             return cell_error("generator-failed", name);
         }
 
-        /* Apply predicate: manually apply lambda to input */
-        /* Create argument list */
+        /* Integrated shrinking: if generator returns ⟨value shrink-fn⟩, extract both */
+        Cell* input;
+        Cell* shrink_fn = NULL;
+        if (cell_is_pair(gen_result) && cell_is_lambda(cell_cdr(gen_result))) {
+            /* Pair of (value . shrink-fn) — integrated shrinking */
+            input = cell_car(gen_result);
+            cell_retain(input);
+            shrink_fn = cell_cdr(gen_result);
+            cell_retain(shrink_fn);
+            cell_release(gen_result);
+        } else if (cell_is_pair(gen_result) &&
+                   cell_is_pair(cell_cdr(gen_result)) &&
+                   cell_is_lambda(cell_car(cell_cdr(gen_result)))) {
+            /* ⟨value ⟨shrink-fn ∅⟩⟩ format — cons list */
+            input = cell_car(gen_result);
+            cell_retain(input);
+            shrink_fn = cell_car(cell_cdr(gen_result));
+            cell_retain(shrink_fn);
+            cell_release(gen_result);
+        } else {
+            /* Plain value — use legacy shrinking */
+            input = gen_result;
+        }
+
+        /* Apply predicate */
         Cell* pred_args = cell_cons(input, cell_nil());
-
-        /* Extend predicate's closure environment with argument */
         Cell* pred_env = extend_env(predicate->data.lambda.env, pred_args);
-
-        /* Evaluate predicate body in extended environment */
         Cell* result = eval_internal(ctx, pred_env, predicate->data.lambda.body);
-
         cell_release(pred_args);
         cell_release(pred_env);
 
@@ -2241,6 +2474,7 @@ Cell* prim_test_property(Cell* args) {
             printf("\n  Error: ");
             cell_print(result);
             printf("\n");
+            if (shrink_fn) cell_release(shrink_fn);
             cell_release(input);
             cell_release(result);
             return cell_error("predicate-failed", name);
@@ -2254,9 +2488,14 @@ Cell* prim_test_property(Cell* args) {
             if (failing_input == NULL) {
                 failing_input = input;
                 cell_retain(failing_input);
+                if (shrink_fn) {
+                    failing_shrink_fn = shrink_fn;
+                    cell_retain(failing_shrink_fn);
+                }
             }
         }
 
+        if (shrink_fn) cell_release(shrink_fn);
         cell_release(input);
         cell_release(result);
 
@@ -2280,51 +2519,81 @@ Cell* prim_test_property(Cell* args) {
         const int max_shrink = 100;
 
         while (shrink_steps < max_shrink) {
-            Cell* candidate = NULL;
+            Cell* candidates = NULL;
 
-            /* Try different shrinking strategies based on type */
-            if (cell_is_number(shrunk)) {
-                candidate = shrink_int(shrunk);
-            } else if (cell_is_pair(shrunk)) {
-                candidate = shrink_list(shrunk);
+            if (failing_shrink_fn && cell_is_lambda(failing_shrink_fn)) {
+                /* Integrated shrinking: call shrink-fn on current value */
+                Cell* shrink_args = cell_cons(shrunk, cell_nil());
+                Cell* shrink_env = extend_env(failing_shrink_fn->data.lambda.env, shrink_args);
+                candidates = eval_internal(ctx, shrink_env, failing_shrink_fn->data.lambda.body);
+                cell_release(shrink_args);
+                cell_release(shrink_env);
+
+                if (cell_is_error(candidates) || cell_is_nil(candidates)) {
+                    if (candidates) cell_release(candidates);
+                    break;
+                }
             } else {
-                break;  /* Can't shrink this type */
+                /* Legacy shrinking: type-based */
+                Cell* candidate = NULL;
+                if (cell_is_number(shrunk)) {
+                    candidate = shrink_int(shrunk);
+                } else if (cell_is_pair(shrunk)) {
+                    candidate = shrink_list(shrunk);
+                } else {
+                    break;
+                }
+                if (candidate == shrunk || cell_equal(candidate, shrunk)) {
+                    cell_release(candidate);
+                    break;
+                }
+                /* Wrap single candidate as list for uniform processing */
+                candidates = cell_cons(candidate, cell_nil());
             }
 
-            if (candidate == shrunk || cell_equal(candidate, shrunk)) {
-                cell_release(candidate);
-                break;  /* No more shrinking possible */
-            }
+            /* Try each candidate, pick smallest failing */
+            int found_smaller = 0;
+            Cell* cur = candidates;
+            while (cell_is_pair(cur)) {
+                Cell* candidate = cell_car(cur);
 
-            /* Test shrunk value: manually apply predicate */
-            Cell* shrink_args = cell_cons(candidate, cell_nil());
-            Cell* shrink_env = extend_env(predicate->data.lambda.env, shrink_args);
-            Cell* result = eval_internal(ctx, shrink_env, predicate->data.lambda.body);
-            cell_release(shrink_args);
-            cell_release(shrink_env);
+                if (cell_equal(candidate, shrunk)) {
+                    cur = cell_cdr(cur);
+                    continue;
+                }
 
-            if (cell_is_bool(result) && cell_get_bool(result)) {
-                /* Shrunk value passes, keep original */
-                cell_release(candidate);
+                Cell* shrink_test_args = cell_cons(candidate, cell_nil());
+                Cell* shrink_test_env = extend_env(predicate->data.lambda.env, shrink_test_args);
+                Cell* result = eval_internal(ctx, shrink_test_env, predicate->data.lambda.body);
+                cell_release(shrink_test_args);
+                cell_release(shrink_test_env);
+
+                if (!(cell_is_bool(result) && cell_get_bool(result))) {
+                    /* Still fails — use this smaller input */
+                    cell_release(shrunk);
+                    shrunk = candidate;
+                    cell_retain(shrunk);
+                    shrink_steps++;
+                    found_smaller = 1;
+                    cell_release(result);
+                    break;
+                }
                 cell_release(result);
-                break;
-            } else {
-                /* Shrunk value still fails, use it */
-                cell_release(shrunk);
-                shrunk = candidate;
-                shrink_steps++;
+                cur = cell_cdr(cur);
             }
 
-            cell_release(result);
+            cell_release(candidates);
+            if (!found_smaller) break;
         }
 
-        printf("  Minimal failing input: ");
+        printf("  Minimal failing input (%d shrink steps): ", shrink_steps);
         cell_print(shrunk);
         printf("\n");
 
         Cell* error = cell_error("property-failed", name);
         cell_release(shrunk);
         cell_release(failing_input);
+        if (failing_shrink_fn) cell_release(failing_shrink_fn);
         return error;
     }
 }
@@ -14808,6 +15077,8 @@ static Primitive primitives[] = {
     {"gen-bool", prim_gen_bool, 0, {"Generate random boolean", "() → 𝔹"}},
     {"gen-symbol", prim_gen_symbol, 1, {"Generate random symbol from list", "[α] → α"}},
     {"gen-list", prim_gen_list, 2, {"Generate random list using generator function", "(()→α) → ℕ → [α]"}},
+    {"gen-int-shrink", prim_gen_int_shrink, 2, {"Generate random int with integrated shrink function", "ℕ → ℕ → ⟨ℕ (ℕ→[ℕ])⟩"}},
+    {"gen-list-shrink", prim_gen_list_shrink, 2, {"Generate random list with integrated shrink function", "(()→α) → ℕ → ⟨[α] ([α]→[[α]])⟩"}},
     {"⊨-prop", prim_test_property, 3, {"Property-based test with shrinking", ":symbol → (α→𝔹) → (()→α) → 𝔹 | ⚠"}},
 
     /* Effects (placeholder) */

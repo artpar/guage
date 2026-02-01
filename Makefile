@@ -79,19 +79,25 @@ $(BOOTSTRAP_DIR)/%.o: $(BOOTSTRAP_DIR)/%.S
 # Testing targets
 # ============================================================================
 
-# Run full test suite (33 Guage tests)
+# Run full test suite
 test: build
-	@echo "Running full Guage test suite..."
 	@$(BOOTSTRAP_DIR)/run_tests.sh
 
-# Run a single test file (usage: make test-one TEST=bootstrap/tests/basic.test)
+# Run a single test file with --test mode (usage: make test-one TEST=bootstrap/tests/basic.test)
 test-one: build
 	@if [ -z "$(TEST)" ]; then \
 		echo "Usage: make test-one TEST=bootstrap/tests/basic.test"; \
 		exit 1; \
 	fi
-	@echo "Running single test: $(TEST)"
-	@$(BOOTSTRAP_EXECUTABLE) < $(TEST)
+	@$(BOOTSTRAP_EXECUTABLE) --test $(TEST)
+
+# Run tests in parallel (usage: PARALLEL=4 make test-parallel)
+test-parallel: build
+	@PARALLEL=$${PARALLEL:-4} $(BOOTSTRAP_DIR)/run_tests.sh
+
+# Run tests and write combined JSON results to file
+test-json: build
+	@TEST_RESULTS=test-results.jsonl $(BOOTSTRAP_DIR)/run_tests.sh
 
 # Quick smoke test (just verify interpreter works)
 smoke: build
@@ -205,8 +211,10 @@ help:
 	@echo "  make distclean    - Deep clean (includes temp files)"
 	@echo ""
 	@echo "Testing:"
-	@echo "  make test         - Run full test suite (33 tests)"
-	@echo "  make test-one TEST=path - Run a single test file"
+	@echo "  make test         - Run full test suite"
+	@echo "  make test-one TEST=path - Run a single test file (--test mode)"
+	@echo "  make test-parallel - Run tests in parallel (PARALLEL=N)"
+	@echo "  make test-json    - Run tests, write JSON to test-results.jsonl"
 	@echo "  make test-summary - Show only test results summary"
 	@echo "  make smoke        - Quick smoke test"
 	@echo ""

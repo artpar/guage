@@ -300,6 +300,9 @@ struct Cell {
     } data;
 };
 
+/* Allocation stats (for leak detection) */
+uint64_t cell_get_alloc_count(void);
+
 /* Cell creation functions */
 Cell* cell_integer(int64_t n);
 Cell* cell_number(double n);

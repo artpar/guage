@@ -101,4 +101,10 @@ int list_length(Cell* list);
 Cell* env_lookup_index(Cell* env, int index);
 bool env_is_indexed(Cell* env);
 
+/* Coverage bitmap (Part 3 — span tracking for test coverage) */
+extern uint8_t* g_coverage_bitmap;
+void coverage_init(uint32_t total_bytes);
+void coverage_mark(Span span);
+void coverage_emit_json(FILE* out, const char* filename);
+
 #endif /* GUAGE_EVAL_H */

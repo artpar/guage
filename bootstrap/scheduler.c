@@ -92,6 +92,10 @@ static _Atomic bool g_sched_running = false;  /* true while sched_run_all multi-
 static EvalContext* g_shared_eval_ctx = NULL;
 static size_t g_page_size = 0;
 
+/* ── Deterministic scheduling mode (Part 4) ── */
+static int g_sched_deterministic = 0;
+static uint32_t g_sched_seed = 0;
+
 /* ── QSBR global state (Day 140) ── */
 QsbrState g_qsbr;
 
@@ -640,6 +644,28 @@ void sched_init(int num_schedulers) {
     signal_init();
 
     atomic_store(&g_sched_initialized, true);
+}
+
+/* ── Deterministic scheduling (Part 4) ── */
+void sched_set_deterministic(int enabled, uint32_t seed) {
+    g_sched_deterministic = enabled;
+    g_sched_seed = seed;
+    /* Seed all scheduler RNGs deterministically */
+    if (enabled) {
+        for (int i = 0; i < g_num_schedulers; i++) {
+            g_schedulers[i].rng = seed ^ ((uint32_t)(i + 1) * 2654435761u);
+        }
+    }
+}
+
+uint32_t sched_hash_seed(const char* str) {
+    /* FNV-1a hash of filename for deterministic seed */
+    uint32_t h = 2166136261u;
+    for (const char* p = str; *p; p++) {
+        h ^= (uint8_t)*p;
+        h *= 16777619u;
+    }
+    return h;
 }
 
 void sched_shutdown(void) {
