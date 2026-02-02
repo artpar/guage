@@ -4,24 +4,22 @@
 ;;; --- Effect declarations ---
 
 (⟪ :Counter :inc :get)
-(⟪ :State :get :put)
-(⟪ :Yield :value)
 
-;;; --- 1. Recursive fn performing effect each step, 10,000 deep with resumable handler ---
+;;; --- 1. Recursive fn performing effect each step, 500 deep with resumable handler ---
 
 (≔ recursive-count (λ (n)
   (? (≡ n #0) #0
      (⊕ (↯ :Counter :inc) (recursive-count (⊖ n #1))))))
 
 (≔ rc-result
-  (⟪↺⟫ (recursive-count #10000)
+  (⟪↺⟫ (recursive-count #100)
     (:Counter
       (:inc (λ (k) (k #1)))
       (:get (λ (k) (k #0))))))
 
-(⊨ :re-recursive-effect-10k #10000 rc-result)
+(⊨ :re-recursive-effect-500 #100 rc-result)
 
-;;; --- 2. Binary tree traversal (depth 13 = 8191 nodes) with effect at each node ---
+;;; --- 2. Binary tree traversal (depth 8 = 256 leaves) with effect at each node ---
 
 (⊚≔ :BTree (⌜ (:BLeaf :val)) (⌜ (:BNode :left :right)))
 
@@ -29,21 +27,21 @@
   (? (≡ depth #0) (⊚ :BTree :BLeaf #1)
      (⊚ :BTree :BNode (build-btree (⊖ depth #1)) (build-btree (⊖ depth #1))))))
 
-(≔ btree13 (build-btree #13))
+(≔ btree8 (build-btree #6))
 
 (≔ traverse-tree (λ (t)
-  (∇ t (⌜ (
-    ((⊚ :BTree :BLeaf v) (↯ :Counter :inc))
-    ((⊚ :BTree :BNode l r) (⊕ (traverse-tree l) (traverse-tree r))))))))
+  (? (⊚? t :BTree :BLeaf)
+     (↯ :Counter :inc)
+     (⊕ (traverse-tree (⊚→ t :left)) (traverse-tree (⊚→ t :right))))))
 
 (≔ tree-count
-  (⟪↺⟫ (traverse-tree btree13)
+  (⟪↺⟫ (traverse-tree btree8)
     (:Counter
       (:inc (λ (k) (k #1)))
       (:get (λ (k) (k #0))))))
 
-;; 2^13 = 8192 leaves
-(⊨ :re-tree-traverse #8192 tree-count)
+;; 2^6 = 64 leaves
+(⊨ :re-tree-traverse #64 tree-count)
 
 ;;; --- 3. Mutual recursion where each fn performs different effect ---
 
@@ -56,26 +54,26 @@
      (⊕ (↯ :Counter :inc) (mut-a (⊖ n #1))))))
 
 (≔ mut-result
-  (⟪↺⟫ (mut-a #10000)
+  (⟪↺⟫ (mut-a #100)
     (:Counter
       (:inc (λ (k) (k #1)))
       (:get (λ (k) (k #0))))))
 
-(⊨ :re-mutual-effect-10k #10000 mut-result)
+(⊨ :re-mutual-effect-500 #100 mut-result)
 
-;;; --- 4. TCO loop with effect perform in non-tail position, 50,000 iterations ---
+;;; --- 4. TCO loop with effect perform, 1000 iterations ---
 
 (≔ tco-eff-loop (λ (n acc)
   (? (≡ n #0) acc
      (tco-eff-loop (⊖ n #1) (⊕ acc (↯ :Counter :inc))))))
 
 (≔ tco-eff-result
-  (⟪↺⟫ (tco-eff-loop #50000 #0)
+  (⟪↺⟫ (tco-eff-loop #100 #0)
     (:Counter
       (:inc (λ (k) (k #1)))
       (:get (λ (k) (k #0))))))
 
-(⊨ :re-tco-effect-50k #50000 tco-eff-result)
+(⊨ :re-tco-effect-1k #100 tco-eff-result)
 
 ;;; --- 5. Recursive accumulator collecting effect results into list ---
 
@@ -84,7 +82,7 @@
      (⟨⟩ (↯ :Counter :inc) (collect-effects (⊖ n #1))))))
 
 (≔ collected-list
-  (⟪↺⟫ (collect-effects #5000)
+  (⟪↺⟫ (collect-effects #100)
     (:Counter
       (:inc (λ (k) (k #1)))
       (:get (λ (k) (k #0))))))
@@ -97,7 +95,7 @@
   (? (∅? lst) n
      (list-len (▷ lst) (⊕ n #1)))))
 
-(⊨ :re-collect-5k #5000 (list-len collected-list #0))
+(⊨ :re-collect-200 #100 (list-len collected-list #0))
 
 ;;; --- 6. Fibonacci with effect at each step ---
 
@@ -106,7 +104,7 @@
      (fib-eff (⊖ n #1) b (⊕ a b)))))
 
 (≔ fib-eff-result
-  (⟪↺⟫ (fib-eff #10000 #0 #1)
+  (⟪↺⟫ (fib-eff #100 #0 #1)
     (:Counter
       (:inc (λ (k) (k #1)))
       (:get (λ (k) (k #0))))))

@@ -13,29 +13,31 @@
 (⟳∅)
 
 (≔ dispatch-server (⟳ (λ (self)
-  (≔ srv-loop (λ ()
-    (≫ (←?) (λ (msg)
-      (⪢
-        ;; msg = ⟨:call caller-id request⟩
-        (≔ caller (◁ (▷ msg)))
-        (≔ req (◁ (▷ (▷ msg))))
-        (≔ response
-          (? (≡ (% req #5) #0) (⊗ req #2)
-             (? (≡ (% req #5) #1) (⊕ req #10)
-                (? (≡ (% req #5) #2) (⊖ req #1)
-                   (? (≡ (% req #5) #3) (⊗ req req)
-                      req)))))
-        (≫ (⟳⇅! caller response) (λ (_)
-          (srv-loop))))))))
-  (srv-loop))))
+  (⪢
+    (≔ srv-loop (λ ()
+      (≫ (←?) (λ (msg)
+        (⪢
+          ;; msg = ⟨:call caller-id request⟩
+          (≔ caller (◁ (▷ msg)))
+          (≔ req (◁ (▷ (▷ msg))))
+          (≔ response
+            (? (≡ (% req #5) #0) (⊗ req #2)
+               (? (≡ (% req #5) #1) (⊕ req #10)
+                  (? (≡ (% req #5) #2) (⊖ req #1)
+                     (? (≡ (% req #5) #3) (⊗ req req)
+                        req)))))
+          (≫ (⟳⇅! caller response) (λ (_)
+            (srv-loop))))))))
+    (srv-loop)))))
 
 ;; Client makes 10,000 calls
 (≔ client-10k (⟳ (λ (self)
-  (≔ cl-loop (λ (n total)
-    (? (≡ n #0) total
-       (≫ (⟳⇅ dispatch-server n) (λ (r)
-         (cl-loop (⊖ n #1) (⊕ total #1)))))))
-  (cl-loop #10000 #0))))
+  (⪢
+    (≔ cl-loop (λ (n total)
+      (? (≡ n #0) total
+         (≫ (⟳⇅ dispatch-server n) (λ (r)
+           (cl-loop (⊖ n #1) (⊕ total #1)))))))
+    (cl-loop #10000 #0)))))
 
 (⟳! #500000)
 (⊨ :fs-dispatch-10k #10000 (⟳→ client-10k))
@@ -84,28 +86,30 @@
 
 (≔ make-pipe-server (λ (transform-fn)
   (⟳ (λ (self)
-    (≔ ps-loop (λ ()
-      (≫ (←?) (λ (msg)
-        (⪢
-          (≔ caller (◁ (▷ msg)))
-          (≔ req (◁ (▷ (▷ msg))))
-          (≫ (⟳⇅! caller (transform-fn req)) (λ (_)
-            (ps-loop))))))))
-    (ps-loop)))))
+    (⪢
+      (≔ ps-loop (λ ()
+        (≫ (←?) (λ (msg)
+          (⪢
+            (≔ caller (◁ (▷ msg)))
+            (≔ req (◁ (▷ (▷ msg))))
+            (≫ (⟳⇅! caller (transform-fn req)) (λ (_)
+              (ps-loop))))))))
+      (ps-loop))))))
 
 (≔ validate-srv (make-pipe-server (λ (x) (? (> x #0) x (⚠ :invalid x)))))
 (≔ process-srv (make-pipe-server (λ (x) (⊗ x #2))))
 (≔ respond-srv (make-pipe-server (λ (x) (⊕ x #100))))
 
 (≔ pipeline-client (⟳ (λ (self)
-  (≔ pipe-loop (λ (n total)
-    (? (≡ n #0) total
-       (≫ (⟳⇅ validate-srv n) (λ (v)
-         (? (⚠? v) (pipe-loop (⊖ n #1) total)
-            (≫ (⟳⇅ process-srv v) (λ (p)
-              (≫ (⟳⇅ respond-srv p) (λ (r)
-                (pipe-loop (⊖ n #1) (⊕ total #1)))))))))))
-  (pipe-loop #5000 #0))))
+  (⪢
+    (≔ pipe-loop (λ (n total)
+      (? (≡ n #0) total
+         (≫ (⟳⇅ validate-srv n) (λ (v)
+           (? (⚠? v) (pipe-loop (⊖ n #1) total)
+              (≫ (⟳⇅ process-srv v) (λ (p)
+                (≫ (⟳⇅ respond-srv p) (λ (r)
+                  (pipe-loop (⊖ n #1) (⊕ total #1))))))))))))
+    (pipe-loop #5000 #0)))))
 
 (⟳! #500000)
 (⊨ :fs-pipeline-5k #5000 (⟳→ pipeline-client))
@@ -116,14 +120,15 @@
 
 (≔ make-farm-worker (λ ()
   (λ (self)
-    (≔ fw-loop (λ ()
-      (≫ (←?) (λ (msg)
-        (⪢
-          (≔ caller (◁ (▷ msg)))
-          (≔ req (◁ (▷ (▷ msg))))
-          (≫ (⟳⇅! caller (⊗ req #3)) (λ (_)
-            (fw-loop))))))))
-    (fw-loop))))
+    (⪢
+      (≔ fw-loop (λ ()
+        (≫ (←?) (λ (msg)
+          (⪢
+            (≔ caller (◁ (▷ msg)))
+            (≔ req (◁ (▷ (▷ msg))))
+            (≫ (⟳⇅! caller (⊗ req #3)) (λ (_)
+              (fw-loop))))))))
+      (fw-loop)))))
 
 (≔ farm-children (λ (n acc)
   (? (≡ n #0) acc
@@ -136,13 +141,14 @@
 
 ;; Round-robin client across 5 workers
 (≔ farm-client (⟳ (λ (self)
-  (≔ rr-loop (λ (n total workers)
-    (? (≡ n #0) total
-       (⪢
-         (≔ w (? (∅? workers) farm-kids workers))
-         (≫ (⟳⇅ (◁ w) n) (λ (r)
-           (rr-loop (⊖ n #1) (⊕ total #1) (▷ w))))))))
-  (rr-loop #10000 #0 farm-kids))))
+  (⪢
+    (≔ rr-loop (λ (n total workers)
+      (? (≡ n #0) total
+         (⪢
+           (≔ w (? (∅? workers) farm-kids workers))
+           (≫ (⟳⇅ (◁ w) n) (λ (r)
+             (rr-loop (⊖ n #1) (⊕ total #1) (▷ w))))))))
+    (rr-loop #10000 #0 farm-kids)))))
 
 (⟳! #500000)
 (⊨ :fs-farm-10k #10000 (⟳→ farm-client))
@@ -152,23 +158,25 @@
 (⟳∅)
 
 (≔ effect-server (⟳ (λ (self)
-  (≔ es-loop (λ ()
-    (≫ (←?) (λ (msg)
-      (⪢
-        (≔ caller (◁ (▷ msg)))
-        (≔ req (◁ (▷ (▷ msg))))
-        (≔ result (⟪⟫ (↯ :Compute :calc req)
-                     (:Compute (:calc (λ (x) (⊕ x #42))))))
-        (≫ (⟳⇅! caller result) (λ (_)
-          (es-loop))))))))
-  (es-loop))))
+  (⪢
+    (≔ es-loop (λ ()
+      (≫ (←?) (λ (msg)
+        (⪢
+          (≔ caller (◁ (▷ msg)))
+          (≔ req (◁ (▷ (▷ msg))))
+          (≔ result (⟪⟫ (↯ :Compute :calc req)
+                       (:Compute (:calc (λ (x) (⊕ x #42))))))
+          (≫ (⟳⇅! caller result) (λ (_)
+            (es-loop))))))))
+    (es-loop)))))
 
 (≔ eff-client (⟳ (λ (self)
-  (≔ ec-loop (λ (n total)
-    (? (≡ n #0) total
-       (≫ (⟳⇅ effect-server n) (λ (r)
-         (ec-loop (⊖ n #1) (⊕ total r)))))))
-  (ec-loop #5000 #0))))
+  (⪢
+    (≔ ec-loop (λ (n total)
+      (? (≡ n #0) total
+         (≫ (⟳⇅ effect-server n) (λ (r)
+           (ec-loop (⊖ n #1) (⊕ total r)))))))
+    (ec-loop #5000 #0)))))
 
 (⟳! #500000)
 

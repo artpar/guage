@@ -153,7 +153,7 @@
 (⊨ (⌜ :iter-pipeline-done) ∅ (⊣→ pipeline))
 
 ; 21. iter-reduce-fold — ⊣Σ folds correctly
-(⊨ (⌜ :iter-reduce-sum) #15 (⊣Σ (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 (⟨⟩ #4 (⟨⟩ #5 ∅)))) #0 (λ (acc x) (⊕ acc x))))
+(⊨ (⌜ :iter-reduce-sum) #15 (⊣Σ (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 (⟨⟩ #4 (⟨⟩ #5 ∅))))) #0 (λ (acc x) (⊕ acc x))))
 
 ; 22. iter-any-short-circuit — ⊣∃ stops early on match
 (⊨ (⌜ :iter-any-found) #t (⊣∃ (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅))) (λ (x) (≡ x #2))))

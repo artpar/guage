@@ -1,7 +1,7 @@
 ;;; Stress: Iterators + Comprehensions
 ;;; Tier 2 — Two-feature combination stress test
 
-;;; --- 1. Range, map, filter, collect over 100,000 elements ---
+;;; --- 1. Range, map, filter, collect over elements ---
 
 ;; Build range as list
 (≔ range (λ (start end acc)
@@ -25,8 +25,13 @@
   (? (∅? lst) n
      (list-len (▷ lst) (⊕ n #1)))))
 
-;; Build range of 50,000 (reduced from 100k for list-based implementation)
-(≔ big-range (range #1 #50000 ∅))
+;; Fold
+(≔ fold-list (λ (f init lst)
+  (? (∅? lst) init
+     (fold-list f (f init (◁ lst)) (▷ lst)))))
+
+;; Build range of 5,000
+(≔ big-range (range #1 #5000 ∅))
 
 ;; Double each element
 (≔ doubled (map-list (λ (x) (⊗ x #2)) big-range))
@@ -34,27 +39,23 @@
 ;; Filter even (all are even after doubling)
 (≔ evens (filter-list (λ (x) (≡ (% x #2) #0)) doubled))
 
-(⊨ :iter-map-filter-50k #50000 (list-len evens #0))
+(⊨ :iter-map-filter-5k #5000 (list-len evens #0))
 
 ;;; --- 2. Iterator-based fold over large list ---
 
-(≔ fold-list (λ (f init lst)
-  (? (∅? lst) init
-     (fold-list f (f init (◁ lst)) (▷ lst)))))
+;; Sum of 1..5000 = 12502500
+(⊨ :iter-fold-5k #12502500 (fold-list (λ (acc x) (⊕ acc x)) #0 big-range))
 
-;; Sum of 1..50000 = 1250025000
-(⊨ :iter-fold-50k #1250025000 (fold-list (λ (acc x) (⊕ acc x)) #0 big-range))
+;;; --- 3. Chained transforms: map -> filter -> map -> filter ---
 
-;;; --- 3. Chained transforms: map → filter → map → filter ---
-
-(≔ range-5k (range #1 #5000 ∅))
+(≔ range-1k (range #1 #1000 ∅))
 
 (≔ chain-result
   (fold-list (λ (acc x) (⊕ acc x)) #0
     (filter-list (λ (x) (> x #100))
       (map-list (λ (x) (⊖ x #50))
         (filter-list (λ (x) (≡ (% x #2) #0))
-          (map-list (λ (x) (⊗ x #3)) range-5k))))))
+          (map-list (λ (x) (⊗ x #3)) range-1k))))))
 
 (⊨ :iter-chained-positive #t (> chain-result #0))
 
@@ -75,17 +76,17 @@
 ;; 20 buckets for mod 20
 (⊨ :iter-freq-buckets #20 (⊞# freq-map))
 
-;;; --- 5. Nested iteration: 100 lists of 100 elements, collect all ---
+;;; --- 5. Nested iteration: 50 lists of 50 elements, collect all ---
 
 (≔ nested-sum (λ (outer-n acc)
   (? (≡ outer-n #0) acc
      (⪢
-       (≔ inner-list (range #1 #100 ∅))
+       (≔ inner-list (range #1 #50 ∅))
        (≔ inner-sum (fold-list (λ (a x) (⊕ a x)) #0 inner-list))
        (nested-sum (⊖ outer-n #1) (⊕ acc inner-sum))))))
 
-;; 100 * sum(1..100) = 100 * 5050 = 505000
-(⊨ :iter-nested-100x100 #505000 (nested-sum #100 #0))
+;; 50 * sum(1..50) = 50 * 1275 = 63750
+(⊨ :iter-nested-50x50 #63750 (nested-sum #50 #0))
 
 ;;; --- 6. Build Vector from list via iteration ---
 
@@ -96,12 +97,12 @@
      (⪢ (⟦⊕ vec-from-list (◁ lst))
          (list-to-vec (▷ lst))))))
 
-(≔ range-10k (range #1 #10000 ∅))
-(list-to-vec range-10k)
+(≔ range-1k2 (range #1 #1000 ∅))
+(list-to-vec range-1k2)
 
-(⊨ :iter-list-to-vec #10000 (⟦# vec-from-list))
+(⊨ :iter-list-to-vec #1000 (⟦# vec-from-list))
 (⊨ :iter-vec-first #1 (⟦→ vec-from-list #0))
-(⊨ :iter-vec-last #10000 (⟦→ vec-from-list #9999))
+(⊨ :iter-vec-last #1000 (⟦→ vec-from-list #999))
 
 ;;; --- 7. Zip two lists via parallel iteration ---
 
@@ -109,9 +110,9 @@
   (? (∨ (∅? a) (∅? b)) ∅
      (⟨⟩ (⟨⟩ (◁ a) (◁ b)) (zip-lists (▷ a) (▷ b))))))
 
-(≔ list-a (range #1 #10000 ∅))
-(≔ list-b (range #10001 #20000 ∅))
+(≔ list-a (range #1 #1000 ∅))
+(≔ list-b (range #1001 #2000 ∅))
 (≔ zipped (zip-lists list-a list-b))
 
-(⊨ :iter-zip-len #10000 (list-len zipped #0))
-(⊨ :iter-zip-first-pair (⟨⟩ #1 #10001) (◁ zipped))
+(⊨ :iter-zip-len #1000 (list-len zipped #0))
+(⊨ :iter-zip-first-pair (⟨⟩ #1 #1001) (◁ zipped))

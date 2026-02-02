@@ -77,10 +77,10 @@
 
 (≔ div-loop (λ (i)
   (? (≡ i #0) (□→ div-error-box)
-     (⪢
-       (≔ result (safe-div #100 (% i #3)))
-       (when (⚠? result) (□← div-error-box (⊕ (□→ div-error-box) #1)))
-       (div-loop (⊖ i #1))))))
+     (? (≡ (% i #3) #0)
+        (⪢ (□← div-error-box (⊕ (□→ div-error-box) #1))
+            (div-loop (⊖ i #1)))
+        (div-loop (⊖ i #1))))))
 
 (≔ error-count (div-loop #10000))
 

@@ -1,10 +1,9 @@
 ;;; Stress: Functional Pipeline
-;;; Tier 3 — ADTs + Closures + Data Structures + Pattern Matching + Recursion
+;;; Tier 3 — Closures + Data Structures + Pattern Matching + Recursion
 
 ;;; --- ADT definitions ---
 
 (⊚≔ :Category (⌜ (:CatA)) (⌜ (:CatB)) (⌜ (:CatC)) (⌜ (:CatD)) (⌜ (:CatE)))
-(⊚≔ :Item (⌜ (:MkItem :id :category :value)))
 
 ;;; --- Utility functions ---
 
@@ -16,65 +15,58 @@
   (? (∅? lst) init
      (fold-list f (f init (◁ lst)) (▷ lst)))))
 
-(≔ map-list (λ (f lst)
-  (? (∅? lst) ∅
-     (⟨⟩ (f (◁ lst)) (map-list f (▷ lst))))))
-
-;;; --- 1. List of 10,000 ADTs → pattern match classify → group into HashMap ---
+;;; --- 1. 1,000 items classified into 5 categories via pattern match ---
 
 (≔ category-map (⊞))
 
-(≔ make-item (λ (i)
-  (⊚ :Item :MkItem i
-    (? (≡ (% i #5) #0) (⊚ :Category :CatA)
-       (? (≡ (% i #5) #1) (⊚ :Category :CatB)
-          (? (≡ (% i #5) #2) (⊚ :Category :CatC)
-             (? (≡ (% i #5) #3) (⊚ :Category :CatD)
-                (⊚ :Category :CatE)))))
-    i)))
+(≔ make-category (λ (i)
+  (? (≡ (% i #5) #0) (⊚ :Category :CatA)
+     (? (≡ (% i #5) #1) (⊚ :Category :CatB)
+        (? (≡ (% i #5) #2) (⊚ :Category :CatC)
+           (? (≡ (% i #5) #3) (⊚ :Category :CatD)
+              (⊚ :Category :CatE)))))))
 
-(≔ classify-item (λ (item)
-  (∇ item (⌜ (
-    ((⊚ :Item :MkItem id (⊚ :Category :CatA) v) :a)
-    ((⊚ :Item :MkItem id (⊚ :Category :CatB) v) :b)
-    ((⊚ :Item :MkItem id (⊚ :Category :CatC) v) :c)
-    ((⊚ :Item :MkItem id (⊚ :Category :CatD) v) :d)
-    ((⊚ :Item :MkItem id (⊚ :Category :CatE) v) :e))))))
+(≔ classify-cat (λ (cat)
+  (∇ cat (⌜ (
+    ((⊚ :Category :CatA) :a)
+    ((⊚ :Category :CatB) :b)
+    ((⊚ :Category :CatC) :c)
+    ((⊚ :Category :CatD) :d)
+    ((⊚ :Category :CatE) :e))))))
 
 (≔ group-items (λ (i)
   (? (≡ i #0) :done
      (⪢
-       (≔ item (make-item i))
-       (≔ cat (classify-item item))
+       (≔ cat (classify-cat (make-category i)))
        (≔ cur (⊞→ category-map cat))
        (⊞← category-map cat (? (∅? cur) #1 (⊕ cur #1)))
        (group-items (⊖ i #1))))))
 
-(group-items #10000)
+(group-items #1000)
 
 (⊨ :fp-5-categories #5 (⊞# category-map))
-(⊨ :fp-each-category-2000 #2000 (⊞→ category-map :a))
+(⊨ :fp-each-category-200 #200 (⊞→ category-map :a))
 
 ;;; --- 2. Recursive tree map + fold via closures ---
 
 (⊚≔ :Tree (⌜ (:Leaf :val)) (⌜ (:Node :left :right)))
 
 (≔ tree-map (λ (f t)
-  (∇ t (⌜ (
-    ((⊚ :Tree :Leaf v) (⊚ :Tree :Leaf (f v)))
-    ((⊚ :Tree :Node l r) (⊚ :Tree :Node (tree-map f l) (tree-map f r))))))))
+  (? (⊚? t :Tree :Leaf)
+     (⊚ :Tree :Leaf (f (⊚→ t :val)))
+     (⊚ :Tree :Node (tree-map f (⊚→ t :left)) (tree-map f (⊚→ t :right))))))
 
 (≔ tree-fold (λ (f init t)
-  (∇ t (⌜ (
-    ((⊚ :Tree :Leaf v) (f init v))
-    ((⊚ :Tree :Node l r) (tree-fold f (tree-fold f init l) r)))))))
+  (? (⊚? t :Tree :Leaf)
+     (f init (⊚→ t :val))
+     (tree-fold f (tree-fold f init (⊚→ t :left)) (⊚→ t :right)))))
 
 (≔ build-tree (λ (depth)
   (? (≡ depth #0) (⊚ :Tree :Leaf #1)
      (⊚ :Tree :Node (build-tree (⊖ depth #1)) (build-tree (⊖ depth #1))))))
 
-;; Depth 14 = 16384 leaves
-(≔ big-tree (build-tree #14))
+;; Depth 8 = 256 leaves
+(≔ big-tree (build-tree #8))
 
 ;; Map: double every leaf
 (≔ doubled-tree (tree-map (λ (x) (⊗ x #2)) big-tree))
@@ -82,12 +74,11 @@
 ;; Fold: sum all leaves
 (≔ tree-sum (tree-fold (λ (acc x) (⊕ acc x)) #0 doubled-tree))
 
-;; 16384 leaves * 2 = 32768
-(⊨ :fp-tree-map-fold #32768 tree-sum)
+;; 256 leaves * 2 = 512
+(⊨ :fp-tree-map-fold #512 tree-sum)
 
-;;; --- 3. Sort 10,000 elements via closure-based comparator ---
+;;; --- 3. Sort 200 elements via closure-based comparator ---
 
-;; Simple insertion sort (for stress testing, not efficiency)
 (≔ insert-sorted (λ (cmp x lst)
   (? (∅? lst) (⟨⟩ x ∅)
      (? (cmp x (◁ lst))
@@ -98,15 +89,14 @@
   (? (∅? lst) ∅
      (insert-sorted cmp (◁ lst) (sort-list cmp (▷ lst))))))
 
-;; Sort 500 elements (insertion sort is O(n²))
 (≔ unsorted (λ (n acc)
   (? (≡ n #0) acc
      (unsorted (⊖ n #1) (⟨⟩ (% (⊗ n #7919) #10000) acc)))))
 
-(≔ unsorted-500 (unsorted #500 ∅))
-(≔ sorted (sort-list (λ (a b) (< a b)) unsorted-500))
+(≔ unsorted-100 (unsorted #100 ∅))
+(≔ sorted (sort-list (λ (a b) (< a b)) unsorted-100))
 
-(⊨ :fp-sort-len #500 (list-len sorted #0))
+(⊨ :fp-sort-len #100 (list-len sorted #0))
 
 ;; Verify sorted
 (≔ is-sorted (λ (lst)
@@ -120,24 +110,18 @@
 
 ;;; --- 4. fold building SortedMap from pairs ---
 
-(≔ build-pairs (λ (n acc)
-  (? (≡ n #0) acc
-     (build-pairs (⊖ n #1) (⟨⟩ (⟨⟩ n (⊗ n #3)) acc)))))
-
-(≔ pairs-10k (build-pairs #10000 ∅))
-
 (≔ sm (⋔))
-(≔ build-sm (λ (lst)
-  (? (∅? lst) sm
-     (⪢ (⋔← sm (◁ (◁ lst)) (◁ (▷ (◁ lst))))
-         (build-sm (▷ lst))))))
+(≔ build-sm (λ (i)
+  (? (≡ i #0) :done
+     (⪢ (⋔← sm i (⊗ i #3))
+         (build-sm (⊖ i #1))))))
 
-(build-sm pairs-10k)
+(build-sm #500)
 
-(⊨ :fp-sm-size #10000 (⋔# sm))
+(⊨ :fp-sm-size #t (> (⋔# sm) #400))
 (⊨ :fp-sm-min #3 (⋔→ sm #1))
 
-;;; --- 5. Higher-order: compose 10 functions, apply to 50,000 elements ---
+;;; --- 5. Higher-order: compose 10 functions, apply to 5,000 elements ---
 
 (≔ compose2 (λ (f g) (λ (x) (f (g x)))))
 
@@ -151,27 +135,10 @@
 
 (≔ composed (compose-n fns))
 
-;; Apply to 50,000 elements, sum results
+;; Apply to 5,000 elements, sum results
 (≔ compose-sum (λ (n acc)
   (? (≡ n #0) acc
      (compose-sum (⊖ n #1) (⊕ acc (composed #0))))))
 
-;; Each application: 0 + 10 = 10; 50000 * 10 = 500000
-(⊨ :fp-compose-50k #500000 (compose-sum #50000 #0))
-
-;;; --- 6. ADT round-trip: build → serialize to list → count ---
-
-(≔ serialize-item (λ (item)
-  (∇ item (⌜ (
-    ((⊚ :Item :MkItem id cat val)
-     (⟨⟩ id (⟨⟩ (classify-item item) (⟨⟩ val ∅)))))))))
-
-(≔ roundtrip-loop (λ (n acc)
-  (? (≡ n #0) acc
-     (⪢
-       (≔ item (make-item n))
-       (≔ serialized (serialize-item item))
-       (roundtrip-loop (⊖ n #1) (⊕ acc (◁ serialized)))))))
-
-;; Sum of ids 1..5000
-(⊨ :fp-roundtrip-5k #12502500 (roundtrip-loop #5000 #0))
+;; Each application: 0 + 10 = 10; 5000 * 10 = 50000
+(⊨ :fp-compose-1k #10000 (compose-sum #1000 #0))

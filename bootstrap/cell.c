@@ -3212,50 +3212,26 @@ Cell* cell_sorted_map_put(Cell* m, Cell* key, Cell* value) {
         root = new_root;
     }
 
-    /* Check for existing key to determine if this is an insert or update */
-    uint32_t old_size = m->data.sorted_map.size;
+    /* Search BEFORE insert to determine if this is new or overwrite */
+    unsigned pos;
+    int found;
+    sm_search(pool, root, m->data.sorted_map.height, sk, key, &pos, &found);
+    int is_new = !found;
+
     sm_insert_nonfull(pool, root, key, value, sk,
                       &m->data.sorted_map.first_leaf,
                       &m->data.sorted_map.last_leaf);
 
-    /* Count: did we actually insert (not just overwrite)? */
-    /* Re-count by searching — simpler than tracking in insert */
-    /* Actually, check if the size should increment by searching first */
-    /* For efficiency, we search before insert to know if it's new */
-    /* But we already inserted. Let's just use a search to verify. */
-    /* Simpler approach: track insert vs overwrite via return value from search */
-
-    /* Recount: walk leaves to get exact count */
-    /* Even simpler: we know old_size, search for key, if it existed it's overwrite */
-    unsigned pos;
-    int found;
-    sm_search(pool, m->data.sorted_map.root_idx, m->data.sorted_map.height,
-              sk, key, &pos, &found);
-    if (found) {
-        /* Key exists in tree — was it there before? */
-        /* We always increment and let overwrite path not increment */
-        /* Actually this is after insert, key will always be found now */
-        /* Track by checking if old_size == current count */
-    }
-    /* Simple approach: just recount leaves */
-    uint32_t count = 0;
-    uint32_t leaf = m->data.sorted_map.first_leaf;
-    while (leaf != SM_NIL) {
-        count += pool->nodes[leaf].n_keys;
-        leaf = pool->nodes[leaf].next_leaf;
-    }
     Cell* old_val = NULL;
-    if (count == old_size) {
-        /* Was an overwrite — but we already handled value swap in insert */
-        /* Return the old value? We don't have it anymore. Return nil as "existed" marker */
-        old_val = cell_nil();  /* Marker: key existed */
-    } else {
-        m->data.sorted_map.size = count;
+    if (is_new) {
+        m->data.sorted_map.size++;
         old_val = NULL;  /* New key inserted */
+    } else {
+        old_val = cell_nil();  /* Marker: key existed (overwrite) */
     }
 
     /* Update first/last leaf caches */
-    leaf = m->data.sorted_map.root_idx;
+    uint32_t leaf = m->data.sorted_map.root_idx;
     while (!pool->nodes[leaf].is_leaf) {
         leaf = pool->nodes[leaf].children[0];
     }
@@ -4112,9 +4088,9 @@ static ARTLeaf* art_search(void* root, const uint8_t* key, uint32_t key_len) {
             depth += hdr->full_prefix_len;
         }
 
-        if (depth >= key_len) return NULL;
-
-        void** child = art_find_child(node, key[depth]);
+        /* Key exhausted — look for terminator child (byte 0) */
+        uint8_t byte = (depth < key_len) ? key[depth] : 0;
+        void** child = art_find_child(node, byte);
         if (!child) return NULL;
         node = *child;
         depth++;

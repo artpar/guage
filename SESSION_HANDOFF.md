@@ -1,15 +1,74 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-02-02 (Day 148+ Stack-Safe Bind)
+Updated: 2026-02-02 (Day 148+ Test Failure Investigation)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 148+ - Stack-Safe Bind (2026-02-02)
+# Session Handoff: Day 148+ - Test Failure Investigation (2026-02-02)
+
+## Day 148+ — Test Failure Root Cause Analysis (COMPLETE)
+
+**STATUS:** 172/175 test files passing ✅ (3 failures are DETERMINISTIC BUGS, not race conditions)
+
+### What Was Done
+
+Investigated all 3 failing test files. Proved failures are **deterministic** (ran each 3x, identical results every time). Identified 4 distinct root causes through systematic debugging with minimal test files.
+
+### Root Causes Found
+
+#### 1. `⟨⟩` is 2-arg only — silently drops 3rd+ arguments
+
+`(⟨⟩ :call srv :crash)` creates `(:call . srv)`, dropping `:crash`. This is the root cause for:
+- **test_stress_fullstack_server.test** line 74: crash message never arrives correctly
+- **test_stress_realworld_scenario.test**: server dispatch never matches `:crash`
+
+**Fix needed:** Test files must use nested cons: `(⟨⟩ :call (⟨⟩ srv (⟨⟩ :crash ∅)))` to build proper lists, OR add a `list` variadic constructor.
+
+#### 2. Dotted pair extraction mismatch
+
+`(⟨⟩ n data)` creates dotted pair `(n . data)`. Server code does `(◁ (▷ req))` expecting a proper list, but `(▷ req)` returns `data` (a number), not a pair. Crashes with type error.
+
+**Affects:** test_stress_realworld_scenario.test lines 70-71, 173-174
+
+**Fix needed:** Use `(▷ req)` directly instead of `(◁ (▷ req))` for dotted pairs.
+
+#### 3. Ping-pong off-by-one (test_stress_actors.test)
+
+Pinger gets kick-off message giving it a 1-message head start. It finishes and exits before ponger sends its last reply. Ponger then sends to a dead actor → dead-actor error.
+
+**Fix needed:** Adjust message counts or add synchronization.
+
+#### 4. Fanout 19/20 workers (test_stress_actors.test)
+
+20 workers spawned, each expecting 20 messages. Deterministically only 19 finish. Works fine with fewer workers (3) or fewer messages (5). Partially investigated — likely related to message delivery ordering or mailbox capacity at scale.
+
+**Fix needed:** Further investigation required — may be scheduler or mailbox issue.
+
+### Latent Issue Identified (Not Yet Causing Failures)
+
+**CELL_YIELD_SENTINEL not propagated through special forms:** All special forms (≫, ⪢, ?, ≔) call `eval_internal` recursively but only check `cell_is_error()`. Since CELL_YIELD_SENTINEL has type `CELL_ATOM_SYMBOL` (not `CELL_ERROR`), it passes through undetected. Could cause silent operation skipping under reduction budget preemption.
+
+### Debug Files Created (scratchpad, not committed)
+
+- debug_sup.test through debug_sup5.test — isolated supervisor/crash behavior
+- debug_cons.test — proved `⟨⟩` drops 3rd argument
+- debug_pair.test — proved dotted pair vs proper list mismatch
+- debug_fanout.test through debug_fanout4.test — isolated fanout scaling issue
+
+### What's Next
+
+1. Fix test files to use proper list construction (nested cons instead of 3-arg `⟨⟩`)
+2. Fix dotted pair extraction in realworld scenario test
+3. Fix ping-pong synchronization
+4. Investigate fanout 19/20 issue (scheduler/mailbox)
+5. Consider adding CELL_YIELD_SENTINEL checks to special forms
+
+---
 
 ## Day 148+ — Stack-Safe Monadic Bind: ≫ Promoted to Special Form (COMPLETE)
 
-**STATUS:** 172/175 test files passing ✅ (3 pre-existing actor timing failures)
+**STATUS:** 172/175 test files passing ✅
 
 ### What Was Done
 

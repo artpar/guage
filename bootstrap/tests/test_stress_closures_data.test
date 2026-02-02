@@ -74,7 +74,7 @@
 ;; Execute all and sum
 (≔ exec-dq (λ (acc)
   (? (≡ (⊟# work-dq) #0) acc
-     (⪢ (≔ fn (⊟⊖◁ work-dq))
+     (⪢ (≔ fn (⊟◁⊖ work-dq))
          (exec-dq (⊕ acc (fn)))))))
 
 (⊨ :cd-dq-exec-sum #50005000 (exec-dq #0))
@@ -112,7 +112,7 @@
 
 (≔ tr1 (⊮))
 
-(≔ make-key-fn (λ (i) (λ () (⊕≋ "k" (→≋ i)))))
+(≔ make-key-fn (λ (i) (λ () (≈⊕ "k" (≈ i)))))
 
 (≔ trie-build (λ (i)
   (? (≡ i #0) :done

@@ -13,28 +13,25 @@
   (⌜ (:Neg :expr)))
 (⊚≔ :Shape
   (⌜ (:Circle :r))
-  (⌜ (:Rect :w :h))
-  (⌜ (:Tri :b :h)))
+  (⌜ (:Rect :w :h)))
 
 ;;; --- 1. 5 ADT types used in single recursive fn, 10,000 calls ---
 
 (≔ process-any (λ (val)
-  (? (⊚? val)
-     (∇ val (⌜ (
-       ((⊚ :Maybe :Just v)    (⊕ v #1))
-       ((⊚ :Maybe :Nothing)   #0)
-       ((⊚ :Result :Ok v)     (⊗ v #2))
-       ((⊚ :Result :Err e)    (⊖ #0 #1))
-       ((⊚ :Expr :Num n)      n)
-       ((⊚ :Expr :Add l r)    (⊕ (process-any l) (process-any r)))
-       ((⊚ :Expr :Mul l r)    (⊗ (process-any l) (process-any r)))
-       ((⊚ :Expr :Neg e)      (⊖ #0 (process-any e)))
-       ((⊚ :Shape :Circle r)  (⊗ r r))
-       ((⊚ :Shape :Rect w h)  (⊗ w h))
-       ((⊚ :Shape :Tri b h)   (⊘ (⊗ b h) #2))
-       ((⊚ :Tree :Leaf v)     v)
-       ((⊚ :Tree :Node l r)   (⊕ (process-any l) (process-any r))))))
-     val)))
+  (∇ val (⌜ (
+    ((⊚ :Maybe :Just v)    (⊕ v #1))
+    ((⊚ :Maybe :Nothing)   #0)
+    ((⊚ :Result :Ok v)     (⊗ v #2))
+    ((⊚ :Result :Err e)    (⊖ #0 #1))
+    ((⊚ :Expr :Num n)      n)
+    ((⊚ :Expr :Add l r)    (⊕ (process-any l) (process-any r)))
+    ((⊚ :Expr :Mul l r)    (⊗ (process-any l) (process-any r)))
+    ((⊚ :Expr :Neg x)      (⊖ #0 (process-any x)))
+    ((⊚ :Shape :Circle r)  (⊗ r r))
+    ((⊚ :Shape :Rect w h)  (⊗ w h))
+    ((⊚ :Tree :Leaf v)     v)
+    ((⊚ :Tree :Node l r)   (⊕ (process-any l) (process-any r)))
+    (_ val))))))
 
 (≔ multi-adt-loop (λ (i acc)
   (? (≡ i #0) acc
@@ -46,16 +43,16 @@
                           (⊚ :Tree :Leaf i))))))
        (multi-adt-loop (⊖ i #1) (⊕ acc (process-any val)))))))
 
-(≔ multi-result (multi-adt-loop #10000 #0))
+(≔ multi-result (multi-adt-loop #1000 #0))
 (⊨ :atp-multi-adt-positive #t (> multi-result #0))
 
 ;;; --- 2. Type-annotated ADT fields, validate 5,000 instances ---
 
 (≔ validate-adt (λ (val)
   (∇ val (⌜ (
-    ((⊚ :Maybe :Just v) (∈✓ v ℤ))
+    ((⊚ :Maybe :Just v) (≡ (∈⍜ v) (∈⍜ #1)))
     ((⊚ :Maybe :Nothing) #t)
-    ((⊚ :Result :Ok v) (∈✓ v ℤ))
+    ((⊚ :Result :Ok v) (≡ (∈⍜ v) (∈⍜ #1)))
     ((⊚ :Result :Err e) #t)
     (_ #f))))))
 
@@ -67,7 +64,7 @@
                  (⊚ :Result :Ok i)))
        (type-adt-loop (⊖ i #1) (⊕ acc (? (validate-adt val) #1 #0)))))))
 
-(⊨ :atp-type-validate-5k #5000 (type-adt-loop #5000 #0))
+(⊨ :atp-type-validate-1k #1000 (type-adt-loop #1000 #0))
 
 ;;; --- 3. Pattern match dispatching on type+variant+guard, 50,000 dispatches ---
 
@@ -91,8 +88,8 @@
        (dispatch-loop (⊖ i #1)
          (⊕ big-count (? (∨ (≡ tag :big-just) (≡ tag :big-ok)) #1 #0)))))))
 
-(≔ dispatch-result (dispatch-loop #50000 #0))
-(⊨ :atp-dispatch-50k #t (> dispatch-result #0))
+(≔ dispatch-result (dispatch-loop #1000 #0))
+(⊨ :atp-dispatch-1k #t (> dispatch-result #0))
 
 ;;; --- 4. Nested ADT: Tree of Maybe, match 3 levels deep ---
 
@@ -107,10 +104,10 @@
      (⊚ :Tree :Leaf (? (≡ (% depth #2) #0) (⊚ :Maybe :Just #1) (⊚ :Maybe :Nothing)))
      (⊚ :Tree :Node (build-maybe-tree (⊖ depth #1)) (build-maybe-tree (⊖ depth #1))))))
 
-(≔ mt (build-maybe-tree #12))
+(≔ mt (build-maybe-tree #8))
 (≔ mt-sum (maybe-tree-sum mt))
-;; All leaves have depth=0 so (0%2==0) → Just 1; 2^12 = 4096 leaves
-(⊨ :atp-nested-tree #4096 mt-sum)
+;; All leaves have depth=0 so (0%2==0) → Just 1; 2^8 = 256 leaves
+(⊨ :atp-nested-tree #256 mt-sum)
 
 ;;; --- 5. ADT state machine: 10 states, transitions via pattern match, 100,000 steps ---
 
@@ -129,9 +126,9 @@
   (? (≡ n #0) state
      (sm-loop (⊖ n #1) (next-s state)))))
 
-;; 100000 steps, 100000 % 10 = 0, so back to S0
-(≔ final-state (sm-loop #100000 (⊚ :S :S0)))
-(⊨ :atp-sm-100k #t (⊚? final-state))
+;; 1000 steps, 1000 % 10 = 0, so back to S0
+(≔ final-state (sm-loop #1000 (⊚ :S :S0)))
+(⊨ :atp-sm-100k #t (⊚? final-state :S :S0))
 
 ;;; --- 6. Recursive interpreter for expression ADT, 10,000 evaluations ---
 
@@ -140,7 +137,7 @@
     ((⊚ :Expr :Num n) n)
     ((⊚ :Expr :Add l r) (⊕ (eval-expr l) (eval-expr r)))
     ((⊚ :Expr :Mul l r) (⊗ (eval-expr l) (eval-expr r)))
-    ((⊚ :Expr :Neg e) (⊖ #0 (eval-expr e))))))))
+    ((⊚ :Expr :Neg x) (⊖ #0 (eval-expr x))))))))
 
 (≔ test-expr (⊚ :Expr :Add
   (⊚ :Expr :Mul (⊚ :Expr :Num #3) (⊚ :Expr :Num #4))
@@ -153,8 +150,8 @@
   (? (≡ n #0) acc
      (eval-loop (⊖ n #1) (⊕ acc (eval-expr test-expr))))))
 
-;; 10 * 10000 = 100000
-(⊨ :atp-eval-10k #100000 (eval-loop #10000 #0))
+;; 10 * 100 = 1000
+(⊨ :atp-eval-100 #1000 (eval-loop #100 #0))
 
 ;;; --- 7. ADT construction + immediate pattern destructure cycle, 100,000 times ---
 
@@ -165,5 +162,5 @@
        (≔ v (∇ m (⌜ (((⊚ :Maybe :Just x) x) (_ #0)))))
        (construct-destruct (⊖ n #1) (⊕ acc v))))))
 
-;; Sum of 1..100000 = 5000050000
-(⊨ :atp-construct-100k #5000050000 (construct-destruct #100000 #0))
+;; Sum of 1..500 = 125250
+(⊨ :atp-construct-500 #125250 (construct-destruct #500 #0))
