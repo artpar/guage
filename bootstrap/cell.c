@@ -2417,6 +2417,8 @@ Cell* cell_buffer_from_string(const char* str) {
 
 #define VEC_SBO_CAP 4
 #define VEC_INITIAL_HEAP_CAP 8
+/* Round up to multiple of 64 for aligned_alloc (C11 requires size % alignment == 0) */
+#define VEC_ALLOC_SIZE(cap) (((cap) * sizeof(Cell*) + 63u) & ~63u)
 
 /* Get pointer to element buffer (SBO or heap) */
 static inline Cell** vec_buf(Cell* v) {
@@ -2438,8 +2440,8 @@ static void vector_grow(Cell* v) {
     if (old_cap <= VEC_SBO_CAP) {
         /* SBO → heap transition */
         uint32_t new_cap = VEC_INITIAL_HEAP_CAP;
-        Cell** new_buf = (Cell**)aligned_alloc(64, new_cap * sizeof(Cell*));
-        memset(new_buf, 0, new_cap * sizeof(Cell*));
+        Cell** new_buf = (Cell**)aligned_alloc(64, VEC_ALLOC_SIZE(new_cap));
+        memset(new_buf, 0, VEC_ALLOC_SIZE(new_cap));
         /* Copy SBO elements to heap */
         memcpy(new_buf, v->data.vector.sbo, sz * sizeof(Cell*));
         v->data.vector.heap = new_buf;
@@ -2448,8 +2450,8 @@ static void vector_grow(Cell* v) {
         /* Heap → bigger heap (1.5x) */
         uint32_t new_cap = vec_next_cap(old_cap);
         Cell** old_buf = v->data.vector.heap;
-        Cell** new_buf = (Cell**)aligned_alloc(64, new_cap * sizeof(Cell*));
-        memset(new_buf, 0, new_cap * sizeof(Cell*));
+        Cell** new_buf = (Cell**)aligned_alloc(64, VEC_ALLOC_SIZE(new_cap));
+        memset(new_buf, 0, VEC_ALLOC_SIZE(new_cap));
         memcpy(new_buf, old_buf, sz * sizeof(Cell*));
         free(old_buf);
         v->data.vector.heap = new_buf;
@@ -2474,8 +2476,8 @@ Cell* cell_vector_new(uint32_t initial_cap) {
         uint32_t cap = VEC_INITIAL_HEAP_CAP;
         while (cap < initial_cap) cap = vec_next_cap(cap);
         c->data.vector.capacity = cap;
-        c->data.vector.heap = (Cell**)aligned_alloc(64, cap * sizeof(Cell*));
-        memset(c->data.vector.heap, 0, cap * sizeof(Cell*));
+        c->data.vector.heap = (Cell**)aligned_alloc(64, VEC_ALLOC_SIZE(cap));
+        memset(c->data.vector.heap, 0, VEC_ALLOC_SIZE(cap));
     }
     return c;
 }

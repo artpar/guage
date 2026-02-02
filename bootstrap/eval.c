@@ -844,9 +844,15 @@ void eval_define(EvalContext* ctx, const char* name, Cell* value) {
 
 /* Lookup De Bruijn index in environment (for indexed environments) */
 Cell* env_lookup_index(Cell* env, int index) {
-    Cell* current = env;
+    /* Fast path: flat vector env — O(1) direct index */
+    if (LIKELY(env->type == CELL_VECTOR)) {
+        Cell* val = cell_vector_get(env, (uint32_t)index);
+        if (val) cell_retain(val);
+        return val;
+    }
 
-    /* Walk through the environment, skipping the marker if encountered */
+    /* Legacy path: linked-list env with :__indexed__ marker */
+    Cell* current = env;
     for (int i = 0; i <= index; i++) {
         if (!cell_is_pair(current)) {
             return NULL;
@@ -873,33 +879,61 @@ Cell* env_lookup_index(Cell* env, int index) {
     return NULL;
 }
 
-/* Extend environment with argument values (prepend args to env) */
+/* Extend environment with argument values — flat vector env.
+ * Creates a single CELL_VECTOR: [arg₀, arg₁, ..., parent_val₀, parent_val₁, ...]
+ * De Bruijn index i → vector[i], O(1) lookup. */
 Cell* extend_env(Cell* env, Cell* args) {
-    /* When creating an indexed environment from scratch, add a marker at the END
-     * to distinguish it from named environments. This allows both the C evaluator
-     * and the Guage self-hosting evaluator to work correctly. */
+    /* Count args */
+    int arity = 0;
+    Cell* a = args;
+    while (cell_is_pair(a)) { arity++; a = cell_cdr(a); }
 
-    /* Base case: extend with the existing env (which might be nil or indexed) */
-    if (cell_is_nil(args)) {
-        /* If env is empty and we're creating a new indexed env, add marker */
-        if (cell_is_nil(env)) {
-            Cell* marker = cell_symbol(":__indexed__");
-            Cell* result = cell_cons(marker, cell_nil());
-            cell_release(marker);
-            return result;
+    /* Parent size */
+    uint32_t parent_size = 0;
+    if (env->type == CELL_VECTOR) {
+        parent_size = cell_vector_size(env);
+    } else if (!cell_is_nil(env)) {
+        /* Legacy linked-list env — count elements (excluding marker) */
+        Cell* cur = env;
+        while (cell_is_pair(cur)) {
+            Cell* elem = cell_car(cur);
+            if (!(cell_is_symbol(elem) && elem->sym_id == SYM_ID_INDEXED)) {
+                parent_size++;
+            }
+            cur = cell_cdr(cur);
         }
-        cell_retain(env);
-        return env;
     }
 
-    /* Recursive case: cons this arg onto the extended rest */
-    Cell* first = cell_car(args);
-    Cell* rest = cell_cdr(args);
-    Cell* extended_rest = extend_env(env, rest);
-    Cell* result = cell_cons(first, extended_rest);
-    cell_release(extended_rest);
+    uint32_t total = (uint32_t)arity + parent_size;
+    Cell* vec = cell_vector_new(total);
 
-    return result;
+    /* Push args (index 0 = first arg = De Bruijn 0) */
+    a = args;
+    while (cell_is_pair(a)) {
+        cell_vector_push(vec, cell_car(a));
+        a = cell_cdr(a);
+    }
+
+    /* Copy parent env values */
+    if (env->type == CELL_VECTOR) {
+        Cell** buf = (env->data.vector.capacity <= 4)
+            ? env->data.vector.sbo : env->data.vector.heap;
+        for (uint32_t i = 0; i < parent_size; i++) {
+            cell_vector_push(vec, buf[i]);
+        }
+    } else if (!cell_is_nil(env)) {
+        /* Legacy linked-list parent */
+        Cell* cur = env;
+        while (cell_is_pair(cur)) {
+            Cell* elem = cell_car(cur);
+            if (!(cell_is_symbol(elem) && elem->sym_id == SYM_ID_INDEXED)) {
+                cell_vector_push(vec, elem);
+            }
+            cur = cell_cdr(cur);
+        }
+    }
+
+    return vec;
 }
 
 /* Count list length */
@@ -1105,12 +1139,12 @@ static Cell* eval_list(EvalContext* ctx, Cell* env, Cell* expr) {
 
 /* Check if environment is indexed (not named/assoc) */
 bool env_is_indexed(Cell* env) {
-    /* Indexed environment: (val1 val2 ... :__indexed__) with marker at end */
-    /* Named environment: ((sym1 . val1) (sym2 . val2) ...) */
+    /* Fast path: flat vector env */
+    if (env->type == CELL_VECTOR) return true;
     if (cell_is_nil(env)) return true;  /* Empty env can be either */
     if (!cell_is_pair(env)) return false;
 
-    /* Walk the environment looking for the indexed marker */
+    /* Legacy: walk the environment looking for the indexed marker */
     Cell* current = env;
     while (cell_is_pair(current)) {
         Cell* elem = cell_car(current);
