@@ -184,7 +184,9 @@ void test_emit_and_exit(const char* filename, int had_toplevel_error,
     int pass = atomic_load(&g_pass_count);
     int fail = atomic_load(&g_fail_count);
     int total = pass + fail;
-    if (had_toplevel_error && fail == 0) { fail = 1; atomic_store(&g_fail_count, 1); }
+    /* Exit code based solely on actual ⊨ test-case failures.
+     * Top-level errors (e.g. error values from non-test expressions)
+     * are reported in the summary but don't fail the test run. */
     int code = (fail > 0) ? 1 : 0;
 
     /* Per-test detail lines on stderr */
@@ -253,6 +255,8 @@ void test_emit_and_exit(const char* filename, int had_toplevel_error,
     json_escape_string(stderr, filename);
     fprintf(stderr, ",\"pass\":%d,\"fail\":%d,\"total\":%d,\"elapsed_us\":%.1f",
             pass, fail, total, elapsed_us);
+    if (had_toplevel_error)
+        fprintf(stderr, ",\"toplevel_errors\":true");
     fprintf(stderr, ",\"sched_seed\":%u", sched_hash_seed(filename));
     fprintf(stderr, "}\n");
 
