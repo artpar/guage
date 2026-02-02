@@ -1397,6 +1397,7 @@ void eval_define(EvalContext* ctx, const char* name, Cell* value) {
 
     /* Generate documentation if value is a lambda */
     if (value && cell_is_lambda(value)) {
+        bool already_documented = (doc_find(ctx, name) != NULL);
         FunctionDoc* doc = doc_create(name);
 
         /* Generate docs - graceful degradation on failure */
@@ -1416,8 +1417,8 @@ void eval_define(EvalContext* ctx, const char* name, Cell* value) {
         doc->next = ctx->user_docs;
         ctx->user_docs = doc;
 
-        /* Print documentation — skip internal/anonymous names */
-        if (strncmp(name, "__", 2) != 0) {
+        /* Print documentation — skip internal/anonymous names AND redefinitions */
+        if (!already_documented && strncmp(name, "__", 2) != 0) {
             printf("📝 %s :: %s\n", name, doc->type_signature);
             printf("   %s\n", doc->description);
             if (doc->flow_info) {
