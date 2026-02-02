@@ -2565,6 +2565,66 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                 goto tail_call;
             }
 
+            /* ≫ - monadic bind with TCO (special form) */
+            if (id == SYM_ID_BIND) {
+                /* (≫ val-expr fn-expr) — evaluate val, apply fn to it in tail position */
+                Cell* val_expr = cell_car(rest);
+                Cell* fn_expr = cell_car(cell_cdr(rest));
+
+                /* 1. Evaluate the value expression */
+                Cell* val = eval_internal(ctx, env, val_expr);
+                if (UNLIKELY(cell_is_error(val))) {
+                    error_stamp_return(val, expr->span.inline_span.lo);
+                    return val;
+                }
+
+                /* 2. Evaluate the function expression */
+                Cell* fn = eval_internal(ctx, env, fn_expr);
+                if (UNLIKELY(cell_is_error(fn))) {
+                    cell_release(val);
+                    error_stamp_return(fn, expr->span.inline_span.lo);
+                    return fn;
+                }
+
+                /* 3. Apply fn to val */
+                if (fn->type == CELL_LAMBDA) {
+                    cell_retain(val);
+                    Cell* apply_args = cell_cons(val, cell_nil());
+                    cell_release(val);
+                    Cell* body = fn->data.lambda.body;
+                    Cell* closure_env = fn->data.lambda.env;
+                    cell_retain(body);
+                    Cell* new_env = extend_env(closure_env, apply_args);
+                    cell_release(apply_args);
+                    cell_release(fn);
+
+                    /* TCO: bind body in tail position */
+                    if (owned_env) {
+                        cell_release(owned_env);
+                    }
+                    if (owned_expr) {
+                        cell_release(owned_expr);
+                    }
+                    env = new_env;
+                    owned_env = new_env;
+                    expr = body;
+                    owned_expr = body;
+                    goto tail_call;
+                }
+                if (fn->type == CELL_BUILTIN) {
+                    cell_retain(val);
+                    Cell* apply_args = cell_cons(val, cell_nil());
+                    cell_release(val);
+                    Cell* (*builtin_fn)(Cell*) = (Cell* (*)(Cell*))fn->data.atom.builtin;
+                    Cell* result = builtin_fn(apply_args);
+                    cell_release(apply_args);
+                    cell_release(fn);
+                    return result;
+                }
+                cell_release(val);
+                return cell_error("bind-requires-function", fn);
+            }
+
             /* ⚡? - error auto-propagation (Rust ? operator) */
             if (id == SYM_ID_TRY_PROP) {
                 Cell* inner_expr = cell_car(rest);

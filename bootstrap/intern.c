@@ -228,6 +228,7 @@ void intern_preload(void) {
         "\xe2\x9a\xa1?",                    /* SYM_ID_TRY_PROP = 30: ⚡? */
         "\xe2\x88\x88\xe2\x8a\xa1",         /* SYM_ID_REFINE_DEF = 31: ∈⊡ */
         "\xe2\x8a\xb3",                     /* SYM_ID_GENERIC_PARAM = 32: ⊳ */
+        "\xe2\x89\xab",                     /* SYM_ID_BIND = 33: ≫ */
     };
 
     for (int i = 0; i <= MAX_SPECIAL_FORM_ID; i++) {

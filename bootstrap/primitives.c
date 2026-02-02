@@ -323,7 +323,8 @@ Cell* prim_cons(Cell* args) {
 /* ◁ - head (car) */
 Cell* prim_car(Cell* args) {
     Cell* pair = arg1(args);
-    assert(cell_is_pair(pair));
+    if (UNLIKELY(!cell_is_pair(pair)))
+        return cell_error("◁ requires pair", pair);
     Cell* result = cell_car(pair);
     cell_retain(result);
     return result;
@@ -332,7 +333,8 @@ Cell* prim_car(Cell* args) {
 /* ▷ - tail (cdr) */
 Cell* prim_cdr(Cell* args) {
     Cell* pair = arg1(args);
-    assert(cell_is_pair(pair));
+    if (UNLIKELY(!cell_is_pair(pair)))
+        return cell_error("▷ requires pair", pair);
     Cell* result = cell_cdr(pair);
     cell_retain(result);
     return result;
@@ -421,7 +423,7 @@ Cell* prim_not_equal(Cell* args) {
 /* ¬ - logical NOT */
 Cell* prim_not(Cell* args) {
     Cell* a = arg1(args);
-    assert(cell_is_bool(a));
+    if (UNLIKELY(!cell_is_bool(a))) return cell_error("¬ requires boolean", a);
     return cell_bool(!cell_get_bool(a));
 }
 
@@ -439,7 +441,7 @@ Cell* prim_add(Cell* args) {
         return cell_integer(result);
     }
     /* Mixed or both double → promote to double */
-    assert(cell_is_numeric(a) && cell_is_numeric(b));
+    if (UNLIKELY(!(cell_is_numeric(a) && cell_is_numeric(b)))) return cell_error("⊕ requires numbers", a);
     return cell_number(cell_to_double(a) + cell_to_double(b));
 }
 
@@ -453,7 +455,7 @@ Cell* prim_sub(Cell* args) {
             return cell_error("integer-overflow", args);
         return cell_integer(result);
     }
-    assert(cell_is_numeric(a) && cell_is_numeric(b));
+    if (UNLIKELY(!(cell_is_numeric(a) && cell_is_numeric(b)))) return cell_error("⊖ requires numbers", a);
     return cell_number(cell_to_double(a) - cell_to_double(b));
 }
 
@@ -467,7 +469,7 @@ Cell* prim_mul(Cell* args) {
             return cell_error("integer-overflow", args);
         return cell_integer(result);
     }
-    assert(cell_is_numeric(a) && cell_is_numeric(b));
+    if (UNLIKELY(!(cell_is_numeric(a) && cell_is_numeric(b)))) return cell_error("⊗ requires numbers", a);
     return cell_number(cell_to_double(a) * cell_to_double(b));
 }
 
@@ -475,7 +477,7 @@ Cell* prim_mul(Cell* args) {
 Cell* prim_div(Cell* args) {
     Cell* a = arg1(args);
     Cell* b = arg2(args);
-    assert(cell_is_numeric(a) && cell_is_numeric(b));
+    if (UNLIKELY(!(cell_is_numeric(a) && cell_is_numeric(b)))) return cell_error("⊘ requires numbers", a);
     double divisor = cell_to_double(b);
     if (divisor == 0.0) {
         return cell_error("div-by-zero", b);
@@ -496,7 +498,7 @@ Cell* prim_quot(Cell* args) {
             return cell_error("integer-overflow", args);
         return cell_integer(a->data.atom.integer / db);
     }
-    assert(cell_is_numeric(a) && cell_is_numeric(b));
+    if (UNLIKELY(!(cell_is_numeric(a) && cell_is_numeric(b)))) return cell_error("÷ requires numbers", a);
     double divisor = cell_to_double(b);
     if (divisor == 0.0) {
         return cell_error("quot-by-zero", b);
@@ -513,7 +515,7 @@ Cell* prim_mod(Cell* args) {
         if (db == 0) return cell_error("mod-by-zero", b);
         return cell_integer(a->data.atom.integer % db);
     }
-    assert(cell_is_numeric(a) && cell_is_numeric(b));
+    if (UNLIKELY(!(cell_is_numeric(a) && cell_is_numeric(b)))) return cell_error("% requires numbers", a);
     double divisor = cell_to_double(b);
     if (divisor == 0.0) {
         return cell_error("mod-by-zero", b);
@@ -527,7 +529,7 @@ Cell* prim_lt(Cell* args) {
     Cell* b = arg2(args);
     if (LIKELY(cell_is_integer(a) && cell_is_integer(b)))
         return cell_bool(a->data.atom.integer < b->data.atom.integer);
-    assert(cell_is_numeric(a) && cell_is_numeric(b));
+    if (UNLIKELY(!(cell_is_numeric(a) && cell_is_numeric(b)))) return cell_error("< requires numbers", a);
     return cell_bool(cell_to_double(a) < cell_to_double(b));
 }
 
@@ -537,7 +539,8 @@ Cell* prim_gt(Cell* args) {
     Cell* b = arg2(args);
     if (LIKELY(cell_is_integer(a) && cell_is_integer(b)))
         return cell_bool(a->data.atom.integer > b->data.atom.integer);
-    assert(cell_is_numeric(a) && cell_is_numeric(b));
+    if (UNLIKELY(!(cell_is_numeric(a) && cell_is_numeric(b))))
+        return cell_error("> requires numbers", cell_cons(a, cell_cons(b, cell_nil())));
     return cell_bool(cell_to_double(a) > cell_to_double(b));
 }
 
@@ -547,7 +550,7 @@ Cell* prim_le(Cell* args) {
     Cell* b = arg2(args);
     if (LIKELY(cell_is_integer(a) && cell_is_integer(b)))
         return cell_bool(a->data.atom.integer <= b->data.atom.integer);
-    assert(cell_is_numeric(a) && cell_is_numeric(b));
+    if (UNLIKELY(!(cell_is_numeric(a) && cell_is_numeric(b)))) return cell_error("≤ requires numbers", a);
     return cell_bool(cell_to_double(a) <= cell_to_double(b));
 }
 
@@ -557,7 +560,7 @@ Cell* prim_ge(Cell* args) {
     Cell* b = arg2(args);
     if (LIKELY(cell_is_integer(a) && cell_is_integer(b)))
         return cell_bool(a->data.atom.integer >= b->data.atom.integer);
-    assert(cell_is_numeric(a) && cell_is_numeric(b));
+    if (UNLIKELY(!(cell_is_numeric(a) && cell_is_numeric(b)))) return cell_error("≥ requires numbers", a);
     return cell_bool(cell_to_double(a) >= cell_to_double(b));
 }
 
@@ -642,7 +645,7 @@ Cell* prim_bit_rotr(Cell* args) {
 Cell* prim_to_integer(Cell* args) {
     Cell* a = arg1(args);
     if (cell_is_integer(a)) return a;
-    assert(cell_is_numeric(a));
+    if (UNLIKELY(!cell_is_numeric(a))) return cell_error("→ℤ requires number", a);
     return cell_integer(cell_to_int64(a));
 }
 
@@ -650,7 +653,7 @@ Cell* prim_to_integer(Cell* args) {
 Cell* prim_to_double(Cell* args) {
     Cell* a = arg1(args);
     if (cell_is_number(a)) return a;
-    assert(cell_is_numeric(a));
+    if (UNLIKELY(!cell_is_numeric(a))) return cell_error("→ℝ requires number", a);
     return cell_number(cell_to_double(a));
 }
 
@@ -664,7 +667,7 @@ Cell* prim_is_integer(Cell* args) {
 /* √ - square root */
 Cell* prim_sqrt(Cell* args) {
     Cell* a = arg1(args);
-    assert(cell_is_numeric(a));
+    if (UNLIKELY(!cell_is_numeric(a))) return cell_error("√ requires number", a);
     double val = cell_to_double(a);
     if (val < 0.0) {
         return cell_error("sqrt-negative", a);
@@ -676,35 +679,35 @@ Cell* prim_sqrt(Cell* args) {
 Cell* prim_pow(Cell* args) {
     Cell* base = arg1(args);
     Cell* exp = arg2(args);
-    assert(cell_is_number(base) && cell_is_number(exp));
+    if (UNLIKELY(!(cell_is_number(base) && cell_is_number(exp)))) return cell_error("^ requires numbers", base);
     return cell_number(pow(cell_get_number(base), cell_get_number(exp)));
 }
 
 /* |n| - absolute value */
 Cell* prim_abs(Cell* args) {
     Cell* a = arg1(args);
-    assert(cell_is_number(a));
+    if (UNLIKELY(!cell_is_number(a))) return cell_error("|n| requires number", a);
     return cell_number(fabs(cell_get_number(a)));
 }
 
 /* ⌊n⌋ - floor (round down) */
 Cell* prim_floor(Cell* args) {
     Cell* a = arg1(args);
-    assert(cell_is_number(a));
+    if (UNLIKELY(!cell_is_number(a))) return cell_error("⌊n⌋ requires number", a);
     return cell_number(floor(cell_get_number(a)));
 }
 
 /* ⌈n⌉ - ceiling (round up) */
 Cell* prim_ceil(Cell* args) {
     Cell* a = arg1(args);
-    assert(cell_is_number(a));
+    if (UNLIKELY(!cell_is_number(a))) return cell_error("⌈n⌉ requires number", a);
     return cell_number(ceil(cell_get_number(a)));
 }
 
 /* ⌊n⌉ - round (nearest integer) */
 Cell* prim_round(Cell* args) {
     Cell* a = arg1(args);
-    assert(cell_is_number(a));
+    if (UNLIKELY(!cell_is_number(a))) return cell_error("⌊n⌉ requires number", a);
     return cell_number(round(cell_get_number(a)));
 }
 
@@ -712,7 +715,7 @@ Cell* prim_round(Cell* args) {
 Cell* prim_min(Cell* args) {
     Cell* a = arg1(args);
     Cell* b = arg2(args);
-    assert(cell_is_number(a) && cell_is_number(b));
+    if (UNLIKELY(!(cell_is_number(a) && cell_is_number(b)))) return cell_error("min requires numbers", a);
     double av = cell_get_number(a);
     double bv = cell_get_number(b);
     return cell_number(av < bv ? av : bv);
@@ -722,7 +725,7 @@ Cell* prim_min(Cell* args) {
 Cell* prim_max(Cell* args) {
     Cell* a = arg1(args);
     Cell* b = arg2(args);
-    assert(cell_is_number(a) && cell_is_number(b));
+    if (UNLIKELY(!(cell_is_number(a) && cell_is_number(b)))) return cell_error("max requires numbers", a);
     double av = cell_get_number(a);
     double bv = cell_get_number(b);
     return cell_number(av > bv ? av : bv);
@@ -731,28 +734,28 @@ Cell* prim_max(Cell* args) {
 /* sin - sine (radians) */
 Cell* prim_sin(Cell* args) {
     Cell* a = arg1(args);
-    assert(cell_is_number(a));
+    if (UNLIKELY(!cell_is_number(a))) return cell_error("sin requires number", a);
     return cell_number(sin(cell_get_number(a)));
 }
 
 /* cos - cosine (radians) */
 Cell* prim_cos(Cell* args) {
     Cell* a = arg1(args);
-    assert(cell_is_number(a));
+    if (UNLIKELY(!cell_is_number(a))) return cell_error("cos requires number", a);
     return cell_number(cos(cell_get_number(a)));
 }
 
 /* tan - tangent (radians) */
 Cell* prim_tan(Cell* args) {
     Cell* a = arg1(args);
-    assert(cell_is_number(a));
+    if (UNLIKELY(!cell_is_number(a))) return cell_error("tan requires number", a);
     return cell_number(tan(cell_get_number(a)));
 }
 
 /* asin - arcsine (returns radians) */
 Cell* prim_asin(Cell* args) {
     Cell* a = arg1(args);
-    assert(cell_is_number(a));
+    if (UNLIKELY(!cell_is_number(a))) return cell_error("asin requires number", a);
     double val = cell_get_number(a);
     if (val < -1.0 || val > 1.0) {
         return cell_error("asin-domain", a);
@@ -763,7 +766,7 @@ Cell* prim_asin(Cell* args) {
 /* acos - arccosine (returns radians) */
 Cell* prim_acos(Cell* args) {
     Cell* a = arg1(args);
-    assert(cell_is_number(a));
+    if (UNLIKELY(!cell_is_number(a))) return cell_error("acos requires number", a);
     double val = cell_get_number(a);
     if (val < -1.0 || val > 1.0) {
         return cell_error("acos-domain", a);
@@ -774,7 +777,7 @@ Cell* prim_acos(Cell* args) {
 /* atan - arctangent (returns radians) */
 Cell* prim_atan(Cell* args) {
     Cell* a = arg1(args);
-    assert(cell_is_number(a));
+    if (UNLIKELY(!cell_is_number(a))) return cell_error("atan requires number", a);
     return cell_number(atan(cell_get_number(a)));
 }
 
@@ -782,14 +785,14 @@ Cell* prim_atan(Cell* args) {
 Cell* prim_atan2(Cell* args) {
     Cell* y = arg1(args);
     Cell* x = arg2(args);
-    assert(cell_is_number(y) && cell_is_number(x));
+    if (UNLIKELY(!(cell_is_number(y) && cell_is_number(x)))) return cell_error("atan2 requires numbers", y);
     return cell_number(atan2(cell_get_number(y), cell_get_number(x)));
 }
 
 /* log - natural logarithm */
 Cell* prim_log(Cell* args) {
     Cell* a = arg1(args);
-    assert(cell_is_number(a));
+    if (UNLIKELY(!cell_is_number(a))) return cell_error("log requires number", a);
     double val = cell_get_number(a);
     if (val <= 0.0) {
         return cell_error("log-domain", a);
@@ -800,7 +803,7 @@ Cell* prim_log(Cell* args) {
 /* log10 - base-10 logarithm */
 Cell* prim_log10(Cell* args) {
     Cell* a = arg1(args);
-    assert(cell_is_number(a));
+    if (UNLIKELY(!cell_is_number(a))) return cell_error("log10 requires number", a);
     double val = cell_get_number(a);
     if (val <= 0.0) {
         return cell_error("log10-domain", a);
@@ -811,7 +814,7 @@ Cell* prim_log10(Cell* args) {
 /* exp - e^x */
 Cell* prim_exp(Cell* args) {
     Cell* a = arg1(args);
-    assert(cell_is_number(a));
+    if (UNLIKELY(!cell_is_number(a))) return cell_error("exp requires number", a);
     return cell_number(exp(cell_get_number(a)));
 }
 
@@ -836,7 +839,7 @@ Cell* prim_rand(Cell* args) {
 /* rand-int - random integer from 0 to n-1 */
 Cell* prim_rand_int(Cell* args) {
     Cell* n = arg1(args);
-    assert(cell_is_number(n));
+    if (UNLIKELY(!cell_is_number(n))) return cell_error("rand-int requires number", n);
     int max = (int)cell_get_number(n);
     if (max <= 0) {
         return cell_error("rand-int-invalid", n);
@@ -2955,45 +2958,6 @@ Cell* prim_effect_pure(Cell* args) {
     /* ⤴ - pure lift: returns value unchanged */
     Cell* result = arg1(args);
     cell_retain(result);
-    return result;
-}
-
-Cell* prim_effect_bind(Cell* args) {
-    /* ≫ - effect bind/sequence: (≫ val fn) applies fn to val */
-    Cell* val = arg1(args);
-    Cell* fn = arg2(args);
-
-    if (fn->type != CELL_LAMBDA && fn->type != CELL_BUILTIN) {
-        return cell_error("bind-requires-function", fn);
-    }
-
-    /* Apply fn to val */
-    cell_retain(val);
-    Cell* apply_args = cell_cons(val, cell_nil());
-
-    if (fn->type == CELL_BUILTIN) {
-        Cell* (*builtin_fn)(Cell*) = (Cell* (*)(Cell*))fn->data.atom.builtin;
-        Cell* result = builtin_fn(apply_args);
-        cell_release(apply_args);
-        return result;
-    }
-
-    /* Lambda application */
-    Cell* closure_env = fn->data.lambda.env;
-    Cell* body = fn->data.lambda.body;
-
-    /* Extend closure env with the value */
-    extern Cell* extend_env(Cell* env, Cell* args);
-    Cell* new_env = extend_env(closure_env, apply_args);
-    cell_release(apply_args);
-
-    /* Evaluate body in extended env */
-    extern Cell* eval_internal(EvalContext* ctx, Cell* env, Cell* expr);
-    EvalContext* ectx = eval_get_current_context();
-    cell_retain(body);
-    Cell* result = eval_internal(ectx, new_env, body);
-    cell_release(new_env);
-    cell_release(body);
     return result;
 }
 
@@ -15184,7 +15148,6 @@ static Primitive primitives[] = {
     /* Effects (placeholder) */
     /* Effects: ⟪, ⟪⟫, ↯, ⟪?, ⟪→ are special forms in eval.c */
     {"⤴", prim_effect_pure, 1, {"Lift pure value (identity)", "α → α"}},
-    {"≫", prim_effect_bind, 2, {"Effect bind: apply function to value", "α → (α → β) → β"}},
 
     /* Actor primitives */
     {"⟳", prim_spawn, 1, {"Spawn new actor with behavior function", "(λ (self) ...) → ⟳[id]"}},

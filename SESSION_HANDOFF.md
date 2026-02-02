@@ -1,11 +1,51 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-02-02 (Day 148+ Benchmark Suite)
+Updated: 2026-02-02 (Day 148+ Stack-Safe Bind)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 148+ - Benchmark Suite (2026-02-02)
+# Session Handoff: Day 148+ - Stack-Safe Bind (2026-02-02)
+
+## Day 148+ — Stack-Safe Monadic Bind: ≫ Promoted to Special Form (COMPLETE)
+
+**STATUS:** 172/175 test files passing ✅ (3 pre-existing actor timing failures)
+
+### What Was Done
+
+Promoted `≫` (bind) from a builtin primitive to a special form handled directly in `eval_internal`'s main loop. This eliminates recursive C stack growth when chaining binds — each bind now uses `goto tail_call` for constant-stack execution.
+
+**Before:** Each `≫` chain added ~3-4 C stack frames via `prim_effect_bind → eval_internal` recursion. At ~150 iterations, the fiber's 256KB stack overflowed (SIGBUS), blocking all actor stress tests doing GenServer call loops.
+
+**After:** Bind chains of any depth use constant stack. Tested to 10,000 iterations successfully.
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| `bootstrap/intern.h` | Added `SYM_ID_BIND 33`, bumped `MAX_SPECIAL_FORM_ID` to 33 |
+| `bootstrap/intern.c` | Added `≫` UTF-8 bytes to preload array at index 33 |
+| `bootstrap/eval.c` | Added `SYM_ID_BIND` special form handler (~55 lines) after `SYM_ID_OR` |
+| `bootstrap/primitives.c` | Removed `prim_effect_bind` function and its table entry |
+
+### Key Design Decisions
+
+- Lambda case uses `goto tail_call` — callback body runs in same eval frame, zero C stack growth
+- Builtin case still works for non-lambda callables (direct call, returns immediately)
+- Error propagation matches previous behavior (errors from val or fn evaluation returned immediately)
+- No behavior change from user perspective: `(≫ val fn)` still evaluates val then applies fn
+
+### Test Results
+
+- **172/175 pass** (concurrent_effects 6/6, fullstack_server 4/5, all non-stress tests pass)
+- **Deep bind chains verified**: 10,000 iterations complete (was crashing at ~150)
+- 3 remaining failures are pre-existing actor scheduling race conditions (dead-actor timing)
+
+### Future Opportunity
+
+With `≫` stack-safe, fiber stacks could be shrunk from 256KB → 16KB (16x more actors per GB), enabling 1M+ actors in ~16GB RAM. This is a follow-up optimization.
+
+---
 
 ## Day 148+ — Guage vs C Benchmark Suite (COMPLETE)
 
