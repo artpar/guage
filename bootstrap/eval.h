@@ -17,8 +17,12 @@
 /* Documentation for user-defined functions */
 typedef struct FunctionDoc {
     char* name;                    /* Function name */
+    char* summary;                 /* One-line summary for inlining into parent docs */
     char* description;             /* Auto-generated description */
+    char* flow_info;               /* CFG/DFG derived flow info */
     char* type_signature;          /* Inferred type signature */
+    const char** param_names;      /* Parameter names from lambda (borrowed, not freed) */
+    int arity;                     /* Number of parameters */
     char** dependencies;           /* Array of dependency names */
     size_t dependency_count;       /* Number of dependencies */
     struct FunctionDoc* next;      /* Linked list */

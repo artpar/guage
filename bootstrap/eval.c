@@ -218,7 +218,24 @@ static void extract_dependencies(Cell* expr, SymbolSet* params, DepList* deps) {
 
     /* Pairs - recursively process */
     if (cell_is_pair(expr)) {
-        extract_dependencies(cell_car(expr), params, deps);
+        Cell* head = cell_car(expr);
+        /* Handle :λ-converted — treat params as bound, only process body */
+        if (cell_is_symbol(head) && strcmp(cell_get_symbol(head), ":λ-converted") == 0) {
+            Cell* rest = cell_cdr(expr);
+            if (rest && cell_is_pair(rest)) {
+                Cell* inner_params = cell_car(rest);
+                Cell* body_rest = cell_cdr(rest);
+                /* Add inner params to bound set */
+                SymbolSet* extended = symbol_set_clone(params);
+                extract_lambda_params(inner_params, extended);
+                if (body_rest && cell_is_pair(body_rest)) {
+                    extract_dependencies(cell_car(body_rest), extended, deps);
+                }
+                symbol_set_free(extended);
+                return;
+            }
+        }
+        extract_dependencies(head, params, deps);
         extract_dependencies(cell_cdr(expr), params, deps);
         return;
     }
@@ -279,8 +296,12 @@ FunctionDoc* eval_find_user_doc(const char* name) {
 static FunctionDoc* doc_create(const char* name) {
     FunctionDoc* doc = (FunctionDoc*)malloc(sizeof(FunctionDoc));
     doc->name = strdup(name);
+    doc->summary = NULL;
     doc->description = NULL;
+    doc->flow_info = NULL;
     doc->type_signature = NULL;
+    doc->param_names = NULL;
+    doc->arity = 0;
     doc->dependencies = NULL;
     doc->dependency_count = 0;
     doc->next = NULL;
@@ -381,7 +402,80 @@ static bool returns_bool(Cell* expr) {
     return false;
 }
 
-/* Infer type signature for a lambda - MOST STRONGLY TYPED */
+/* Check if body returns only symbols (like :hot, :cold) in all branches */
+static bool returns_only_symbols(Cell* expr) {
+    if (!expr) return false;
+    if (cell_is_symbol(expr)) {
+        const char* s = cell_get_symbol(expr);
+        return (s[0] == ':');  /* keyword symbols */
+    }
+    /* In a conditional, check both branches */
+    if (cell_is_pair(expr)) {
+        Cell* func = cell_car(expr);
+        if (cell_is_symbol(func) && strcmp(cell_get_symbol(func), "?") == 0) {
+            Cell* args = cell_cdr(expr);
+            if (args && cell_is_pair(args)) {
+                Cell* rest = cell_cdr(args);
+                if (rest && cell_is_pair(rest)) {
+                    Cell* then_branch = cell_car(rest);
+                    Cell* else_rest = cell_cdr(rest);
+                    if (else_rest && cell_is_pair(else_rest)) {
+                        Cell* else_branch = cell_car(else_rest);
+                        return returns_only_symbols(then_branch) &&
+                               returns_only_symbols(else_branch);
+                    }
+                }
+            }
+        }
+        /* Quoted symbol */
+        if (cell_is_symbol(func) && strcmp(cell_get_symbol(func), "⌜") == 0) {
+            Cell* qrest = cell_cdr(expr);
+            if (qrest && cell_is_pair(qrest)) {
+                Cell* qv = cell_car(qrest);
+                if (cell_is_symbol(qv)) {
+                    const char* s = cell_get_symbol(qv);
+                    return (s[0] == ':');
+                }
+            }
+        }
+    }
+    return false;
+}
+
+/* Check if body contains ∅? test + ∅ base case (list recursion pattern) */
+static bool has_nil_base_case(Cell* expr) {
+    if (!expr || !cell_is_pair(expr)) return false;
+    Cell* func = cell_car(expr);
+    if (cell_is_symbol(func) && strcmp(cell_get_symbol(func), "?") == 0) {
+        Cell* args = cell_cdr(expr);
+        if (args && cell_is_pair(args)) {
+            Cell* cond = cell_car(args);
+            /* Check if condition is (∅? ...) */
+            if (cell_is_pair(cond)) {
+                Cell* cf = cell_car(cond);
+                if (cell_is_symbol(cf) && strcmp(cell_get_symbol(cf), "∅?") == 0) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+/* Check if body uses ⟨⟩ (cons) for list construction */
+static bool uses_cons(Cell* expr) {
+    if (!expr) return false;
+    if (cell_is_symbol(expr) && strcmp(cell_get_symbol(expr), "⟨⟩") == 0) return true;
+    if (cell_is_pair(expr)) {
+        return uses_cons(cell_car(expr)) || uses_cons(cell_cdr(expr));
+    }
+    return false;
+}
+
+/* Forward declaration */
+static bool param_used_as_function(Cell* expr, int param_index);
+
+/* Infer type signature for a lambda */
 static void doc_infer_type(FunctionDoc* doc, Cell* lambda) {
     if (!lambda || !cell_is_lambda(lambda)) {
         doc->type_signature = strdup("unknown");
@@ -390,10 +484,30 @@ static void doc_infer_type(FunctionDoc* doc, Cell* lambda) {
 
     int param_count = count_lambda_params(lambda);
     Cell* body = lambda->data.lambda.body;
+    const char* name = doc->name;
 
     char buf[256] = "";
 
-    /* Infer the MOST SPECIFIC type based on body structure */
+    /* Identity: body is De Bruijn index 0, single param → α → α */
+    if (cell_is_number(body) && cell_get_number(body) == 0.0 && param_count == 1) {
+        doc->type_signature = strdup("α → α");
+        return;
+    }
+
+    /* Name ends with ? → predicate: ... → 𝔹 */
+    if (name) {
+        size_t nlen = strlen(name);
+        if (nlen > 0 && name[nlen - 1] == '?') {
+            for (int i = 0; i < param_count; i++) {
+                if (i > 0) strcat(buf, " → ");
+                strcat(buf, "α");
+            }
+            if (param_count > 0) strcat(buf, " → ");
+            strcat(buf, "𝔹");
+            doc->type_signature = strdup(buf);
+            return;
+        }
+    }
 
     /* Check if only uses arithmetic - strongest type: ℕ → ℕ */
     if (uses_only_arithmetic(body)) {
@@ -419,29 +533,105 @@ static void doc_infer_type(FunctionDoc* doc, Cell* lambda) {
         return;
     }
 
-    /* Check if body is a conditional - might return bool or same type */
+    /* Returns only keyword symbols → ... → Symbol */
+    if (returns_only_symbols(body)) {
+        for (int i = 0; i < param_count; i++) {
+            if (i > 0) strcat(buf, " → ");
+            strcat(buf, "α");
+        }
+        if (param_count > 0) strcat(buf, " → ");
+        strcat(buf, "Symbol");
+        doc->type_signature = strdup(buf);
+        return;
+    }
+
+    /* Check if body is a conditional */
     if (cell_is_pair(body)) {
         Cell* func = cell_car(body);
         if (cell_is_symbol(func) && strcmp(cell_get_symbol(func), "?") == 0) {
-            /* Conditional - check branches */
             Cell* args = cell_cdr(body);
             if (args && cell_is_pair(args)) {
                 Cell* rest = cell_cdr(args);
                 if (rest && cell_is_pair(rest)) {
                     Cell* then_branch = cell_car(rest);
-                    /* If then branch is number, likely returns number */
+                    /* If then branch is a literal number (not a De Bruijn index), returns number.
+                     * De Bruijn indices are small integers < param_count, skip those. */
                     if (then_branch && cell_is_number(then_branch)) {
-                        for (int i = 0; i < param_count; i++) {
-                            if (i > 0) strcat(buf, " → ");
+                        double tv = cell_get_number(then_branch);
+                        /* Skip De Bruijn indices (small integers that are param refs) */
+                        if (tv < 0 || tv >= param_count || tv != (int)tv) {
+                            for (int i = 0; i < param_count; i++) {
+                                if (i > 0) strcat(buf, " → ");
+                                strcat(buf, "ℕ");
+                            }
+                            if (param_count > 0) strcat(buf, " → ");
                             strcat(buf, "ℕ");
+                            doc->type_signature = strdup(buf);
+                            return;
                         }
-                        if (param_count > 0) strcat(buf, " → ");
-                        strcat(buf, "ℕ");
-                        doc->type_signature = strdup(buf);
-                        return;
                     }
                 }
             }
+        }
+    }
+
+    /* List recursive pattern: ∅? base case + cons → List → List */
+    if (has_nil_base_case(body) && uses_cons(body)) {
+        /* Check param count to determine: map/filter pattern or single-list fn */
+        if (param_count == 2) {
+            /* Higher-order list function or two-arg list function */
+            /* Check if first param is used as function */
+            bool first_is_fn = false;
+            if (cell_is_pair(body)) {
+                first_is_fn = param_used_as_function(body, 0);
+            }
+            if (first_is_fn) {
+                doc->type_signature = strdup("(α → β) → List → List");
+                return;
+            }
+            doc->type_signature = strdup("List → List → List");
+            return;
+        }
+        if (param_count == 1) {
+            doc->type_signature = strdup("List → List");
+            return;
+        }
+        if (param_count == 3) {
+            /* fold pattern */
+            doc->type_signature = strdup("(α → β → α) → α → List → α");
+            return;
+        }
+    }
+
+    /* List recursive with nil base, no cons */
+    if (has_nil_base_case(body) && !uses_cons(body)) {
+        if (param_count == 1) {
+            doc->type_signature = strdup("List → ℕ");
+            return;
+        }
+        if (param_count == 3) {
+            /* fold pattern: (f acc lst) → acc when nil */
+            doc->type_signature = strdup("(α → β → α) → α → List → α");
+            return;
+        }
+        if (param_count == 2) {
+            /* Two-arg list function returning accumulated value */
+            doc->type_signature = strdup("α → List → α");
+            return;
+        }
+    }
+
+    /* Higher-order: first param used as function → (α → β) → ... */
+    if (param_count >= 1) {
+        bool first_is_fn = param_used_as_function(body, 0);
+        if (first_is_fn) {
+            strcpy(buf, "(α → β)");
+            for (int i = 1; i < param_count; i++) {
+                strcat(buf, " → α");
+            }
+            strcat(buf, " → β");
+            doc->type_signature = strdup(buf);
+            return;
         }
     }
 
@@ -461,205 +651,78 @@ static void doc_infer_type(FunctionDoc* doc, Cell* lambda) {
 #define MAX_DESC_LENGTH 2048
 #define MAX_RECURSION_DEPTH 15
 
+/* Context passed through description composition */
+typedef struct {
+    EvalContext* eval_ctx;
+    const char** param_names;  /* Real param names from lambda */
+    int arity;                 /* Number of params */
+    const char* self_name;     /* Name of the function being documented (for recursion detection) */
+} DocComposeCtx;
+
 /* Forward declarations */
-static char* compose_expr_description(EvalContext* ctx, Cell* expr, SymbolSet* params, int depth);
-static char* compose_conditional_description(EvalContext* ctx, Cell* args, SymbolSet* params, int depth);
-static char* compose_binary_op_description(EvalContext* ctx, const char* op_name,
-                                           Cell* args, SymbolSet* params, int depth);
+static char* compose_desc(DocComposeCtx* dctx, Cell* expr, int depth);
 
-/* Recursively compose human-readable description from expression AST */
-static char* compose_expr_description(EvalContext* ctx, Cell* expr, SymbolSet* params, int depth) {
-    if (depth > MAX_RECURSION_DEPTH) {
-        return strdup("(deeply nested expression)");
-    }
-
-    if (!expr) return strdup("nil");
-
-    /* Number - might be De Bruijn index or literal */
-    if (cell_is_number(expr)) {
-        double num = cell_get_number(expr);
-        /* De Bruijn indices are small non-negative integers in lambda bodies */
-        /* Heuristic: if it's 0-9 and integer, treat as parameter reference */
-        if (num >= 0 && num < 10 && num == (int)num) {
-            /* Likely a De Bruijn index - convert to param name */
-            int index = (int)num;
-            char buf[64];
-            /* Use more natural names */
-            switch (index) {
-                case 0: strcpy(buf, "the argument"); break;
-                case 1: strcpy(buf, "second argument"); break;
-                case 2: strcpy(buf, "third argument"); break;
-                default: snprintf(buf, sizeof(buf), "argument %d", index + 1); break;
-            }
-            return strdup(buf);
-        } else {
-            /* Literal number */
-            char buf[64];
-            snprintf(buf, sizeof(buf), "%.0f", num);
-            return strdup(buf);
-        }
-    }
-
-    /* Boolean */
-    if (cell_is_bool(expr)) {
-        return strdup(cell_get_bool(expr) ? "true" : "false");
-    }
-
-    /* Nil */
-    if (cell_is_nil(expr)) {
-        return strdup("nil");
-    }
-
-    /* Symbol */
-    if (cell_is_symbol(expr)) {
-        const char* sym = cell_get_symbol(expr);
-
-        /* Check if it's a parameter */
-        if (symbol_set_contains(params, sym)) {
-            return strdup(sym);
-        }
-
-        /* Check if it's a primitive */
-        const Primitive* prim = primitive_lookup_by_name(sym);
-        if (prim && prim->doc.description) {
-            /* Return simplified description */
-            return strdup(sym);  /* Just return the symbol name for brevity */
-        }
-
-        /* Check if it's a user function */
-        FunctionDoc* user_doc = doc_find(ctx, sym);
-        if (user_doc) {
-            return strdup(sym);  /* Return function name */
-        }
-
-        return strdup(sym);
-    }
-
-    /* Pair (function application) */
-    if (cell_is_pair(expr)) {
-        Cell* func = cell_car(expr);
-        Cell* args = cell_cdr(expr);
-
-        /* Special pattern matching for known constructs */
-        if (cell_is_symbol(func)) {
-            const char* func_name = cell_get_symbol(func);
-
-            /* Quote-wrapped number literal: (⌜ n) -> just return the number */
-            if (strcmp(func_name, "⌜") == 0) {
-                if (args && cell_is_pair(args)) {
-                    Cell* quoted_val = cell_car(args);
-                    if (cell_is_number(quoted_val)) {
-                        char buf[64];
-                        snprintf(buf, sizeof(buf), "%.0f", cell_get_number(quoted_val));
-                        return strdup(buf);
-                    }
-                }
-                /* Fallthrough for other quoted values */
-            }
-
-            /* Conditional: (? cond then else) */
-            if (strcmp(func_name, "?") == 0) {
-                return compose_conditional_description(ctx, args, params, depth);
-            }
-
-            /* Binary operators */
-            if (strcmp(func_name, "⊗") == 0) {
-                return compose_binary_op_description(ctx, "multiply", args, params, depth);
-            }
-            if (strcmp(func_name, "⊕") == 0) {
-                return compose_binary_op_description(ctx, "add", args, params, depth);
-            }
-            if (strcmp(func_name, "⊖") == 0) {
-                return compose_binary_op_description(ctx, "subtract", args, params, depth);
-            }
-            if (strcmp(func_name, "⊘") == 0) {
-                return compose_binary_op_description(ctx, "divide", args, params, depth);
-            }
-            if (strcmp(func_name, "≡") == 0) {
-                return compose_binary_op_description(ctx, "equals", args, params, depth);
-            }
-            if (strcmp(func_name, "≢") == 0) {
-                return compose_binary_op_description(ctx, "not equals", args, params, depth);
-            }
-            if (strcmp(func_name, "<") == 0) {
-                return compose_binary_op_description(ctx, "less than", args, params, depth);
-            }
-            if (strcmp(func_name, ">") == 0) {
-                return compose_binary_op_description(ctx, "greater than", args, params, depth);
-            }
-            if (strcmp(func_name, "≤") == 0) {
-                return compose_binary_op_description(ctx, "less than or equal", args, params, depth);
-            }
-            if (strcmp(func_name, "≥") == 0) {
-                return compose_binary_op_description(ctx, "greater than or equal", args, params, depth);
-            }
-            if (strcmp(func_name, "∧") == 0) {
-                return compose_binary_op_description(ctx, "and", args, params, depth);
-            }
-            if (strcmp(func_name, "∨") == 0) {
-                return compose_binary_op_description(ctx, "or", args, params, depth);
-            }
-        }
-
-        /* Generic application: apply func to args */
-        char* func_desc = compose_expr_description(ctx, func, params, depth + 1);
-
-        /* Compose args */
-        char args_buf[512] = "";
-        Cell* arg_list = args;
-        bool first = true;
-        while (arg_list && cell_is_pair(arg_list)) {
-            char* arg_desc = compose_expr_description(ctx, cell_car(arg_list), params, depth + 1);
-            if (!first) strncat(args_buf, " and ", sizeof(args_buf) - strlen(args_buf) - 1);
-            strncat(args_buf, arg_desc, sizeof(args_buf) - strlen(args_buf) - 1);
-            free(arg_desc);
-            first = false;
-            arg_list = cell_cdr(arg_list);
-        }
-
-        char result[MAX_DESC_LENGTH];
-        snprintf(result, sizeof(result), "apply %s to %s", func_desc, args_buf);
-        free(func_desc);
-        return strdup(result);
-    }
-
-    /* Lambda */
-    if (cell_is_lambda(expr)) {
-        /* Don't recurse into nested lambdas for now */
-        return strdup("(nested lambda)");
-    }
-
-    return strdup("(unknown)");
+/* Get infix operator symbol for binary ops, or NULL if not a binary op */
+static const char* get_infix_op(const char* sym) {
+    if (strcmp(sym, "⊗") == 0) return "*";
+    if (strcmp(sym, "⊕") == 0) return "+";
+    if (strcmp(sym, "⊖") == 0) return "-";
+    if (strcmp(sym, "⊘") == 0) return "/";
+    if (strcmp(sym, "≡") == 0) return "==";
+    if (strcmp(sym, "≢") == 0) return "!=";
+    if (strcmp(sym, "<") == 0) return "<";
+    if (strcmp(sym, ">") == 0) return ">";
+    if (strcmp(sym, "≤") == 0) return "<=";
+    if (strcmp(sym, "≥") == 0) return ">=";
+    if (strcmp(sym, "∧") == 0) return "and";
+    if (strcmp(sym, "∨") == 0) return "or";
+    if (strcmp(sym, "%") == 0) return "%";
+    return NULL;
 }
 
-/* Compose conditional description: (? cond then else) */
-static char* compose_conditional_description(EvalContext* ctx, Cell* args,
-                                             SymbolSet* params, int depth) {
-    if (!args || !cell_is_pair(args)) {
-        return strdup("(malformed conditional)");
-    }
+/* Check if a symbol is the :λ-converted marker */
+static bool is_lambda_converted(Cell* expr) {
+    return cell_is_symbol(expr) &&
+           strcmp(cell_get_symbol(expr), ":λ-converted") == 0;
+}
+
+/* Compose a conditional expression as Python-like pseudocode */
+static char* compose_cond_desc(DocComposeCtx* dctx, Cell* args, int depth) {
+    if (!args || !cell_is_pair(args)) return strdup("???");
 
     Cell* cond = cell_car(args);
     Cell* rest = cell_cdr(args);
-    if (!rest || !cell_is_pair(rest)) {
-        return strdup("(malformed conditional)");
-    }
+    if (!rest || !cell_is_pair(rest)) return strdup("???");
 
     Cell* then_branch = cell_car(rest);
     Cell* else_rest = cell_cdr(rest);
-    if (!else_rest || !cell_is_pair(else_rest)) {
-        return strdup("(malformed conditional)");
-    }
+    if (!else_rest || !cell_is_pair(else_rest)) return strdup("???");
 
     Cell* else_branch = cell_car(else_rest);
 
-    char* cond_desc = compose_expr_description(ctx, cond, params, depth + 1);
-    char* then_desc = compose_expr_description(ctx, then_branch, params, depth + 1);
-    char* else_desc = compose_expr_description(ctx, else_branch, params, depth + 1);
+    char* cond_desc = compose_desc(dctx, cond, depth + 1);
+    char* then_desc = compose_desc(dctx, then_branch, depth + 1);
+    char* else_desc = compose_desc(dctx, else_branch, depth + 1);
 
     char result[MAX_DESC_LENGTH];
-    snprintf(result, sizeof(result), "if %s then %s else %s",
-             cond_desc, then_desc, else_desc);
+
+    /* Check if else branch is another conditional (chained) */
+    bool else_is_cond = false;
+    if (cell_is_pair(else_branch)) {
+        Cell* ef = cell_car(else_branch);
+        if (cell_is_symbol(ef) && strcmp(cell_get_symbol(ef), "?") == 0) {
+            else_is_cond = true;
+        }
+    }
+
+    if (else_is_cond) {
+        /* Chained: "then_desc if cond_desc, elif ..." */
+        snprintf(result, sizeof(result), "%s if %s, %s",
+                 then_desc, cond_desc, else_desc);
+    } else {
+        snprintf(result, sizeof(result), "%s if %s else %s",
+                 then_desc, cond_desc, else_desc);
+    }
 
     free(cond_desc);
     free(then_desc);
@@ -667,49 +730,485 @@ static char* compose_conditional_description(EvalContext* ctx, Cell* args,
     return strdup(result);
 }
 
-/* Compose binary operation description */
-static char* compose_binary_op_description(EvalContext* ctx, const char* op_name,
-                                          Cell* args, SymbolSet* params, int depth) {
-    if (!args || !cell_is_pair(args)) {
-        return strdup("(malformed binary op)");
+/* Recursively compose Python-like pseudocode description from expression AST */
+static char* compose_desc(DocComposeCtx* dctx, Cell* expr, int depth) {
+    if (depth > MAX_RECURSION_DEPTH) {
+        return strdup("...");
     }
 
-    Cell* left = cell_car(args);
-    Cell* rest = cell_cdr(args);
-    if (!rest || !cell_is_pair(rest)) {
-        return strdup("(malformed binary op)");
+    if (!expr) return strdup("nil");
+
+    /* Integer */
+    if (cell_is_integer(expr)) {
+        char buf[64];
+        snprintf(buf, sizeof(buf), "%lld", (long long)cell_get_integer(expr));
+        return strdup(buf);
     }
 
-    Cell* right = cell_car(rest);
+    /* Number - might be De Bruijn index or literal */
+    if (cell_is_number(expr)) {
+        double num = cell_get_number(expr);
+        /* De Bruijn indices are small non-negative integers in lambda bodies */
+        if (num >= 0 && num < dctx->arity && num == (int)num) {
+            int index = (int)num;
+            if (dctx->param_names && index < dctx->arity) {
+                return strdup(dctx->param_names[index]);
+            }
+            /* Fallback if no param names */
+            char buf[32];
+            snprintf(buf, sizeof(buf), "arg%d", index);
+            return strdup(buf);
+        } else if (num >= 0 && num < 10 && num == (int)num && !dctx->param_names) {
+            /* Legacy fallback for functions without stored param names */
+            int index = (int)num;
+            char buf[32];
+            snprintf(buf, sizeof(buf), "arg%d", index);
+            return strdup(buf);
+        } else {
+            char buf[64];
+            if (num == (int)num) {
+                snprintf(buf, sizeof(buf), "%.0f", num);
+            } else {
+                snprintf(buf, sizeof(buf), "%g", num);
+            }
+            return strdup(buf);
+        }
+    }
 
-    char* left_desc = compose_expr_description(ctx, left, params, depth + 1);
-    char* right_desc = compose_expr_description(ctx, right, params, depth + 1);
+    /* Boolean */
+    if (cell_is_bool(expr)) {
+        return strdup(cell_get_bool(expr) ? "True" : "False");
+    }
 
-    char result[MAX_DESC_LENGTH];
-    snprintf(result, sizeof(result), "%s %s and %s", op_name, left_desc, right_desc);
+    /* Nil */
+    if (cell_is_nil(expr)) {
+        return strdup("[]");
+    }
 
-    free(left_desc);
-    free(right_desc);
-    return strdup(result);
+    /* Symbol */
+    if (cell_is_symbol(expr)) {
+        const char* sym = cell_get_symbol(expr);
+        /* Filter out ∅ as empty list */
+        if (strcmp(sym, "∅") == 0) return strdup("[]");
+        return strdup(sym);
+    }
+
+    /* String */
+    if (cell_is_string(expr)) {
+        const char* s = cell_get_string(expr);
+        char buf[256];
+        snprintf(buf, sizeof(buf), "\"%s\"", s);
+        return strdup(buf);
+    }
+
+    /* Pair (function application) */
+    if (cell_is_pair(expr)) {
+        Cell* func = cell_car(expr);
+        Cell* args = cell_cdr(expr);
+
+        if (cell_is_symbol(func)) {
+            const char* fn = cell_get_symbol(func);
+
+            /* :λ-converted — suppress marker, describe inner body with merged scope */
+            if (strcmp(fn, ":λ-converted") == 0) {
+                /* (:λ-converted (params) body) — describe body with extended param scope */
+                if (args && cell_is_pair(args)) {
+                    Cell* inner_params = cell_car(args);
+                    Cell* inner_rest = cell_cdr(args);
+                    if (inner_rest && cell_is_pair(inner_rest)) {
+                        /* Build merged param names: [inner_params..., outer_params...] */
+                        int inner_count = list_length(inner_params);
+                        int total = inner_count + dctx->arity;
+                        const char** merged = (const char**)malloc(total * sizeof(char*));
+                        /* Inner params first (De Bruijn 0..inner_count-1) */
+                        Cell* p = inner_params;
+                        for (int i = 0; i < inner_count && cell_is_pair(p); i++) {
+                            Cell* ps = cell_car(p);
+                            merged[i] = cell_is_symbol(ps) ? cell_get_symbol(ps) : "?";
+                            p = cell_cdr(p);
+                        }
+                        /* Outer params next (De Bruijn inner_count..total-1) */
+                        for (int i = 0; i < dctx->arity; i++) {
+                            merged[inner_count + i] = dctx->param_names ? dctx->param_names[i] : "?";
+                        }
+                        DocComposeCtx inner_dctx;
+                        inner_dctx.eval_ctx = dctx->eval_ctx;
+                        inner_dctx.param_names = merged;
+                        inner_dctx.arity = total;
+                        inner_dctx.self_name = dctx->self_name;
+                        char* result = compose_desc(&inner_dctx, cell_car(inner_rest), depth);
+                        free(merged);
+                        return result;
+                    }
+                }
+                return strdup("lambda(...)");
+            }
+
+            /* Quote: (⌜ val) → literal value */
+            if (strcmp(fn, "⌜") == 0) {
+                if (args && cell_is_pair(args)) {
+                    Cell* qv = cell_car(args);
+                    if (cell_is_number(qv)) {
+                        char buf[64];
+                        double num = cell_get_number(qv);
+                        if (num == (int)num)
+                            snprintf(buf, sizeof(buf), "%.0f", num);
+                        else
+                            snprintf(buf, sizeof(buf), "%g", num);
+                        return strdup(buf);
+                    }
+                    if (cell_is_symbol(qv)) {
+                        return strdup(cell_get_symbol(qv));
+                    }
+                    if (cell_is_string(qv)) {
+                        char buf[256];
+                        snprintf(buf, sizeof(buf), "\"%s\"", cell_get_string(qv));
+                        return strdup(buf);
+                    }
+                    if (cell_is_nil(qv)) return strdup("[]");
+                    if (cell_is_bool(qv)) return strdup(cell_get_bool(qv) ? "True" : "False");
+                    return compose_desc(dctx, qv, depth + 1);
+                }
+                return strdup("(quoted)");
+            }
+
+            /* Sequence: (⪢ e1 e2 ...) → "e1; e2; ..." */
+            if (strcmp(fn, "⪢") == 0) {
+                char result[MAX_DESC_LENGTH] = "";
+                Cell* arg_list = args;
+                bool first = true;
+                while (arg_list && cell_is_pair(arg_list)) {
+                    char* d = compose_desc(dctx, cell_car(arg_list), depth + 1);
+                    if (!first) strncat(result, "; ", sizeof(result) - strlen(result) - 1);
+                    strncat(result, d, sizeof(result) - strlen(result) - 1);
+                    free(d);
+                    first = false;
+                    arg_list = cell_cdr(arg_list);
+                }
+                return strdup(result);
+            }
+
+            /* Conditional: (? cond then else) */
+            if (strcmp(fn, "?") == 0) {
+                return compose_cond_desc(dctx, args, depth);
+            }
+
+            /* Negation: (¬ x) → "not x" */
+            if (strcmp(fn, "¬") == 0) {
+                if (args && cell_is_pair(args)) {
+                    char* operand = compose_desc(dctx, cell_car(args), depth + 1);
+                    char result[MAX_DESC_LENGTH];
+                    snprintf(result, sizeof(result), "not %s", operand);
+                    free(operand);
+                    return strdup(result);
+                }
+            }
+
+            /* Binary infix operators */
+            const char* infix = get_infix_op(fn);
+            if (infix && args && cell_is_pair(args)) {
+                Cell* left = cell_car(args);
+                Cell* rest = cell_cdr(args);
+                if (rest && cell_is_pair(rest)) {
+                    Cell* right = cell_car(rest);
+                    char* l = compose_desc(dctx, left, depth + 1);
+                    char* r = compose_desc(dctx, right, depth + 1);
+                    char result[MAX_DESC_LENGTH];
+                    snprintf(result, sizeof(result), "%s %s %s", l, infix, r);
+                    free(l);
+                    free(r);
+                    return strdup(result);
+                }
+            }
+
+            /* Pair construction: (⟨⟩ a b) → "cons(a, b)" */
+            if (strcmp(fn, "⟨⟩") == 0 && args && cell_is_pair(args)) {
+                Cell* head = cell_car(args);
+                Cell* tail_rest = cell_cdr(args);
+                if (tail_rest && cell_is_pair(tail_rest)) {
+                    char* h = compose_desc(dctx, head, depth + 1);
+                    char* t = compose_desc(dctx, cell_car(tail_rest), depth + 1);
+                    char result[MAX_DESC_LENGTH];
+                    snprintf(result, sizeof(result), "cons(%s, %s)", h, t);
+                    free(h);
+                    free(t);
+                    return strdup(result);
+                }
+            }
+
+            /* Effect operations: special descriptions */
+            if (strcmp(fn, "←?") == 0) return strdup("receive()");
+            if (strcmp(fn, "→!") == 0) {
+                if (args && cell_is_pair(args)) {
+                    char* target = compose_desc(dctx, cell_car(args), depth + 1);
+                    Cell* msg_rest = cell_cdr(args);
+                    if (msg_rest && cell_is_pair(msg_rest)) {
+                        char* msg = compose_desc(dctx, cell_car(msg_rest), depth + 1);
+                        char result[MAX_DESC_LENGTH];
+                        snprintf(result, sizeof(result), "send(%s, %s)", target, msg);
+                        free(target);
+                        free(msg);
+                        return strdup(result);
+                    }
+                    free(target);
+                }
+                return strdup("send(...)");
+            }
+            if (strcmp(fn, "↯") == 0) return strdup("raise(...)");
+            if (strcmp(fn, "⟪") == 0) return strdup("perform(...)");
+
+            /* General function call: f(arg1, arg2, ...) */
+            /* Check if this is a self-recursive call */
+            bool is_self = (dctx->self_name && strcmp(fn, dctx->self_name) == 0);
+
+            char args_buf[1024] = "";
+            Cell* arg_list = args;
+            bool first = true;
+            while (arg_list && cell_is_pair(arg_list)) {
+                Cell* arg_expr = cell_car(arg_list);
+                /* Skip :λ-converted appearing as an argument (suppress) */
+                if (is_lambda_converted(arg_expr)) {
+                    arg_list = cell_cdr(arg_list);
+                    continue;
+                }
+                char* d = compose_desc(dctx, arg_expr, depth + 1);
+                if (!first) strncat(args_buf, ", ", sizeof(args_buf) - strlen(args_buf) - 1);
+                strncat(args_buf, d, sizeof(args_buf) - strlen(args_buf) - 1);
+                free(d);
+                first = false;
+                arg_list = cell_cdr(arg_list);
+            }
+
+            char result[MAX_DESC_LENGTH];
+            snprintf(result, sizeof(result), "%s(%s)", fn, args_buf);
+            return strdup(result);
+        }
+
+        /* Non-symbol function (e.g., a parameter used as a function) */
+        char* func_desc = compose_desc(dctx, func, depth + 1);
+
+        char args_buf[1024] = "";
+        Cell* arg_list = args;
+        bool first = true;
+        while (arg_list && cell_is_pair(arg_list)) {
+            char* d = compose_desc(dctx, cell_car(arg_list), depth + 1);
+            if (!first) strncat(args_buf, ", ", sizeof(args_buf) - strlen(args_buf) - 1);
+            strncat(args_buf, d, sizeof(args_buf) - strlen(args_buf) - 1);
+            free(d);
+            first = false;
+            arg_list = cell_cdr(arg_list);
+        }
+
+        char result[MAX_DESC_LENGTH];
+        snprintf(result, sizeof(result), "%s(%s)", func_desc, args_buf);
+        free(func_desc);
+        return strdup(result);
+    }
+
+    /* Lambda */
+    if (cell_is_lambda(expr)) {
+        return strdup("lambda(...)");
+    }
+
+    return strdup("???");
+}
+
+/* Noisy dependency symbols to filter out (control flow, not meaningful deps) */
+static bool is_noise_dep(const char* name) {
+    if (!name) return true;
+    /* Control flow */
+    if (strcmp(name, "?") == 0 || strcmp(name, "⌜") == 0 ||
+        strcmp(name, "⪢") == 0 || strcmp(name, "≔") == 0 ||
+        strcmp(name, ":λ-converted") == 0 || strcmp(name, "⌜⌝") == 0)
+        return true;
+    /* Nil literal */
+    if (strcmp(name, "∅") == 0) return true;
+    /* Keyword symbols (like :hot, :cold) — values, not deps */
+    if (name[0] == ':') return true;
+    return false;
+}
+
+/* Count branch nodes (? conditionals) in expression */
+static int count_branches(Cell* expr) {
+    if (!expr || !cell_is_pair(expr)) return 0;
+    Cell* func = cell_car(expr);
+    int count = 0;
+    if (cell_is_symbol(func) && strcmp(cell_get_symbol(func), "?") == 0) {
+        count = 1;
+        /* Count in else branch for chained conditionals */
+        Cell* rest = cell_cdr(expr);
+        if (rest && cell_is_pair(rest)) {
+            Cell* rest2 = cell_cdr(rest);
+            if (rest2 && cell_is_pair(rest2)) {
+                Cell* rest3 = cell_cdr(rest2);
+                if (rest3 && cell_is_pair(rest3)) {
+                    count += count_branches(cell_car(rest3));
+                }
+            }
+        }
+    }
+    /* Also check sub-expressions */
+    Cell* iter = expr;
+    while (cell_is_pair(iter)) {
+        if (cell_is_pair(cell_car(iter))) {
+            count += count_branches(cell_car(iter));
+        }
+        iter = cell_cdr(iter);
+    }
+    return count;
+}
+
+/* Check if body contains a self-recursive call */
+static bool has_self_call(Cell* expr, const char* self_name) {
+    if (!expr || !self_name) return false;
+    if (cell_is_symbol(expr) && strcmp(cell_get_symbol(expr), self_name) == 0) return true;
+    if (cell_is_pair(expr)) {
+        return has_self_call(cell_car(expr), self_name) ||
+               has_self_call(cell_cdr(expr), self_name);
+    }
+    return false;
+}
+
+/* Check if body contains effect operations */
+static bool has_effects(Cell* expr) {
+    if (!expr) return false;
+    if (cell_is_symbol(expr)) {
+        const char* s = cell_get_symbol(expr);
+        return (strcmp(s, "↯") == 0 || strcmp(s, "⟪") == 0 ||
+                strcmp(s, "←?") == 0 || strcmp(s, "→!") == 0 ||
+                strcmp(s, "⟪⟫") == 0 || strcmp(s, "⟪↺⟫") == 0);
+    }
+    if (cell_is_pair(expr)) {
+        return has_effects(cell_car(expr)) || has_effects(cell_cdr(expr));
+    }
+    return false;
+}
+
+/* Check if a De Bruijn indexed arg is used in function position (higher-order) */
+static bool param_used_as_function(Cell* expr, int param_index) {
+    if (!expr || !cell_is_pair(expr)) return false;
+    Cell* func = cell_car(expr);
+    if (cell_is_number(func)) {
+        double num = cell_get_number(func);
+        if (num == param_index) return true;
+    }
+    /* Recurse into sub-expressions */
+    Cell* iter = expr;
+    while (cell_is_pair(iter)) {
+        if (param_used_as_function(cell_car(iter), param_index)) return true;
+        iter = cell_cdr(iter);
+    }
+    return false;
+}
+
+/* Generate flow info string from body analysis */
+static char* generate_flow_info(Cell* body, const char* self_name, int arity) {
+    char buf[512] = "";
+    int branches = count_branches(body);
+    bool recursive = has_self_call(body, self_name);
+    bool effects = has_effects(body);
+    bool higher_order = false;
+
+    for (int i = 0; i < arity; i++) {
+        if (param_used_as_function(body, i)) {
+            higher_order = true;
+            break;
+        }
+    }
+
+    bool need_sep = false;
+
+    if (recursive) {
+        strcat(buf, "self-recursive");
+        need_sep = true;
+    }
+
+    if (branches > 0) {
+        if (need_sep) strcat(buf, ", ");
+        char tmp[64];
+        if (branches == 1)
+            snprintf(tmp, sizeof(tmp), "1 branch");
+        else
+            snprintf(tmp, sizeof(tmp), "%d branches", branches);
+        strcat(buf, tmp);
+        need_sep = true;
+    }
+
+    if (higher_order) {
+        if (need_sep) strcat(buf, ", ");
+        strcat(buf, "higher-order");
+        need_sep = true;
+    }
+
+    if (effects) {
+        if (need_sep) strcat(buf, ", ");
+        strcat(buf, "effectful");
+        need_sep = true;
+    }
+
+    if (buf[0] == '\0') return NULL;
+    return strdup(buf);
 }
 
 /* Generate description from body using recursive composition */
-static void doc_generate_description(EvalContext* ctx, FunctionDoc* doc, Cell* body) {
+static void doc_generate_description(EvalContext* ctx, FunctionDoc* doc, Cell* body,
+                                     const char** param_names, int arity, const char* self_name) {
     /* Extract dependencies from the body */
     SymbolSet* params = symbol_set_create();
     DepList* deps = dep_list_create();
     extract_dependencies(body, params, deps);
 
-    /* Store dependencies - transfer ownership of strings */
-    doc->dependency_count = deps->count;
-    doc->dependencies = deps->names;  /* Transfer ownership of array AND strings */
+    /* Filter noisy dependencies */
+    DepList* filtered = dep_list_create();
+    for (size_t i = 0; i < deps->count; i++) {
+        if (!is_noise_dep(deps->names[i])) {
+            dep_list_add(filtered, deps->names[i]);
+        }
+    }
+    /* Free original deps */
+    for (size_t i = 0; i < deps->count; i++) free(deps->names[i]);
+    free(deps->names);
+    free(deps);
 
-    /* Recursively compose description from body structure */
-    doc->description = compose_expr_description(ctx, body, params, 0);
+    /* Store filtered dependencies */
+    doc->dependency_count = filtered->count;
+    doc->dependencies = filtered->names;
+    free(filtered);
+
+    /* Store param info on doc */
+    doc->param_names = param_names;
+    doc->arity = arity;
+
+    /* Set up composition context */
+    DocComposeCtx dctx;
+    dctx.eval_ctx = ctx;
+    dctx.param_names = param_names;
+    dctx.arity = arity;
+    dctx.self_name = self_name;
+
+    /* Special pattern: identity (body == De Bruijn index 0) */
+    if (cell_is_number(body) && cell_get_number(body) == 0.0 && arity == 1) {
+        const char* pn = (param_names && arity > 0) ? param_names[0] : "x";
+        char buf[128];
+        snprintf(buf, sizeof(buf), "return %s unchanged", pn);
+        doc->description = strdup(buf);
+    }
+    /* Special pattern: constant (body is a literal with no param refs) */
+    else if ((cell_is_bool(body) || cell_is_nil(body) || cell_is_string(body)) && arity > 0) {
+        char* val = compose_desc(&dctx, body, 0);
+        char buf[256];
+        snprintf(buf, sizeof(buf), "always returns %s", val);
+        doc->description = strdup(buf);
+        free(val);
+    }
+    else {
+        doc->description = compose_desc(&dctx, body, 0);
+    }
+
+    /* Generate flow info */
+    doc->flow_info = generate_flow_info(body, self_name, arity);
 
     symbol_set_free(params);
-    /* Free the DepList struct but NOT the array (doc owns it now) */
-    free(deps);
 }
 
 /* ============ End Documentation API ============ */
@@ -735,8 +1234,11 @@ static void doc_free_all(FunctionDoc* head) {
     while (head) {
         FunctionDoc* next = head->next;
         free(head->name);
+        free(head->summary);
         free(head->description);
+        free(head->flow_info);
         free(head->type_signature);
+        /* param_names are borrowed from lambda, not freed here */
         for (size_t i = 0; i < head->dependency_count; i++) {
             free(head->dependencies[i]);
         }
@@ -853,7 +1355,9 @@ void eval_define(EvalContext* ctx, const char* name, Cell* value) {
         FunctionDoc* doc = doc_create(name);
 
         /* Generate docs - graceful degradation on failure */
-        doc_generate_description(ctx, doc, value->data.lambda.body);
+        doc_generate_description(ctx, doc, value->data.lambda.body,
+                                 value->data.lambda.param_names,
+                                 value->data.lambda.arity, name);
         if (!doc->description) {
             fprintf(stderr, "Warning: Could not generate description for '%s'\n", name);
             doc->description = strdup("undocumented");
@@ -872,8 +1376,11 @@ void eval_define(EvalContext* ctx, const char* name, Cell* value) {
         /* Auto-print documentation (unless --no-doc flag is set) */
         printf("📝 %s :: %s\n", name, doc->type_signature);
         printf("   %s\n", doc->description);
+        if (doc->flow_info) {
+            printf("   Flow: %s\n", doc->flow_info);
+        }
         if (doc->dependency_count > 0) {
-            printf("   Dependencies: ");
+            printf("   Deps: ");
             for (size_t i = 0; i < doc->dependency_count; i++) {
                 if (i > 0) printf(", ");
                 printf("%s", doc->dependencies[i]);
@@ -1854,6 +2361,19 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                 Cell* lambda = cell_lambda(closure_env, converted_body, arity,
                                           module_get_current_loading(), source_line);
 
+                /* Store param names for documentation */
+                {
+                    int pn_count = 0;
+                    const char** pn = extract_param_names_counted(params, &pn_count);
+                    if (pn && pn_count == arity) {
+                        lambda->data.lambda.param_names = (const char**)malloc(arity * sizeof(char*));
+                        for (int pi = 0; pi < arity; pi++) {
+                            lambda->data.lambda.param_names[pi] = strdup(pn[pi]);
+                        }
+                    }
+                    free(pn);
+                }
+
                 return lambda;
             }
 
@@ -1902,6 +2422,12 @@ tail_call:  /* TCO: loop back here instead of recursive call */
                 /* Attach constraints if any */
                 if (constraints) {
                     lambda->data.lambda.constraints = constraints;
+                }
+
+                /* Store param names on lambda for documentation */
+                lambda->data.lambda.param_names = (const char**)malloc(arity * sizeof(char*));
+                for (int pi = 0; pi < arity; pi++) {
+                    lambda->data.lambda.param_names[pi] = strdup(param_names[pi]);
                 }
 
                 /* Cleanup */
