@@ -1029,33 +1029,24 @@ static bool is_noise_dep(const char* name) {
 }
 
 /* Count branch nodes (? conditionals) in expression */
+/* Count conditional chain depth (only top-level ? chain, no sub-expression traversal) */
 static int count_branches(Cell* expr) {
     if (!expr || !cell_is_pair(expr)) return 0;
     Cell* func = cell_car(expr);
-    int count = 0;
-    if (cell_is_symbol(func) && strcmp(cell_get_symbol(func), "?") == 0) {
-        count = 1;
-        /* Count in else branch for chained conditionals */
-        Cell* rest = cell_cdr(expr);
-        if (rest && cell_is_pair(rest)) {
-            Cell* rest2 = cell_cdr(rest);
-            if (rest2 && cell_is_pair(rest2)) {
-                Cell* rest3 = cell_cdr(rest2);
-                if (rest3 && cell_is_pair(rest3)) {
-                    count += count_branches(cell_car(rest3));
-                }
+    if (!cell_is_symbol(func) || strcmp(cell_get_symbol(func), "?") != 0)
+        return 0;
+    /* Count this branch + chain in else branch only */
+    Cell* rest = cell_cdr(expr);
+    if (rest && cell_is_pair(rest)) {
+        Cell* rest2 = cell_cdr(rest);
+        if (rest2 && cell_is_pair(rest2)) {
+            Cell* rest3 = cell_cdr(rest2);
+            if (rest3 && cell_is_pair(rest3)) {
+                return 1 + count_branches(cell_car(rest3));
             }
         }
     }
-    /* Also check sub-expressions */
-    Cell* iter = expr;
-    while (cell_is_pair(iter)) {
-        if (cell_is_pair(cell_car(iter))) {
-            count += count_branches(cell_car(iter));
-        }
-        iter = cell_cdr(iter);
-    }
-    return count;
+    return 1;
 }
 
 /* Check if body contains a self-recursive call */
@@ -1186,12 +1177,31 @@ static void doc_generate_description(EvalContext* ctx, FunctionDoc* doc, Cell* b
     dctx.arity = arity;
     dctx.self_name = self_name;
 
-    /* Special pattern: identity (body == De Bruijn index 0) */
+    /* Special pattern: identity (body == De Bruijn index 0, single param) */
     if (cell_is_number(body) && cell_get_number(body) == 0.0 && arity == 1) {
         const char* pn = (param_names && arity > 0) ? param_names[0] : "x";
         char buf[128];
         snprintf(buf, sizeof(buf), "return %s unchanged", pn);
         doc->description = strdup(buf);
+    }
+    /* Special pattern: returns Nth param in multi-param lambda (e.g. const returns first, ignores second) */
+    else if (cell_is_number(body) && arity > 1) {
+        double num = cell_get_number(body);
+        if (num >= 0 && num < arity && num == (int)num && param_names) {
+            int idx = (int)num;
+            char buf[256];
+            snprintf(buf, sizeof(buf), "return %s, ignoring ", param_names[idx]);
+            bool first = true;
+            for (int i = 0; i < arity; i++) {
+                if (i == idx) continue;
+                if (!first) strcat(buf, ", ");
+                strcat(buf, param_names[i]);
+                first = false;
+            }
+            doc->description = strdup(buf);
+        } else {
+            doc->description = compose_desc(&dctx, body, 0);
+        }
     }
     /* Special pattern: constant (body is a literal with no param refs) */
     else if ((cell_is_bool(body) || cell_is_nil(body) || cell_is_string(body)) && arity > 0) {
@@ -1200,6 +1210,41 @@ static void doc_generate_description(EvalContext* ctx, FunctionDoc* doc, Cell* b
         snprintf(buf, sizeof(buf), "always returns %s", val);
         doc->description = strdup(buf);
         free(val);
+    }
+    /* Special pattern: direct alias — body is (f arg0 arg1 ... argN-1) with params passed through */
+    else if (cell_is_pair(body) && cell_is_symbol(cell_car(body)) && arity > 0) {
+        const char* callee = cell_get_symbol(cell_car(body));
+        /* Skip control-flow forms */
+        if (strcmp(callee, "?") != 0 && strcmp(callee, "⪢") != 0 &&
+            strcmp(callee, "⌜") != 0 && strcmp(callee, ":λ-converted") != 0) {
+            Cell* a = cell_cdr(body);
+            bool passthrough = true;
+            int ai = 0;
+            while (cell_is_pair(a) && ai < arity) {
+                Cell* arg = cell_car(a);
+                if (!cell_is_number(arg) || cell_get_number(arg) != (double)ai) {
+                    passthrough = false;
+                    break;
+                }
+                ai++;
+                a = cell_cdr(a);
+            }
+            if (passthrough && ai == arity && !cell_is_pair(a)) {
+                char buf[256];
+                /* Look up callee's doc for inline summary */
+                FunctionDoc* callee_doc = doc_find(ctx, callee);
+                if (callee_doc && callee_doc->description && strlen(callee_doc->description) < 60) {
+                    snprintf(buf, sizeof(buf), "alias for %s — %s", callee, callee_doc->description);
+                } else {
+                    snprintf(buf, sizeof(buf), "alias for %s", callee);
+                }
+                doc->description = strdup(buf);
+            } else {
+                doc->description = compose_desc(&dctx, body, 0);
+            }
+        } else {
+            doc->description = compose_desc(&dctx, body, 0);
+        }
     }
     else {
         doc->description = compose_desc(&dctx, body, 0);
@@ -1359,33 +1404,33 @@ void eval_define(EvalContext* ctx, const char* name, Cell* value) {
                                  value->data.lambda.param_names,
                                  value->data.lambda.arity, name);
         if (!doc->description) {
-            fprintf(stderr, "Warning: Could not generate description for '%s'\n", name);
             doc->description = strdup("undocumented");
         }
 
         doc_infer_type(doc, value);
         if (!doc->type_signature) {
-            fprintf(stderr, "Warning: Could not infer type for '%s'\n", name);
-            doc->type_signature = strdup("α → β");  /* Generic fallback */
+            doc->type_signature = strdup("α → β");
         }
 
-        /* Add to context's doc list */
+        /* Add to context's doc list (always, for lookup by parent docs) */
         doc->next = ctx->user_docs;
         ctx->user_docs = doc;
 
-        /* Auto-print documentation (unless --no-doc flag is set) */
-        printf("📝 %s :: %s\n", name, doc->type_signature);
-        printf("   %s\n", doc->description);
-        if (doc->flow_info) {
-            printf("   Flow: %s\n", doc->flow_info);
-        }
-        if (doc->dependency_count > 0) {
-            printf("   Deps: ");
-            for (size_t i = 0; i < doc->dependency_count; i++) {
-                if (i > 0) printf(", ");
-                printf("%s", doc->dependencies[i]);
+        /* Print documentation — skip internal/anonymous names */
+        if (strncmp(name, "__", 2) != 0) {
+            printf("📝 %s :: %s\n", name, doc->type_signature);
+            printf("   %s\n", doc->description);
+            if (doc->flow_info) {
+                printf("   Flow: %s\n", doc->flow_info);
             }
-            printf("\n");
+            if (doc->dependency_count > 0) {
+                printf("   Deps: ");
+                for (size_t i = 0; i < doc->dependency_count; i++) {
+                    if (i > 0) printf(", ");
+                    printf("%s", doc->dependencies[i]);
+                }
+                printf("\n");
+            }
         }
     }
 }
