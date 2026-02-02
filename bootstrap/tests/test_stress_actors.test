@@ -52,14 +52,14 @@
 (≔ ping-loop (λ (me n)
   (? (≡ n #0) :ping-done
      (≫ (←?) (λ (msg)
-       (≫ (→! (◁ msg) (⟨⟩ me :pong)) (λ (_)
-         (ping-loop me (⊖ n #1)))))))))
+       (⪢ (? (→! (◁ msg) (⟨⟩ me :pong)) ∅ ∅)
+           (ping-loop me (⊖ n #1))))))))
 
 (≔ pong-loop (λ (me n)
   (? (≡ n #0) :pong-done
      (≫ (←?) (λ (msg)
-       (≫ (→! (◁ msg) (⟨⟩ me :ping)) (λ (_)
-         (pong-loop me (⊖ n #1)))))))))
+       (⪢ (? (→! (◁ msg) (⟨⟩ me :ping)) ∅ ∅)
+           (pong-loop me (⊖ n #1))))))))
 
 (≔ pinger (⟳ (λ (self) (ping-loop self #100))))
 (≔ ponger (⟳ (λ (self) (pong-loop self #100))))

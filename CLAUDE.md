@@ -174,7 +174,7 @@ Based on:
 
 ## Feature Set
 
-### Current (Day 145 — 148 tests, 540 primitives)
+### Current (Day 148+ — 175 tests, 540 primitives)
 
 **Core:**
 - λ abstraction with De Bruijn indices
@@ -460,7 +460,7 @@ Use **symbolic documentation**:
 **Representation:** De Bruijn indices
 **Environment:** Hybrid (named at top, indexed in lambdas)
 **Primitives:** 511
-**Tests:** 148/148 passing ✅
+**Tests:** 175/175 passing ✅
 **Status:** Turing complete + effects + actors + multi-scheduler + pattern matching
 
 ### Code Organization
@@ -507,14 +507,14 @@ Use **symbolic documentation**:
     ├── fcontext.h        - Fiber context switching
     ├── iter_batch.h      - Batch iterator
     ├── stdlib/           - Standard library (30 Guage files)
-    └── tests/            - Test suite (148 test files)
+    └── tests/            - Test suite (175 test files)
 ```
 
 ### Build and Test
 
 ```bash
 make                    # Build (from project root)
-make test               # Run full test suite (148 test files)
+make test               # Run full test suite (175 test files)
 make repl               # Start REPL
 make help               # Show all available targets
 make run FILE=file.scm  # Run a specific file

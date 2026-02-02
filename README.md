@@ -12,9 +12,9 @@ Purpose: Project overview and quick start
 ## Current Status
 
 - **540 primitives** — all working
-- **148/148 test files passing** (100%)
+- **175/175 test files passing** (100%)
 - **Turing complete** — lambda calculus with De Bruijn indices + TCO
-- **Day 145 complete** — structured test infrastructure with JSON Lines, coverage, deterministic scheduling
+- **Day 148+ complete** — all stress tests passing (actors, GenServer, supervisors, ETS, effects)
 - **~40K lines of C** across 61 source files
 - See [`SESSION_HANDOFF.md`](SESSION_HANDOFF.md) for detailed progress
 
@@ -75,7 +75,7 @@ Purpose: Project overview and quick start
 
 ```bash
 make              # Build (O2 optimized, 32MB stack)
-make test         # Run full test suite (148 test files, exit-code driven)
+make test         # Run full test suite (175 test files, exit-code driven)
 make test-one TEST=bootstrap/tests/basic.test  # Single file (--test mode, JSON Lines on stderr)
 make test-json    # Run tests, write JSON results to test-results.jsonl
 make repl         # Start interactive REPL

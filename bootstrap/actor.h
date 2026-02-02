@@ -35,7 +35,7 @@ typedef struct {
 #define MAX_TIMERS 256
 #define MAX_DICT_ENTRIES 256
 #define MAX_ETS_TABLES 64
-#define MAX_ETS_ENTRIES 256
+#define MAX_ETS_ENTRIES 1024
 #define MAX_APPLICATIONS 16
 #define MAX_APP_ENV 64
 

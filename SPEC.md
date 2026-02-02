@@ -33,7 +33,7 @@ Everything is a **Cell**:
 
 ## Runtime Primitives (455 Total)
 
-**Status:** 455 primitives implemented and stable (148/148 test files passing)
+**Status:** 455 primitives implemented and stable (175/175 test files passing)
 **Note:** All primitives fully working including graph algorithms, actors, channels, supervision, supervisors, registry, timers, GenServer, process dictionary, task async/await, mutable references, sequencing, SOTA error diagnostics, FFI with JIT-compiled stubs, and structured test infrastructure (--test mode, JSON Lines, coverage, leak detection, deterministic scheduling, integrated shrinking)
 
 ### Core Lambda Calculus (3) ✅

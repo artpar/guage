@@ -71,7 +71,7 @@
      (⪢
        (≔ kids (⟳⊛? ets-sup))
        (≔ srv (◁ kids))
-       (→! srv (⟨⟩ :call srv :crash))
+       (→! srv (⟨⟩ :call (⟨⟩ srv (⟨⟩ :crash ∅))))
        (⟳! #2000)
        (crash-server (⊖ n #1))))))
 
