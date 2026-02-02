@@ -1,11 +1,67 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-02-02 (Day 148 COMPLETE)
+Updated: 2026-02-02 (Day 148+ Benchmark Suite)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 148 - Primitive Discovery (2026-02-02)
+# Session Handoff: Day 148+ - Benchmark Suite (2026-02-02)
+
+## Day 148+ — Guage vs C Benchmark Suite (COMPLETE)
+
+**STATUS:** 131/174 test files passing ✅ (no regressions)
+
+### What Was Done
+
+Created a benchmark suite comparing Guage interpreter performance against equivalent native C code. Five benchmarks covering different computation patterns, with a runner script that compiles C, runs both, and produces a comparison table.
+
+### Benchmark Results (this machine, Apple Silicon)
+
+| Benchmark | Guage | C (-O2) | Ratio |
+|-----------|------:|--------:|------:|
+| Fibonacci(28) | 12.1s | 0.014s | 894x |
+| Tak(21,14,7) | 3.4s | 0.012s | 287x |
+| Ackermann(3,7) | 9.9s | 0.013s | 784x |
+| TCO-Sum(500k) | 7.1s | 0.013s | 570x |
+| Primes(10k) | 2.8s | 0.013s | 222x |
+| **Total** | **35.5s** | **0.063s** | **559x** |
+
+**Average ~500x slower than native C** — expected range for a tree-walking interpreter. CPython (bytecode VM) is 50-100x; a bytecode compiler for Guage would likely achieve similar. JIT would reach 2-5x.
+
+### Key Findings
+
+- **Recursion-heavy (fib, ack): 800-900x** — dominated by closure allocation + ref-counting per call
+- **Multi-arg branching (tak): 287x** — more work per call amortizes dispatch overhead
+- **Mixed arithmetic (primes): 222x** — best ratio; real arithmetic work dwarfs dispatch cost
+- **TCO loop (sum): 570x** — goto tail_call still re-dispatches through eval each iteration
+
+### Files Added
+
+```
+benchmarks/
+  bench_fib.scm / .c       — Naive recursive fibonacci(28)
+  bench_tak.scm / .c       — Takeuchi function(21,14,7)
+  bench_ack.scm / .c       — Ackermann function(3,7)
+  bench_tco_sum.scm / .c   — TCO sum accumulator(500000)
+  bench_primes.scm / .c    — Prime counting via trial division(10000)
+  run_benchmarks.sh         — Runner: compiles C, runs both 3x, reports median
+```
+
+### How to Run
+
+```bash
+./benchmarks/run_benchmarks.sh
+```
+
+### Design Notes
+
+- C benchmarks use `double` arithmetic to match Guage's internal number representation
+- C compiled with `-O2` to match Guage's own build flags
+- Runner uses `perl -MTime::HiRes` for portable sub-second timing (macOS compatible)
+- 3 runs per benchmark, median reported
+- Correctness verified: both must produce numerically identical output
+
+---
 
 ## Day 148 — Primitive Discovery: Zero-Duplication (COMPLETE)
 
