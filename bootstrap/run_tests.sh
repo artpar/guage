@@ -62,6 +62,19 @@ for i in "${!FILES[@]}"; do
         ((FAILED++))
         ERRORS+=("$name")
         echo -e "  ${RED}FAIL${NC} $name"
+        # Show individual failure details from JSON Lines
+        if [ -f "$JSON_DIR/$i.jsonl" ]; then
+            while IFS= read -r line; do
+                tname=$(echo "$line" | sed -n 's/.*"name":"\([^"]*\)".*/\1/p')
+                exp=$(echo "$line" | sed -n 's/.*"expected":"\([^"]*\)".*/\1/p')
+                act=$(echo "$line" | sed -n 's/.*"actual":"\([^"]*\)".*/\1/p')
+                if [ -n "$tname" ]; then
+                    echo -e "         ${RED}✗${NC} $tname"
+                    [ -n "$exp" ] && echo "           expected: $exp"
+                    [ -n "$act" ] && echo "           actual:   $act"
+                fi
+            done < <(grep '"status":"fail"' "$JSON_DIR/$i.jsonl" 2>/dev/null)
+        fi
     fi
 done
 
