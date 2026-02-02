@@ -45,7 +45,7 @@ echo "═══ Guage Test Suite ═══"
 
 run_one() {
     local f="$1" idx="$2"
-    if timeout "$TIMEOUT" "$GUAGE" --test "$f" 2>"$JSON_DIR/$idx.jsonl" >/dev/null; then
+    if timeout "$TIMEOUT" "$GUAGE" --test "$f" 2>"$JSON_DIR/$idx.jsonl" >"$JSON_DIR/$idx.out"; then
         return 0
     else
         return 1
@@ -62,18 +62,9 @@ for i in "${!FILES[@]}"; do
         ((FAILED++))
         ERRORS+=("$name")
         echo -e "  ${RED}FAIL${NC} $name"
-        # Show individual failure details from JSON Lines
-        if [ -f "$JSON_DIR/$i.jsonl" ]; then
-            while IFS= read -r line; do
-                tname=$(echo "$line" | sed -n 's/.*"name":"\([^"]*\)".*/\1/p')
-                exp=$(echo "$line" | sed -n 's/.*"expected":"\([^"]*\)".*/\1/p')
-                act=$(echo "$line" | sed -n 's/.*"actual":"\([^"]*\)".*/\1/p')
-                if [ -n "$tname" ]; then
-                    echo -e "         ${RED}✗${NC} $tname"
-                    [ -n "$exp" ] && echo "           expected: $exp"
-                    [ -n "$act" ] && echo "           actual:   $act"
-                fi
-            done < <(grep '"status":"fail"' "$JSON_DIR/$i.jsonl" 2>/dev/null)
+        # Show captured stdout (has human-readable failure details)
+        if [ -s "$JSON_DIR/$i.out" ]; then
+            sed 's/^/         /' "$JSON_DIR/$i.out"
         fi
     fi
 done
