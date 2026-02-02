@@ -55,6 +55,9 @@ uint64_t g_prof_tail_calls = 0;
 uint64_t g_prof_env_lookups = 0;
 uint64_t g_prof_env_steps = 0;
 
+/* ── O(1) global binding table (indexed by intern sym_id) ── */
+static Cell* g_global_table[4096];
+
 /* ============ Helper Data Structures for Dependency Extraction ============ */
 
 /* Set of symbols (for tracking parameters) */
@@ -715,6 +718,7 @@ static void doc_generate_description(EvalContext* ctx, FunctionDoc* doc, Cell* b
 EvalContext* eval_context_new(void) {
     EvalContext* ctx = (EvalContext*)malloc(sizeof(EvalContext));
     ctx->env = cell_nil();
+    ctx->global_env = ctx->env;
     ctx->primitives = primitives_init();
     ctx->user_docs = NULL;  /* Initialize doc list */
     ctx->type_registry = cell_nil();  /* Initialize type registry */
@@ -776,11 +780,36 @@ Cell* eval_lookup_env(Cell* env, const char* name) {
 
 /* Lookup variable */
 Cell* eval_lookup(EvalContext* ctx, const char* name) {
-    /* Try user environment first */
-    Cell* value = eval_lookup_env(ctx->env, name);
-    if (value) return value;
+    if (UNLIKELY(g_profile_enabled)) g_prof_env_lookups++;
 
-    /* Try primitives */
+    /* Fast path: no local bindings (pattern match etc.) — skip alist walk */
+    if (LIKELY(ctx->env == ctx->global_env)) {
+        /* O(1) global table lookup by intern sym_id */
+        InternResult r = intern(name);
+        Cell* val = g_global_table[r.id];
+        if (val) {
+            if (UNLIKELY(g_profile_enabled)) g_prof_env_steps++;
+            cell_retain(val);
+            return val;
+        }
+        /* O(1) primitive table */
+        return primitives_lookup(ctx->primitives, name);
+    }
+
+    /* Slow path: local bindings exist — must walk alist first for shadowing */
+    Cell* val = eval_lookup_env(ctx->env, name);
+    if (val) return val;
+
+    /* Then global table */
+    InternResult r = intern(name);
+    val = g_global_table[r.id];
+    if (val) {
+        if (UNLIKELY(g_profile_enabled)) g_prof_env_steps++;
+        cell_retain(val);
+        return val;
+    }
+
+    /* Then primitives */
     return primitives_lookup(ctx->primitives, name);
 }
 
@@ -805,6 +834,18 @@ void eval_define(EvalContext* ctx, const char* name, Cell* value) {
         Cell* binding = cell_cons(sym, value);
         ctx->env = cell_cons(binding, ctx->env);
         module_registry_add_symbol("<repl>", name);
+    }
+
+    /* Keep global_env in sync so eval_lookup fast-path works */
+    ctx->global_env = ctx->env;
+
+    /* O(1) global table: store by intern sym_id */
+    {
+        InternResult r = intern(name);
+        Cell* old = g_global_table[r.id];
+        if (value) cell_retain(value);
+        g_global_table[r.id] = value;
+        if (old) cell_release(old);
     }
 
     /* Generate documentation if value is a lambda */

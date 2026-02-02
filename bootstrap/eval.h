@@ -39,6 +39,7 @@ typedef struct EffectFrame {
 /* Evaluation context */
 struct EvalContext {
     Cell* env;          /* Current environment */
+    Cell* global_env;   /* Base global env — when env==global_env, no local bindings */
     Cell* primitives;   /* Primitive bindings */
     FunctionDoc* user_docs;  /* User function documentation */
     Cell* type_registry;     /* Type definitions (alist: type_tag -> schema) */
