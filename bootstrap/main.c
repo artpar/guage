@@ -1211,6 +1211,9 @@ int main(int argc, char** argv) {
     /* Default workers to CPU count if not specified */
     if (load_workers == 0) load_workers = num_cpus;
 
+    /* Enable profiling counters if GUAGE_PROFILE env is set */
+    if (getenv("GUAGE_PROFILE")) g_profile_enabled = true;
+
     guage_siphash_init();
     intern_init();
     intern_preload();

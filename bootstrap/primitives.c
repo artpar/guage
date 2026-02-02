@@ -40,6 +40,16 @@
 #include "siphash.h"
 #include "intern.h"
 
+/* ── Profiling counters (prim subsystem) ── */
+uint64_t g_prof_prim_lookups = 0;
+uint64_t g_prof_prim_steps = 0;
+
+/* ── Direct-indexed primitive dispatch table (BEAM-style atom dispatch) ──
+ * Indexed by intern sym_id (0–4095). Populated once during primitives_init().
+ * 32 KiB footprint — fits entirely in L1 dcache. Read-only after init.
+ * Lookup: intern(sym) → id → g_prim_table[id]. O(1), branch-free on hit. */
+static Cell* g_prim_table[4096];
+
 /* FDT constants (used by prim_type_of and trait dispatch) */
 #define FDT_MAX_TYPES   32   /* room for CellType growth */
 #define FDT_MAX_TRAITS  64   /* monotonic trait IDs */
@@ -235,6 +245,9 @@ void test_emit_and_exit(const char* filename, int had_toplevel_error,
     /* Coverage line */
     coverage_emit_json(stderr, filename);
 
+    /* Profile counters (when GUAGE_PROFILE=1) */
+    if (g_profile_enabled) profile_emit(stderr);
+
     /* Summary line */
     fprintf(stderr, "{\"t\":\"summary\",\"file\":");
     json_escape_string(stderr, filename);
@@ -244,6 +257,37 @@ void test_emit_and_exit(const char* filename, int had_toplevel_error,
     fprintf(stderr, "}\n");
 
     exit(code);
+}
+
+/* Emit profile counters as JSON to stderr */
+void profile_emit(FILE* out) {
+    double avg_env = (g_prof_env_lookups > 0)
+        ? (double)g_prof_env_steps / g_prof_env_lookups : 0.0;
+    double avg_prim = (g_prof_prim_lookups > 0)
+        ? (double)g_prof_prim_steps / g_prof_prim_lookups : 0.0;
+
+    fprintf(out,
+        "{\"t\":\"profile\","
+        "\"eval_steps\":%llu,\"lambda_calls\":%llu,"
+        "\"builtin_calls\":%llu,\"tail_calls\":%llu,"
+        "\"env_lookups\":%llu,\"env_steps\":%llu,"
+        "\"prim_lookups\":%llu,\"prim_steps\":%llu,"
+        "\"cell_allocs\":%llu,\"cell_frees\":%llu,"
+        "\"retains\":%llu,\"releases\":%llu,"
+        "\"avg_env_depth\":%.1f,\"avg_prim_depth\":%.1f}\n",
+        (unsigned long long)g_prof_eval_steps,
+        (unsigned long long)g_prof_lambda_calls,
+        (unsigned long long)g_prof_builtin_calls,
+        (unsigned long long)g_prof_tail_calls,
+        (unsigned long long)g_prof_env_lookups,
+        (unsigned long long)g_prof_env_steps,
+        (unsigned long long)g_prof_prim_lookups,
+        (unsigned long long)g_prof_prim_steps,
+        (unsigned long long)g_prof_cell_allocs,
+        (unsigned long long)g_prof_cell_frees,
+        (unsigned long long)g_prof_retain_calls,
+        (unsigned long long)g_prof_release_calls,
+        avg_env, avg_prim);
 }
 
 /* Thread-safe accessors for test counters */
@@ -15899,34 +15943,36 @@ Cell* primitives_init(void) {
         }
     }
 
-    /* Build environment as association list */
+    /* Build association list AND direct-indexed dispatch table in one pass.
+     * cell_symbol() interns each name, assigning a unique sym_id.
+     * The table stores the same builtin Cell* (shared, extra retain). */
+    memset(g_prim_table, 0, sizeof(g_prim_table));
     for (int i = 0; primitives[i].name != NULL; i++) {
         Cell* name = cell_symbol(primitives[i].name);
         Cell* fn = cell_builtin((void*)primitives[i].fn);
         Cell* binding = cell_cons(name, fn);
         env = cell_cons(binding, env);
+
+        /* Direct table: O(1) lookup by intern ID */
+        cell_retain(fn);
+        g_prim_table[name->sym_id] = fn;
     }
 
     return env;
 }
 
-/* Lookup primitive by symbol */
+/* Lookup primitive by symbol — O(1) via direct-indexed table.
+ * sym is an interned canonical pointer (from cell_get_symbol).
+ * intern() TLS cache hit ~2 ns → table[id] single load. */
 Cell* primitives_lookup(Cell* env, const char* sym) {
-    while (cell_is_pair(env)) {
-        Cell* binding = cell_car(env);
-        if (cell_is_pair(binding)) {
-            Cell* name = cell_car(binding);
-            if (cell_is_symbol(name)) {
-                const char* name_str = cell_get_symbol(name);
-                if (strcmp(name_str, sym) == 0) {
-                    Cell* value = cell_cdr(binding);
-                    cell_retain(value);
-                    return value;
-                }
-            }
-        }
-        env = cell_cdr(env);
+    if (UNLIKELY(g_profile_enabled)) g_prof_prim_lookups++;
+    (void)env;  /* Direct table lookup; cons-list param kept for API compat */
+    InternResult r = intern(sym);
+    Cell* val = g_prim_table[r.id];
+    if (val) {
+        if (UNLIKELY(g_profile_enabled)) g_prof_prim_steps++;
+        cell_retain(val);
+        return val;
     }
-
-    return NULL;  /* Not found */
+    return NULL;
 }

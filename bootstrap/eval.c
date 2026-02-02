@@ -47,6 +47,14 @@ void coverage_emit_json(FILE* out, const char* filename) {
             filename, covered, g_coverage_total_bytes, pct);
 }
 
+/* ── Profiling counters (eval subsystem) ── */
+uint64_t g_prof_eval_steps = 0;
+uint64_t g_prof_lambda_calls = 0;
+uint64_t g_prof_builtin_calls = 0;
+uint64_t g_prof_tail_calls = 0;
+uint64_t g_prof_env_lookups = 0;
+uint64_t g_prof_env_steps = 0;
+
 /* ============ Helper Data Structures for Dependency Extraction ============ */
 
 /* Set of symbols (for tracking parameters) */
@@ -746,7 +754,9 @@ void eval_context_free(EvalContext* ctx) {
 
 /* Lookup variable in environment */
 Cell* eval_lookup_env(Cell* env, const char* name) {
+    if (UNLIKELY(g_profile_enabled)) g_prof_env_lookups++;
     while (cell_is_pair(env)) {
+        if (UNLIKELY(g_profile_enabled)) g_prof_env_steps++;
         Cell* binding = cell_car(env);
         if (cell_is_pair(binding)) {
             Cell* var = cell_car(binding);
@@ -1132,6 +1142,7 @@ Cell* eval_internal(EvalContext* ctx, Cell* env, Cell* expr) {
     Cell* owned_expr = NULL;  /* Track owned expressions for cleanup */
 
 tail_call:  /* TCO: loop back here instead of recursive call */
+    if (UNLIKELY(g_profile_enabled)) g_prof_eval_steps++;
     /* BEAM-style reduction counting: yield when budget exhausted */
     if (ctx->reductions_left > 0) {
         if (--ctx->reductions_left <= 0) {
@@ -2743,6 +2754,7 @@ tail_call:  /* TCO: loop back here instead of recursive call */
 
         /* Inline apply() for TCO */
         if (fn->type == CELL_BUILTIN) {
+            if (UNLIKELY(g_profile_enabled)) g_prof_builtin_calls++;
             /* Call builtin primitive - not a tail call */
             Cell* (*builtin_fn)(Cell*) = (Cell* (*)(Cell*))fn->data.atom.builtin;
             Cell* result = builtin_fn(args);
@@ -2752,6 +2764,7 @@ tail_call:  /* TCO: loop back here instead of recursive call */
         }
 
         if (fn->type == CELL_LAMBDA) {
+            if (UNLIKELY(g_profile_enabled)) g_prof_lambda_calls++;
             /* Extract lambda components */
             Cell* closure_env = fn->data.lambda.env;
             Cell* body = fn->data.lambda.body;
@@ -2821,6 +2834,7 @@ tail_call:  /* TCO: loop back here instead of recursive call */
             owned_env = new_env;  /* Track for cleanup */
             expr = body;
             owned_expr = body;     /* Track for cleanup */
+            if (UNLIKELY(g_profile_enabled)) g_prof_tail_calls++;
             goto tail_call;
         }
 

@@ -584,4 +584,28 @@ Cell* cell_graph_set_exit(Cell* graph, Cell* exit);
 void cell_print(Cell* c);
 void cell_println(Cell* c);
 
+/* ── Profiling Counters (gated on GUAGE_PROFILE=1 env var) ── */
+extern bool g_profile_enabled;
+
+/* Eval loop */
+extern uint64_t g_prof_eval_steps;
+extern uint64_t g_prof_lambda_calls;
+extern uint64_t g_prof_builtin_calls;
+extern uint64_t g_prof_tail_calls;
+
+/* Lookup */
+extern uint64_t g_prof_env_lookups;
+extern uint64_t g_prof_env_steps;
+extern uint64_t g_prof_prim_lookups;
+extern uint64_t g_prof_prim_steps;
+
+/* Allocation */
+extern uint64_t g_prof_cell_allocs;
+extern uint64_t g_prof_cell_frees;
+extern uint64_t g_prof_retain_calls;
+extern uint64_t g_prof_release_calls;
+
+/* Emit profile JSON to stderr (called from test_emit_and_exit) */
+void profile_emit(FILE* out);
+
 #endif /* GUAGE_CELL_H */

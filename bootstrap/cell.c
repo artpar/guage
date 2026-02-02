@@ -44,6 +44,14 @@ void art_destroy_node(void* node);
 /* Thread-local scheduler ID (defined here, declared extern in cell.h) */
 _Thread_local uint16_t tls_scheduler_id = 0;
 
+/* ── Profiling counters (single-threaded benchmarks, non-atomic) ── */
+bool g_profile_enabled = false;
+
+uint64_t g_prof_cell_allocs = 0;
+uint64_t g_prof_cell_frees = 0;
+uint64_t g_prof_retain_calls = 0;
+uint64_t g_prof_release_calls = 0;
+
 /* Allocation counter for leak detection */
 static _Atomic uint64_t g_cell_alloc_count = 0;
 
@@ -51,12 +59,60 @@ uint64_t cell_get_alloc_count(void) {
     return atomic_load_explicit(&g_cell_alloc_count, memory_order_relaxed);
 }
 
+/* ── Cell Slab Allocator (HFT-grade: eliminates per-cell malloc/free) ──
+ * Architecture: thread-local slab chain + intrusive free list.
+ *
+ * Fast path (free list pop):    ~2 cycles  — reuse recently freed cell
+ * Medium path (slab bump):      ~3 cycles  — sequential from contiguous block
+ * Slow path (new slab malloc):  amortized  — 1 malloc per 4096 cells
+ * vs per-cell malloc:          ~30-60 cycles per alloc
+ *
+ * Each slab is 88 × 4096 ≈ 352 KiB. Free list is intrusive: the first
+ * pointer-sized bytes of a dead cell store the next-free pointer.
+ * Thread-local to avoid locking (matches BiasedRC per-thread ownership). */
+
+#define CELL_SLAB_SIZE 4096
+
+typedef struct CellSlab {
+    struct CellSlab* next;
+    uint32_t used;
+    Cell cells[CELL_SLAB_SIZE];
+} CellSlab;
+
+static _Thread_local CellSlab* tls_cell_slab = NULL;
+static _Thread_local Cell*     tls_cell_free = NULL;
+
+static inline Cell* cell_pool_alloc(void) {
+    /* Fast path: reuse from thread-local free list */
+    if (LIKELY(tls_cell_free != NULL)) {
+        Cell* c = tls_cell_free;
+        tls_cell_free = *(Cell**)c;
+        return c;
+    }
+    /* Medium path: bump from current slab */
+    if (tls_cell_slab && tls_cell_slab->used < CELL_SLAB_SIZE) {
+        return &tls_cell_slab->cells[tls_cell_slab->used++];
+    }
+    /* Slow path: allocate new slab */
+    CellSlab* slab = (CellSlab*)malloc(sizeof(CellSlab));
+    assert(slab != NULL);
+    slab->next = tls_cell_slab;
+    slab->used = 1;
+    tls_cell_slab = slab;
+    return &slab->cells[0];
+}
+
+static inline void cell_pool_free(Cell* c) {
+    *(Cell**)c = tls_cell_free;
+    tls_cell_free = c;
+}
+
 /* Cell allocation */
 static Cell* cell_alloc(CellType type) {
-    Cell* c = (Cell*)malloc(sizeof(Cell));
-    assert(c != NULL);
+    Cell* c = cell_pool_alloc();
     memset(c, 0, sizeof(Cell));
     atomic_fetch_add_explicit(&g_cell_alloc_count, 1, memory_order_relaxed);
+    if (UNLIKELY(g_profile_enabled)) g_prof_cell_allocs++;
 
     c->type = type;
     /* Biased RC: owner = current thread, biased = 1, shared = 0 */
@@ -328,6 +384,7 @@ static bool cell_release_slow(Cell* c) {
 
 void cell_retain(Cell* c) {
     if (c == NULL) return;
+    if (UNLIKELY(g_profile_enabled)) g_prof_retain_calls++;
     if (UNLIKELY(c->rc.biased == BRC_IMMORTAL)) return;  /* Immortal sentinel */
 
     /* Fast path: owner thread, non-atomic */
@@ -384,6 +441,7 @@ static void cell_free_children(Cell* c);
 
 void cell_release(Cell* c) {
     if (c == NULL) return;
+    if (UNLIKELY(g_profile_enabled)) g_prof_release_calls++;
     if (UNLIKELY(c->rc.biased == BRC_IMMORTAL)) return;  /* Immortal sentinel */
 
     /* Fast path: owner thread */
@@ -423,7 +481,8 @@ do_free:
         uint16_t weak = atomic_load_explicit(&c->weak_refcount, memory_order_acquire);
         cell_free_children(c);
         if (weak == 0) {
-            free(c);
+            if (UNLIKELY(g_profile_enabled)) g_prof_cell_frees++;
+            cell_pool_free(c);
         }
         /* else: weak refs exist, zombie cell — freed when last weak_release */
     }
@@ -440,7 +499,7 @@ void cell_release_shared(Cell* c) {
         uint16_t weak = atomic_load_explicit(&c->weak_refcount, memory_order_acquire);
         cell_free_children(c);
         if (weak == 0) {
-            free(c);
+            cell_pool_free(c);
         }
     }
 }
@@ -816,7 +875,7 @@ void cell_weak_release(Cell* c) {
     if (prev == 1 &&
         c->rc.biased == 0 &&
         (atomic_load_explicit(&c->rc.shared, memory_order_acquire) & BRC_COUNT_MASK) == 0) {
-        free(c);
+        cell_pool_free(c);
     }
 }
 
