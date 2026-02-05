@@ -1,50 +1,50 @@
 #!/usr/bin/env guage
 ; Test suite for module system improvements
-; Caching, circular detection, ⋘?, ⊞◇, ⋘⊳
+; Caching, circular detection, ⋘?, ⊞◇, module-import-validated
 
-(≋ "Testing Module System...")
+(print "Testing Module System...")
 
-; --- ⋘? module-loaded predicate ---
+; --- module-loaded? module-loaded predicate ---
 
 ; A module we haven't loaded should not be loaded
-(⊨ :module-loaded-false
+(test-case :module-loaded-false
    #f
-   (⋘? "nonexistent_module.scm"))
+   (module-loaded? "nonexistent_module.scm"))
 
 ; Load a known stdlib module and check it's cached
-(⋘ "bootstrap/stdlib/math.scm")
-(⊨ :module-loaded-after-load
+(load "bootstrap/stdlib/math.scm")
+(test-case :module-loaded-after-load
    #t
-   (⋘? "bootstrap/stdlib/math.scm"))
+   (module-loaded? "bootstrap/stdlib/math.scm"))
 
 ; --- Caching: loading twice returns cached result ---
 
 ; Create a side-effect counter via box
-(≔ load-counter (□ #0))
+(define load-counter (box #0))
 
 ; Load math again - should be cached, no re-evaluation
-(⋘ "bootstrap/stdlib/math.scm")
-(⊨ :cached-load-no-reeval
+(load "bootstrap/stdlib/math.scm")
+(test-case :cached-load-no-reeval
    #t
-   (⋘? "bootstrap/stdlib/math.scm"))
+   (module-loaded? "bootstrap/stdlib/math.scm"))
 
-; --- ⊞◇ module-define (exports + version) ---
+; --- module-define module-define (exports + version) ---
 
-; Check that the ⊞◇ primitive exists (not an error when referenced)
-(⊨ :module-define-exists
+; Check that the module-define primitive exists (not an error when referenced)
+(test-case :module-define-exists
    #t
-   (¬ (⚠? ⊞◇)))
+   (not (error? module-define)))
 
-; --- ⋘⊳ validated import ---
+; --- module-import-validated validated import ---
 
 ; Import a loaded module without symbol filtering
-(⊨ :validated-import-basic
+(test-case :validated-import-basic
    #t
-   (¬ (⚠? (⋘⊳ "bootstrap/stdlib/math.scm"))))
+   (not (error? (module-import-validated "bootstrap/stdlib/math.scm"))))
 
 ; --- Error on non-existent module ---
-(⊨ :validated-import-missing
+(test-case :validated-import-missing
    #t
-   (⚠? (⋘⊳ "nonexistent_file_xyz.scm")))
+   (error? (module-import-validated "nonexistent_file_xyz.scm")))
 
-(≋ "\nModule system tests complete.")
+(print "\nModule system tests complete.")

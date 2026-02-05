@@ -1,8 +1,8 @@
 ;; Test: Pattern matching with De Bruijn indices in nested lambdas
-;; Purpose: Verify bug fix for ∇ dereferencing De Bruijn indices in closures
+;; Purpose: Verify bug fix for match dereferencing De Bruijn indices in closures
 ;; Status: FIXED (Day 57) - Pattern matching now correctly dereferences De Bruijn indices
 ;;
-;; Bug Fixed: When ∇ is used inside a lambda, the value being matched (a De Bruijn index)
+;; Bug Fixed: When match is used inside a lambda, the value being matched (a De Bruijn index)
 ;;            is now correctly dereferenced before pattern matching.
 ;;
 ;; Known Limitation: Quoted pattern result expressions cannot reference outer lambda parameters
@@ -13,61 +13,61 @@
 ;; Test 1: Original bug - pattern match on lambda parameter
 ;; ============================================================
 
-(⊚≔ :Result (⌜ (:Ok :value)) (⌜ (:Err :error)))
+(adt-define :Result (quote (:Ok :value)) (quote (:Err :error)))
 
-;; The bug was: (∇ r ...) where r is De Bruijn index #0 would fail with :no-match:#0
+;; The bug was: (match r ...) where r is De Bruijn index #0 would fail with :no-match:#0
 ;; FIX: Pattern matcher now evaluates the expression in the correct environment
-(≔ test-debruijn-match (λ (r)
-  (∇ r (⌜ (((⊚ :Result :Ok v) :matched-ok)
-           ((⊚ :Result :Err e) :matched-err))))))
+(define test-debruijn-match (lambda (r)
+  (match r (quote (((adt-create :Result :Ok v) :matched-ok)
+           ((adt-create :Result :Err e) :matched-err))))))
 
-(⊨ :debruijn-ok :matched-ok (test-debruijn-match (⊚ :Result :Ok #42)))
-(⊨ :debruijn-err :matched-err (test-debruijn-match (⊚ :Result :Err :fail)))
+(test-case :debruijn-ok :matched-ok (test-debruijn-match (adt-create :Result :Ok #42)))
+(test-case :debruijn-err :matched-err (test-debruijn-match (adt-create :Result :Err :fail)))
 
 ;; ============================================================
 ;; Test 2: Pattern-bound variables are accessible in results
 ;; ============================================================
 
 ;; Pattern bindings (like v) create named bindings accessible in result expressions
-(≔ extract-value (λ (r)
-  (∇ r (⌜ (((⊚ :Result :Ok v) v)
-           ((⊚ :Result :Err e) e))))))
+(define extract-value (lambda (r)
+  (match r (quote (((adt-create :Result :Ok v) v)
+           ((adt-create :Result :Err e) e))))))
 
-(⊨ :extract-ok #42 (extract-value (⊚ :Result :Ok #42)))
-(⊨ :extract-err :error (extract-value (⊚ :Result :Err :error)))
+(test-case :extract-ok #42 (extract-value (adt-create :Result :Ok #42)))
+(test-case :extract-err :error (extract-value (adt-create :Result :Err :error)))
 
 ;; ============================================================
 ;; Test 3: Pattern matching in deeply nested lambdas
 ;; ============================================================
 
 ;; Multiple levels of nesting - value still dereferenced correctly
-(≔ nested-match (λ (a) (λ (b) (λ (r)
-  (∇ r (⌜ (((⊚ :Result :Ok v) v)
-           ((⊚ :Result :Err e) e))))))))
+(define nested-match (lambda (a) (lambda (b) (lambda (r)
+  (match r (quote (((adt-create :Result :Ok v) v)
+           ((adt-create :Result :Err e) e))))))))
 
-(⊨ :nested-ok #99 (((nested-match #1) #2) (⊚ :Result :Ok #99)))
-(⊨ :nested-err :bad (((nested-match #1) #2) (⊚ :Result :Err :bad)))
+(test-case :nested-ok #99 (((nested-match #1) #2) (adt-create :Result :Ok #99)))
+(test-case :nested-err :bad (((nested-match #1) #2) (adt-create :Result :Err :bad)))
 
 ;; ============================================================
 ;; Test 4: Pair destructuring with De Bruijn indices
 ;; ============================================================
 
 ;; Destructure pairs inside lambdas
-(≔ swap-pair (λ (p)
-  (∇ p (⌜ (((⟨⟩ a b) (⟨⟩ b a)))))))
+(define swap-pair (lambda (p)
+  (match p (quote (((cons a b) (cons b a)))))))
 
-;; Note: Pattern result (⟨⟩ b a) references pattern-bound variables a and b
-(≔ test-swap (swap-pair (⟨⟩ #1 #2)))
-(⊨ :swap-car #2 (◁ test-swap))
-(⊨ :swap-cdr #1 (▷ test-swap))
+;; Note: Pattern result (cons b a) references pattern-bound variables a and b
+(define test-swap (swap-pair (cons #1 #2)))
+(test-case :swap-car #2 (car test-swap))
+(test-case :swap-cdr #1 (cdr test-swap))
 
 ;; Nested lambda with pair destructuring
-(≔ nested-swap (λ (x) (λ (p)
-  (∇ p (⌜ (((⟨⟩ a b) (⟨⟩ b a))))))))
+(define nested-swap (lambda (x) (lambda (p)
+  (match p (quote (((cons a b) (cons b a))))))))
 
-(≔ test-nested-swap ((nested-swap :ignore) (⟨⟩ #42 #99)))
-(⊨ :nested-swap-car #99 (◁ test-nested-swap))
-(⊨ :nested-swap-cdr #42 (▷ test-nested-swap))
+(define test-nested-swap ((nested-swap :ignore) (cons #42 #99)))
+(test-case :nested-swap-car #99 (car test-nested-swap))
+(test-case :nested-swap-cdr #42 (cdr test-nested-swap))
 
 ;; ============================================================
 ;; Test 5: Multiple pattern clauses in nested lambdas
@@ -75,23 +75,23 @@
 
 ;; Pattern matching with multiple clauses all work correctly
 ;; Note: Literal patterns (#0) must come BEFORE variable patterns (v) to match correctly
-(≔ classify-result (λ (r)
-  (∇ r (⌜ (((⊚ :Result :Ok v) :has-value)
-           ((⊚ :Result :Err e) :has-error))))))
+(define classify-result (lambda (r)
+  (match r (quote (((adt-create :Result :Ok v) :has-value)
+           ((adt-create :Result :Err e) :has-error))))))
 
-(⊨ :classify-value :has-value (classify-result (⊚ :Result :Ok #42)))
-(⊨ :classify-error :has-error (classify-result (⊚ :Result :Err :bad)))
+(test-case :classify-value :has-value (classify-result (adt-create :Result :Ok #42)))
+(test-case :classify-error :has-error (classify-result (adt-create :Result :Err :bad)))
 
 ;; ============================================================
 ;; Test 6: Complex ADT patterns in closures
 ;; ============================================================
 
 ;; Nested structure destructuring
-(≔ extract-double (λ (r)
-  (∇ r (⌜ (((⊚ :Result :Ok value) (⊗ value #2))
-           ((⊚ :Result :Err e) #0))))))
+(define extract-double (lambda (r)
+  (match r (quote (((adt-create :Result :Ok value) (* value #2))
+           ((adt-create :Result :Err e) #0))))))
 
-(⊨ :double-ok #84 (extract-double (⊚ :Result :Ok #42)))
-(⊨ :double-err #0 (extract-double (⊚ :Result :Err :fail)))
+(test-case :double-ok #84 (extract-double (adt-create :Result :Ok #42)))
+(test-case :double-err #0 (extract-double (adt-create :Result :Err :fail)))
 
-(≋ "✅ All De Bruijn index dereferencing tests passed!")
+(print "✅ All De Bruijn index dereferencing tests passed!")

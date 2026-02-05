@@ -1,149 +1,149 @@
-; Test file for quasiquote (⌞̃) and unquote (~)
+; Test file for quasiquote (quasiquote-tilde) and unquote (~)
 ; Day 32 Part 2: Macro System - Quote Templates
 
 ; ============ Basic Quasiquote Tests ============
 
 ; Test 1: Quasiquote without unquote acts like quote
-(⊨ :qq-like-quote
-   (⌜ (⊕ #1 #2))
-   (⌞̃ (⊕ #1 #2)))
+(test-case :qq-like-quote
+   (quote (+ #1 #2))
+   (quasiquote-tilde (+ #1 #2)))
 
 ; Test 2: Simple unquote - single value
-(≔ x #42)
-(⊨ :qq-simple-unquote
+(define x #42)
+(test-case :qq-simple-unquote
    #42
-   (⌞̃ (~ x)))
+   (quasiquote-tilde (~ x)))
 
 ; Test 3: Unquote in list structure
-(≔ y #5)
-(⊨ :qq-unquote-in-list
-   (⌜ (⊕ #1 #5))
-   (⌞̃ (⊕ #1 (~ y))))
+(define y #5)
+(test-case :qq-unquote-in-list
+   (quote (+ #1 #5))
+   (quasiquote-tilde (+ #1 (~ y))))
 
 ; ============ Multiple Unquotes ============
 
 ; Test 4: Multiple unquotes
-(≔ a #10)
-(≔ b #20)
-(⊨ :qq-multiple-unquotes
-   (⌜ (⊕ #10 #20))
-   (⌞̃ (⊕ (~ a) (~ b))))
+(define a #10)
+(define b #20)
+(test-case :qq-multiple-unquotes
+   (quote (+ #10 #20))
+   (quasiquote-tilde (+ (~ a) (~ b))))
 
 ; Test 5: Unquote in different positions
-(≔ op :⊕)
-(⊨ :qq-unquote-operator
-   (⌜ (:⊕ #3 #4))
-   (⌞̃ ((~ op) #3 #4)))
+(define op :+)
+(test-case :qq-unquote-operator
+   (quote (:+ #3 #4))
+   (quasiquote-tilde ((~ op) #3 #4)))
 
 ; ============ Nested Structures ============
 
 ; Test 6: Nested lists with unquote
-(≔ inner #99)
-(⊨ :qq-nested-list
-   (⌜ (⟨⟩ #1 (⟨⟩ #99 ∅)))
-   (⌞̃ (⟨⟩ #1 (⟨⟩ (~ inner) ∅))))
+(define inner #99)
+(test-case :qq-nested-list
+   (quote (cons #1 (cons #99 nil)))
+   (quasiquote-tilde (cons #1 (cons (~ inner) nil))))
 
 ; Test 7: Unquote in nested expression
-(≔ val #7)
-(⊨ :qq-nested-expr
-   (⌜ (⊗ (⊕ #1 #7) #2))
-   (⌞̃ (⊗ (⊕ #1 (~ val)) #2)))
+(define val #7)
+(test-case :qq-nested-expr
+   (quote (* (+ #1 #7) #2))
+   (quasiquote-tilde (* (+ #1 (~ val)) #2)))
 
 ; ============ Evaluated Expressions ============
 
 ; Test 8: Unquote evaluates expression
-(≔ n #5)
-(⊨ :qq-eval-expr
-   (⌜ (result #10))
-   (⌞̃ (result (~ (⊗ n #2)))))
+(define n #5)
+(test-case :qq-eval-expr
+   (quote (result #10))
+   (quasiquote-tilde (result (~ (* n #2)))))
 
 ; Test 9: Unquote with function call
-(≔ double (λ (x) (⊗ x #2)))
-(≔ num #21)
-(⊨ :qq-function-call
-   (⌜ (value #42))
-   (⌞̃ (value (~ (double num)))))
+(define double (lambda (x) (* x #2)))
+(define num #21)
+(test-case :qq-function-call
+   (quote (value #42))
+   (quasiquote-tilde (value (~ (double num)))))
 
 ; ============ Mixed Quoted and Unquoted ============
 
 ; Test 10: Mix quoted and unquoted parts
-(≔ x1 #100)
-(⊨ :qq-mixed
-   (⌜ (:constant #100 :another-constant))
-   (⌞̃ (:constant (~ x1) :another-constant)))
+(define x1 #100)
+(test-case :qq-mixed
+   (quote (:constant #100 :another-constant))
+   (quasiquote-tilde (:constant (~ x1) :another-constant)))
 
 ; Test 11: Symbol quoted, value unquoted
-(≔ tag :error)
-(≔ code #404)
-(⊨ :qq-symbol-value-mix
-   (⌜ (:response :error #404))
-   (⌞̃ (:response (~ tag) (~ code))))
+(define tag :error)
+(define code #404)
+(test-case :qq-symbol-value-mix
+   (quote (:response :error #404))
+   (quasiquote-tilde (:response (~ tag) (~ code))))
 
 ; ============ Edge Cases ============
 
 ; Test 12: Empty unquote should error (handle gracefully)
-; (⌞̃ (~))  ; Would error - unquote needs argument
+; (quasiquote-tilde (~))  ; Would error - unquote needs argument
 
 ; Test 13: Nested quasiquotes (advanced)
-(≔ depth #2)
-(⊨ :qq-nested-qq
-   (⌜ (level #2))
-   (⌞̃ (level (~ depth))))
+(define depth #2)
+(test-case :qq-nested-qq
+   (quote (level #2))
+   (quasiquote-tilde (level (~ depth))))
 
 ; Test 14: Unquote nil
-(≔ empty ∅)
-(⊨ :qq-unquote-nil
-   ∅
-   (⌞̃ (~ empty)))
+(define empty nil)
+(test-case :qq-unquote-nil
+   nil
+   (quasiquote-tilde (~ empty)))
 
 ; Test 15: Unquote boolean
-(≔ flag #t)
-(⊨ :qq-unquote-bool
+(define flag #t)
+(test-case :qq-unquote-bool
    #t
-   (⌞̃ (~ flag)))
+   (quasiquote-tilde (~ flag)))
 
 ; ============ Real-World Usage ============
 
 ; Test 16: Build expression programmatically
-(≔ build-add (λ (x) (λ (y)
-  (⌞̃ (⊕ (~ x) (~ y))))))
+(define build-add (lambda (x) (lambda (y)
+  (quasiquote-tilde (+ (~ x) (~ y))))))
 
-(⊨ :qq-build-expr
-   (⌜ (⊕ #3 #4))
+(test-case :qq-build-expr
+   (quote (+ #3 #4))
    ((build-add #3) #4))
 
 ; Test 17: Conditional expression building
-(≔ make-test (λ (val) (λ (expected)
-  (⌞̃ (≡ (~ val) (~ expected))))))
+(define make-test (lambda (val) (lambda (expected)
+  (quasiquote-tilde (equal? (~ val) (~ expected))))))
 
-(⊨ :qq-conditional
-   (⌜ (≡ #42 #42))
+(test-case :qq-conditional
+   (quote (equal? #42 #42))
    ((make-test #42) #42))
 
 ; Test 18: Template with multiple values
-(≔ make-pair (λ (a) (λ (b)
-  (⌞̃ (⟨⟩ (~ a) (~ b))))))
+(define make-pair (lambda (a) (lambda (b)
+  (quasiquote-tilde (cons (~ a) (~ b))))))
 
-(⊨ :qq-template
-   (⌜ (⟨⟩ #1 #2))
+(test-case :qq-template
+   (quote (cons #1 #2))
    ((make-pair #1) #2))
 
 ; ============ Macro-Like Usage ============
 
 ; Test 19: Simple comparison builder
-(≔ make-gt (λ (a) (λ (b)
-  (⌞̃ (> (~ a) (~ b))))))
+(define make-gt (lambda (a) (lambda (b)
+  (quasiquote-tilde (> (~ a) (~ b))))))
 
-(⊨ :qq-comparison
-   (⌜ (> #10 #5))
+(test-case :qq-comparison
+   (quote (> #10 #5))
    ((make-gt #10) #5))
 
 ; Test 20: List constructor
-(≔ make-triple (λ (a) (λ (b) (λ (c)
-  (⌞̃ (⟨⟩ (~ a) (⟨⟩ (~ b) (⟨⟩ (~ c) ∅))))))))
+(define make-triple (lambda (a) (lambda (b) (lambda (c)
+  (quasiquote-tilde (cons (~ a) (cons (~ b) (cons (~ c) nil))))))))
 
-(⊨ :qq-triple
-   (⌜ (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅))))
+(test-case :qq-triple
+   (quote (cons #1 (cons #2 (cons #3 nil))))
    (((make-triple #1) #2) #3))
 
-(≋ "✓ All quasiquote tests defined")
+(print "✓ All quasiquote tests defined")

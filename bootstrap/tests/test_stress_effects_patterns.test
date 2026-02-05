@@ -3,130 +3,130 @@
 
 ;;; --- ADT definitions ---
 
-(⊚≔ :Result (⌜ (:Ok :value)) (⌜ (:Err :error)))
+(adt-define :Result (quote (:Ok :value)) (quote (:Err :error)))
 
 ;;; --- Effect declarations ---
 
-(⟪ :Provider :fetch)
-(⟪ :State :get :put)
-(⟪ :Dispatch :op)
-(⟪ :Counter :inc :get)
+(effect-def :Provider :fetch)
+(effect-def :State :get :put)
+(effect-def :Dispatch :op)
+(effect-def :Counter :inc :get)
 
 ;;; --- 1. Resumable effect returns ADT, 10,000 iterations matching Ok/Err ---
 
-(≔ eff-adt-loop (λ (n ok-count)
-  (? (≡ n #0) ok-count
-     (⪢
-       (≔ result
-         (⟪⟫ (↯ :Provider :fetch n)
+(define eff-adt-loop (lambda (n ok-count)
+  (if (equal? n #0) ok-count
+     (begin
+       (define result
+         (handle (perform :Provider :fetch n)
            (:Provider
-             (:fetch (λ (key) (? (≡ (% key #3) #0)
-                                  (⊚ :Result :Err :bad)
-                                  (⊚ :Result :Ok key)))))))
-       (≔ is-ok (∇ result (⌜ (
-         ((⊚ :Result :Ok v) #1)
-         ((⊚ :Result :Err x) #0)))))
-       (eff-adt-loop (⊖ n #1) (⊕ ok-count is-ok))))))
+             (:fetch (lambda (key) (if (equal? (% key #3) #0)
+                                  (adt-create :Result :Err :bad)
+                                  (adt-create :Result :Ok key)))))))
+       (define is-ok (match result (quote (
+         ((adt-create :Result :Ok v) #1)
+         ((adt-create :Result :Err x) #0)))))
+       (eff-adt-loop (- n #1) (+ ok-count is-ok))))))
 
 ;; 1/3 are Err (divisible by 3): out of 1000, ~333 err, ~667 ok
-(⊨ :ep-adt-ok-count #667 (eff-adt-loop #1000 #0))
+(test-case :ep-adt-ok-count #667 (eff-adt-loop #1000 #0))
 
 ;;; --- 2. Guard on effect-returned value: threshold classification ---
 
-(≔ classify-loop (λ (n big-count)
-  (? (≡ n #0) big-count
-     (⪢
-       (≔ val (⟪⟫ (↯ :Provider :fetch n)
-                 (:Provider (:fetch (λ (k) k)))))
-       (≔ cls (∇ val (⌜ (
+(define classify-loop (lambda (n big-count)
+  (if (equal? n #0) big-count
+     (begin
+       (define val (handle (perform :Provider :fetch n)
+                 (:Provider (:fetch (lambda (k) k)))))
+       (define cls (match val (quote (
          ((x | (> x #500)) :big)
          (x :small)))))
-       (classify-loop (⊖ n #1) (⊕ big-count (? (≡ cls :big) #1 #0)))))))
+       (classify-loop (- n #1) (+ big-count (if (equal? cls :big) #1 #0)))))))
 
 ;; Numbers 501..1000 are :big = 500
-(⊨ :ep-guard-classify #500 (classify-loop #1000 #0))
+(test-case :ep-guard-classify #500 (classify-loop #1000 #0))
 
 ;;; --- 3. Effect handler dispatches via pattern match on 10 operations ---
 
-(⊚≔ :Op
-  (⌜ (:Add :a :b))
-  (⌜ (:Sub :a :b))
-  (⌜ (:Mul :a :b))
-  (⌜ (:Div :a :b))
-  (⌜ (:Neg :a)))
+(adt-define :Op
+  (quote (:Add :a :b))
+  (quote (:Sub :a :b))
+  (quote (:Mul :a :b))
+  (quote (:Div :a :b))
+  (quote (:Neg :a)))
 
-(≔ dispatch-op (λ (op)
-  (∇ op (⌜ (
-    ((⊚ :Op :Add a b) (⊕ a b))
-    ((⊚ :Op :Sub a b) (⊖ a b))
-    ((⊚ :Op :Mul a b) (⊗ a b))
-    ((⊚ :Op :Div a b) (? (≡ b #0) #0 (⊘ a b)))
-    ((⊚ :Op :Neg a)   (⊖ #0 a)))))))
+(define dispatch-op (lambda (op)
+  (match op (quote (
+    ((adt-create :Op :Add a b) (+ a b))
+    ((adt-create :Op :Sub a b) (- a b))
+    ((adt-create :Op :Mul a b) (* a b))
+    ((adt-create :Op :Div a b) (if (equal? b #0) #0 (/ a b)))
+    ((adt-create :Op :Neg a)   (- #0 a)))))))
 
-(≔ dispatch-loop (λ (n acc)
-  (? (≡ n #0) acc
-     (⪢
-       (≔ op (? (≡ (% n #5) #0) (⊚ :Op :Add n #1)
-                (? (≡ (% n #5) #1) (⊚ :Op :Sub n #1)
-                   (? (≡ (% n #5) #2) (⊚ :Op :Mul n #2)
-                      (? (≡ (% n #5) #3) (⊚ :Op :Div n #2)
-                         (⊚ :Op :Neg n))))))
-       (≔ result (⟪⟫ (↯ :Dispatch :op op)
-                    (:Dispatch (:op (λ (o) (dispatch-op o))))))
-       (dispatch-loop (⊖ n #1) (⊕ acc result))))))
+(define dispatch-loop (lambda (n acc)
+  (if (equal? n #0) acc
+     (begin
+       (define op (if (equal? (% n #5) #0) (adt-create :Op :Add n #1)
+                (if (equal? (% n #5) #1) (adt-create :Op :Sub n #1)
+                   (if (equal? (% n #5) #2) (adt-create :Op :Mul n #2)
+                      (if (equal? (% n #5) #3) (adt-create :Op :Div n #2)
+                         (adt-create :Op :Neg n))))))
+       (define result (handle (perform :Dispatch :op op)
+                    (:Dispatch (:op (lambda (o) (dispatch-op o))))))
+       (dispatch-loop (- n #1) (+ acc result))))))
 
-(≔ dispatch-result (dispatch-loop #500 #0))
-(⊨ :ep-dispatch-completes #t (> dispatch-result #0))
+(define dispatch-result (dispatch-loop #500 #0))
+(test-case :ep-dispatch-completes #t (> dispatch-result #0))
 
 ;;; --- 4. Nested pattern match inside nested effect handler ---
 
-(⊨ :ep-nested-3-levels #42
-  (⟪⟫
-    (⟪↺⟫
-      (∇ (⊚ :Result :Ok (↯ :State :get)) (⌜ (
-        ((⊚ :Result :Ok v) v)
-        ((⊚ :Result :Err _) #0))))
+(test-case :ep-nested-3-levels #42
+  (handle
+    (handle-resume
+      (match (adt-create :Result :Ok (perform :State :get)) (quote (
+        ((adt-create :Result :Ok v) v)
+        ((adt-create :Result :Err _) #0))))
       (:State
-        (:get (λ (k) (k #42)))
-        (:put (λ (k v) (k ∅)))))
-    (:Provider (:fetch (λ (k) k)))))
+        (:get (lambda (k) (k #42)))
+        (:put (lambda (k v) (k nil)))))
+    (:Provider (:fetch (lambda (k) k)))))
 
 ;;; --- 5. Effect-driven state machine: 10 states, transitions via pattern match ---
 
-(⊚≔ :FSM
-  (⌜ (:S0)) (⌜ (:S1)) (⌜ (:S2)) (⌜ (:S3)) (⌜ (:S4))
-  (⌜ (:S5)) (⌜ (:S6)) (⌜ (:S7)) (⌜ (:S8)) (⌜ (:S9)))
+(adt-define :FSM
+  (quote (:S0)) (quote (:S1)) (quote (:S2)) (quote (:S3)) (quote (:S4))
+  (quote (:S5)) (quote (:S6)) (quote (:S7)) (quote (:S8)) (quote (:S9)))
 
-(≔ next-state (λ (s)
-  (∇ s (⌜ (
-    ((⊚ :FSM :S0) (⊚ :FSM :S1))
-    ((⊚ :FSM :S1) (⊚ :FSM :S2))
-    ((⊚ :FSM :S2) (⊚ :FSM :S3))
-    ((⊚ :FSM :S3) (⊚ :FSM :S4))
-    ((⊚ :FSM :S4) (⊚ :FSM :S5))
-    ((⊚ :FSM :S5) (⊚ :FSM :S6))
-    ((⊚ :FSM :S6) (⊚ :FSM :S7))
-    ((⊚ :FSM :S7) (⊚ :FSM :S8))
-    ((⊚ :FSM :S8) (⊚ :FSM :S9))
-    ((⊚ :FSM :S9) (⊚ :FSM :S0)))))))
+(define next-state (lambda (s)
+  (match s (quote (
+    ((adt-create :FSM :S0) (adt-create :FSM :S1))
+    ((adt-create :FSM :S1) (adt-create :FSM :S2))
+    ((adt-create :FSM :S2) (adt-create :FSM :S3))
+    ((adt-create :FSM :S3) (adt-create :FSM :S4))
+    ((adt-create :FSM :S4) (adt-create :FSM :S5))
+    ((adt-create :FSM :S5) (adt-create :FSM :S6))
+    ((adt-create :FSM :S6) (adt-create :FSM :S7))
+    ((adt-create :FSM :S7) (adt-create :FSM :S8))
+    ((adt-create :FSM :S8) (adt-create :FSM :S9))
+    ((adt-create :FSM :S9) (adt-create :FSM :S0)))))))
 
-(≔ fsm-loop (λ (n state steps)
-  (? (≡ n #0) steps
-     (fsm-loop (⊖ n #1) (next-state state) (⊕ steps #1)))))
+(define fsm-loop (lambda (n state steps)
+  (if (equal? n #0) steps
+     (fsm-loop (- n #1) (next-state state) (+ steps #1)))))
 
-(⊨ :ep-fsm-1k #1000 (fsm-loop #1000 (⊚ :FSM :S0) #0))
+(test-case :ep-fsm-1k #1000 (fsm-loop #1000 (adt-create :FSM :S0) #0))
 
 ;;; --- 6. As-pattern on effect result + destructure ---
 
-(≔ as-eff-loop (λ (n acc)
-  (? (≡ n #0) acc
-     (⪢
-       (≔ r (⟪⟫ (↯ :Provider :fetch n)
-                (:Provider (:fetch (λ (k) (⊚ :Result :Ok k))))))
-       (≔ val (∇ r (⌜ (
-         ((⊚ :Result :Ok v) v)
+(define as-eff-loop (lambda (n acc)
+  (if (equal? n #0) acc
+     (begin
+       (define r (handle (perform :Provider :fetch n)
+                (:Provider (:fetch (lambda (k) (adt-create :Result :Ok k))))))
+       (define val (match r (quote (
+         ((adt-create :Result :Ok v) v)
          (_ #0)))))
-       (as-eff-loop (⊖ n #1) (⊕ acc val))))))
+       (as-eff-loop (- n #1) (+ acc val))))))
 
 ;; Sum of 1..500 = 125250
-(⊨ :ep-as-pattern-500 #125250 (as-eff-loop #500 #0))
+(test-case :ep-as-pattern-500 #125250 (as-eff-loop #500 #0))

@@ -7,74 +7,74 @@
 ; - ⟳← (reduce)
 ; ═══════════════════════════════════════════════════════════════
 
-(⋘ "bootstrap/stdlib/macros_iteration.scm")
+(load "bootstrap/stdlib/macros_iteration.scm")
 
 ; ═══════════════════════════════════════════════════════════════
 ; ⊎⊲ (list filter comprehension) - Filter with inline predicate
 ; ═══════════════════════════════════════════════════════════════
 
 ; Filter even numbers
-(⊨ (⌜ :filtercomp-even)
-   (⟨⟩ #2 (⟨⟩ #4 ∅))
-   (⊎⊲ (≡ (% :x #2) #0) (:x (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 (⟨⟩ #4 (⟨⟩ #5 ∅))))))))
+(test-case (quote :filtercomp-even)
+   (cons #2 (cons #4 nil))
+   (⊎⊲ (equal? (% :x #2) #0) (:x (cons #1 (cons #2 (cons #3 (cons #4 (cons #5 nil))))))))
 
 ; Filter greater than 3
-(⊨ (⌜ :filtercomp-gt3)
-   (⟨⟩ #4 (⟨⟩ #5 ∅))
-   (⊎⊲ (> :x #3) (:x (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 (⟨⟩ #4 (⟨⟩ #5 ∅))))))))
+(test-case (quote :filtercomp-gt3)
+   (cons #4 (cons #5 nil))
+   (⊎⊲ (> :x #3) (:x (cons #1 (cons #2 (cons #3 (cons #4 (cons #5 nil))))))))
 
 ; Filter all pass
-(⊨ (⌜ :filtercomp-all)
-   (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅)))
-   (⊎⊲ #t (:x (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅))))))
+(test-case (quote :filtercomp-all)
+   (cons #1 (cons #2 (cons #3 nil)))
+   (⊎⊲ #t (:x (cons #1 (cons #2 (cons #3 nil))))))
 
 ; Filter none pass
-(⊨ (⌜ :filtercomp-none)
-   ∅
-   (⊎⊲ #f (:x (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅))))))
+(test-case (quote :filtercomp-none)
+   nil
+   (⊎⊲ #f (:x (cons #1 (cons #2 (cons #3 nil))))))
 
 ; ═══════════════════════════════════════════════════════════════
 ; Nested/Combined Usage
 ; ═══════════════════════════════════════════════════════════════
 
 ; Begin inside list comprehension body
-(⊨ (⌜ :nested-begin-in-comp)
-   (⟨⟩ #3 (⟨⟩ #6 (⟨⟩ #9 ∅)))
-   (⊎↦ (⊎ (⊗ :x #2) (⊗ :x #3)) (:x (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅))))))
+(test-case (quote :nested-begin-in-comp)
+   (cons #3 (cons #6 (cons #9 nil)))
+   (⊎↦ (⊎ (* :x #2) (* :x #3)) (:x (cons #1 (cons #2 (cons #3 nil))))))
 
 ; List comprehension with begin for tracing
-(⊨ (⌜ :comp-with-trace)
-   (⟨⟩ #10 (⟨⟩ #20 ∅))
-   (⊎↦ (⊎ (⟲ :processing) (⊗ :n #10)) (:n (⟨⟩ #1 (⟨⟩ #2 ∅)))))
+(test-case (quote :comp-with-trace)
+   (cons #10 (cons #20 nil))
+   (⊎↦ (⊎ (trace :processing) (* :n #10)) (:n (cons #1 (cons #2 nil)))))
 
 ; ═══════════════════════════════════════════════════════════════
 ; ⟳← (reduce) - Fold with cleaner syntax
 ; ═══════════════════════════════════════════════════════════════
 
 ; Sum using reduce
-(⊨ (⌜ :reduce-sum)
+(test-case (quote :reduce-sum)
    #15
-   (⟳← (⊕ :acc :x) #0 (:x (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 (⟨⟩ #4 (⟨⟩ #5 ∅))))))))
+   (⟳← (+ :acc :x) #0 (:x (cons #1 (cons #2 (cons #3 (cons #4 (cons #5 nil))))))))
 
 ; Product using reduce
-(⊨ (⌜ :reduce-product)
+(test-case (quote :reduce-product)
    #120
-   (⟳← (⊗ :acc :x) #1 (:x (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 (⟨⟩ #4 (⟨⟩ #5 ∅))))))))
+   (⟳← (* :acc :x) #1 (:x (cons #1 (cons #2 (cons #3 (cons #4 (cons #5 nil))))))))
 
 ; Max using reduce
-(⊨ (⌜ :reduce-max)
+(test-case (quote :reduce-max)
    #9
-   (⟳← (? (> :x :acc) :x :acc) #0 (:x (⟨⟩ #3 (⟨⟩ #1 (⟨⟩ #9 (⟨⟩ #4 ∅)))))))
+   (⟳← (if (> :x :acc) :x :acc) #0 (:x (cons #3 (cons #1 (cons #9 (cons #4 nil)))))))
 
 ; Count using reduce
-(⊨ (⌜ :reduce-count)
+(test-case (quote :reduce-count)
    #5
-   (⟳← (⊕ :acc #1) #0 (:x (⟨⟩ :a (⟨⟩ :b (⟨⟩ :c (⟨⟩ :d (⟨⟩ :e ∅))))))))
+   (⟳← (+ :acc #1) #0 (:x (cons :a (cons :b (cons :c (cons :d (cons :e nil))))))))
 
 ; Empty list reduce
-(⊨ (⌜ :reduce-empty)
+(test-case (quote :reduce-empty)
    #42
-   (⟳← (⊕ :acc :x) #42 (:x ∅)))
+   (⟳← (+ :acc :x) #42 (:x nil)))
 
 ; ═══════════════════════════════════════════════════════════════
 ; Summary: 11 iteration macro tests (Part 2)

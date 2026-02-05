@@ -7,193 +7,193 @@
 ;;; ===================================================================
 
 ;; Square root
-(⊨ :sqrt-4 #2 (√ #4))
-(⊨ :sqrt-9 #3 (√ #9))
-(⊨ :sqrt-16 #4 (√ #16))
-(⊨ :sqrt-0 #0 (√ #0))
-(⊨ :sqrt-1 #1 (√ #1))
-(⊨ :sqrt-negative-error #t (⚠? (√ #-1)))
+(test-case :sqrt-4 #2 (sqrt #4))
+(test-case :sqrt-9 #3 (sqrt #9))
+(test-case :sqrt-16 #4 (sqrt #16))
+(test-case :sqrt-0 #0 (sqrt #0))
+(test-case :sqrt-1 #1 (sqrt #1))
+(test-case :sqrt-negative-error #t (error? (sqrt #-1)))
 
 ;; Power (exponentiation)
-(⊨ :pow-2-3 #8 (^ #2 #3))
-(⊨ :pow-2-8 #256 (^ #2 #8))
-(⊨ :pow-10-2 #100 (^ #10 #2))
-(⊨ :pow-5-0 #1 (^ #5 #0))
-(⊨ :pow-2-minus1 #0.5 (^ #2 #-1))
+(test-case :pow-2-3 #8 (^ #2 #3))
+(test-case :pow-2-8 #256 (^ #2 #8))
+(test-case :pow-10-2 #100 (^ #10 #2))
+(test-case :pow-5-0 #1 (^ #5 #0))
+(test-case :pow-2-minus1 #0.5 (^ #2 #-1))
 
 ;; Absolute value
-(⊨ :abs-positive #42 (| #42))
-(⊨ :abs-negative #42 (| #-42))
-(⊨ :abs-zero #0 (| #0))
-(⊨ :abs-float #3.14 (| #-3.14))
+(test-case :abs-positive #42 (abs #42))
+(test-case :abs-negative #42 (abs #-42))
+(test-case :abs-zero #0 (abs #0))
+(test-case :abs-float #3.14 (abs #-3.14))
 
 ;; Floor
-(⊨ :floor-positive #3 (⌊⌋ #3.7))
-(⊨ :floor-negative #-4 (⌊⌋ #-3.2))
-(⊨ :floor-int #5 (⌊⌋ #5))
-(⊨ :floor-zero #0 (⌊⌋ #0))
+(test-case :floor-positive #3 (floor #3.7))
+(test-case :floor-negative #-4 (floor #-3.2))
+(test-case :floor-int #5 (floor #5))
+(test-case :floor-zero #0 (floor #0))
 
 ;; Ceiling
-(⊨ :ceil-positive #4 (⌈⌉ #3.2))
-(⊨ :ceil-negative #-3 (⌈⌉ #-3.7))
-(⊨ :ceil-int #5 (⌈⌉ #5))
-(⊨ :ceil-zero #0 (⌈⌉ #0))
+(test-case :ceil-positive #4 (ceil #3.2))
+(test-case :ceil-negative #-3 (ceil #-3.7))
+(test-case :ceil-int #5 (ceil #5))
+(test-case :ceil-zero #0 (ceil #0))
 
 ;; Round
-(⊨ :round-up #4 (⌊⌉ #3.6))
-(⊨ :round-down #3 (⌊⌉ #3.4))
-(⊨ :round-half #4 (⌊⌉ #3.5))
-(⊨ :round-negative #-3 (⌊⌉ #-3.4))
+(test-case :round-up #4 (round #3.6))
+(test-case :round-down #3 (round #3.4))
+(test-case :round-half #4 (round #3.5))
+(test-case :round-negative #-3 (round #-3.4))
 
 ;; Min/Max
-(⊨ :min-5-3 #3 (min #5 #3))
-(⊨ :min-3-5 #3 (min #3 #5))
-(⊨ :min-equal #5 (min #5 #5))
-(⊨ :min-negative #-10 (min #-5 #-10))
-(⊨ :max-5-3 #5 (max #5 #3))
-(⊨ :max-3-5 #5 (max #3 #5))
-(⊨ :max-equal #5 (max #5 #5))
-(⊨ :max-negative #-5 (max #-5 #-10))
+(test-case :min-5-3 #3 (min #5 #3))
+(test-case :min-3-5 #3 (min #3 #5))
+(test-case :min-equal #5 (min #5 #5))
+(test-case :min-negative #-10 (min #-5 #-10))
+(test-case :max-5-3 #5 (max #5 #3))
+(test-case :max-3-5 #5 (max #3 #5))
+(test-case :max-equal #5 (max #5 #5))
+(test-case :max-negative #-5 (max #-5 #-10))
 
 ;;; ===================================================================
 ;;; Trigonometry
 ;;; ===================================================================
 
 ;; Constants
-(≔ pi-val (π))
-(≔ e-val (e))
+(define pi-val (pi))
+(define e-val (e))
 
 ;; Test pi is approximately 3.14159
-(⊨ :pi-approx #t (∧ (> pi-val #3.14) (< pi-val #3.15)))
+(test-case :pi-approx #t (and (> pi-val #3.14) (< pi-val #3.15)))
 
 ;; Test e is approximately 2.71828
-(⊨ :e-approx #t (∧ (> e-val #2.71) (< e-val #2.72)))
+(test-case :e-approx #t (and (> e-val #2.71) (< e-val #2.72)))
 
 ;; Sine
-(⊨ :sin-0 #0 (sin #0))
-;; sin(π) should be ~0 (within small tolerance)
-(≔ sin-pi (sin pi-val))
-(⊨ :sin-pi-near-zero #t (∧ (> sin-pi #-0.001) (< sin-pi #0.001)))
+(test-case :sin-0 #0 (sin #0))
+;; sin(pi) should be ~0 (within small tolerance)
+(define sin-pi (sin pi-val))
+(test-case :sin-pi-near-zero #t (and (> sin-pi #-0.001) (< sin-pi #0.001)))
 ;; sin(π/2) should be ~1
-(≔ sin-pi-half (sin (⊘ pi-val #2)))
-(⊨ :sin-pi-half-near-one #t (∧ (> sin-pi-half #0.999) (< sin-pi-half #1.001)))
+(define sin-pi-half (sin (/ pi-val #2)))
+(test-case :sin-pi-half-near-one #t (and (> sin-pi-half #0.999) (< sin-pi-half #1.001)))
 
 ;; Cosine
-(⊨ :cos-0 #1 (cos #0))
-;; cos(π) should be ~-1
-(≔ cos-pi (cos pi-val))
-(⊨ :cos-pi-near-neg-one #t (∧ (> cos-pi #-1.001) (< cos-pi #-0.999)))
+(test-case :cos-0 #1 (cos #0))
+;; cos(pi) should be ~-1
+(define cos-pi (cos pi-val))
+(test-case :cos-pi-near-neg-one #t (and (> cos-pi #-1.001) (< cos-pi #-0.999)))
 ;; cos(π/2) should be ~0
-(≔ cos-pi-half (cos (⊘ pi-val #2)))
-(⊨ :cos-pi-half-near-zero #t (∧ (> cos-pi-half #-0.001) (< cos-pi-half #0.001)))
+(define cos-pi-half (cos (/ pi-val #2)))
+(test-case :cos-pi-half-near-zero #t (and (> cos-pi-half #-0.001) (< cos-pi-half #0.001)))
 
 ;; Tangent
-(⊨ :tan-0 #0 (tan #0))
+(test-case :tan-0 #0 (tan #0))
 ;; tan(π/4) should be ~1
-(≔ tan-pi-quarter (tan (⊘ pi-val #4)))
-(⊨ :tan-pi-quarter-near-one #t (∧ (> tan-pi-quarter #0.999) (< tan-pi-quarter #1.001)))
+(define tan-pi-quarter (tan (/ pi-val #4)))
+(test-case :tan-pi-quarter-near-one #t (and (> tan-pi-quarter #0.999) (< tan-pi-quarter #1.001)))
 
 ;; Arcsine
-(⊨ :asin-0 #0 (asin #0))
-(⊨ :asin-1-near-pi-half #t (> (asin #1) #1.57))
-(⊨ :asin-domain-error #t (⚠? (asin #2)))
-(⊨ :asin-domain-error-neg #t (⚠? (asin #-2)))
+(test-case :asin-0 #0 (asin #0))
+(test-case :asin-1-near-pi-half #t (> (asin #1) #1.57))
+(test-case :asin-domain-error #t (error? (asin #2)))
+(test-case :asin-domain-error-neg #t (error? (asin #-2)))
 
 ;; Arccosine
-(⊨ :acos-1 #0 (acos #1))
-(⊨ :acos-0-near-pi-half #t (> (acos #0) #1.57))
-(⊨ :acos-domain-error #t (⚠? (acos #2)))
-(⊨ :acos-domain-error-neg #t (⚠? (acos #-2)))
+(test-case :acos-1 #0 (acos #1))
+(test-case :acos-0-near-pi-half #t (> (acos #0) #1.57))
+(test-case :acos-domain-error #t (error? (acos #2)))
+(test-case :acos-domain-error-neg #t (error? (acos #-2)))
 
 ;; Arctangent
-(⊨ :atan-0 #0 (atan #0))
-(⊨ :atan-1-near-pi-quarter #t (∧ (> (atan #1) #0.78) (< (atan #1) #0.79)))
+(test-case :atan-0 #0 (atan #0))
+(test-case :atan-1-near-pi-quarter #t (and (> (atan #1) #0.78) (< (atan #1) #0.79)))
 
 ;; atan2 (two-argument arctangent)
-(⊨ :atan2-1-0-near-pi-half #t (> (atan2 #1 #0) #1.57))
-(⊨ :atan2-0-1 #0 (atan2 #0 #1))
-(⊨ :atan2-neg1-0-near-neg-pi-half #t (< (atan2 #-1 #0) #-1.57))
+(test-case :atan2-1-0-near-pi-half #t (> (atan2 #1 #0) #1.57))
+(test-case :atan2-0-1 #0 (atan2 #0 #1))
+(test-case :atan2-neg1-0-near-neg-pi-half #t (< (atan2 #-1 #0) #-1.57))
 
 ;;; ===================================================================
 ;;; Logarithms and Exponentials
 ;;; ===================================================================
 
 ;; Natural logarithm
-(⊨ :log-1 #0 (log #1))
-(⊨ :log-e #1 (log e-val))
-(⊨ :log-e-squared #2 (log (^ e-val #2)))
-(⊨ :log-domain-error #t (⚠? (log #0)))
-(⊨ :log-domain-error-neg #t (⚠? (log #-1)))
+(test-case :log-1 #0 (log #1))
+(test-case :log-e #1 (log e-val))
+(test-case :log-e-squared #2 (log (^ e-val #2)))
+(test-case :log-domain-error #t (error? (log #0)))
+(test-case :log-domain-error-neg #t (error? (log #-1)))
 
 ;; Base-10 logarithm
-(⊨ :log10-1 #0 (log10 #1))
-(⊨ :log10-10 #1 (log10 #10))
-(⊨ :log10-100 #2 (log10 #100))
-(⊨ :log10-1000 #3 (log10 #1000))
-(⊨ :log10-domain-error #t (⚠? (log10 #0)))
+(test-case :log10-1 #0 (log10 #1))
+(test-case :log10-10 #1 (log10 #10))
+(test-case :log10-100 #2 (log10 #100))
+(test-case :log10-1000 #3 (log10 #1000))
+(test-case :log10-domain-error #t (error? (log10 #0)))
 
 ;; Exponential
-(⊨ :exp-0 #1 (exp #0))
-(⊨ :exp-1 e-val (exp #1))
+(test-case :exp-0 #1 (exp #0))
+(test-case :exp-1 e-val (exp #1))
 ;; exp(2) should be approximately e^2 (within tolerance due to floating point)
-(≔ exp-2-val (exp #2))
-(⊨ :exp-2-approx #t (∧ (> exp-2-val #7.38) (< exp-2-val #7.40)))
-;; exp(log(x)) ≈ x (within floating point tolerance)
-(≔ exp-log-42 (exp (log #42)))
-(⊨ :exp-log-identity-approx #t (∧ (> exp-log-42 #41.99) (< exp-log-42 #42.01)))
+(define exp-2-val (exp #2))
+(test-case :exp-2-approx #t (and (> exp-2-val #7.38) (< exp-2-val #7.40)))
+;; exp(log(x)) string x (within floating point tolerance)
+(define exp-log-42 (exp (log #42)))
+(test-case :exp-log-identity-approx #t (and (> exp-log-42 #41.99) (< exp-log-42 #42.01)))
 
 ;;; ===================================================================
 ;;; Random Numbers
 ;;; ===================================================================
 
 ;; Random float is in range [0, 1)
-(≔ r (rand))
-(⊨ :rand-non-negative #t (≥ r #0))
-(⊨ :rand-less-than-one #t (< r #1))
+(define r (rand))
+(test-case :rand-non-negative #t (>= r #0))
+(test-case :rand-less-than-one #t (< r #1))
 
 ;; Random int is in range [0, n)
-(≔ ri (rand-int #10))
-(⊨ :rand-int-non-negative #t (≥ ri #0))
-(⊨ :rand-int-less-than-n #t (< ri #10))
+(define ri (rand-int #10))
+(test-case :rand-int-non-negative #t (>= ri #0))
+(test-case :rand-int-less-than-n #t (< ri #10))
 
 ;; Random int with invalid argument
-(⊨ :rand-int-zero-error #t (⚠? (rand-int #0)))
-(⊨ :rand-int-negative-error #t (⚠? (rand-int #-5)))
+(test-case :rand-int-zero-error #t (error? (rand-int #0)))
+(test-case :rand-int-negative-error #t (error? (rand-int #-5)))
 
 ;;; ===================================================================
 ;;; Combined Operations
 ;;; ===================================================================
 
 ;; Pythagorean theorem: √(a² + b²)
-(≔ hypotenuse (λ (a) (λ (b)
-  (√ (⊕ (^ a #2) (^ b #2))))))
+(define hypotenuse (lambda (a) (lambda (b)
+  (sqrt (+ (^ a #2) (^ b #2))))))
 
-(⊨ :pythagoras-3-4 #5 ((hypotenuse #3) #4))
-(⊨ :pythagoras-5-12 #13 ((hypotenuse #5) #12))
+(test-case :pythagoras-3-4 #5 ((hypotenuse #3) #4))
+(test-case :pythagoras-5-12 #13 ((hypotenuse #5) #12))
 
 ;; Distance between two points
-(≔ distance (λ (x1) (λ (y1) (λ (x2) (λ (y2)
-  ((hypotenuse (⊖ x2 x1)) (⊖ y2 y1)))))))
+(define distance (lambda (x1) (lambda (y1) (lambda (x2) (lambda (y2)
+  ((hypotenuse (- x2 x1)) (- y2 y1)))))))
 
-(⊨ :distance-origin-3-4 #5 ((((distance #0) #0) #3) #4))
-(⊨ :distance-1-1-to-4-5 #5 ((((distance #1) #1) #4) #5))
+(test-case :distance-origin-3-4 #5 ((((distance #0) #0) #3) #4))
+(test-case :distance-1-1-to-4-5 #5 ((((distance #1) #1) #4) #5))
 
 ;; Quadratic formula: (-b ± √(b²-4ac)) / 2a
-(≔ discriminant (λ (a) (λ (b) (λ (c)
-  (⊖ (^ b #2) (⊗ #4 (⊗ a c)))))))
+(define discriminant (lambda (a) (lambda (b) (lambda (c)
+  (- (^ b #2) (* #4 (* a c)))))))
 
-(⊨ :discriminant-1-neg5-6 #1 (((discriminant #1) #-5) #6))
+(test-case :discriminant-1-neg5-6 #1 (((discriminant #1) #-5) #6))
 
 ;; Geometric mean: √(a * b)
-(≔ geo-mean (λ (a) (λ (b) (√ (⊗ a b)))))
+(define geo-mean (lambda (a) (lambda (b) (sqrt (* a b)))))
 
-(⊨ :geo-mean-4-9 #6 ((geo-mean #4) #9))
-(⊨ :geo-mean-1-100 #10 ((geo-mean #1) #100))
+(test-case :geo-mean-4-9 #6 ((geo-mean #4) #9))
+(test-case :geo-mean-1-100 #10 ((geo-mean #1) #100))
 
 ;; Clamp function using min/max
-(≔ clamp (λ (val) (λ (lo) (λ (hi)
+(define clamp (lambda (val) (lambda (lo) (lambda (hi)
   (max lo (min hi val))))))
 
-(⊨ :clamp-in-range #5 (((clamp #5) #0) #10))
-(⊨ :clamp-too-low #0 (((clamp #-5) #0) #10))
-(⊨ :clamp-too-high #10 (((clamp #15) #0) #10))
+(test-case :clamp-in-range #5 (((clamp #5) #0) #10))
+(test-case :clamp-too-low #0 (((clamp #-5) #0) #10))
+(test-case :clamp-too-high #10 (((clamp #15) #0) #10))

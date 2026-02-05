@@ -7,267 +7,267 @@
 ; =============================================================================
 
 ; Test 1.1: cons creates pair
-(⊨ (⌜ :cons-creates-pair) #t (⟨⟩? (⟨⟩ #1 #2)))
+(test-case (quote :cons-creates-pair) #t (pair? (cons #1 #2)))
 
 ; Test 1.2: car extracts first element
-(⊨ (⌜ :car-first-element) #1 (◁ (⟨⟩ #1 #2)))
+(test-case (quote :car-first-element) #1 (car (cons #1 #2)))
 
 ; Test 1.3: cdr extracts second element
-(⊨ (⌜ :cdr-second-element) #2 (▷ (⟨⟩ #1 #2)))
+(test-case (quote :cdr-second-element) #2 (cdr (cons #1 #2)))
 
 ; Test 1.4: nil? identifies empty list
-(⊨ (⌜ :nil-check) #t (∅? ∅))
+(test-case (quote :nil-check) #t (null? nil))
 
 ; Test 1.5: nil? rejects non-empty
-(⊨ (⌜ :nil-check-false) #f (∅? (⟨⟩ #1 ∅)))
+(test-case (quote :nil-check-false) #f (null? (cons #1 nil)))
 
 ; Test 1.6: Empty list is not a pair
-(⊨ (⌜ :empty-not-pair) #f (⟨⟩? ∅))
+(test-case (quote :empty-not-pair) #f (pair? nil))
 
 ; Test 1.7: Single element list
-(≔ single (⟨⟩ #42 ∅))
-(⊨ (⌜ :single-elem-car) #42 (◁ single))
-(⊨ (⌜ :single-elem-cdr) #t (∅? (▷ single)))
+(define single (cons #42 nil))
+(test-case (quote :single-elem-car) #42 (car single))
+(test-case (quote :single-elem-cdr) #t (null? (cdr single)))
 
 ; Test 1.8: Two element list
-(≔ pair (⟨⟩ #1 (⟨⟩ #2 ∅)))
-(⊨ (⌜ :two-elem-first) #1 (◁ pair))
-(⊨ (⌜ :two-elem-second) #2 (◁ (▷ pair)))
+(define pair (cons #1 (cons #2 nil)))
+(test-case (quote :two-elem-first) #1 (car pair))
+(test-case (quote :two-elem-second) #2 (car (cdr pair)))
 
 ; Test 1.9: Nested pairs (not a list)
-(≔ nested (⟨⟩ (⟨⟩ #1 #2) (⟨⟩ #3 #4)))
-(⊨ (⌜ :nested-car-is-pair) #t (⟨⟩? (◁ nested)))
-(⊨ (⌜ :nested-cdr-is-pair) #t (⟨⟩? (▷ nested)))
+(define nested (cons (cons #1 #2) (cons #3 #4)))
+(test-case (quote :nested-car-is-pair) #t (pair? (car nested)))
+(test-case (quote :nested-cdr-is-pair) #t (pair? (cdr nested)))
 
 ; =============================================================================
 ; SECTION 2: List Construction (8 tests)
 ; =============================================================================
 
 ; Test 2.1: Build three-element list
-(≔ list3 (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅))))
-(⊨ (⌜ :list3-first) #1 (◁ list3))
-(⊨ (⌜ :list3-second) #2 (◁ (▷ list3)))
-(⊨ (⌜ :list3-third) #3 (◁ (▷ (▷ list3))))
-(⊨ (⌜ :list3-end) #t (∅? (▷ (▷ (▷ list3)))))
+(define list3 (cons #1 (cons #2 (cons #3 nil))))
+(test-case (quote :list3-first) #1 (car list3))
+(test-case (quote :list3-second) #2 (car (cdr list3)))
+(test-case (quote :list3-third) #3 (car (cdr (cdr list3))))
+(test-case (quote :list3-end) #t (null? (cdr (cdr (cdr list3)))))
 
 ; Test 2.2: Build list from function calls
-(≔ list-from-funcs (⟨⟩ (⊕ #1 #1) (⟨⟩ (⊗ #2 #2) (⟨⟩ (⊖ #5 #2) ∅))))
-(⊨ (⌜ :list-func-first) #2 (◁ list-from-funcs))
-(⊨ (⌜ :list-func-second) #4 (◁ (▷ list-from-funcs)))
-(⊨ (⌜ :list-func-third) #3 (◁ (▷ (▷ list-from-funcs))))
+(define list-from-funcs (cons (+ #1 #1) (cons (* #2 #2) (cons (- #5 #2) nil))))
+(test-case (quote :list-func-first) #2 (car list-from-funcs))
+(test-case (quote :list-func-second) #4 (car (cdr list-from-funcs)))
+(test-case (quote :list-func-third) #3 (car (cdr (cdr list-from-funcs))))
 
 ; Test 2.3: Build list in lambda - THIS IS THE KEY TEST!
-(≔ make-list (λ (a b c) (⟨⟩ a (⟨⟩ b (⟨⟩ c ∅)))))
-(≔ result-list (make-list #10 #20 #30))
-(⊨ (⌜ :lambda-list-first) #10 (◁ result-list))
-(⊨ (⌜ :lambda-list-second) #20 (◁ (▷ result-list)))
-(⊨ (⌜ :lambda-list-third) #30 (◁ (▷ (▷ result-list))))
+(define make-list (lambda (a b c) (cons a (cons b (cons c nil)))))
+(define result-list (make-list #10 #20 #30))
+(test-case (quote :lambda-list-first) #10 (car result-list))
+(test-case (quote :lambda-list-second) #20 (car (cdr result-list)))
+(test-case (quote :lambda-list-third) #30 (car (cdr (cdr result-list))))
 
 ; Test 2.4: Build nested lists
-(≔ nested-list (⟨⟩ (⟨⟩ #1 (⟨⟩ #2 ∅)) (⟨⟩ (⟨⟩ #3 (⟨⟩ #4 ∅)) ∅)))
-(⊨ (⌜ :nested-list-car-is-pair) #t (⟨⟩? (◁ nested-list)))
+(define nested-list (cons (cons #1 (cons #2 nil)) (cons (cons #3 (cons #4 nil)) nil)))
+(test-case (quote :nested-list-car-is-pair) #t (pair? (car nested-list)))
 
 ; Test 2.5: Build list of lists
-(≔ list-of-lists (⟨⟩ list3 (⟨⟩ pair (⟨⟩ single ∅))))
-(⊨ (⌜ :list-of-lists-first) #1 (◁ (◁ list-of-lists)))
+(define list-of-lists (cons list3 (cons pair (cons single nil))))
+(test-case (quote :list-of-lists-first) #1 (car (car list-of-lists)))
 
 ; Test 2.6: Build heterogeneous list (numbers and booleans)
 ; NOTE: Symbol literals don't work from files yet (bug to fix)
-(≔ hetero (⟨⟩ #42 (⟨⟩ #99 (⟨⟩ #t ∅))))
-(⊨ (⌜ :hetero-first) #42 (◁ hetero))
-(⊨ (⌜ :hetero-second) #99 (◁ (▷ hetero)))
-(⊨ (⌜ :hetero-third) #t (◁ (▷ (▷ hetero))))
+(define hetero (cons #42 (cons #99 (cons #t nil))))
+(test-case (quote :hetero-first) #42 (car hetero))
+(test-case (quote :hetero-second) #99 (car (cdr hetero)))
+(test-case (quote :hetero-third) #t (car (cdr (cdr hetero))))
 
 ; Test 2.7: Deep nested structure (5 levels)
-(≔ deep (⟨⟩ #1 (⟨⟩ (⟨⟩ #2 (⟨⟩ (⟨⟩ #3 (⟨⟩ (⟨⟩ #4 (⟨⟩ #5 ∅)) ∅)) ∅)) ∅)))
-(⊨ (⌜ :deep-first) #1 (◁ deep))
+(define deep (cons #1 (cons (cons #2 (cons (cons #3 (cons (cons #4 (cons #5 nil)) nil)) nil)) nil)))
+(test-case (quote :deep-first) #1 (car deep))
 
 ; =============================================================================
 ; SECTION 3: List Traversal Functions (8 tests)
 ; =============================================================================
 
 ; Test 3.1: Length function
-(≔ length (λ (lst)
-  (? (∅? lst)
+(define length (lambda (lst)
+  (if (null? lst)
      #0
-     (⊕ #1 (length (▷ lst))))))
+     (+ #1 (length (cdr lst))))))
 
-(⊨ (⌜ :length-empty) #0 (length ∅))
-(⊨ (⌜ :length-one) #1 (length single))
-(⊨ (⌜ :length-two) #2 (length pair))
-(⊨ (⌜ :length-three) #3 (length list3))
+(test-case (quote :length-empty) #0 (length nil))
+(test-case (quote :length-one) #1 (length single))
+(test-case (quote :length-two) #2 (length pair))
+(test-case (quote :length-three) #3 (length list3))
 
 ; Test 3.2: Nth element access
-(≔ nth (λ (lst n)
-  (? (≡ n #0)
-     (◁ lst)
-     (nth (▷ lst) (⊖ n #1)))))
+(define nth (lambda (lst n)
+  (if (equal? n #0)
+     (car lst)
+     (nth (cdr lst) (- n #1)))))
 
-(⊨ (⌜ :nth-0) #1 (nth list3 #0))
-(⊨ (⌜ :nth-1) #2 (nth list3 #1))
-(⊨ (⌜ :nth-2) #3 (nth list3 #2))
+(test-case (quote :nth-0) #1 (nth list3 #0))
+(test-case (quote :nth-1) #2 (nth list3 #1))
+(test-case (quote :nth-2) #3 (nth list3 #2))
 
 ; Test 3.3: Map function
-(≔ map (λ (f lst)
-  (? (∅? lst)
-     ∅
-     (⟨⟩ (f (◁ lst)) (map f (▷ lst))))))
+(define map (lambda (f lst)
+  (if (null? lst)
+     nil
+     (cons (f (car lst)) (map f (cdr lst))))))
 
-(≔ double (λ (x) (⊗ x #2)))
-(≔ doubled (map double list3))
-(⊨ (⌜ :map-first) #2 (◁ doubled))
-(⊨ (⌜ :map-second) #4 (◁ (▷ doubled)))
-(⊨ (⌜ :map-third) #6 (◁ (▷ (▷ doubled))))
+(define double (lambda (x) (* x #2)))
+(define doubled (map double list3))
+(test-case (quote :map-first) #2 (car doubled))
+(test-case (quote :map-second) #4 (car (cdr doubled)))
+(test-case (quote :map-third) #6 (car (cdr (cdr doubled))))
 
 ; Test 3.4: Filter function
-(≔ filter (λ (pred lst)
-  (? (∅? lst)
-     ∅
-     (? (pred (◁ lst))
-        (⟨⟩ (◁ lst) (filter pred (▷ lst)))
-        (filter pred (▷ lst))))))
+(define filter (lambda (pred lst)
+  (if (null? lst)
+     nil
+     (if (pred (car lst))
+        (cons (car lst) (filter pred (cdr lst)))
+        (filter pred (cdr lst))))))
 
-(≔ gt-two (λ (x) (> x #2)))
-(≔ filtered-list (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 (⟨⟩ #4 ∅)))))
-(≔ filtered (filter gt-two filtered-list))
-(⊨ (⌜ :filter-first) #3 (◁ filtered))
-(⊨ (⌜ :filter-second) #4 (◁ (▷ filtered)))
+(define gt-two (lambda (x) (> x #2)))
+(define filtered-list (cons #1 (cons #2 (cons #3 (cons #4 nil)))))
+(define filtered (filter gt-two filtered-list))
+(test-case (quote :filter-first) #3 (car filtered))
+(test-case (quote :filter-second) #4 (car (cdr filtered)))
 
 ; Test 3.5: Fold/reduce function
-(≔ fold (λ (f acc lst)
-  (? (∅? lst)
+(define fold (lambda (f acc lst)
+  (if (null? lst)
      acc
-     (fold f (f acc (◁ lst)) (▷ lst)))))
+     (fold f (f acc (car lst)) (cdr lst)))))
 
-(≔ sum (fold (λ (a b) (⊕ a b)) #0 list3))
-(⊨ (⌜ :fold-sum) #6 sum)
+(define sum (fold (lambda (a b) (+ a b)) #0 list3))
+(test-case (quote :fold-sum) #6 sum)
 
 ; Test 3.6: Reverse function (using global helper)
-(≔ rev-helper (λ (l acc)
-  (? (∅? l)
+(define rev-helper (lambda (l acc)
+  (if (null? l)
      acc
-     (rev-helper (▷ l) (⟨⟩ (◁ l) acc)))))
+     (rev-helper (cdr l) (cons (car l) acc)))))
 
-(≔ reverse (λ (lst) (rev-helper lst ∅)))
+(define reverse (lambda (lst) (rev-helper lst nil)))
 
-(≔ reversed (reverse list3))
-(⊨ (⌜ :reverse-first) #3 (◁ reversed))
-(⊨ (⌜ :reverse-second) #2 (◁ (▷ reversed)))
-(⊨ (⌜ :reverse-third) #1 (◁ (▷ (▷ reversed))))
+(define reversed (reverse list3))
+(test-case (quote :reverse-first) #3 (car reversed))
+(test-case (quote :reverse-second) #2 (car (cdr reversed)))
+(test-case (quote :reverse-third) #1 (car (cdr (cdr reversed))))
 
 ; Test 3.7: Append function
-(≔ append (λ (l1 l2)
-  (? (∅? l1)
+(define append (lambda (l1 l2)
+  (if (null? l1)
      l2
-     (⟨⟩ (◁ l1) (append (▷ l1) l2)))))
+     (cons (car l1) (append (cdr l1) l2)))))
 
-(≔ appended (append pair list3))
-(⊨ (⌜ :append-length) #5 (length appended))
-(⊨ (⌜ :append-first) #1 (◁ appended))
-(⊨ (⌜ :append-last) #3 (nth appended #4))
+(define appended (append pair list3))
+(test-case (quote :append-length) #5 (length appended))
+(test-case (quote :append-first) #1 (car appended))
+(test-case (quote :append-last) #3 (nth appended #4))
 
 ; Test 3.8: Flatten function (one level)
-(≔ flatten (λ (lst)
-  (? (∅? lst)
-     ∅
-     (append (◁ lst) (flatten (▷ lst))))))
+(define flatten (lambda (lst)
+  (if (null? lst)
+     nil
+     (append (car lst) (flatten (cdr lst))))))
 
-(≔ flattened (flatten list-of-lists))
-(⊨ (⌜ :flatten-has-all) #6 (length flattened))
+(define flattened (flatten list-of-lists))
+(test-case (quote :flatten-has-all) #6 (length flattened))
 
 ; =============================================================================
 ; SECTION 4: Higher-Order Functions with Lists (8 tests)
 ; =============================================================================
 
 ; Test 4.1: Pass list to lambda (already tested above, verify again)
-(≔ first (λ (lst) (◁ lst)))
-(⊨ (⌜ :pass-list-to-lambda) #1 (first list3))
+(define first (lambda (lst) (car lst)))
+(test-case (quote :pass-list-to-lambda) #1 (first list3))
 
 ; Test 4.2: Return list from lambda
-(≔ make-pair (λ (a b) (⟨⟩ a (⟨⟩ b ∅))))
-(≔ made-pair (make-pair #7 #8))
-(⊨ (⌜ :return-list-first) #7 (◁ made-pair))
-(⊨ (⌜ :return-list-second) #8 (◁ (▷ made-pair)))
+(define make-pair (lambda (a b) (cons a (cons b nil))))
+(define made-pair (make-pair #7 #8))
+(test-case (quote :return-list-first) #7 (car made-pair))
+(test-case (quote :return-list-second) #8 (car (cdr made-pair)))
 
 ; Test 4.3: Map with inline lambda
-(≔ incremented (map (λ (x) (⊕ x #1)) list3))
-(⊨ (⌜ :map-lambda-first) #2 (◁ incremented))
-(⊨ (⌜ :map-lambda-second) #3 (◁ (▷ incremented)))
+(define incremented (map (lambda (x) (+ x #1)) list3))
+(test-case (quote :map-lambda-first) #2 (car incremented))
+(test-case (quote :map-lambda-second) #3 (car (cdr incremented)))
 
 ; Test 4.4: Filter with inline lambda
-(≔ gt-one (filter (λ (x) (> x #1)) list3))
-(⊨ (⌜ :filter-lambda-first) #2 (◁ gt-one))
-(⊨ (⌜ :filter-lambda-second) #3 (◁ (▷ gt-one)))
+(define gt-one (filter (lambda (x) (> x #1)) list3))
+(test-case (quote :filter-lambda-first) #2 (car gt-one))
+(test-case (quote :filter-lambda-second) #3 (car (cdr gt-one)))
 
 ; Test 4.5: List of lambdas
-(≔ funcs (⟨⟩ double (⟨⟩ (λ (x) (⊕ x #1)) (⟨⟩ (λ (x) (⊖ x #1)) ∅))))
-(⊨ (⌜ :list-of-lambdas-first) #84 ((◁ funcs) #42))
-(⊨ (⌜ :list-of-lambdas-second) #43 ((◁ (▷ funcs)) #42))
-(⊨ (⌜ :list-of-lambdas-third) #41 ((◁ (▷ (▷ funcs))) #42))
+(define funcs (cons double (cons (lambda (x) (+ x #1)) (cons (lambda (x) (- x #1)) nil))))
+(test-case (quote :list-of-lambdas-first) #84 ((car funcs) #42))
+(test-case (quote :list-of-lambdas-second) #43 ((car (cdr funcs)) #42))
+(test-case (quote :list-of-lambdas-third) #41 ((car (cdr (cdr funcs))) #42))
 
 ; Test 4.6: Lambda returning lambda that uses list
-(≔ get-nth (λ (n) (λ (lst) (nth lst n))))
-(≔ get-second (get-nth #1))
-(⊨ (⌜ :lambda-lambda-list) #2 (get-second list3))
+(define get-nth (lambda (n) (lambda (lst) (nth lst n))))
+(define get-second (get-nth #1))
+(test-case (quote :lambda-lambda-list) #2 (get-second list3))
 
 ; Test 4.7: Closure over list
-(≔ make-counter (λ (initial-list)
-  (λ () (length initial-list))))
-(≔ counter (make-counter list3))
-(⊨ (⌜ :closure-over-list) #3 (counter))
+(define make-counter (lambda (initial-list)
+  (lambda () (length initial-list))))
+(define counter (make-counter list3))
+(test-case (quote :closure-over-list) #3 (counter))
 
 ; Test 4.8: Recursive function with list accumulator
-(≔ range-helper (λ (i acc)
-  (? (< i #0)
+(define range-helper (lambda (i acc)
+  (if (< i #0)
      acc
-     (range-helper (⊖ i #1) (⟨⟩ i acc)))))
+     (range-helper (- i #1) (cons i acc)))))
 
-(≔ range (λ (n) (range-helper n ∅)))
+(define range (lambda (n) (range-helper n nil)))
 
-(≔ range5 (range #5))
-(⊨ (⌜ :range-length) #6 (length range5))
-(⊨ (⌜ :range-first) #0 (◁ range5))
-(⊨ (⌜ :range-last) #5 (nth range5 #5))
+(define range5 (range #5))
+(test-case (quote :range-length) #6 (length range5))
+(test-case (quote :range-first) #0 (car range5))
+(test-case (quote :range-last) #5 (nth range5 #5))
 
 ; =============================================================================
 ; SECTION 5: Memory Management (5 tests)
 ; =============================================================================
 
 ; Test 5.1: Large list creation (100 elements)
-(≔ large-list (range #99))
-(⊨ (⌜ :large-list-length) #100 (length large-list))
-(⊨ (⌜ :large-list-first) #0 (◁ large-list))
-(⊨ (⌜ :large-list-last) #99 (nth large-list #99))
+(define large-list (range #99))
+(test-case (quote :large-list-length) #100 (length large-list))
+(test-case (quote :large-list-first) #0 (car large-list))
+(test-case (quote :large-list-last) #99 (nth large-list #99))
 
 ; Test 5.2: Large list traversal
-(≔ large-sum (fold (λ (a b) (⊕ a b)) #0 large-list))
-(⊨ (⌜ :large-sum) #4950 large-sum)
+(define large-sum (fold (lambda (a b) (+ a b)) #0 large-list))
+(test-case (quote :large-sum) #4950 large-sum)
 
 ; Test 5.3: List creation in iteration
-(≔ repeat (λ (n)
-  (? (≡ n #0)
-     ∅
-     (⟨⟩ #1 (repeat (⊖ n #1))))))
+(define repeat (lambda (n)
+  (if (equal? n #0)
+     nil
+     (cons #1 (repeat (- n #1))))))
 
-(≔ repeated (repeat #10))
-(⊨ (⌜ :repeated-length) #10 (length repeated))
+(define repeated (repeat #10))
+(test-case (quote :repeated-length) #10 (length repeated))
 
 ; Test 5.4: Nested list creation
-(≔ make-nested (λ (depth)
-  (? (≡ depth #0)
-     ∅
-     (⟨⟩ (make-nested (⊖ depth #1)) ∅))))
+(define make-nested (lambda (depth)
+  (if (equal? depth #0)
+     nil
+     (cons (make-nested (- depth #1)) nil))))
 
-(≔ nested-10 (make-nested #10))
-(⊨ (⌜ :nested-not-nil) #f (∅? nested-10))
+(define nested-10 (make-nested #10))
+(test-case (quote :nested-not-nil) #f (null? nested-10))
 
 ; Test 5.5: Complex list operations (sum of squares of numbers > 10 in range 0-20)
-(≔ complex-result
-  (fold (λ (a b) (⊕ a b)) #0
-    (map (λ (x) (⊗ x x))
-      (filter (λ (x) (> x #10))
+(define complex-result
+  (fold (lambda (a b) (+ a b)) #0
+    (map (lambda (x) (* x x))
+      (filter (lambda (x) (> x #10))
         (range #20)))))
-(⊨ (⌜ :complex-operations) #2485 complex-result)
+(test-case (quote :complex-operations) #2485 complex-result)
 
 ; =============================================================================
 ; Summary: 45+ tests covering all aspects of list operations

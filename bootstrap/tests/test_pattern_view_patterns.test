@@ -1,163 +1,163 @@
 ;;; View Patterns Test Suite (Day 66)
-;;; Tests view pattern feature: (→ transform pattern)
+;;; Tests view pattern feature: (-> transform pattern)
 ;;; View patterns allow transforming a value before matching against a pattern
 
 ;;; Load required libraries
-(⋘ "bootstrap/stdlib/list.scm")
+(load "bootstrap/stdlib/list.scm")
 
 ;; Test 1: Basic view pattern - list length
 ;; Transform: # (length)
 ;; Pattern: #3
-(⊨ :view-length-basic #t
-   (≡ (∇ (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅)))
-          (⌜ (((→ # #3) :matched) (_ :failed))))
+(test-case :view-length-basic #t
+   (equal? (match (cons #1 (cons #2 (cons #3 nil)))
+          (quote (((-> # #3) :matched) (_ :failed))))
       :matched))
 
 ;; Test 2: View pattern with length mismatch
-(⊨ :view-length-no-match #t
-   (≡ (∇ (⟨⟩ #1 (⟨⟩ #2 ∅))
-          (⌜ (((→ # #5) :matched) (_ :failed))))
+(test-case :view-length-no-match #t
+   (equal? (match (cons #1 (cons #2 nil))
+          (quote (((-> # #5) :matched) (_ :failed))))
       :failed))
 
 ;; Test 3: View pattern with lambda transform (absolute value)
-(≔ abs (λ (x) (? (< x #0) (⊖ #0 x) x)))
-(⊨ :view-abs-positive #t
-   (≡ (∇ #-5
-          (⌜ (((→ abs #5) :matched) (_ :failed))))
+(define abs (lambda (x) (if (< x #0) (- #0 x) x)))
+(test-case :view-abs-positive #t
+   (equal? (match #-5
+          (quote (((-> abs #5) :matched) (_ :failed))))
       :matched))
 
 ;; Test 4: View pattern with abs on positive number
-(⊨ :view-abs-already-positive #t
-   (≡ (∇ #5
-          (⌜ (((→ abs #5) :matched) (_ :failed))))
+(test-case :view-abs-already-positive #t
+   (equal? (match #5
+          (quote (((-> abs #5) :matched) (_ :failed))))
       :matched))
 
 ;; Test 5: View pattern with variable binding
 ;; Binds the transformed value to a variable
-(⊨ :view-bind-variable #t
-   (≡ (∇ (⟨⟩ #1 (⟨⟩ #2 ∅))
-          (⌜ (((→ # n) n) (_ #0))))
+(test-case :view-bind-variable #t
+   (equal? (match (cons #1 (cons #2 nil))
+          (quote (((-> # n) n) (_ #0))))
       #2))
 
 ;; Test 6: View pattern with variable binding (larger list)
-(⊨ :view-bind-length #t
-   (≡ (∇ (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 (⟨⟩ #4 ∅))))
-          (⌜ (((→ # n) n) (_ #0))))
+(test-case :view-bind-length #t
+   (equal? (match (cons #1 (cons #2 (cons #3 (cons #4 nil))))
+          (quote (((-> # n) n) (_ #0))))
       #4))
 
 ;; Test 7: View pattern combined with as-pattern
 ;; Bind both original value and transformed value
-(⊨ :view-as-pattern #t
-   (≡ (∇ (⟨⟩ #1 (⟨⟩ #2 ∅))
-          (⌜ (((original @ (→ # #2)) (⟨⟩ original #2))
+(test-case :view-as-pattern #t
+   (equal? (match (cons #1 (cons #2 nil))
+          (quote (((original @ (-> # #2)) (cons original #2))
                (_ :failed))))
-      (⟨⟩ (⟨⟩ #1 (⟨⟩ #2 ∅)) #2)))
+      (cons (cons #1 (cons #2 nil)) #2)))
 
 ;; Test 8: View pattern combined with guard
 ;; Transform value, then apply guard to result
-(⊨ :view-guard-positive #t
-   (≡ (∇ #-15
-          (⌜ ((((→ abs n) | (> n #10)) :large)
+(test-case :view-guard-positive #t
+   (equal? (match #-15
+          (quote ((((-> abs n) | (> n #10)) :large)
                (_ :small))))
       :large))
 
 ;; Test 9: View pattern with guard (small value)
-(⊨ :view-guard-small #t
-   (≡ (∇ #-5
-          (⌜ ((((→ abs n) | (> n #10)) :large)
+(test-case :view-guard-small #t
+   (equal? (match #-5
+          (quote ((((-> abs n) | (> n #10)) :large)
                (_ :small))))
       :small))
 
 ;; Test 10: View pattern with pair transformation and destructuring
-(≔ sum-pair (λ (p) (⊕ (◁ p) (▷ p))))
-(⊨ :view-pair-sum #t
-   (≡ (∇ (⟨⟩ #3 #4)
-          (⌜ (((→ sum-pair #7) :sum-seven)
+(define sum-pair (lambda (p) (+ (car p) (cdr p))))
+(test-case :view-pair-sum #t
+   (equal? (match (cons #3 #4)
+          (quote (((-> sum-pair #7) :sum-seven)
                (_ :other))))
       :sum-seven))
 
 ;; Test 11: View pattern error handling (transform fails)
 ;; If transform returns error, pattern should fail and try next clause
-(≔ failing-transform (λ (x) (⚠ :error x)))
-(⊨ :view-error-handling #t
-   (≡ (∇ #-5
-          (⌜ (((→ failing-transform #5) :matched)
+(define failing-transform (lambda (x) (error :error x)))
+(test-case :view-error-handling #t
+   (equal? (match #-5
+          (quote (((-> failing-transform #5) :matched)
                (_ :failed))))
       :failed))
 
 ;; Test 12: Multiple view patterns in same match
-(⊨ :view-multiple-clauses #t
-   (≡ (∇ (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅)))
-          (⌜ (((→ # #5) :length-five)
-               ((→ # #3) :length-three)
-               ((→ # #1) :length-one)
+(test-case :view-multiple-clauses #t
+   (equal? (match (cons #1 (cons #2 (cons #3 nil)))
+          (quote (((-> # #5) :length-five)
+               ((-> # #3) :length-three)
+               ((-> # #1) :length-one)
                (_ :other))))
       :length-three))
 
 ;; Test 13: View pattern with complex transformation (sum of list)
-(≔ sum-list (λ (lst)
-   (∇ lst (⌜ ((∅ #0)
-              ((⟨⟩ h t) (⊕ h (sum-list t))))))))
+(define sum-list (lambda (lst)
+   (match lst (quote ((nil #0)
+              ((cons h t) (+ h (sum-list t))))))))
 
-(⊨ :view-sum-list #t
-   (≡ (∇ (⟨⟩ #10 (⟨⟩ #20 (⟨⟩ #30 ∅)))
-          (⌜ (((→ sum-list #60) :sum-sixty)
+(test-case :view-sum-list #t
+   (equal? (match (cons #10 (cons #20 (cons #30 nil)))
+          (quote (((-> sum-list #60) :sum-sixty)
                (_ :other))))
       :sum-sixty))
 
 ;; Test 14: View pattern with # on empty list
-(⊨ :view-empty-list #t
-   (≡ (∇ ∅
-          (⌜ (((→ # #0) :empty)
+(test-case :view-empty-list #t
+   (equal? (match nil
+          (quote (((-> # #0) :empty)
                (_ :nonempty))))
       :empty))
 
 ;; Test 15: View pattern with arithmetic transformation
-(≔ double (λ (n) (⊗ n #2)))
-(⊨ :view-double #t
-   (≡ (∇ #21
-          (⌜ (((→ double #42) :matched)
+(define double (lambda (n) (* n #2)))
+(test-case :view-double #t
+   (equal? (match #21
+          (quote (((-> double #42) :matched)
                (_ :failed))))
       :matched))
 
 ;; Test 16: Nested view patterns
 ;; Apply two transformations in sequence
-(≔ inc (λ (n) (⊕ n #1)))
-(⊨ :view-nested #t
-   (≡ (∇ #5
-          (⌜ (((→ double (→ inc #11)) :nested-match)
+(define inc (lambda (n) (+ n #1)))
+(test-case :view-nested #t
+   (equal? (match #5
+          (quote (((-> double (-> inc #11)) :nested-match)
                (_ :failed))))
       :nested-match))
 
 ;; Test 17: View pattern with wildcard subpattern
 ;; Transform value, but don't care about result (always matches)
-(⊨ :view-wildcard #t
-   (≡ (∇ (⟨⟩ #1 (⟨⟩ #2 ∅))
-          (⌜ (((→ # _) :any-length)
+(test-case :view-wildcard #t
+   (equal? (match (cons #1 (cons #2 nil))
+          (quote (((-> # _) :any-length)
                (_ :impossible))))
       :any-length))
 
 ;; Test 18: View pattern with pair pattern in subpattern
 ;; Transform to pair, then destructure
-(≔ split-at-5 (λ (n) (⟨⟩ (÷ n #5) (% n #5))))
-(⊨ :view-pair-destructure #t
-   (≡ (∇ #17
-          (⌜ (((→ split-at-5 (⟨⟩ q r)) (⟨⟩ q r))
+(define split-at-5 (lambda (n) (cons (quotient n #5) (% n #5))))
+(test-case :view-pair-destructure #t
+   (equal? (match #17
+          (quote (((-> split-at-5 (cons q r)) (cons q r))
                (_ :failed))))
-      (⟨⟩ #3 #2)))
+      (cons #3 #2)))
 
 ;; Test 19: View pattern with comparison (using guard syntax)
-(⊨ :view-compare-gt #t
-   (≡ (∇ (⟨⟩ #5 (⟨⟩ #10 (⟨⟩ #15 ∅)))
-          (⌜ ((((→ # n) | (> n #2)) :long)
+(test-case :view-compare-gt #t
+   (equal? (match (cons #5 (cons #10 (cons #15 nil)))
+          (quote ((((-> # n) | (> n #2)) :long)
                (_ :short))))
       :long))
 
 ;; Test 20: View pattern with multiple clauses and fallback
-(⊨ :view-fallback #t
-   (≡ (∇ (⟨⟩ #1 ∅)
-          (⌜ (((→ # #3) :three)
-               ((→ # #2) :two)
-               ((→ # #1) :one)
+(test-case :view-fallback #t
+   (equal? (match (cons #1 nil)
+          (quote (((-> # #3) :three)
+               ((-> # #2) :two)
+               ((-> # #1) :one)
                (_ :other))))
       :one))

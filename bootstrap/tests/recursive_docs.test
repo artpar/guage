@@ -2,35 +2,35 @@
 ; Tests the enhanced recursive composition system
 
 ; Simple arithmetic function
-(≔ double (λ (x) (⊗ x #2)))
-; Expected: "multiply the argument and 2" :: ℕ → ℕ
+(define double (lambda (x) (* x #2)))
+; Expected: "multiply the argument and 2" :: ℕ -> ℕ
 
 ; Simple addition
-(≔ inc (λ (x) (⊕ x #1)))
-; Expected: "add the argument and 1" :: ℕ → ℕ
+(define inc (lambda (x) (+ x #1)))
+; Expected: "add the argument and 1" :: ℕ -> ℕ
 
 ; Conditional function
-(≔ abs (λ (x) (? (< x #0) (⊖ #0 x) x)))
-; Expected: "if less than the argument and 0 then subtract 0 and the argument else the argument" :: ℕ → ℕ
+(define abs (lambda (x) (if (< x #0) (- #0 x) x)))
+; Expected: "if less than the argument and 0 then subtract 0 and the argument else the argument" :: ℕ -> ℕ
 
 ; Recursive factorial
-(≔ ! (λ (n) (? (≡ n #0) #1 (⊗ n (! (⊖ n #1))))))
-; Expected: "if equals the argument and 0 then 1 else multiply the argument and apply ! to subtract the argument and 1" :: ℕ → ℕ
+(define ! (lambda (n) (if (equal? n #0) #1 (* n (! (- n #1))))))
+; Expected: "if equals the argument and 0 then 1 else multiply the argument and apply ! to subtract the argument and 1" :: ℕ -> ℕ
 
 ; Recursive fibonacci
-(≔ fib (λ (n) (? (< n #2) n (⊕ (fib (⊖ n #1)) (fib (⊖ n #2))))))
-; Expected: Full recursive description with nested function calls :: ℕ → ℕ
+(define fib (lambda (n) (if (< n #2) n (+ (fib (- n #1)) (fib (- n #2))))))
+; Expected: Full recursive description with nested function calls :: ℕ -> ℕ
 
 ; Comparison function (returns bool)
-(≔ is-zero (λ (x) (≡ x #0)))
-; Expected: "equals the argument and 0" :: α → 𝔹
+(define is-zero (lambda (x) (equal? x #0)))
+; Expected: "equals the argument and 0" :: α -> Bool
 
 ; Test results
 (! #5)
-; → #120
+; -> #120
 
 (fib #7)
-; → #13
+; -> #13
 
 (double #21)
-; → #42
+; -> #42

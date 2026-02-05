@@ -478,7 +478,7 @@ Cell* macro_pattern_match(Cell* pattern, Cell* args) {
     /* Check for quoted literal in pattern */
     if (cell_is_pair(pat_head) && cell_is_symbol(cell_car(pat_head))) {
         const char* sym = cell_get_symbol(cell_car(pat_head));
-        if (strcmp(sym, "⌜") == 0 || strcmp(sym, "quote") == 0) {
+        if (strcmp(sym, "quote") == 0 || strcmp(sym, "quote") == 0) {
             /* (⌜ literal) - match literal exactly */
             Cell* literal = cell_car(cell_cdr(pat_head));
             if (!cell_equal(literal, arg_head)) {

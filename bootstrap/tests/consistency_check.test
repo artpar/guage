@@ -2,97 +2,97 @@
 ; Testing that all primitives are accessible and have documentation
 
 ; ========== Arithmetic (9) ==========
-⟲ :checking-arithmetic
-(⌂ (⌜ ⊕))
-(⌂ (⌜ ⊖))
-(⌂ (⌜ ⊗))
-(⌂ (⌜ ⊘))
-(⌂ (⌜ %))
-(⌂ (⌜ <))
-(⌂ (⌜ >))
-(⌂ (⌜ ≤))
-(⌂ (⌜ ≥))
+trace :checking-arithmetic
+(doc (quote +))
+(doc (quote -))
+(doc (quote *))
+(doc (quote /))
+(doc (quote %))
+(doc (quote <))
+(doc (quote >))
+(doc (quote <=))
+(doc (quote >=))
 
 ; ========== Logic & Comparison (5) ==========
-⟲ :checking-logic
-(⌂ (⌜ ≡))
-(⌂ (⌜ ≢))
-(⌂ (⌜ ∧))
-(⌂ (⌜ ∨))
-(⌂ (⌜ ¬))
+trace :checking-logic
+(doc (quote equal?))
+(doc (quote not-equal?))
+(doc (quote and))
+(doc (quote or))
+(doc (quote not))
 
 ; ========== Type Predicates (6) ==========
-⟲ :checking-type-predicates
-(⌂ (⌜ ℕ?))
-(⌂ (⌜ 𝔹?))
-(⌂ (⌜ :?))
-(⌂ (⌜ ∅?))
-(⌂ (⌜ ⟨⟩?))
-(⌂ (⌜ #?))
+trace :checking-type-predicates
+(doc (quote number?))
+(doc (quote boolean?))
+(doc (quote symbol?))
+(doc (quote null?))
+(doc (quote pair?))
+(doc (quote atom?))
 
 ; ========== Lists (3) ==========
-⟲ :checking-lists
-(⌂ (⌜ ⟨⟩))
-(⌂ (⌜ ◁))
-(⌂ (⌜ ▷))
+trace :checking-lists
+(doc (quote cons))
+(doc (quote car))
+(doc (quote cdr))
 
 ; ========== Metaprogramming (1) ==========
-⟲ :checking-meta
-(⌂ (⌜ ⌜))
+trace :checking-meta
+(doc (quote quote))
 
 ; ========== Debug/Error (4) ==========
-⟲ :checking-debug
-(⌂ (⌜ ⚠))
-(⌂ (⌜ ⚠?))
-(⌂ (⌜ ⊢))
-(⌂ (⌜ ⟲))
+trace :checking-debug
+(doc (quote error))
+(doc (quote error?))
+(doc (quote assert))
+(doc (quote trace))
 
 ; ========== Introspection (2) ==========
-⟲ :checking-introspection
-(⌂ (⌜ ⧉))
-(⌂ (⌜ ⊛))
+trace :checking-introspection
+(doc (quote arity))
+(doc (quote source))
 
 ; ========== Testing (2) ==========
-⟲ :checking-testing
-(⌂ (⌜ ≟))
-(⌂ (⌜ ⊨))
+trace :checking-testing
+(doc (quote deep-equal?))
+(doc (quote test-case))
 
 ; ========== Documentation (5) ==========
-⟲ :checking-documentation
-(⌂ (⌜ ⌂))
-(⌂ (⌜ ⌂∈))
-(⌂ (⌜ ⌂≔))
-(⌂ (⌜ ⌂⊛))
-(⌂ (⌜ ⌂⊨))
+trace :checking-documentation
+(doc (quote doc))
+(doc (quote doc-type))
+(doc (quote doc-deps))
+(doc (quote doc-source))
+(doc (quote doc-tests))
 
 ; ========== CFG/DFG (2) ==========
-⟲ :checking-cfg-dfg
-(⌂ (⌜ ⌂⟿))
-(⌂ (⌜ ⌂⇝))
+trace :checking-cfg-dfg
+(doc (quote query-cfg))
+(doc (quote query-dfg))
 
 ; ========== Structures - Leaf (5) ==========
-⟲ :checking-structures-leaf
-(⌂ (⌜ ⊙≔))
-(⌂ (⌜ ⊙))
-(⌂ (⌜ ⊙→))
-(⌂ (⌜ ⊙←))
-(⌂ (⌜ ⊙?))
+trace :checking-structures-leaf
+(doc (quote struct-define))
+(doc (quote struct-create))
+(doc (quote struct-get))
+(doc (quote struct-set))
+(doc (quote struct?))
 
 ; ========== Structures - Node (4) ==========
-⟲ :checking-structures-node
-(⌂ (⌜ ⊚≔))
-(⌂ (⌜ ⊚))
-(⌂ (⌜ ⊚→))
-(⌂ (⌜ ⊚?))
+trace :checking-structures-node
+(doc (quote adt-define))
+(doc (quote adt-create))
+(doc (quote adt-get))
+(doc (quote adt?))
 
 ; ========== Graphs (6) ==========
-⟲ :checking-graphs
-(⌂ (⌜ ⊝≔))
-(⌂ (⌜ ⊝))
-(⌂ (⌜ ⊝⊕))
-(⌂ (⌜ ⊝⊗))
-(⌂ (⌜ ⊝→))
-(⌂ (⌜ ⊝?))
+trace :checking-graphs
+(doc (quote graph-define))
+(doc (quote graph-create))
+(doc (quote graph-add-node))
+(doc (quote graph-add-edge))
+(doc (quote graph-query))
+(doc (quote graph?))
 
-⟲ :consistency-check-complete
+trace :consistency-check-complete
 :all-55-primitives-accessible

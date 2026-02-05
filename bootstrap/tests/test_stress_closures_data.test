@@ -3,125 +3,125 @@
 
 ;;; --- 1. Build HashMap via closure inserter: closure called 10,000 times ---
 
-(≔ hm1 (⊞))
-(≔ inserter (λ (k v) (⊞← hm1 k v)))
+(define hm1 (hashmap))
+(define inserter (lambda (k v) (hashmap-put hm1 k v)))
 
-(≔ insert-loop (λ (i)
-  (? (≡ i #0) :done
-     (⪢ (inserter i (⊗ i #3))
-         (insert-loop (⊖ i #1))))))
+(define insert-loop (lambda (i)
+  (if (equal? i #0) :done
+     (begin (inserter i (* i #3))
+         (insert-loop (- i #1))))))
 
 (insert-loop #10000)
 
-(⊨ :cd-hm-via-closure #10000 (⊞# hm1))
-(⊨ :cd-hm-lookup #15000 (⊞→ hm1 #5000))
+(test-case :cd-hm-via-closure #10000 (hashmap-size hm1))
+(test-case :cd-hm-lookup #15000 (hashmap-get hm1 #5000))
 
 ;;; --- 2. Vector of 5,000 closures capturing index, apply all ---
 
-(≔ make-idx-fn (λ (idx) (λ () idx)))
+(define make-idx-fn (lambda (idx) (lambda () idx)))
 
-(≔ fn-vec (⟦⟧))
+(define fn-vec (vector))
 
-(≔ build-fn-vec (λ (i)
-  (? (≡ i #5000) :done
-     (⪢ (⟦⊕ fn-vec (make-idx-fn i))
-         (build-fn-vec (⊕ i #1))))))
+(define build-fn-vec (lambda (i)
+  (if (equal? i #5000) :done
+     (begin (vector-push! fn-vec (make-idx-fn i))
+         (build-fn-vec (+ i #1))))))
 
 (build-fn-vec #0)
 
-(⊨ :cd-fn-vec-size #5000 (⟦# fn-vec))
-(⊨ :cd-fn-vec-first #0 ((⟦→ fn-vec #0)))
-(⊨ :cd-fn-vec-last #4999 ((⟦→ fn-vec #4999)))
+(test-case :cd-fn-vec-size #5000 (vector-length fn-vec))
+(test-case :cd-fn-vec-first #0 ((vector-ref fn-vec #0)))
+(test-case :cd-fn-vec-last #4999 ((vector-ref fn-vec #4999)))
 
 ;;; --- 3. fold over list with HashMap accumulator counting frequencies ---
 
-(≔ freq (⊞))
+(define freq (hashmap))
 
-(≔ freq-fold (λ (lst)
-  (? (∅? lst) freq
-     (⪢
-       (≔ k (% (◁ lst) #10))
-       (≔ cur (⊞→ freq k))
-       (⊞← freq k (? (∅? cur) #1 (⊕ cur #1)))
-       (freq-fold (▷ lst))))))
+(define freq-fold (lambda (lst)
+  (if (null? lst) freq
+     (begin
+       (define k (% (car lst) #10))
+       (define cur (hashmap-get freq k))
+       (hashmap-put freq k (if (null? cur) #1 (+ cur #1)))
+       (freq-fold (cdr lst))))))
 
 ;; Build list of 50,000 numbers
-(≔ build-numlist (λ (n acc)
-  (? (≡ n #0) acc
-     (build-numlist (⊖ n #1) (⟨⟩ n acc)))))
+(define build-numlist (lambda (n acc)
+  (if (equal? n #0) acc
+     (build-numlist (- n #1) (cons n acc)))))
 
-(≔ numlist (build-numlist #50000 ∅))
+(define numlist (build-numlist #50000 nil))
 (freq-fold numlist)
 
 ;; 10 frequency buckets (0..9), each ~5000
-(⊨ :cd-freq-buckets #10 (⊞# freq))
+(test-case :cd-freq-buckets #10 (hashmap-size freq))
 
 ;;; --- 4. Deque as work queue: enqueue 10,000 closures, dequeue and execute ---
 
-(≔ work-dq (⊟))
+(define work-dq (deque))
 
-(≔ enqueue-work (λ (i)
-  (? (≡ i #0) :done
-     (⪢ (⊟▷ work-dq (make-const i))
-         (enqueue-work (⊖ i #1))))))
+(define enqueue-work (lambda (i)
+  (if (equal? i #0) :done
+     (begin (deque-push-back work-dq (make-const i))
+         (enqueue-work (- i #1))))))
 
-(≔ make-const (λ (n) (λ () n)))
+(define make-const (lambda (n) (lambda () n)))
 
 (enqueue-work #10000)
 
-(⊨ :cd-dq-size #10000 (⊟# work-dq))
+(test-case :cd-dq-size #10000 (deque-size work-dq))
 
 ;; Execute all and sum
-(≔ exec-dq (λ (acc)
-  (? (≡ (⊟# work-dq) #0) acc
-     (⪢ (≔ fn (⊟◁⊖ work-dq))
-         (exec-dq (⊕ acc (fn)))))))
+(define exec-dq (lambda (acc)
+  (if (equal? (deque-size work-dq) #0) acc
+     (begin (define fn (deque-pop-front work-dq))
+         (exec-dq (+ acc (fn)))))))
 
-(⊨ :cd-dq-exec-sum #50005000 (exec-dq #0))
+(test-case :cd-dq-exec-sum #50005000 (exec-dq #0))
 
 ;;; --- 5. Closure captures Vector ref, pushes 50,000 elements ---
 
-(≔ cv (⟦⟧))
-(≔ push-to-vec (λ (val) (⟦⊕ cv val)))
+(define cv (vector))
+(define push-to-vec (lambda (val) (vector-push! cv val)))
 
-(≔ push-loop (λ (i)
-  (? (≡ i #50000) :done
-     (⪢ (push-to-vec i)
-         (push-loop (⊕ i #1))))))
+(define push-loop (lambda (i)
+  (if (equal? i #50000) :done
+     (begin (push-to-vec i)
+         (push-loop (+ i #1))))))
 
 (push-loop #0)
 
-(⊨ :cd-closure-vec-50k #50000 (⟦# cv))
+(test-case :cd-closure-vec-50k #50000 (vector-length cv))
 
 ;;; --- 6. SortedMap built by closure applications in pipeline ---
 
-(≔ sm1 (⋔))
-(≔ sm-insert (λ (k v) (⋔← sm1 k v)))
+(define sm1 (sorted-map))
+(define sm-insert (lambda (k v) (sorted-map-put sm1 k v)))
 
-(≔ sm-build (λ (i)
-  (? (≡ i #0) :done
-     (⪢ (sm-insert (⊖ #10001 i) i)
-         (sm-build (⊖ i #1))))))
+(define sm-build (lambda (i)
+  (if (equal? i #0) :done
+     (begin (sm-insert (- #10001 i) i)
+         (sm-build (- i #1))))))
 
 (sm-build #10000)
 
-(⊨ :cd-sm-size #10000 (⋔# sm1))
-(⊨ :cd-sm-min-val #10000 (⋔→ sm1 #1))
+(test-case :cd-sm-size #10000 (sorted-map-size sm1))
+(test-case :cd-sm-min-val #10000 (sorted-map-get sm1 #1))
 
 ;;; --- 7. Trie built from closures each returning a key ---
 
-(≔ tr1 (⊮))
+(define tr1 (trie))
 
-(≔ make-key-fn (λ (i) (λ () (≈⊕ "k" (≈ i)))))
+(define make-key-fn (lambda (i) (lambda () (string-append "k" (string i)))))
 
-(≔ trie-build (λ (i)
-  (? (≡ i #0) :done
-     (⪢
-       (≔ kfn (make-key-fn i))
-       (⊮← tr1 (kfn) i)
-       (trie-build (⊖ i #1))))))
+(define trie-build (lambda (i)
+  (if (equal? i #0) :done
+     (begin
+       (define kfn (make-key-fn i))
+       (trie-put tr1 (kfn) i)
+       (trie-build (- i #1))))))
 
 (trie-build #3000)
 
-(⊨ :cd-trie-size #3000 (⊮# tr1))
-(⊨ :cd-trie-lookup #1 (⊮→ tr1 "k1"))
+(test-case :cd-trie-size #3000 (trie-size tr1))
+(test-case :cd-trie-lookup #1 (trie-get tr1 "k1"))

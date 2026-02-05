@@ -7,150 +7,150 @@
 ; ═══════════════════════════════════════════════════════════════
 
 ; Load the macros module
-(⋘ "bootstrap/stdlib/macros.scm")
+(load "bootstrap/stdlib/macros.scm")
 
 ; ═══════════════════════════════════════════════════════════════
 ; Phase 1: Control Flow Macros
 ; ═══════════════════════════════════════════════════════════════
 
-; Test 1: ?¬ (unless) with false condition - should execute body
-(⊨ :test-?¬-false #42 (?¬ #f #42))
+; Test 1: unless (unless) with false condition - should execute body
+(test-case :test-?¬-false #42 (unless #f #42))
 
-; Test 2: ?¬ (unless) with true condition - should return nil
-(⊨ :test-?¬-true ∅ (?¬ #t #42))
+; Test 2: unless (unless) with true condition - should return nil
+(test-case :test-?¬-true nil (unless #t #42))
 
-; Test 3: ?¬ with computation
-(⊨ :test-?¬-comp #10 (?¬ (< #5 #3) (⊕ #5 #5)))
+; Test 3: unless with computation
+(test-case :test-?¬-comp #10 (unless (< #5 #3) (+ #5 #5)))
 
-; Test 4: ∧… (short-circuit AND) both true
-(⊨ :test-∧…-both-true #t (∧… #t #t))
+; Test 4: and-all (short-circuit AND) both true
+(test-case :test-∧…-both-true #t (and-all #t #t))
 
-; Test 5: ∧… first false (should short-circuit)
-(⊨ :test-∧…-first-false #f (∧… #f #t))
+; Test 5: and-all first false (should short-circuit)
+(test-case :test-∧…-first-false #f (and-all #f #t))
 
-; Test 6: ∧… second false
-(⊨ :test-∧…-second-false #f (∧… #t #f))
+; Test 6: and-all second false
+(test-case :test-∧…-second-false #f (and-all #t #f))
 
-; Test 7: ∧… with computation
-(⊨ :test-∧…-comp #t (∧… (> #10 #5) (< #3 #7)))
+; Test 7: and-all with computation
+(test-case :test-∧…-comp #t (and-all (> #10 #5) (< #3 #7)))
 
-; Test 8: ∨… (short-circuit OR) both false
-(⊨ :test-∨…-both-false #f (∨… #f #f))
+; Test 8: or-all (short-circuit OR) both false
+(test-case :test-∨…-both-false #f (or-all #f #f))
 
-; Test 9: ∨… first true (should short-circuit)
-(⊨ :test-∨…-first-true #t (∨… #t #f))
+; Test 9: or-all first true (should short-circuit)
+(test-case :test-∨…-first-true #t (or-all #t #f))
 
-; Test 10: ∨… second true
-(⊨ :test-∨…-second-true #t (∨… #f #t))
+; Test 10: or-all second true
+(test-case :test-∨…-second-true #t (or-all #f #t))
 
-; Test 11: ∨… with computation
-(⊨ :test-∨…-comp #t (∨… (< #10 #5) (> #7 #3)))
+; Test 11: or-all with computation
+(test-case :test-∨…-comp #t (or-all (< #10 #5) (> #7 #3)))
 
-; Test 12: ⊳→ (thread-first) simple
-(⊨ :test-⊳→-simple #6 (⊳→ #5 (λ (𝕩) (⊕ 𝕩 #1))))
+; Test 12: thread-first (thread-first) simple
+(test-case :test-⊳→-simple #6 (thread-first #5 (lambda (𝕩) (+ 𝕩 #1))))
 
-; Test 13: ⊳→ with multiplication
-(⊨ :test-⊳→-mult #10 (⊳→ #5 (λ (𝕩) (⊗ 𝕩 #2))))
+; Test 13: thread-first with multiplication
+(test-case :test-⊳→-mult #10 (thread-first #5 (lambda (𝕩) (* 𝕩 #2))))
 
 ; ═══════════════════════════════════════════════════════════════
 ; Phase 2: Binding Macros
 ; ═══════════════════════════════════════════════════════════════
 
-; Test 14: ≔↓ (let) simple binding
-(⊨ :test-≔↓-simple #43 (≔↓ 𝕩 #42 (⊕ 𝕩 #1)))
+; Test 14: let-local (let) simple binding
+(test-case :test-≔↓-simple #43 (let-local 𝕩 #42 (+ 𝕩 #1)))
 
-; Test 15: ≔↓ with computation in value
-(⊨ :test-≔↓-comp #30 (≔↓ 𝕩 (⊕ #10 #5) (⊗ 𝕩 #2)))
+; Test 15: let-local with computation in value
+(test-case :test-≔↓-comp #30 (let-local 𝕩 (+ #10 #5) (* 𝕩 #2)))
 
-; Test 16: ≔↓ nested usage (must use 𝕩 for both levels)
-(⊨ :test-≔↓-nested #12
-   (≔↓ 𝕩 #5
-     (≔↓ 𝕩 (⊕ 𝕩 #1)
-       (⊗ 𝕩 #2))))
+; Test 16: let-local nested usage (must use 𝕩 for both levels)
+(test-case :test-≔↓-nested #12
+   (let-local 𝕩 #5
+     (let-local 𝕩 (+ 𝕩 #1)
+       (* 𝕩 #2))))
 
-; Test 17: ≔↻ (letrec) basic binding (non-recursive)
-(⊨ :test-≔↻-basic #10
-   (≔↻ 𝕗 (λ (𝕩) (⊗ 𝕩 #2))
+; Test 17: letrec-local (letrec) basic binding (non-recursive)
+(test-case :test-≔↻-basic #10
+   (letrec-local 𝕗 (lambda (𝕩) (* 𝕩 #2))
      (𝕗 #5)))
 
-; Note: Recursive tests omitted - ≔↻ cannot create true recursive bindings
-; Use ≔ (global definition) for recursive functions instead
+; Note: Recursive tests omitted - letrec-local cannot create true recursive bindings
+; Use define (global definition) for recursive functions instead
 
 ; ═══════════════════════════════════════════════════════════════
 ; Phase 3: Functional Macros
 ; ═══════════════════════════════════════════════════════════════
 
-; Test 19: ∘ (compose) simple
-(⊨ :test-∘-simple #12
-   ((∘ (λ (𝕩) (⊗ 𝕩 #2)) (λ (𝕩) (⊕ 𝕩 #1))) #5))
+; Test 19: compose (compose) simple
+(test-case :test-∘-simple #12
+   ((compose (lambda (𝕩) (* 𝕩 #2)) (lambda (𝕩) (+ 𝕩 #1))) #5))
 
-; Test 20: ∘ with different functions
-(⊨ :test-∘-diff #25
-   ((∘ (λ (𝕩) (⊗ 𝕩 𝕩)) (λ (𝕩) (⊕ 𝕩 #2))) #3))
+; Test 20: compose with different functions
+(test-case :test-∘-diff #25
+   ((compose (lambda (𝕩) (* 𝕩 𝕩)) (lambda (𝕩) (+ 𝕩 #2))) #3))
 
-; Test 21: ∘ triple composition
-(⊨ :test-∘-triple #14
-   ((∘ (λ (𝕩) (⊕ 𝕩 #2)) (∘ (λ (𝕩) (⊗ 𝕩 #2)) (λ (𝕩) (⊕ 𝕩 #1)))) #5))
+; Test 21: compose triple composition
+(test-case :test-∘-triple #14
+   ((compose (lambda (𝕩) (+ 𝕩 #2)) (compose (lambda (𝕩) (* 𝕩 #2)) (lambda (𝕩) (+ 𝕩 #1)))) #5))
 
-; Test 22: ⊰ (partial) simple
-(⊨ :test-⊰-simple #15 ((⊰ ⊕ #10) #5))
+; Test 22: partial (partial) simple
+(test-case :test-⊰-simple #15 ((partial + #10) #5))
 
-; Test 23: ⊰ with subtraction
-(⊨ :test-⊰-sub #5 ((⊰ ⊖ #10) #5))
+; Test 23: partial with subtraction
+(test-case :test-⊰-sub #5 ((partial - #10) #5))
 
-; Test 24: ⊰ with multiplication
-(⊨ :test-⊰-mult #20 ((⊰ ⊗ #4) #5))
+; Test 24: partial with multiplication
+(test-case :test-⊰-mult #20 ((partial * #4) #5))
 
-; Test 25: ↔ (flip) simple
-(⊨ :test-↔-simple #5 ((↔ ⊖) #5 #10))
+; Test 25: flip (flip) simple
+(test-case :test-↔-simple #5 ((flip -) #5 #10))
 
-; Test 26: ↔ with division
-(⊨ :test-↔-div #2 ((↔ ⊘) #5 #10))
+; Test 26: flip with division
+(test-case :test-↔-div #2 ((flip /) #5 #10))
 
-; Test 27: ↔ double flip (identity)
-(⊨ :test-↔-double #-5 ((↔ (↔ ⊖)) #5 #10))
+; Test 27: flip double flip (identity)
+(test-case :test-↔-double #-5 ((flip (flip -)) #5 #10))
 
 ; ═══════════════════════════════════════════════════════════════
 ; Integration Tests: Combining Macros
 ; ═══════════════════════════════════════════════════════════════
 
 ; Test 28: Compose and partial
-(⊨ :test-comp-partial #32
-   ((∘ (⊰ ⊗ #2) (⊰ ⊕ #6)) #10))
+(test-case :test-comp-partial #32
+   ((compose (partial * #2) (partial + #6)) #10))
 
 ; Test 29: Let with unless (< #5 #10) is true, so unless returns nil
-(⊨ :test-let-unless ∅
-   (≔↓ 𝕩 #5 (?¬ (< 𝕩 #10) #42)))
+(test-case :test-let-unless nil
+   (let-local 𝕩 #5 (unless (< 𝕩 #10) #42)))
 
 ; Test 30: Compose with flip - compose needs compatible functions
 ; Instead test: flip then apply
-(⊨ :test-comp-flip #5
-   ((↔ ⊖) #5 #10))
+(test-case :test-comp-flip #5
+   ((flip -) #5 #10))
 
 ; Test 31: Short-circuit avoids error
-(⊨ :test-short-and #f
-   (∧… (> #10 #5) (< #20 #10)))
+(test-case :test-short-and #f
+   (and-all (> #10 #5) (< #20 #10)))
 
 ; Test 32: Partial with compose
-(⊨ :test-partial-comp #30
-   ((∘ (⊰ ⊗ #3) (⊰ ⊕ #5)) #5))
+(test-case :test-partial-comp #30
+   ((compose (partial * #3) (partial + #5)) #5))
 
 ; Test 33: Unless with let
-(⊨ :test-unless-let #15
-   (≔↓ 𝕩 #5 (?¬ (< 𝕩 #0) (⊗ 𝕩 #3))))
+(test-case :test-unless-let #15
+   (let-local 𝕩 #5 (unless (< 𝕩 #0) (* 𝕩 #3))))
 
 ; Test 34: Nested let with operations (must use 𝕩 for both levels)
-; Inner binds 𝕩=#7, evaluates (⊕ (* 7 2) 7) = (⊕ 14 7) = 21
-(⊨ :test-nested-let #21
-   (≔↓ 𝕩 #5
-     (≔↓ 𝕩 #7
-       (⊕ (⊗ 𝕩 #2) 𝕩))))
+; Inner binds 𝕩=#7, evaluates (+ (* 7 2) 7) = (+ 14 7) = 21
+(test-case :test-nested-let #21
+   (let-local 𝕩 #5
+     (let-local 𝕩 #7
+       (+ (* 𝕩 #2) 𝕩))))
 
 ; Test 35: Letrec with composition (non-recursive)
-; Apply 𝕗 first: (* 5 3)=15, then (⊰ ⊕ #5): (+ 5 15)=20
-(⊨ :test-letrec-comp #20
-   (≔↻ 𝕗 (λ (𝕩) (⊗ 𝕩 #3))
-     ((∘ (⊰ ⊕ #5) 𝕗) #5)))
+; Apply 𝕗 first: (* 5 3)=15, then (partial + #5): (+ 5 15)=20
+(test-case :test-letrec-comp #20
+   (letrec-local 𝕗 (lambda (𝕩) (* 𝕩 #3))
+     ((compose (partial + #5) 𝕗) #5)))
 
 ; ═══════════════════════════════════════════════════════════════
 ; Summary

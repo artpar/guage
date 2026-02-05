@@ -2,110 +2,110 @@
 ; HFT-grade ring buffer tracing with flight recorder mode
 
 ; ============ Reset ============
-(⟳∅)
+(actor-reset)
 
 ; ============ 1. Trace disabled by default ============
-(⊨ (⌜ :trace-disabled-default) #0 (⟳⊳⊳#))
+(test-case (quote :trace-disabled-default) #0 (trace-count))
 
 ; ============ 2. Enable tracing ============
-(⊨ (⌜ :trace-enable) #t (⟳⊳⊳! #t))
+(test-case (quote :trace-enable) #t (trace-enable! #t))
 
 ; ============ 3. Buffer capacity ============
-(⊨ (⌜ :trace-capacity) #4096 (⟳⊳⊳⊞))
+(test-case (quote :trace-capacity) #4096 (trace-capacity))
 
 ; Clear any events from enable itself
-(⟳⊳⊳∅)
+(trace-clear)
 
 ; ============ 4. Spawn traced ============
-(≔ ta1 (⟳ (λ (self) :traced)))
-(⊨ (⌜ :spawn-traced) #t (> (⟳⊳⊳# :SPAWN) #0))
+(define ta1 (actor-spawn (lambda (self) :traced)))
+(test-case (quote :spawn-traced) #t (> (trace-count :SPAWN) #0))
 
 ; ============ 5. Send traced ============
-(⟳⊳⊳∅)
-(≔ ta2 (⟳ (λ (self) (←?))))
-(→! ta2 :msg)
-(⊨ (⌜ :send-traced) #t (> (⟳⊳⊳# :SEND) #0))
+(trace-clear)
+(define ta2 (actor-spawn (lambda (self) (actor-receive))))
+(actor-send ta2 :msg)
+(test-case (quote :send-traced) #t (> (trace-count :SEND) #0))
 
 ; ============ 6. Recv + Die traced via scheduler run ============
-(⟳⊳⊳∅)
-(⟳! #100)
-(⊨ (⌜ :die-traced) #t (> (⟳⊳⊳# :DIE) #0))
+(trace-clear)
+(actor-run #100)
+(test-case (quote :die-traced) #t (> (trace-count :DIE) #0))
 
 ; ============ 7. Reset and read returns list ============
-(⟳∅)
-(⟳⊳⊳∅)
-(≔ ta3 (⟳ (λ (self) :done)))
-(⟳! #100)
-(≔ events (⟳⊳⊳?))
-(⊨ (⌜ :read-returns-list) #t (¬ (≡ events ∅)))
+(actor-reset)
+(trace-clear)
+(define ta3 (actor-spawn (lambda (self) :done)))
+(actor-run #100)
+(define events (trace-read))
+(test-case (quote :read-returns-list) #t (not (equal? events nil)))
 
 ; ============ 8. Event has keys ============
-(≔ first-event (◁ events))
-(⊨ (⌜ :event-has-kind) #t (¬ (≡ first-event ∅)))
+(define first-event (car events))
+(test-case (quote :event-has-kind) #t (not (equal? first-event nil)))
 
 ; ============ 9. Filter by kind ============
-(≔ spawn-events (⟳⊳⊳? :SPAWN))
-(≔ spawn-count (⟳⊳⊳# :SPAWN))
+(define spawn-events (trace-read :SPAWN))
+(define spawn-count (trace-count :SPAWN))
 ; All events in filtered list should be SPAWN kind
-(⊨ (⌜ :filter-by-kind) #t (> spawn-count #0))
+(test-case (quote :filter-by-kind) #t (> spawn-count #0))
 
 ; ============ 10. Clear works ============
-(⟳⊳⊳∅)
-(⊨ (⌜ :clear-works) #0 (⟳⊳⊳#))
+(trace-clear)
+(test-case (quote :clear-works) #0 (trace-count))
 
 ; ============ 11. Disable stops recording ============
-(⟳⊳⊳! #f)
-(⟳∅)
-(≔ ta4 (⟳ (λ (self) :nope)))
-(⟳! #100)
-(⊨ (⌜ :disable-stops-recording) #0 (⟳⊳⊳#))
+(trace-enable! #f)
+(actor-reset)
+(define ta4 (actor-spawn (lambda (self) :nope)))
+(actor-run #100)
+(test-case (quote :disable-stops-recording) #0 (trace-count))
 
 ; ============ 12. Re-enable and flight recorder ============
-(⟳⊳⊳! #t)
-(⟳∅)
-(⟳⊳⊳∅)
-(≔ ta5 (⟳ (λ (self) :a)))
-(≔ ta6 (⟳ (λ (self) :b)))
-(≔ ta7 (⟳ (λ (self) :c)))
-(⟳! #100)
-(≔ snap3 (⟳⊳⊳⊛ #3))
+(trace-enable! #t)
+(actor-reset)
+(trace-clear)
+(define ta5 (actor-spawn (lambda (self) :a)))
+(define ta6 (actor-spawn (lambda (self) :b)))
+(define ta7 (actor-spawn (lambda (self) :c)))
+(actor-run #100)
+(define snap3 (trace-snapshot #3))
 ; Snapshot should return exactly 3 events
-(≔ snap3-len #0)
-(≔ snap3-cur snap3)
-(≔ snap3-len (⊕ snap3-len (? (≡ snap3-cur ∅) #0 #1)))
+(define snap3-len #0)
+(define snap3-cur snap3)
+(define snap3-len (+ snap3-len (if (equal? snap3-cur nil) #0 #1)))
 ; Simple check: snapshot returned a non-empty list
-(⊨ (⌜ :flight-recorder-3) #t (¬ (≡ snap3 ∅)))
+(test-case (quote :flight-recorder-3) #t (not (equal? snap3 nil)))
 
 ; ============ 13. Snapshot all matches count ============
-(≔ snap-all (⟳⊳⊳⊛))
-(≔ total-count (⟳⊳⊳#))
-(⊨ (⌜ :snapshot-all-nonempty) #t (> total-count #0))
+(define snap-all (trace-snapshot))
+(define total-count (trace-count))
+(test-case (quote :snapshot-all-nonempty) #t (> total-count #0))
 
 ; ============ 14. Timestamps monotonic ============
 ; First and last events should have non-decreasing timestamps
-(≔ all-events (⟳⊳⊳?))
-(≔ first-ts (◁ (◁ all-events)))
+(define all-events (trace-read))
+(define first-ts (car (car all-events)))
 ; The first pair in first event is (:ts value) — just check it exists
-(⊨ (⌜ :timestamps-exist) #t (¬ (≡ first-ts ∅)))
+(test-case (quote :timestamps-exist) #t (not (equal? first-ts nil)))
 
 ; ============ 15. Trace survives actor reset ============
-(≔ pre-reset-count (⟳⊳⊳#))
-(⟳∅)
-(≔ post-reset-count (⟳⊳⊳#))
-(⊨ (⌜ :trace-survives-reset) #t (≡ pre-reset-count post-reset-count))
+(define pre-reset-count (trace-count))
+(actor-reset)
+(define post-reset-count (trace-count))
+(test-case (quote :trace-survives-reset) #t (equal? pre-reset-count post-reset-count))
 
 ; ============ 16. Channel trace ============
-(⟳⊳⊳∅)
-(≔ ch (⟿⊚ #4))
-(⟿→ ch :hello)
-(⟿← ch)
-(⟿× ch)
-(⊨ (⌜ :chan-send-traced) #t (> (⟳⊳⊳# :CHAN_SEND) #0))
-(⊨ (⌜ :chan-recv-traced) #t (> (⟳⊳⊳# :CHAN_RECV) #0))
-(⊨ (⌜ :chan-close-traced) #t (> (⟳⊳⊳# :CHAN_CLOSE) #0))
+(trace-clear)
+(define ch (chan-create #4))
+(chan-send ch :hello)
+(chan-recv ch)
+(chan-close ch)
+(test-case (quote :chan-send-traced) #t (> (trace-count :CHAN_SEND) #0))
+(test-case (quote :chan-recv-traced) #t (> (trace-count :CHAN_RECV) #0))
+(test-case (quote :chan-close-traced) #t (> (trace-count :CHAN_CLOSE) #0))
 
 ; ============ Cleanup ============
-(⟳⊳⊳! #f)
-(⟳⊳⊳∅)
-(⟳∅)
-(⟿∅)
+(trace-enable! #f)
+(trace-clear)
+(actor-reset)
+(chan-reset)

@@ -1,29 +1,29 @@
 ; Minimal parser for testing
-(⋘ "stdlib/macros.scm")
+(load "stdlib/macros.scm")
 
 ; Character classification
-(≔ ≈⊙space? (λ (𝕔)
-  (∨… (≡ 𝕔 (⌜ :space))
-  (∨… (≡ 𝕔 (⌜ :tab))
-  (∨… (≡ 𝕔 (⌜ :newline))
-      (≡ 𝕔 (⌜ :return)))))))
+(define ≈⊙space? (lambda (𝕔)
+  (or-all (equal? 𝕔 (quote :space))
+  (or-all (equal? 𝕔 (quote :tab))
+  (or-all (equal? 𝕔 (quote :newline))
+      (equal? 𝕔 (quote :return)))))))
 
 ; Token helpers
-(≔ ≈⊙→token (λ (𝕥 𝕧)
-  (⟨⟩ 𝕥 𝕧)))
+(define ≈⊙→token (lambda (𝕥 𝕧)
+  (cons 𝕥 𝕧)))
 
-(≔ ≈⊙token-type (λ (𝕥)
-  (◁ 𝕥)))
+(define ≈⊙token-type (lambda (𝕥)
+  (car 𝕥)))
 
-(≔ ≈⊙token-val (λ (𝕥)
-  (◁ (▷ 𝕥))))
+(define ≈⊙token-val (lambda (𝕥)
+  (car (cdr 𝕥))))
 
 ; Skip whitespace
-(≔ ≈⊙skip-ws (λ (𝕤 𝕡)
-  (? (≥ 𝕡 (≈# 𝕤))
+(define ≈⊙skip-ws (lambda (𝕤 𝕡)
+  (if (>= 𝕡 (string-length 𝕤))
      𝕡
-     (? (≈⊙space? (≈→ 𝕤 𝕡))
-        (≈⊙skip-ws 𝕤 (⊕ 𝕡 #1))
+     (if (≈⊙space? (string-ref 𝕤 𝕡))
+        (≈⊙skip-ws 𝕤 (+ 𝕡 #1))
         𝕡))))
 
 ; Test

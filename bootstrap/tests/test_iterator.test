@@ -1,174 +1,174 @@
-; Test: Iterator (⊣) — Morsel-Driven Batch Iteration
+; Test: Iterator (iter) — Morsel-Driven Batch Iteration
 ; Day 118
 
 ; 1. iter-list-basic — create from list, next returns elements in order
-(≔ it1 (⊣ (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅)))))
-(⊨ (⌜ :iter-list-first) #1 (⊣→ it1))
-(⊨ (⌜ :iter-list-second) #2 (⊣→ it1))
-(⊨ (⌜ :iter-list-third) #3 (⊣→ it1))
+(define it1 (iter (cons #1 (cons #2 (cons #3 nil)))))
+(test-case (quote :iter-list-first) #1 (iter-next it1))
+(test-case (quote :iter-list-second) #2 (iter-next it1))
+(test-case (quote :iter-list-third) #3 (iter-next it1))
 
-; 2. iter-list-exhaust — next after exhaustion returns ∅
-(⊨ (⌜ :iter-list-exhaust) ∅ (⊣→ it1))
+; 2. iter-list-exhaust — next after exhaustion returns nil
+(test-case (quote :iter-list-exhaust) nil (iter-next it1))
 
-; 3. iter-done-predicate — ⊣∅? true after drain, false before
-(≔ it2 (⊣ (⟨⟩ #1 ∅)))
-(⊨ (⌜ :iter-done-false) #f (⊣∅? it2))
-(⊣→ it2)
-(⊨ (⌜ :iter-done-true) #t (⊣∅? it2))
+; 3. iter-done-predicate — iter-done? true after drain, false before
+(define it2 (iter (cons #1 nil)))
+(test-case (quote :iter-done-false) #f (iter-done? it2))
+(iter-next it2)
+(test-case (quote :iter-done-true) #t (iter-done? it2))
 
-; 4. iter-collect — ⊣⊕ collects remaining to list
-(≔ it3 (⊣ (⟨⟩ #10 (⟨⟩ #20 (⟨⟩ #30 ∅)))))
-(⊣→ it3)
-(≔ rest (⊣⊕ it3))
-(⊨ (⌜ :iter-collect-first) #20 (◁ rest))
-(⊨ (⌜ :iter-collect-second) #30 (◁ (▷ rest)))
+; 4. iter-collect — iter-collect collects remaining to list
+(define it3 (iter (cons #10 (cons #20 (cons #30 nil)))))
+(iter-next it3)
+(define rest (iter-collect it3))
+(test-case (quote :iter-collect-first) #20 (car rest))
+(test-case (quote :iter-collect-second) #30 (car (cdr rest)))
 
-; 5. iter-count — ⊣# returns correct count
-(⊨ (⌜ :iter-count) #3 (⊣# (⊣ (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅))))))
+; 5. iter-count — iter-count returns correct count
+(test-case (quote :iter-count) #3 (iter-count (iter (cons #1 (cons #2 (cons #3 nil))))))
 
 ; 6. iter-vector — iterate vector, correct order
-(≔ v (⟦⟧))
-(⟦⊕ v #100)
-(⟦⊕ v #200)
-(⟦⊕ v #300)
-(≔ vit (⊣ v))
-(⊨ (⌜ :iter-vec-first) #100 (⊣→ vit))
-(⊨ (⌜ :iter-vec-second) #200 (⊣→ vit))
-(⊨ (⌜ :iter-vec-third) #300 (⊣→ vit))
-(⊨ (⌜ :iter-vec-done) ∅ (⊣→ vit))
+(define v (vector))
+(vector-push! v #100)
+(vector-push! v #200)
+(vector-push! v #300)
+(define vit (iter v))
+(test-case (quote :iter-vec-first) #100 (iter-next vit))
+(test-case (quote :iter-vec-second) #200 (iter-next vit))
+(test-case (quote :iter-vec-third) #300 (iter-next vit))
+(test-case (quote :iter-vec-done) nil (iter-next vit))
 
 ; 7. iter-deque — iterate deque front→back
-(≔ dq (⊟))
-(⊟▷ dq #1)
-(⊟▷ dq #2)
-(⊟▷ dq #3)
-(≔ dit (⊣ dq))
-(⊨ (⌜ :iter-deque-first) #1 (⊣→ dit))
-(⊨ (⌜ :iter-deque-second) #2 (⊣→ dit))
-(⊨ (⌜ :iter-deque-third) #3 (⊣→ dit))
+(define dq (deque))
+(deque-push-back dq #1)
+(deque-push-back dq #2)
+(deque-push-back dq #3)
+(define dit (iter dq))
+(test-case (quote :iter-deque-first) #1 (iter-next dit))
+(test-case (quote :iter-deque-second) #2 (iter-next dit))
+(test-case (quote :iter-deque-third) #3 (iter-next dit))
 
 ; 8. iter-buffer — iterate buffer as byte numbers
-(≔ buf (◈))
-(◈⊕ buf #65)
-(◈⊕ buf #66)
-(◈⊕ buf #67)
-(≔ bit (⊣ buf))
-(⊨ (⌜ :iter-buf-first) #65 (⊣→ bit))
-(⊨ (⌜ :iter-buf-second) #66 (⊣→ bit))
-(⊨ (⌜ :iter-buf-third) #67 (⊣→ bit))
+(define buf (bytebuf))
+(bytebuf-append buf #65)
+(bytebuf-append buf #66)
+(bytebuf-append buf #67)
+(define bit (iter buf))
+(test-case (quote :iter-buf-first) #65 (iter-next bit))
+(test-case (quote :iter-buf-second) #66 (iter-next bit))
+(test-case (quote :iter-buf-third) #67 (iter-next bit))
 
 ; 9. iter-hashmap — iterate HashMap yields ⟨k v⟩ pairs
-(≔ hm (⊞))
-(⊞← hm :a #1)
-(⊞← hm :b #2)
-(≔ hmit (⊣ hm))
-(≔ e1 (⊣→ hmit))
-(≔ e2 (⊣→ hmit))
-(⊨ (⌜ :iter-hmap-count) #2 (⊣# (⊣ hm)))
+(define hm (hashmap))
+(hashmap-put hm :a #1)
+(hashmap-put hm :b #2)
+(define hmit (iter hm))
+(define e1 (iter-next hmit))
+(define e2 (iter-next hmit))
+(test-case (quote :iter-hmap-count) #2 (iter-count (iter hm)))
 
 ; 10. iter-hashset — iterate HashSet yields elements
-(≔ hs (⊍))
-(⊍⊕ hs #10)
-(⊍⊕ hs #20)
-(⊍⊕ hs #30)
-(⊨ (⌜ :iter-hset-count) #3 (⊣# (⊣ hs)))
+(define hs (set))
+(set-add hs #10)
+(set-add hs #20)
+(set-add hs #30)
+(test-case (quote :iter-hset-count) #3 (iter-count (iter hs)))
 
 ; 11. iter-sorted-map — iterate SortedMap in key order
-(≔ sm (⋔))
-(⋔← sm #3 :c)
-(⋔← sm #1 :a)
-(⋔← sm #2 :b)
-(≔ smit (⊣ sm))
-(≔ sme1 (⊣→ smit))
-(⊨ (⌜ :iter-smap-first-key) #1 (◁ sme1))
-(⊨ (⌜ :iter-smap-first-val) :a (▷ sme1))
-(≔ sme2 (⊣→ smit))
-(⊨ (⌜ :iter-smap-second-key) #2 (◁ sme2))
+(define sm (sorted-map))
+(sorted-map-put sm #3 :c)
+(sorted-map-put sm #1 :a)
+(sorted-map-put sm #2 :b)
+(define smit (iter sm))
+(define sme1 (iter-next smit))
+(test-case (quote :iter-smap-first-key) #1 (car sme1))
+(test-case (quote :iter-smap-first-val) :a (cdr sme1))
+(define sme2 (iter-next smit))
+(test-case (quote :iter-smap-second-key) #2 (car sme2))
 
 ; 12. iter-trie — iterate Trie yields ⟨key value⟩ pairs
-(≔ tr (⊮))
-(⊮← tr :cat #1)
-(⊮← tr :dog #2)
-(⊨ (⌜ :iter-trie-count) #2 (⊣# (⊣ tr)))
+(define tr (trie))
+(trie-put tr :cat #1)
+(trie-put tr :dog #2)
+(test-case (quote :iter-trie-count) #2 (iter-count (iter tr)))
 
 ; 13. iter-heap — iterate Heap in priority order
-(≔ hp (△))
-(△⊕ hp #30 :c)
-(△⊕ hp #10 :a)
-(△⊕ hp #20 :b)
-(≔ hpit (⊣ hp))
-(≔ hp1 (⊣→ hpit))
-(⊨ (⌜ :iter-heap-first-pri) #10 (◁ hp1))
-(⊨ (⌜ :iter-heap-first-val) :a (▷ hp1))
-(≔ hp2 (⊣→ hpit))
-(⊨ (⌜ :iter-heap-second-pri) #20 (◁ hp2))
+(define hp (heap))
+(heap-push! hp #30 :c)
+(heap-push! hp #10 :a)
+(heap-push! hp #20 :b)
+(define hpit (iter hp))
+(define hp1 (iter-next hpit))
+(test-case (quote :iter-heap-first-pri) #10 (car hp1))
+(test-case (quote :iter-heap-first-val) :a (cdr hp1))
+(define hp2 (iter-next hpit))
+(test-case (quote :iter-heap-second-pri) #20 (car hp2))
 
-; 14. iter-map-transform — ⊣↦ applies fn lazily, correct results
-(≔ doubled (⊣↦ (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅))) (λ (x) (⊗ x #2))))
-(⊨ (⌜ :iter-map-first) #2 (⊣→ doubled))
-(⊨ (⌜ :iter-map-second) #4 (⊣→ doubled))
-(⊨ (⌜ :iter-map-third) #6 (⊣→ doubled))
+; 14. iter-map-transform — iter-map applies fn lazily, correct results
+(define doubled (iter-map (cons #1 (cons #2 (cons #3 nil))) (lambda (x) (* x #2))))
+(test-case (quote :iter-map-first) #2 (iter-next doubled))
+(test-case (quote :iter-map-second) #4 (iter-next doubled))
+(test-case (quote :iter-map-third) #6 (iter-next doubled))
 
-; 15. iter-filter-select — ⊣⊲ filters correctly
-(≔ evens (⊣⊲ (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 (⟨⟩ #4 (⟨⟩ #5 ∅))))) (λ (x) (≡ (% x #2) #0))))
-(⊨ (⌜ :iter-filter-first) #2 (⊣→ evens))
-(⊨ (⌜ :iter-filter-second) #4 (⊣→ evens))
-(⊨ (⌜ :iter-filter-done) ∅ (⊣→ evens))
+; 15. iter-filter-select — iter-filter filters correctly
+(define evens (iter-filter (cons #1 (cons #2 (cons #3 (cons #4 (cons #5 nil))))) (lambda (x) (equal? (% x #2) #0))))
+(test-case (quote :iter-filter-first) #2 (iter-next evens))
+(test-case (quote :iter-filter-second) #4 (iter-next evens))
+(test-case (quote :iter-filter-done) nil (iter-next evens))
 
-; 16. iter-take-limit — ⊣↑ stops after n elements
-(≔ taken (⊣↑ (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 (⟨⟩ #4 (⟨⟩ #5 ∅))))) #2))
-(⊨ (⌜ :iter-take-first) #1 (⊣→ taken))
-(⊨ (⌜ :iter-take-second) #2 (⊣→ taken))
-(⊨ (⌜ :iter-take-done) ∅ (⊣→ taken))
+; 16. iter-take-limit — iter-take stops after n elements
+(define taken (iter-take (cons #1 (cons #2 (cons #3 (cons #4 (cons #5 nil))))) #2))
+(test-case (quote :iter-take-first) #1 (iter-next taken))
+(test-case (quote :iter-take-second) #2 (iter-next taken))
+(test-case (quote :iter-take-done) nil (iter-next taken))
 
-; 17. iter-drop-skip — ⊣↓ skips first n
-(≔ dropped (⊣↓ (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 (⟨⟩ #4 ∅)))) #2))
-(⊨ (⌜ :iter-drop-first) #3 (⊣→ dropped))
-(⊨ (⌜ :iter-drop-second) #4 (⊣→ dropped))
+; 17. iter-drop-skip — iter-drop skips first n
+(define dropped (iter-drop (cons #1 (cons #2 (cons #3 (cons #4 nil)))) #2))
+(test-case (quote :iter-drop-first) #3 (iter-next dropped))
+(test-case (quote :iter-drop-second) #4 (iter-next dropped))
 
-; 18. iter-chain-concat — ⊣⊕⊕ drains first then second
-(≔ chained (⊣⊕⊕ (⟨⟩ #1 (⟨⟩ #2 ∅)) (⟨⟩ #3 (⟨⟩ #4 ∅))))
-(⊨ (⌜ :iter-chain-1) #1 (⊣→ chained))
-(⊨ (⌜ :iter-chain-2) #2 (⊣→ chained))
-(⊨ (⌜ :iter-chain-3) #3 (⊣→ chained))
-(⊨ (⌜ :iter-chain-4) #4 (⊣→ chained))
+; 18. iter-chain-concat — iter-chain drains first then second
+(define chained (iter-chain (cons #1 (cons #2 nil)) (cons #3 (cons #4 nil))))
+(test-case (quote :iter-chain-1) #1 (iter-next chained))
+(test-case (quote :iter-chain-2) #2 (iter-next chained))
+(test-case (quote :iter-chain-3) #3 (iter-next chained))
+(test-case (quote :iter-chain-4) #4 (iter-next chained))
 
-; 19. iter-zip-pairs — ⊣⊗ yields ⟨a b⟩ pairs, stops at shorter
-(≔ zipped (⊣⊗ (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅))) (⟨⟩ :a (⟨⟩ :b ∅))))
-(≔ z1 (⊣→ zipped))
-(⊨ (⌜ :iter-zip-1a) #1 (◁ z1))
-(⊨ (⌜ :iter-zip-1b) :a (▷ z1))
-(≔ z2 (⊣→ zipped))
-(⊨ (⌜ :iter-zip-2a) #2 (◁ z2))
-(⊨ (⌜ :iter-zip-2b) :b (▷ z2))
-(⊨ (⌜ :iter-zip-done) ∅ (⊣→ zipped))
+; 19. iter-zip-pairs — iter-zip yields ⟨a b⟩ pairs, stops at shorter
+(define zipped (iter-zip (cons #1 (cons #2 (cons #3 nil))) (cons :a (cons :b nil))))
+(define z1 (iter-next zipped))
+(test-case (quote :iter-zip-1a) #1 (car z1))
+(test-case (quote :iter-zip-1b) :a (cdr z1))
+(define z2 (iter-next zipped))
+(test-case (quote :iter-zip-2a) #2 (car z2))
+(test-case (quote :iter-zip-2b) :b (cdr z2))
+(test-case (quote :iter-zip-done) nil (iter-next zipped))
 
 ; 20. iter-pipeline-fused — chained map→filter→take
-(≔ pipeline (⊣↑ (⊣⊲ (⊣↦ (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 (⟨⟩ #4 (⟨⟩ #5 ∅)))))
-                          (λ (x) (⊗ x #10)))
-                    (λ (x) (> x #20)))
+(define pipeline (iter-take (iter-filter (iter-map (cons #1 (cons #2 (cons #3 (cons #4 (cons #5 nil)))))
+                          (lambda (x) (* x #10)))
+                    (lambda (x) (> x #20)))
               #2))
-(⊨ (⌜ :iter-pipeline-1) #30 (⊣→ pipeline))
-(⊨ (⌜ :iter-pipeline-2) #40 (⊣→ pipeline))
-(⊨ (⌜ :iter-pipeline-done) ∅ (⊣→ pipeline))
+(test-case (quote :iter-pipeline-1) #30 (iter-next pipeline))
+(test-case (quote :iter-pipeline-2) #40 (iter-next pipeline))
+(test-case (quote :iter-pipeline-done) nil (iter-next pipeline))
 
-; 21. iter-reduce-fold — ⊣Σ folds correctly
-(⊨ (⌜ :iter-reduce-sum) #15 (⊣Σ (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 (⟨⟩ #4 (⟨⟩ #5 ∅))))) #0 (λ (acc x) (⊕ acc x))))
+; 21. iter-reduce-fold — iter-reduce folds correctly
+(test-case (quote :iter-reduce-sum) #15 (iter-reduce (cons #1 (cons #2 (cons #3 (cons #4 (cons #5 nil))))) #0 (lambda (acc x) (+ acc x))))
 
-; 22. iter-any-short-circuit — ⊣∃ stops early on match
-(⊨ (⌜ :iter-any-found) #t (⊣∃ (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅))) (λ (x) (≡ x #2))))
-(⊨ (⌜ :iter-any-missing) #f (⊣∃ (⟨⟩ #1 (⟨⟩ #2 ∅)) (λ (x) (≡ x #99))))
+; 22. iter-any-short-circuit — iter-any? stops early on match
+(test-case (quote :iter-any-found) #t (iter-any? (cons #1 (cons #2 (cons #3 nil))) (lambda (x) (equal? x #2))))
+(test-case (quote :iter-any-missing) #f (iter-any? (cons #1 (cons #2 nil)) (lambda (x) (equal? x #99))))
 
-; 23. iter-all-short-circuit — ⊣∀ stops early on mismatch
-(⊨ (⌜ :iter-all-yes) #t (⊣∀ (⟨⟩ #2 (⟨⟩ #4 (⟨⟩ #6 ∅))) (λ (x) (≡ (% x #2) #0))))
-(⊨ (⌜ :iter-all-no) #f (⊣∀ (⟨⟩ #2 (⟨⟩ #3 (⟨⟩ #4 ∅))) (λ (x) (≡ (% x #2) #0))))
+; 23. iter-all-short-circuit — iter-all? stops early on mismatch
+(test-case (quote :iter-all-yes) #t (iter-all? (cons #2 (cons #4 (cons #6 nil))) (lambda (x) (equal? (% x #2) #0))))
+(test-case (quote :iter-all-no) #f (iter-all? (cons #2 (cons #3 (cons #4 nil))) (lambda (x) (equal? (% x #2) #0))))
 
-; 24. iter-find-first — ⊣⊙ returns first match
-(⊨ (⌜ :iter-find-yes) #3 (⊣⊙ (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 (⟨⟩ #4 ∅)))) (λ (x) (> x #2))))
-(⊨ (⌜ :iter-find-no) ∅ (⊣⊙ (⟨⟩ #1 (⟨⟩ #2 ∅)) (λ (x) (> x #99))))
+; 24. iter-find-first — iter-find returns first match
+(test-case (quote :iter-find-yes) #3 (iter-find (cons #1 (cons #2 (cons #3 (cons #4 nil)))) (lambda (x) (> x #2))))
+(test-case (quote :iter-find-no) nil (iter-find (cons #1 (cons #2 nil)) (lambda (x) (> x #99))))
 
 ; 25. iter-auto-coerce — transformers accept raw collections
-(⊨ (⌜ :iter-type-yes) #t (⊣? (⊣ (⟨⟩ #1 ∅))))
-(⊨ (⌜ :iter-type-no) #f (⊣? #42))
-(⊨ (⌜ :iter-auto-map) #t (⊣? (⊣↦ (⟨⟩ #1 ∅) (λ (x) x))))
-(⊨ (⌜ :iter-auto-filter) #t (⊣? (⊣⊲ (⟨⟩ #1 ∅) (λ (x) #t))))
+(test-case (quote :iter-type-yes) #t (iter? (iter (cons #1 nil))))
+(test-case (quote :iter-type-no) #f (iter? #42))
+(test-case (quote :iter-auto-map) #t (iter? (iter-map (cons #1 nil) (lambda (x) x))))
+(test-case (quote :iter-auto-filter) #t (iter? (iter-filter (cons #1 nil) (lambda (x) #t))))

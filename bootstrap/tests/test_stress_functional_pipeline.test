@@ -3,142 +3,142 @@
 
 ;;; --- ADT definitions ---
 
-(⊚≔ :Category (⌜ (:CatA)) (⌜ (:CatB)) (⌜ (:CatC)) (⌜ (:CatD)) (⌜ (:CatE)))
+(adt-define :Category (quote (:CatA)) (quote (:CatB)) (quote (:CatC)) (quote (:CatD)) (quote (:CatE)))
 
 ;;; --- Utility functions ---
 
-(≔ list-len (λ (lst n)
-  (? (∅? lst) n
-     (list-len (▷ lst) (⊕ n #1)))))
+(define list-len (lambda (lst n)
+  (if (null? lst) n
+     (list-len (cdr lst) (+ n #1)))))
 
-(≔ fold-list (λ (f init lst)
-  (? (∅? lst) init
-     (fold-list f (f init (◁ lst)) (▷ lst)))))
+(define fold-list (lambda (f init lst)
+  (if (null? lst) init
+     (fold-list f (f init (car lst)) (cdr lst)))))
 
 ;;; --- 1. 1,000 items classified into 5 categories via pattern match ---
 
-(≔ category-map (⊞))
+(define category-map (hashmap))
 
-(≔ make-category (λ (i)
-  (? (≡ (% i #5) #0) (⊚ :Category :CatA)
-     (? (≡ (% i #5) #1) (⊚ :Category :CatB)
-        (? (≡ (% i #5) #2) (⊚ :Category :CatC)
-           (? (≡ (% i #5) #3) (⊚ :Category :CatD)
-              (⊚ :Category :CatE)))))))
+(define make-category (lambda (i)
+  (if (equal? (% i #5) #0) (adt-create :Category :CatA)
+     (if (equal? (% i #5) #1) (adt-create :Category :CatB)
+        (if (equal? (% i #5) #2) (adt-create :Category :CatC)
+           (if (equal? (% i #5) #3) (adt-create :Category :CatD)
+              (adt-create :Category :CatE)))))))
 
-(≔ classify-cat (λ (cat)
-  (∇ cat (⌜ (
-    ((⊚ :Category :CatA) :a)
-    ((⊚ :Category :CatB) :b)
-    ((⊚ :Category :CatC) :c)
-    ((⊚ :Category :CatD) :d)
-    ((⊚ :Category :CatE) :e))))))
+(define classify-cat (lambda (cat)
+  (match cat (quote (
+    ((adt-create :Category :CatA) :a)
+    ((adt-create :Category :CatB) :b)
+    ((adt-create :Category :CatC) :c)
+    ((adt-create :Category :CatD) :d)
+    ((adt-create :Category :CatE) :e))))))
 
-(≔ group-items (λ (i)
-  (? (≡ i #0) :done
-     (⪢
-       (≔ cat (classify-cat (make-category i)))
-       (≔ cur (⊞→ category-map cat))
-       (⊞← category-map cat (? (∅? cur) #1 (⊕ cur #1)))
-       (group-items (⊖ i #1))))))
+(define group-items (lambda (i)
+  (if (equal? i #0) :done
+     (begin
+       (define cat (classify-cat (make-category i)))
+       (define cur (hashmap-get category-map cat))
+       (hashmap-put category-map cat (if (null? cur) #1 (+ cur #1)))
+       (group-items (- i #1))))))
 
 (group-items #1000)
 
-(⊨ :fp-5-categories #5 (⊞# category-map))
-(⊨ :fp-each-category-200 #200 (⊞→ category-map :a))
+(test-case :fp-5-categories #5 (hashmap-size category-map))
+(test-case :fp-each-category-200 #200 (hashmap-get category-map :a))
 
 ;;; --- 2. Recursive tree map + fold via closures ---
 
-(⊚≔ :Tree (⌜ (:Leaf :val)) (⌜ (:Node :left :right)))
+(adt-define :Tree (quote (:Leaf :val)) (quote (:Node :left :right)))
 
-(≔ tree-map (λ (f t)
-  (? (⊚? t :Tree :Leaf)
-     (⊚ :Tree :Leaf (f (⊚→ t :val)))
-     (⊚ :Tree :Node (tree-map f (⊚→ t :left)) (tree-map f (⊚→ t :right))))))
+(define tree-map (lambda (f t)
+  (if (adt? t :Tree :Leaf)
+     (adt-create :Tree :Leaf (f (adt-get t :val)))
+     (adt-create :Tree :Node (tree-map f (adt-get t :left)) (tree-map f (adt-get t :right))))))
 
-(≔ tree-fold (λ (f init t)
-  (? (⊚? t :Tree :Leaf)
-     (f init (⊚→ t :val))
-     (tree-fold f (tree-fold f init (⊚→ t :left)) (⊚→ t :right)))))
+(define tree-fold (lambda (f init t)
+  (if (adt? t :Tree :Leaf)
+     (f init (adt-get t :val))
+     (tree-fold f (tree-fold f init (adt-get t :left)) (adt-get t :right)))))
 
-(≔ build-tree (λ (depth)
-  (? (≡ depth #0) (⊚ :Tree :Leaf #1)
-     (⊚ :Tree :Node (build-tree (⊖ depth #1)) (build-tree (⊖ depth #1))))))
+(define build-tree (lambda (depth)
+  (if (equal? depth #0) (adt-create :Tree :Leaf #1)
+     (adt-create :Tree :Node (build-tree (- depth #1)) (build-tree (- depth #1))))))
 
 ;; Depth 8 = 256 leaves
-(≔ big-tree (build-tree #8))
+(define big-tree (build-tree #8))
 
 ;; Map: double every leaf
-(≔ doubled-tree (tree-map (λ (x) (⊗ x #2)) big-tree))
+(define doubled-tree (tree-map (lambda (x) (* x #2)) big-tree))
 
 ;; Fold: sum all leaves
-(≔ tree-sum (tree-fold (λ (acc x) (⊕ acc x)) #0 doubled-tree))
+(define tree-sum (tree-fold (lambda (acc x) (+ acc x)) #0 doubled-tree))
 
 ;; 256 leaves * 2 = 512
-(⊨ :fp-tree-map-fold #512 tree-sum)
+(test-case :fp-tree-map-fold #512 tree-sum)
 
 ;;; --- 3. Sort 200 elements via closure-based comparator ---
 
-(≔ insert-sorted (λ (cmp x lst)
-  (? (∅? lst) (⟨⟩ x ∅)
-     (? (cmp x (◁ lst))
-        (⟨⟩ x lst)
-        (⟨⟩ (◁ lst) (insert-sorted cmp x (▷ lst)))))))
+(define insert-sorted (lambda (cmp x lst)
+  (if (null? lst) (cons x nil)
+     (if (cmp x (car lst))
+        (cons x lst)
+        (cons (car lst) (insert-sorted cmp x (cdr lst)))))))
 
-(≔ sort-list (λ (cmp lst)
-  (? (∅? lst) ∅
-     (insert-sorted cmp (◁ lst) (sort-list cmp (▷ lst))))))
+(define sort-list (lambda (cmp lst)
+  (if (null? lst) nil
+     (insert-sorted cmp (car lst) (sort-list cmp (cdr lst))))))
 
-(≔ unsorted (λ (n acc)
-  (? (≡ n #0) acc
-     (unsorted (⊖ n #1) (⟨⟩ (% (⊗ n #7919) #10000) acc)))))
+(define unsorted (lambda (n acc)
+  (if (equal? n #0) acc
+     (unsorted (- n #1) (cons (% (* n #7919) #10000) acc)))))
 
-(≔ unsorted-100 (unsorted #100 ∅))
-(≔ sorted (sort-list (λ (a b) (< a b)) unsorted-100))
+(define unsorted-100 (unsorted #100 nil))
+(define sorted (sort-list (lambda (a b) (< a b)) unsorted-100))
 
-(⊨ :fp-sort-len #100 (list-len sorted #0))
+(test-case :fp-sort-len #100 (list-len sorted #0))
 
 ;; Verify sorted
-(≔ is-sorted (λ (lst)
-  (? (∅? lst) #t
-     (? (∅? (▷ lst)) #t
-        (? (≤ (◁ lst) (◁ (▷ lst)))
-           (is-sorted (▷ lst))
+(define is-sorted (lambda (lst)
+  (if (null? lst) #t
+     (if (null? (cdr lst)) #t
+        (if (<= (car lst) (car (cdr lst)))
+           (is-sorted (cdr lst))
            #f)))))
 
-(⊨ :fp-sort-ordered #t (is-sorted sorted))
+(test-case :fp-sort-ordered #t (is-sorted sorted))
 
 ;;; --- 4. fold building SortedMap from pairs ---
 
-(≔ sm (⋔))
-(≔ build-sm (λ (i)
-  (? (≡ i #0) :done
-     (⪢ (⋔← sm i (⊗ i #3))
-         (build-sm (⊖ i #1))))))
+(define sm (sorted-map))
+(define build-sm (lambda (i)
+  (if (equal? i #0) :done
+     (begin (sorted-map-put sm i (* i #3))
+         (build-sm (- i #1))))))
 
 (build-sm #500)
 
-(⊨ :fp-sm-size #t (> (⋔# sm) #400))
-(⊨ :fp-sm-min #3 (⋔→ sm #1))
+(test-case :fp-sm-size #t (> (sorted-map-size sm) #400))
+(test-case :fp-sm-min #3 (sorted-map-get sm #1))
 
 ;;; --- 5. Higher-order: compose 10 functions, apply to 5,000 elements ---
 
-(≔ compose2 (λ (f g) (λ (x) (f (g x)))))
+(define compose2 (lambda (f g) (lambda (x) (f (g x)))))
 
-(≔ compose-n (λ (fns)
-  (? (∅? fns) (λ (x) x)
-     (compose2 (◁ fns) (compose-n (▷ fns))))))
+(define compose-n (lambda (fns)
+  (if (null? fns) (lambda (x) x)
+     (compose2 (car fns) (compose-n (cdr fns))))))
 
-(≔ add1 (λ (x) (⊕ x #1)))
-(≔ fns (⟨⟩ add1 (⟨⟩ add1 (⟨⟩ add1 (⟨⟩ add1 (⟨⟩ add1
-        (⟨⟩ add1 (⟨⟩ add1 (⟨⟩ add1 (⟨⟩ add1 (⟨⟩ add1 ∅)))))))))))
+(define add1 (lambda (x) (+ x #1)))
+(define fns (cons add1 (cons add1 (cons add1 (cons add1 (cons add1
+        (cons add1 (cons add1 (cons add1 (cons add1 (cons add1 nil)))))))))))
 
-(≔ composed (compose-n fns))
+(define composed (compose-n fns))
 
 ;; Apply to 5,000 elements, sum results
-(≔ compose-sum (λ (n acc)
-  (? (≡ n #0) acc
-     (compose-sum (⊖ n #1) (⊕ acc (composed #0))))))
+(define compose-sum (lambda (n acc)
+  (if (equal? n #0) acc
+     (compose-sum (- n #1) (+ acc (composed #0))))))
 
 ;; Each application: 0 + 10 = 10; 5000 * 10 = 50000
-(⊨ :fp-compose-1k #10000 (compose-sum #1000 #0))
+(test-case :fp-compose-1k #10000 (compose-sum #1000 #0))

@@ -1,31 +1,31 @@
 ; Documentation Tests - Auto-generated user function documentation
 
 ; Simple function with one dependency
-(≔ inc (λ (x) (⊕ x #1)))
+(define inc (lambda (x) (+ x #1)))
 
 ; Query description
-(⌂ (⌜ inc))
+(doc (quote inc))
 ; Expected: symbol containing "Function using"
 
 ; Query type
-(⌂∈ (⌜ inc))
-; Expected: :α → β
+(doc-type (quote inc))
+; Expected: :α -> β
 
 ; Query dependencies
-(⌂≔ (⌜ inc))
-; Expected: (:⊕ :⌜) or similar list
+(doc-deps (quote inc))
+; Expected: (:+ :quote) or similar list
 
 ; Factorial - recursive function
-(≔ ! (λ (n) (? (≡ n #0) #1 (⊗ n (! (⊖ n #1))))))
+(define ! (lambda (n) (if (equal? n #0) #1 (* n (! (- n #1))))))
 
 ; Query factorial docs
-(⌂ (⌜ !))
+(doc (quote !))
 ; Expected: symbol with description
 
-(⌂∈ (⌜ !))
-; Expected: :α → β
+(doc-type (quote !))
+; Expected: :α -> β
 
-(⌂≔ (⌜ !))
+(doc-deps (quote !))
 ; Expected: list with multiple symbols including :!
 
 ; Test the function works
@@ -33,59 +33,59 @@
 ; Expected: #120
 
 ; Fibonacci - another recursive function
-(≔ fib (λ (n) (? (< n #2) n (⊕ (fib (⊖ n #1)) (fib (⊖ n #2))))))
+(define fib (lambda (n) (if (< n #2) n (+ (fib (- n #1)) (fib (- n #2))))))
 
 (fib #7)
 ; Expected: #13
 
 ; Query fibonacci docs
-(⌂ (⌜ fib))
-(⌂∈ (⌜ fib))
-(⌂≔ (⌜ fib))
+(doc (quote fib))
+(doc-type (quote fib))
+(doc-deps (quote fib))
 
 ; Const function - no dependencies
-(≔ identity (λ (x) x))
+(define identity (lambda (x) x))
 
 (identity #42)
 ; Expected: #42
 
 ; Query identity docs
-(⌂ (⌜ identity))
+(doc (quote identity))
 ; Expected: "User-defined function" (no dependencies)
 
-(⌂≔ (⌜ identity))
-; Expected: ∅ or empty list
+(doc-deps (quote identity))
+; Expected: nil or empty list
 
 ; Composed function
-(≔ double (λ (x) (⊕ x x)))
-(≔ quadruple (λ (x) (double (double x))))
+(define double (lambda (x) (+ x x)))
+(define quadruple (lambda (x) (double (double x))))
 
 (quadruple #3)
 ; Expected: #12
 
 ; Query composed function docs
-(⌂ (⌜ quadruple))
+(doc (quote quadruple))
 ; Should mention 'double' as dependency
 
-(⌂≔ (⌜ quadruple))
+(doc-deps (quote quadruple))
 ; Should contain :double
 
 ; Query non-existent function
-(⌂ (⌜ nonexistent))
+(doc (quote nonexistent))
 ; Expected: :no-documentation
 
-(⌂∈ (⌜ nonexistent))
+(doc-type (quote nonexistent))
 ; Expected: :unknown-type
 
-(⌂≔ (⌜ nonexistent))
-; Expected: ∅
+(doc-deps (quote nonexistent))
+; Expected: nil
 
 ; Query primitive documentation
-(⌂ (⌜ ⊕))
+(doc (quote +))
 ; Expected: "Add two numbers"
 
-(⌂∈ (⌜ ⊕))
-; Expected: "ℕ → ℕ → ℕ"
+(doc-type (quote +))
+; Expected: "ℕ -> ℕ -> ℕ"
 
-(⌂≔ (⌜ ⊕))
-; Expected: ∅ (primitives have no dependencies)
+(doc-deps (quote +))
+; Expected: nil (primitives have no dependencies)

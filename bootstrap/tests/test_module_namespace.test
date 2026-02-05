@@ -1,35 +1,35 @@
 ; Module namespace tests — Day 144
 
 ; Test 1: No-exports module exports everything (backward compat)
-(⋘⊳ "bootstrap/tests/test_module_noexport.scm")
-(⊢ (≟ open-val #77) :no-export-module-global)
-(⊢ (≟ (open-fn #5) #15) :no-export-module-fn)
+(module-import-validated "bootstrap/tests/test_module_noexport.scm")
+(assert (deep-equal? open-val #77) :no-export-module-global)
+(assert (deep-equal? (open-fn #5) #15) :no-export-module-fn)
 
 ; Test 2: Module with exports hides internal symbols
-(⋘⊳ "bootstrap/tests/test_module_helper.scm")
-(⊢ (≟ pub-val #42) :exported-symbol-accessible)
-(⊢ (≟ (pub-fn #9) #10) :exported-fn-accessible)
+(module-import-validated "bootstrap/tests/test_module_helper.scm")
+(assert (deep-equal? pub-val #42) :exported-symbol-accessible)
+(assert (deep-equal? (pub-fn #9) #10) :exported-fn-accessible)
 
 ; Test 3: Non-exported symbols not in global env
 ; priv-val should give undefined-variable error when looked up
-(≔ lookup-result (⟲ priv-val))
-(⊢ (⚠? lookup-result) :priv-val-hidden-from-global)
+(define lookup-result (trace priv-val))
+(assert (error? lookup-result) :priv-val-hidden-from-global)
 
 ; Test 4: Alias and dot-qualified access
-(⋘⊳ "bootstrap/tests/test_module_helper.scm" :⊜ :tmod)
-(⊢ (≟ tmod.pub-val #42) :dot-qualified-access)
-(⊢ (≟ (tmod.pub-fn #100) #101) :dot-qualified-fn)
+(module-import-validated "bootstrap/tests/test_module_helper.scm" :⊜ :tmod)
+(assert (deep-equal? tmod.pub-val #42) :dot-qualified-access)
+(assert (deep-equal? (tmod.pub-fn #100) #101) :dot-qualified-fn)
 
 ; Test 5: Dot-qualified access to non-exported symbol should error
-(≔ dot-priv-result tmod.priv-val)
-(⊢ (⚠? dot-priv-result) :dot-access-non-exported-errors)
+(define dot-priv-result tmod.priv-val)
+(assert (error? dot-priv-result) :dot-access-non-exported-errors)
 
 ; Test 6: Selective import
-(⋘⊳ "bootstrap/tests/test_module_helper.scm" :⊏ (⌜ (:pub-val)))
+(module-import-validated "bootstrap/tests/test_module_helper.scm" :⊏ (quote (:pub-val)))
 ; pub-val should be imported (validates the :⊏ path doesn't error)
-(⊢ (≟ pub-val #42) :selective-import-works)
+(assert (deep-equal? pub-val #42) :selective-import-works)
 
 ; Test 7: No-exports module with alias
-(⋘⊳ "bootstrap/tests/test_module_noexport.scm" :⊜ :noex)
-(⊢ (≟ noex.open-val #77) :alias-no-export-module)
-(⊢ (≟ (noex.open-fn #3) #13) :alias-no-export-fn)
+(module-import-validated "bootstrap/tests/test_module_noexport.scm" :⊜ :noex)
+(assert (deep-equal? noex.open-val #77) :alias-no-export-module)
+(assert (deep-equal? (noex.open-fn #3) #13) :alias-no-export-fn)

@@ -4,123 +4,123 @@
 ; --- §3.2 I/O Ports ---
 
 ; Test stdout/stderr port creation (skip stdin - blocks on read)
-(⊨ "stdout port" #t (≢ (⊞⊲₀) ∅))
-(⊨ "stderr port" #t (≢ (⊞⊲₁) ∅))
+(test-case "stdout port" #t (not-equal? (stdout-port) nil))
+(test-case "stderr port" #t (not-equal? (stderr-port) nil))
 
 ; Test file port write and read
-(≔ test-path "/tmp/guage-posix-test.txt")
-(≔ wp (⊞⊳ test-path :textual-output))
-(⊨ "port write" #17 (⊞⊳→ wp "hello from guage\n"))
-(⊨ "port flush" #t (⊞⊳⊙ wp))
-(⊨ "port close" #t (⊞× wp))
+(define test-path "/tmp/guage-posix-test.txt")
+(define wp (port-open test-path :textual-output))
+(test-case "port write" #17 (port-write wp "hello from guage\n"))
+(test-case "port flush" #t (port-flush wp))
+(test-case "port close" #t (port-close wp))
 
-(≔ rp (⊞⊳ test-path :textual-input))
-(⊨ "port read line" "hello from guage" (⊞⊳← rp))
+(define rp (port-open test-path :textual-input))
+(test-case "port read line" "hello from guage" (port-read-line rp))
 ; After reading the only line, do one more read to trigger EOF
-(⊞⊳← rp)
-(⊨ "port eof after read" #t (⊞∅? rp))
-(⊨ "port close read" #t (⊞× rp))
+(port-read-line rp)
+(test-case "port eof after read" #t (port-eof? rp))
+(test-case "port close read" #t (port-close rp))
 
 ; Test read-all
-(≔ rp2 (⊞⊳ test-path :textual-input))
-(⊨ "port read all" "hello from guage\n" (⊞←* rp2))
-(⊞× rp2)
+(define rp2 (port-open test-path :textual-input))
+(test-case "port read all" "hello from guage\n" (port-read-all rp2))
+(port-close rp2)
 
 ; --- §3.3 File System ---
 
 ; Test file-info (stat)
-(≔ fi (≋⊙ "Makefile"))
-(⊨ "file-info returns struct" #t (≢ fi ∅))
+(define fi (file-info "Makefile"))
+(test-case "file-info returns struct" #t (not-equal? fi nil))
 
 ; Test directory listing
-(≔ files (≋⊙* "bootstrap/stdlib"))
-(⊨ "directory listing" #t (≢ files ∅))
+(define files (directory-files "bootstrap/stdlib"))
+(test-case "directory listing" #t (not-equal? files nil))
 
 ; Test mkdir/rmdir round-trip
-(≋⊙⊕ "/tmp/guage-test-dir" #493)  ; 0755
-(⊨ "mkdir" #t (≢ (≋⊙ "/tmp/guage-test-dir") ∅))
-(⊨ "rmdir" #t (≋⊙⊘ "/tmp/guage-test-dir"))
+(mkdir "/tmp/guage-test-dir" #493)  ; 0755
+(test-case "mkdir" #t (not-equal? (file-info "/tmp/guage-test-dir") nil))
+(test-case "rmdir" #t (rmdir "/tmp/guage-test-dir"))
 
 ; Test rename
-(≔ wp2 (⊞⊳ "/tmp/guage-rename-src.txt" :textual-output))
-(⊞⊳→ wp2 "rename test")
-(⊞× wp2)
-(⊨ "rename" #t (≋⇔ "/tmp/guage-rename-src.txt" "/tmp/guage-rename-dst.txt"))
-(≋⊖ "/tmp/guage-rename-dst.txt")
+(define wp2 (port-open "/tmp/guage-rename-src.txt" :textual-output))
+(port-write wp2 "rename test")
+(port-close wp2)
+(test-case "rename" #t (rename-file "/tmp/guage-rename-src.txt" "/tmp/guage-rename-dst.txt"))
+(delete-file "/tmp/guage-rename-dst.txt")
 
 ; Test symlink + readlink
-(≔ wp3 (⊞⊳ "/tmp/guage-link-target.txt" :textual-output))
-(⊞⊳→ wp3 "target")
-(⊞× wp3)
-(⊨ "symlink" #t (≋⊕→ "/tmp/guage-link-target.txt" "/tmp/guage-test-link"))
-(⊨ "readlink" "/tmp/guage-link-target.txt" (≋→ "/tmp/guage-test-link"))
-(≋⊖ "/tmp/guage-test-link")
-(≋⊖ "/tmp/guage-link-target.txt")
+(define wp3 (port-open "/tmp/guage-link-target.txt" :textual-output))
+(port-write wp3 "target")
+(port-close wp3)
+(test-case "symlink" #t (symlink "/tmp/guage-link-target.txt" "/tmp/guage-test-link"))
+(test-case "readlink" "/tmp/guage-link-target.txt" (readlink "/tmp/guage-test-link"))
+(delete-file "/tmp/guage-test-link")
+(delete-file "/tmp/guage-link-target.txt")
 
 ; Test realpath
-(⊨ "realpath" #t (≢ (≋⊙⊕→ ".") ∅))
+(test-case "realpath" #t (not-equal? (realpath ".") nil))
 
 ; Test file-space
-(⊨ "file-space" #t (≢ (≋⊙# "/") ∅))
+(test-case "file-space" #t (not-equal? (file-space "/") nil))
 
 ; Test opendir/readdir/closedir
-(≔ d (≋⊙⊳ "bootstrap"))
-(⊨ "opendir" #t (≢ d ∅))
-(≔ entry (≋⊙← d))
-(⊨ "readdir" #t (≢ entry ∅))
-(⊨ "closedir" #t (≋⊙× d))
+(define d (opendir "bootstrap"))
+(test-case "opendir" #t (not-equal? d nil))
+(define entry (readdir d))
+(test-case "readdir" #t (not-equal? entry nil))
+(test-case "closedir" #t (closedir d))
 
 ; Test temp file
-(≔ tmp (≋⊙⏱ "/tmp/guage-tmptest-"))
-(⊨ "temp file returns pair" #t (≢ tmp ∅))
-(⊞× (◁ tmp))
-(≋⊖ (▷ tmp))
+(define tmp (create-temp-file "/tmp/guage-tmptest-"))
+(test-case "temp file returns pair" #t (not-equal? tmp nil))
+(port-close (car tmp))
+(delete-file (cdr tmp))
 
 ; Test delete file (cleanup)
-(≋⊖ test-path)
+(delete-file test-path)
 
 ; --- §3.5 Process State ---
 
-(⊨ "pid" #t (> (⊙⌂#) #0))
-(⊨ "cwd" #t (≢ (⊙⌂⊘) ∅))
-(⊨ "uid" #t (≥ (⊙⌂⊕) #0))
-(⊨ "gid" #t (≥ (⊙⌂⊕⊕) #0))
-(⊨ "euid" #t (≥ (⊙⌂⊕*) #0))
-(⊨ "egid" #t (≥ (⊙⌂⊕⊕*) #0))
-(⊨ "groups" #t (≢ (⊙⌂⊕⊕*⊕) ∅))
-(⊨ "umask get" #t (≥ (⊙⌂⊙) #0))
+(test-case "pid" #t (> (pid) #0))
+(test-case "cwd" #t (not-equal? (cwd) nil))
+(test-case "uid" #t (>= (uid) #0))
+(test-case "gid" #t (>= (gid) #0))
+(test-case "euid" #t (>= (euid) #0))
+(test-case "egid" #t (>= (egid) #0))
+(test-case "groups" #t (not-equal? (groups) nil))
+(test-case "umask get" #t (>= (umask) #0))
 
 ; --- §3.6 User/Group Database ---
 
-(≔ ui (⊙⌂⊕⊙ "root"))
-(⊨ "user-info by name" #t (≢ ui ∅))
+(define ui (user-info "root"))
+(test-case "user-info by name" #t (not-equal? ui nil))
 
-(≔ gi (⊙⌂⊕⊕⊙ #0))
-(⊨ "group-info by gid" #t (≢ gi ∅))
+(define gi (group-info #0))
+(test-case "group-info by gid" #t (not-equal? gi nil))
 
 ; --- §3.10 Time ---
 
-(≔ t (⊙⏱))
-(⊨ "posix-time" #t (≢ t ∅))
+(define t (posix-time))
+(test-case "posix-time" #t (not-equal? t nil))
 
-(≔ mt (⊙⏱⊕))
-(⊨ "monotonic-time" #t (≢ mt ∅))
+(define mt (monotonic-time))
+(test-case "monotonic-time" #t (not-equal? mt nil))
 
 ; --- §3.11 Environment Variables ---
 
-(⊨ "getenv HOME" #t (≢ (⊙⌂≋ "HOME") ∅))
-(⊨ "setenv" #t (⊙⌂≋≔ "GUAGE_TEST" "42"))
-(⊨ "getenv after set" "42" (⊙⌂≋ "GUAGE_TEST"))
-(⊨ "unsetenv" #t (⊙⌂≋⊘ "GUAGE_TEST"))
-(⊨ "getenv after unset" ∅ (⊙⌂≋ "GUAGE_TEST"))
+(test-case "getenv HOME" #t (not-equal? (getenv "HOME") nil))
+(test-case "setenv" #t (setenv "GUAGE_TEST" "42"))
+(test-case "getenv after set" "42" (getenv "GUAGE_TEST"))
+(test-case "unsetenv" #t (unsetenv "GUAGE_TEST"))
+(test-case "getenv after unset" nil (getenv "GUAGE_TEST"))
 
 ; --- §3.12 Terminal ---
 
-(⊨ "is-terminal stdin" #t (≢ (⊞⊙? (⊞⊳₀)) ∅))
+(test-case "is-terminal stdin" #t (not-equal? (terminal? (stdin-port)) nil))
 
 ; --- R7RS System Extras ---
 
-(⊨ "argv" #t (≢ (⊙⌂) ∅))
-(⊨ "current-second" #t (> (⊙⏱≈) #0))
-(⊨ "jiffy" #t (> (⊙⏱⊕#) #0))
-(⊨ "jiffies-per-second" #1000000000 (⊙⏱⊕≈))
+(test-case "argv" #t (not-equal? (argv) nil))
+(test-case "current-second" #t (> (current-second) #0))
+(test-case "jiffy" #t (> (jiffy) #0))
+(test-case "jiffies-per-second" #1000000000 (jiffies-per-second))

@@ -1,52 +1,52 @@
 ; ─── Core Trait Protocols ───
 ; Showable, Equatable, Comparable
-; Uses FDT-backed dispatch (⊧→!) for ~5ns hot path
+; Uses FDT-backed dispatch (trait-dispatch-fast) for ~5ns hot path
 
 ; ─── :Showable ───
-(⊧≔ :Showable (⟨⟩ :show ∅))
+(trait-define :Showable (cons :show nil))
 
-(⊧⊕ :Number :Showable (⟨⟩ (⟨⟩ :show (λ (x) (≈ x))) ∅))
-(⊧⊕ :Bool   :Showable (⟨⟩ (⟨⟩ :show (λ (x) (? x "#t" "#f"))) ∅))
-(⊧⊕ :Symbol :Showable (⟨⟩ (⟨⟩ :show (λ (x) (≈ x))) ∅))
-(⊧⊕ :Nil    :Showable (⟨⟩ (⟨⟩ :show (λ (x) "∅")) ∅))
-(⊧⊕ :String :Showable (⟨⟩ (⟨⟩ :show (λ (x) x)) ∅))
-(⊧⊕ :Error  :Showable (⟨⟩ (⟨⟩ :show (λ (x) (≈ x))) ∅))
-(⊧⊕ :Pair   :Showable (⟨⟩ (⟨⟩ :show (λ (x) (≈ x))) ∅))
-(⊧⊕ :Lambda :Showable (⟨⟩ (⟨⟩ :show (λ (x) "<λ>")) ∅))
+(trait-implement :Number :Showable (cons (cons :show (lambda (x) (string x))) nil))
+(trait-implement :Bool   :Showable (cons (cons :show (lambda (x) (if x "#t" "#f"))) nil))
+(trait-implement :Symbol :Showable (cons (cons :show (lambda (x) (string x))) nil))
+(trait-implement :Nil    :Showable (cons (cons :show (lambda (x) "∅")) nil))
+(trait-implement :String :Showable (cons (cons :show (lambda (x) x)) nil))
+(trait-implement :Error  :Showable (cons (cons :show (lambda (x) (string x))) nil))
+(trait-implement :Pair   :Showable (cons (cons :show (lambda (x) (string x))) nil))
+(trait-implement :Lambda :Showable (cons (cons :show (lambda (x) "<λ>")) nil))
 
-; Convenience: uses ⊧→! (fused fast dispatch)
-(≔ ⊧show (λ (x) ((⊧→! x :Showable :show) x)))
+; Convenience: uses trait-dispatch-fast (fused fast dispatch)
+(define ⊧show (lambda (x) ((trait-dispatch-fast x :Showable :show) x)))
 
 ; ─── :Equatable ───
-(⊧≔ :Equatable (⟨⟩ :equal? ∅))
+(trait-define :Equatable (cons :equal? nil))
 
-(⊧⊕ :Number :Equatable (⟨⟩ (⟨⟩ :equal? (λ (a) (λ (b) (≡ a b)))) ∅))
-(⊧⊕ :Bool   :Equatable (⟨⟩ (⟨⟩ :equal? (λ (a) (λ (b) (≡ a b)))) ∅))
-(⊧⊕ :Symbol :Equatable (⟨⟩ (⟨⟩ :equal? (λ (a) (λ (b) (≡ a b)))) ∅))
-(⊧⊕ :Nil    :Equatable (⟨⟩ (⟨⟩ :equal? (λ (a) (λ (b) (≡ a b)))) ∅))
-(⊧⊕ :String :Equatable (⟨⟩ (⟨⟩ :equal? (λ (a) (λ (b) (≈≡ a b)))) ∅))
+(trait-implement :Number :Equatable (cons (cons :equal? (lambda (a) (lambda (b) (equal? a b)))) nil))
+(trait-implement :Bool   :Equatable (cons (cons :equal? (lambda (a) (lambda (b) (equal? a b)))) nil))
+(trait-implement :Symbol :Equatable (cons (cons :equal? (lambda (a) (lambda (b) (equal? a b)))) nil))
+(trait-implement :Nil    :Equatable (cons (cons :equal? (lambda (a) (lambda (b) (equal? a b)))) nil))
+(trait-implement :String :Equatable (cons (cons :equal? (lambda (a) (lambda (b) (string-equal? a b)))) nil))
 
-(≔ ⊧≡ (λ (a) (λ (b) (((⊧→! a :Equatable :equal?) a) b))))
+(define ⊧≡ (lambda (a) (lambda (b) (((trait-dispatch-fast a :Equatable :equal?) a) b))))
 
 ; ─── :Comparable ───
-(⊧≔ :Comparable (⟨⟩ :compare ∅))
+(trait-define :Comparable (cons :compare nil))
 
-(⊧⊕ :Number :Comparable
-  (⟨⟩ (⟨⟩ :compare (λ (a) (λ (b) (? (< a b) :lt (? (≡ a b) :eq :gt))))) ∅))
-(⊧⊕ :String :Comparable
-  (⟨⟩ (⟨⟩ :compare (λ (a) (λ (b) (? (≈< a b) :lt (? (≈≡ a b) :eq :gt))))) ∅))
+(trait-implement :Number :Comparable
+  (cons (cons :compare (lambda (a) (lambda (b) (if (< a b) :lt (if (equal? a b) :eq :gt))))) nil))
+(trait-implement :String :Comparable
+  (cons (cons :compare (lambda (a) (lambda (b) (if (string<? a b) :lt (if (string-equal? a b) :eq :gt))))) nil))
 
 ; Derived dispatchers
-(≔ ⊧compare (λ (a) (λ (b) (((⊧→! a :Comparable :compare) a) b))))
-(≔ ⊧<  (λ (a) (λ (b) (≡ ((⊧compare a) b) :lt))))
-(≔ ⊧≤  (λ (a) (λ (b) (¬ (≡ ((⊧compare a) b) :gt)))))
-(≔ ⊧>  (λ (a) (λ (b) (≡ ((⊧compare a) b) :gt))))
-(≔ ⊧≥  (λ (a) (λ (b) (¬ (≡ ((⊧compare a) b) :lt)))))
+(define ⊧compare (lambda (a) (lambda (b) (((trait-dispatch-fast a :Comparable :compare) a) b))))
+(define ⊧<  (lambda (a) (lambda (b) (equal? ((⊧compare a) b) :lt))))
+(define ⊧≤  (lambda (a) (lambda (b) (not (equal? ((⊧compare a) b) :gt)))))
+(define ⊧>  (lambda (a) (lambda (b) (equal? ((⊧compare a) b) :gt))))
+(define ⊧≥  (lambda (a) (lambda (b) (not (equal? ((⊧compare a) b) :lt)))))
 
 ; Generic sort using trait dispatch
-(≔ ⊧sort (λ (lst)
-  (? (∅? lst) ∅
-    ((⊙sort→ (λ (a) (λ (b) ((⊧≤ a) b)))) lst))))
+(define ⊧sort (lambda (lst)
+  (if (null? lst) nil
+    ((⊙sort→ (lambda (a) (lambda (b) ((⊧≤ a) b)))) lst))))
 
 ; ═══════════════════════════════════════════════════════════════
 ; Extended Trait Protocols (Day 143)
@@ -54,63 +54,63 @@
 ; ═══════════════════════════════════════════════════════════════
 
 ; ─── :Mappable ───
-(⊧≔ :Mappable (⟨⟩ :map ∅))
+(trait-define :Mappable (cons :map nil))
 
-(⊧⊕ :Pair   :Mappable (⟨⟩ (⟨⟩ :map (λ (f) (λ (coll) ((↦ f) coll)))) ∅))
-(⊧⊕ :Nil    :Mappable (⟨⟩ (⟨⟩ :map (λ (f) (λ (coll) ∅))) ∅))
-(⊧⊕ :Vector :Mappable (⟨⟩ (⟨⟩ :map (λ (f) (λ (v) (⟦↦ v f)))) ∅))
+(trait-implement :Pair   :Mappable (cons (cons :map (lambda (f) (lambda (coll) ((list-map f) coll)))) nil))
+(trait-implement :Nil    :Mappable (cons (cons :map (lambda (f) (lambda (coll) nil))) nil))
+(trait-implement :Vector :Mappable (cons (cons :map (lambda (f) (lambda (v) (vector-map v f)))) nil))
 
-(≔ ⊧↦ (λ (f) (λ (coll) (((⊧→! coll :Mappable :map) f) coll))))
+(define ⊧↦ (lambda (f) (lambda (coll) (((trait-dispatch-fast coll :Mappable :map) f) coll))))
 
 ; ─── :Foldable ───
-(⊧≔ :Foldable (⟨⟩ :fold-left (⟨⟩ :fold-right ∅)))
+(trait-define :Foldable (cons :fold-left (cons :fold-right nil)))
 
-(⊧⊕ :Pair :Foldable
-  (⟨⟩ (⟨⟩ :fold-left (λ (f) (λ (acc) (λ (lst) (((⊕← f) acc) lst)))))
-  (⟨⟩ (⟨⟩ :fold-right (λ (f) (λ (lst) (λ (acc) (((⊕→ f) lst) acc))))) ∅)))
-(⊧⊕ :Nil :Foldable
-  (⟨⟩ (⟨⟩ :fold-left (λ (f) (λ (acc) (λ (lst) acc))))
-  (⟨⟩ (⟨⟩ :fold-right (λ (f) (λ (lst) (λ (acc) acc)))) ∅)))
+(trait-implement :Pair :Foldable
+  (cons (cons :fold-left (lambda (f) (lambda (acc) (lambda (lst) (((fold-left f) acc) lst)))))
+  (cons (cons :fold-right (lambda (f) (lambda (lst) (lambda (acc) (((fold-right f) lst) acc))))) nil)))
+(trait-implement :Nil :Foldable
+  (cons (cons :fold-left (lambda (f) (lambda (acc) (lambda (lst) acc))))
+  (cons (cons :fold-right (lambda (f) (lambda (lst) (lambda (acc) acc)))) nil)))
 
-(≔ ⊧⊕← (λ (f) (λ (acc) (λ (coll) ((((⊧→! coll :Foldable :fold-left) f) acc) coll)))))
-(≔ ⊧⊕→ (λ (f) (λ (coll) (λ (acc) ((((⊧→! coll :Foldable :fold-right) f) coll) acc)))))
+(define ⊧⊕← (lambda (f) (lambda (acc) (lambda (coll) ((((trait-dispatch-fast coll :Foldable :fold-left) f) acc) coll)))))
+(define ⊧⊕→ (lambda (f) (lambda (coll) (lambda (acc) ((((trait-dispatch-fast coll :Foldable :fold-right) f) coll) acc)))))
 
 ; ─── :Semigroup ───
-(⊧≔ :Semigroup (⟨⟩ :combine ∅))
+(trait-define :Semigroup (cons :combine nil))
 
-(⊧⊕ :Number :Semigroup (⟨⟩ (⟨⟩ :combine (λ (a) (λ (b) (⊕ a b)))) ∅))
-(⊧⊕ :String :Semigroup (⟨⟩ (⟨⟩ :combine (λ (a) (λ (b) (≈⊕ a b)))) ∅))
-(⊧⊕ :Pair   :Semigroup (⟨⟩ (⟨⟩ :combine (λ (a) (λ (b) ((⧺ b) a)))) ∅))
-(⊧⊕ :Nil    :Semigroup (⟨⟩ (⟨⟩ :combine (λ (a) (λ (b) b))) ∅))
+(trait-implement :Number :Semigroup (cons (cons :combine (lambda (a) (lambda (b) (+ a b)))) nil))
+(trait-implement :String :Semigroup (cons (cons :combine (lambda (a) (lambda (b) (string-append a b)))) nil))
+(trait-implement :Pair   :Semigroup (cons (cons :combine (lambda (a) (lambda (b) ((⧺ b) a)))) nil))
+(trait-implement :Nil    :Semigroup (cons (cons :combine (lambda (a) (lambda (b) b))) nil))
 
-(≔ ⊧⊕⊕ (λ (a) (λ (b) (((⊧→! a :Semigroup :combine) a) b))))
+(define ⊧⊕⊕ (lambda (a) (lambda (b) (((trait-dispatch-fast a :Semigroup :combine) a) b))))
 
 ; ─── :Monoid ───
-(⊧≔ :Monoid (⟨⟩ :empty ∅))
+(trait-define :Monoid (cons :empty nil))
 
-(⊧⊕ :Number :Monoid (⟨⟩ (⟨⟩ :empty (λ () #0)) ∅))
-(⊧⊕ :String :Monoid (⟨⟩ (⟨⟩ :empty (λ () "")) ∅))
-(⊧⊕ :Pair   :Monoid (⟨⟩ (⟨⟩ :empty (λ () ∅)) ∅))
-(⊧⊕ :Nil    :Monoid (⟨⟩ (⟨⟩ :empty (λ () ∅)) ∅))
+(trait-implement :Number :Monoid (cons (cons :empty (lambda () #0)) nil))
+(trait-implement :String :Monoid (cons (cons :empty (lambda () "")) nil))
+(trait-implement :Pair   :Monoid (cons (cons :empty (lambda () nil)) nil))
+(trait-implement :Nil    :Monoid (cons (cons :empty (lambda () nil)) nil))
 
-(≔ ⊧∅ (λ (x) ((⊧→! x :Monoid :empty))))
+(define ⊧∅ (lambda (x) ((trait-dispatch-fast x :Monoid :empty))))
 
 ; Generic mconcat: fold using combine + empty
-(≔ ⊧mconcat (λ (lst)
-  (? (∅? lst) ∅
-     (((⊧⊕← (λ (acc) (λ (x) ((⊧⊕⊕ acc) x)))) (⊧∅ (◁ lst))) lst))))
+(define ⊧mconcat (lambda (lst)
+  (if (null? lst) nil
+     (((⊧⊕← (lambda (acc) (lambda (x) ((⊧⊕⊕ acc) x)))) (⊧∅ (car lst))) lst))))
 
 ; ─── :Filterable ───
-(⊧≔ :Filterable (⟨⟩ :filter ∅))
+(trait-define :Filterable (cons :filter nil))
 
-(⊧⊕ :Pair :Filterable (⟨⟩ (⟨⟩ :filter (λ (pred) (λ (coll) ((⊲ pred) coll)))) ∅))
-(⊧⊕ :Nil  :Filterable (⟨⟩ (⟨⟩ :filter (λ (pred) (λ (coll) ∅))) ∅))
+(trait-implement :Pair :Filterable (cons (cons :filter (lambda (pred) (lambda (coll) ((list-filter pred) coll)))) nil))
+(trait-implement :Nil  :Filterable (cons (cons :filter (lambda (pred) (lambda (coll) nil))) nil))
 
-(≔ ⊧⊲ (λ (pred) (λ (coll) (((⊧→! coll :Filterable :filter) pred) coll))))
+(define ⊧⊲ (lambda (pred) (lambda (coll) (((trait-dispatch-fast coll :Filterable :filter) pred) coll))))
 
 ; ─── :Hashable ───
-(⊧≔ :Hashable (⟨⟩ :hash ∅))
+(trait-define :Hashable (cons :hash nil))
 
-(⊧⊕ :Number :Hashable (⟨⟩ (⟨⟩ :hash (λ (x) x)) ∅))
-(⊧⊕ :String :Hashable (⟨⟩ (⟨⟩ :hash (λ (x) (≈# x))) ∅))
-(⊧⊕ :Symbol :Hashable (⟨⟩ (⟨⟩ :hash (λ (x) (≈# (≈ x)))) ∅))
+(trait-implement :Number :Hashable (cons (cons :hash (lambda (x) x)) nil))
+(trait-implement :String :Hashable (cons (cons :hash (lambda (x) (string-length x))) nil))
+(trait-implement :Symbol :Hashable (cons (cons :hash (lambda (x) (string-length (string x)))) nil))

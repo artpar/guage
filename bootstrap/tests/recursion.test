@@ -1,10 +1,10 @@
 ; Recursion Tests
 
 ; Simple recursive factorial
-(≔ ! (λ (n)
-  (? (≡ n #0)
+(define ! (lambda (n)
+  (if (equal? n #0)
      #1
-     (⊗ n (! (⊖ n #1))))))
+     (* n (! (- n #1))))))
 
 ; Test factorial
 (! #0)
@@ -16,10 +16,10 @@
 (! #6)
 
 ; Recursive fibonacci
-(≔ fib (λ (n)
-  (? (< n #2)
+(define fib (lambda (n)
+  (if (< n #2)
      n
-     (⊕ (fib (⊖ n #1)) (fib (⊖ n #2))))))
+     (+ (fib (- n #1)) (fib (- n #2))))))
 
 ; Test fibonacci
 (fib #0)
@@ -32,10 +32,10 @@
 (fib #7)
 
 ; Recursive sum
-(≔ sum (λ (n)
-  (? (≡ n #0)
+(define sum (lambda (n)
+  (if (equal? n #0)
      #0
-     (⊕ n (sum (⊖ n #1))))))
+     (+ n (sum (- n #1))))))
 
 ; Test sum
 (sum #0)

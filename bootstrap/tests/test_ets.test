@@ -1,82 +1,82 @@
 ; Day 99: ETS (Erlang Term Storage) — shared named tables
-; Primitives: ⟳⊞⊕ (new), ⟳⊞⊙ (insert), ⟳⊞? (lookup), ⟳⊞⊖ (delete),
-;             ⟳⊞! (delete-table), ⟳⊞# (size), ⟳⊞* (all)
-(⟳∅)
+; Primitives: ets-new (new), ets-insert (insert), ets-lookup (lookup), ets-delete-key (delete),
+;             ets-delete-table (delete-table), ets-size (size), ets-all (all)
+(actor-reset)
 
 ; === ets-new-basic ===
 ; Create a named ETS table
-(⟳∅)
-(⊨ (⌜ :ets-new-basic) :users (⟳⊞⊕ :users))
+(actor-reset)
+(test-case (quote :ets-new-basic) :users (ets-new :users))
 
 ; === ets-insert-lookup ===
 ; Insert and lookup a key
-(⟳∅)
-(⟳⊞⊕ :cache)
-(⟳⊞⊙ :cache :key1 #42)
-(⊨ (⌜ :ets-insert-lookup) #42 (⟳⊞? :cache :key1))
+(actor-reset)
+(ets-new :cache)
+(ets-insert :cache :key1 #42)
+(test-case (quote :ets-insert-lookup) #42 (ets-lookup :cache :key1))
 
 ; === ets-lookup-missing ===
-; Lookup missing key returns ∅
-(⟳∅)
-(⟳⊞⊕ :data)
-(⊨ (⌜ :ets-lookup-missing) ∅ (⟳⊞? :data :nope))
+; Lookup missing key returns nil
+(actor-reset)
+(ets-new :data)
+(test-case (quote :ets-lookup-missing) nil (ets-lookup :data :nope))
 
 ; === ets-insert-overwrite ===
 ; Insert same key overwrites
-(⟳∅)
-(⟳⊞⊕ :cfg)
-(⟳⊞⊙ :cfg :port #8080)
-(⟳⊞⊙ :cfg :port #9090)
-(⊨ (⌜ :ets-insert-overwrite) #9090 (⟳⊞? :cfg :port))
+(actor-reset)
+(ets-new :cfg)
+(ets-insert :cfg :port #8080)
+(ets-insert :cfg :port #9090)
+(test-case (quote :ets-insert-overwrite) #9090 (ets-lookup :cfg :port))
 
 ; === ets-delete-key ===
 ; Delete a key from table
-(⟳∅)
-(⟳⊞⊕ :store)
-(⟳⊞⊙ :store :x #1)
-(⟳⊞⊙ :store :y #2)
-(⟳⊞⊖ :store :x)
-(⊨ (⌜ :ets-delete-key) ∅ (⟳⊞? :store :x))
+(actor-reset)
+(ets-new :store)
+(ets-insert :store :x #1)
+(ets-insert :store :y #2)
+(ets-delete-key :store :x)
+(test-case (quote :ets-delete-key) nil (ets-lookup :store :x))
 
 ; === ets-size ===
 ; Table size tracking
-(⟳∅)
-(⟳⊞⊕ :items)
-(⟳⊞⊙ :items :a #1)
-(⟳⊞⊙ :items :b #2)
-(⟳⊞⊙ :items :c #3)
-(⊨ (⌜ :ets-size) #3 (⟳⊞# :items))
+(actor-reset)
+(ets-new :items)
+(ets-insert :items :a #1)
+(ets-insert :items :b #2)
+(ets-insert :items :c #3)
+(test-case (quote :ets-size) #3 (ets-size :items))
 
 ; === ets-all-entries ===
 ; Get all entries as list of pairs
-(⟳∅)
-(⟳⊞⊕ :pairs)
-(⟳⊞⊙ :pairs :x #10)
-(⟳⊞⊙ :pairs :y #20)
-(≔ all (⟳⊞* :pairs))
-(⊨ (⌜ :ets-all-entries) #2 (⟳⊞# :pairs))
+(actor-reset)
+(ets-new :pairs)
+(ets-insert :pairs :x #10)
+(ets-insert :pairs :y #20)
+(define all (ets-all :pairs))
+(test-case (quote :ets-all-entries) #2 (ets-size :pairs))
 
 ; === ets-delete-table ===
 ; Delete entire table
-(⟳∅)
-(⟳⊞⊕ :temp)
-(⟳⊞⊙ :temp :k #1)
-(⟳⊞! :temp)
-(⊨ (⌜ :ets-delete-table) #t (⚠? (⟳⊞? :temp :k)))
+(actor-reset)
+(ets-new :temp)
+(ets-insert :temp :k #1)
+(ets-delete-table :temp)
+(test-case (quote :ets-delete-table) #t (error? (ets-lookup :temp :k)))
 
 ; === ets-duplicate-name ===
 ; Creating table with same name is error
-(⟳∅)
-(⟳⊞⊕ :uniq)
-(⊨ (⌜ :ets-duplicate-name) #t (⚠? (⟳⊞⊕ :uniq)))
+(actor-reset)
+(ets-new :uniq)
+(test-case (quote :ets-duplicate-name) #t (error? (ets-new :uniq)))
 
 ; === ets-cross-actor ===
 ; Multiple actors can read/write same table
-(⟳∅)
-(⟳⊞⊕ :shared)
-(≔ writer (⟳ (λ (self)
-  (⟳⊞⊙ :shared :msg :hello))))
-(≔ reader (⟳ (λ (self)
-  (⟳⊞? :shared :msg))))
-(⟳! #20)
-(⊨ (⌜ :ets-cross-actor) :hello (⟳→ reader))
+(actor-reset)
+(ets-new :shared)
+(define writer (actor-spawn (lambda (self)
+  (ets-insert :shared :msg :hello))))
+(define reader (actor-spawn (lambda (self)
+  (ets-lookup :shared :msg))))
+(actor-run #20)
+(test-case (quote :ets-cross-actor) :hello (actor-result reader))

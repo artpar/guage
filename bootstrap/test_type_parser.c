@@ -24,42 +24,42 @@ int main() {
 
     /* Simple types */
     TEST("Number type", "ℕ");
-    TEST("Boolean type", "𝔹");
+    TEST("Boolean type", "Bool");
     TEST("Type variable", "α");
     TEST("Symbol type", ":symbol");
-    TEST("Error type", "⚠");
+    TEST("Error type", "error");
 
     /* Function types */
-    TEST("Unary function", "α → β");
-    TEST("Binary function", "α → β → γ");
-    TEST("Binary arithmetic", "ℕ → ℕ → ℕ");
+    TEST("Unary function", "α -> β");
+    TEST("Binary function", "α -> β -> γ");
+    TEST("Binary arithmetic", "ℕ -> ℕ -> ℕ");
 
     /* Compound types */
     TEST("Pair type", "⟨α β⟩");
     TEST("List type", "[α]");
-    TEST("Pair to car", "⟨α β⟩ → α");
-    TEST("Construct pair", "α → β → ⟨α β⟩");
+    TEST("Pair to car", "⟨α β⟩ -> α");
+    TEST("Construct pair", "α -> β -> ⟨α β⟩");
 
     /* Complex types */
-    TEST("Pattern matching", "α → [[pattern result]] → β");
-    TEST("Error creation", ":symbol → α → ⚠");
-    TEST("Union type", "𝔹 → :symbol → 𝔹 | ⚠");
-    TEST("Predicate", "α → 𝔹");
-    TEST("Comparison", "ℕ → ℕ → 𝔹");
+    TEST("Pattern matching", "α -> [[pattern result]] -> β");
+    TEST("Error creation", ":symbol -> α -> error");
+    TEST("Union type", "Bool -> :symbol -> Bool | error");
+    TEST("Predicate", "α -> Bool");
+    TEST("Comparison", "ℕ -> ℕ -> Bool");
 
     /* Real primitive signatures */
-    TEST("cons (⟨⟩)", "α → β → ⟨α β⟩");
-    TEST("car (◁)", "⟨α β⟩ → α");
-    TEST("quote (⌜)", "α → α");
-    TEST("eval (⌞)", "α → β");
-    TEST("match (∇)", "α → [[pattern result]] → β");
-    TEST("equal (≡)", "α → α → 𝔹");
-    TEST("and (∧)", "𝔹 → 𝔹 → 𝔹");
-    TEST("not (¬)", "𝔹 → 𝔹");
-    TEST("add (⊕)", "ℕ → ℕ → ℕ");
-    TEST("is-number (ℕ?)", "α → 𝔹");
-    TEST("assert (⊢)", "𝔹 → :symbol → 𝔹 | ⚠");
-    TEST("test-case (⊨)", ":symbol → α → α → 𝔹 | ⚠");
+    TEST("cons (cons)", "α -> β -> ⟨α β⟩");
+    TEST("car (car)", "⟨α β⟩ -> α");
+    TEST("quote (quote)", "α -> α");
+    TEST("eval (eval)", "α -> β");
+    TEST("match (match)", "α -> [[pattern result]] -> β");
+    TEST("equal (equal?)", "α -> α -> Bool");
+    TEST("and (and)", "Bool -> Bool -> Bool");
+    TEST("not (not)", "Bool -> Bool");
+    TEST("add (+)", "ℕ -> ℕ -> ℕ");
+    TEST("is-number (number?)", "α -> Bool");
+    TEST("assert (assert)", "Bool -> :symbol -> Bool | error");
+    TEST("test-case (test-case)", ":symbol -> α -> α -> Bool | error");
 
     printf("\n===== All Tests Complete =====\n");
     return 0;

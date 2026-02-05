@@ -2,25 +2,25 @@
 ;;; Test if other special forms have the same issue
 ;;;
 
-(≔ id (λ (x) x))
+(define id (lambda (x) x))
 
 ;;; Test 1: Quote
-(≋ :direct-quote)
-(≋ (⌜ (a b c)))
+(print :direct-quote)
+(print (quote (a b c)))
 
-(≋ :quote-through-closure)
-(≋ (id (⌜ (a b c))))
+(print :quote-through-closure)
+(print (id (quote (a b c))))
 
 ;;; Test 2: Cons (primitive, not special form)
-(≋ :direct-cons)
-(≋ (⟨⟩ :a :b))
+(print :direct-cons)
+(print (cons :a :b))
 
-(≋ :cons-through-closure)
-(≋ (id (⟨⟩ :a :b)))
+(print :cons-through-closure)
+(print (id (cons :a :b)))
 
 ;;; Test 3: If (special form)
-(≋ :direct-if)
-(≋ (? #t #42 #99))
+(print :direct-if)
+(print (if #t #42 #99))
 
-(≋ :if-through-closure)
-(≋ (id (? #t #42 #99)))
+(print :if-through-closure)
+(print (id (if #t #42 #99)))

@@ -3,27 +3,27 @@
 ;;;
 
 ;;; Test 1: Create quoted list
-(≔ list-a (⌜ (a b c)))
-(≋ :what-is-list-a)
-(≋ list-a)
-(≋ (⟨⟩? list-a))
+(define list-a (quote (a b c)))
+(print :what-is-list-a)
+(print list-a)
+(print (pair? list-a))
 
 ;;; Test 2: Try to get car of quoted list
-(≋ :try-car)
-(≋ (◁ list-a))
+(print :try-car)
+(print (car list-a))
 
 ;;; Test 3: Create non-quoted list
-(≔ list-b (⟨⟩ :a (⟨⟩ :b (⟨⟩ :c ∅))))
-(≋ :what-is-list-b)
-(≋ list-b)
-(≋ (⟨⟩? list-b))
-(≋ (◁ list-b))
+(define list-b (cons :a (cons :b (cons :c nil))))
+(print :what-is-list-b)
+(print list-b)
+(print (pair? list-b))
+(print (car list-b))
 
 ;;; Test 4: Pass non-quoted list to function
-(≔ get-first (λ (x) (◁ x)))
-(≋ :call-with-non-quoted)
-(≋ (get-first list-b))
+(define get-first (lambda (x) (car x)))
+(print :call-with-non-quoted)
+(print (get-first list-b))
 
 ;;; Test 5: Pass quoted list to function
-(≋ :call-with-quoted)
-(≋ (get-first list-a))
+(print :call-with-quoted)
+(print (get-first list-a))

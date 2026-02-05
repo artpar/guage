@@ -2,80 +2,80 @@
 ; Test suite for stdlib/string.scm
 ; Tests all string manipulation utilities
 
-(≋ "Testing String Library...")
+(print "Testing String Library...")
 
 ; Load the string library
-(⋘ "bootstrap/stdlib/string.scm")
+(load "bootstrap/stdlib/string.scm")
 
 ; ============================================================================
-; Test: string-split (≈÷)
+; Test: string-split (string-split)
 ; ============================================================================
 
-(≋ "Testing string-split...")
+(print "Testing string-split...")
 
 ; Basic split
-(⊨ :split-basic
-   (⟨⟩ "a" (⟨⟩ "b" (⟨⟩ "c" ∅)))
+(test-case :split-basic
+   (cons "a" (cons "b" (cons "c" nil)))
    (string-split "a,b,c" ","))
 
 ; Split with empty string (character split)
-(⊨ :split-chars
-   (⟨⟩ "h" (⟨⟩ "e" (⟨⟩ "l" (⟨⟩ "l" (⟨⟩ "o" ∅)))))
+(test-case :split-chars
+   (cons "h" (cons "e" (cons "l" (cons "l" (cons "o" nil)))))
    (string-split "hello" ""))
 
 ; Split empty string
-(⊨ :split-empty
-   ∅
+(test-case :split-empty
+   nil
    (string-split "" ","))
 
 ; Split with no delimiter found
-(⊨ :split-none
-   (⟨⟩ "hello" ∅)
+(test-case :split-none
+   (cons "hello" nil)
    (string-split "hello" ","))
 
 ; Split with multi-char delimiter
-(⊨ :split-multi
-   (⟨⟩ "hello" (⟨⟩ "world" ∅))
+(test-case :split-multi
+   (cons "hello" (cons "world" nil))
    (string-split "hello::world" "::"))
 
 ; Alias test
-(⊨ :split-alias
-   (⟨⟩ "a" (⟨⟩ "b" ∅))
-   (≈÷ "a,b" ","))
+(test-case :split-alias
+   (cons "a" (cons "b" nil))
+   (string-split "a,b" ","))
 
 ; ============================================================================
 ; Test: string-join (≈⊗)
 ; ============================================================================
 
-(≋ "Testing string-join...")
+(print "Testing string-join...")
 
 ; Basic join
-(⊨ :join-basic
+(test-case :join-basic
    "a,b,c"
-   (string-join (⟨⟩ "a" (⟨⟩ "b" (⟨⟩ "c" ∅))) ","))
+   (string-join (cons "a" (cons "b" (cons "c" nil))) ","))
 
 ; Join empty list
-(⊨ :join-empty
+(test-case :join-empty
    ""
-   (string-join ∅ ","))
+   (string-join nil ","))
 
 ; Join single element
-(⊨ :join-single
+(test-case :join-single
    "hello"
-   (string-join (⟨⟩ "hello" ∅) ","))
+   (string-join (cons "hello" nil) ","))
 
 ; Join with space
-(⊨ :join-space
+(test-case :join-space
    "hello world"
-   (string-join (⟨⟩ "hello" (⟨⟩ "world" ∅)) " "))
+   (string-join (cons "hello" (cons "world" nil)) " "))
 
 ; Alias test
-(⊨ :join-alias
+(test-case :join-alias
    "a,b"
-   (≈⊗ (⟨⟩ "a" (⟨⟩ "b" ∅)) ","))
+   (≈⊗ (cons "a" (cons "b" nil)) ","))
 
 ; Round-trip test (split then join)
-(⊨ :split-join-roundtrip
+(test-case :split-join-roundtrip
    "a,b,c"
    (string-join (string-split "a,b,c" ",") ","))
 
@@ -83,202 +83,202 @@
 ; Test: string-trim
 ; ============================================================================
 
-(≋ "Testing string-trim...")
+(print "Testing string-trim...")
 
 ; Trim left
-(⊨ :trim-left-basic
+(test-case :trim-left-basic
    "hello"
    (string-trim-left "  hello"))
 
 ; Trim left (no whitespace)
-(⊨ :trim-left-none
+(test-case :trim-left-none
    "hello"
    (string-trim-left "hello"))
 
 ; Trim right
-(⊨ :trim-right-basic
+(test-case :trim-right-basic
    "hello"
    (string-trim-right "hello  "))
 
 ; Trim right (no whitespace)
-(⊨ :trim-right-none
+(test-case :trim-right-none
    "hello"
    (string-trim-right "hello"))
 
 ; Trim both
-(⊨ :trim-both
+(test-case :trim-both
    "hello"
    (string-trim "  hello  "))
 
 ; Trim both (no whitespace)
-(⊨ :trim-both-none
+(test-case :trim-both-none
    "hello"
    (string-trim "hello"))
 
 ; Alias test
-(⊨ :trim-alias
+(test-case :trim-alias
    "hello"
-   (≈⊏⊐ "  hello  "))
+   (string-trim "  hello  "))
 
 ; ============================================================================
-; Test: string-contains? (≈∈?)
+; Test: string-contains? (string-contains?)
 ; ============================================================================
 
-(≋ "Testing string-contains?...")
+(print "Testing string-contains?...")
 
 ; Contains found
-(⊨ :contains-found
+(test-case :contains-found
    #t
    (string-contains? "hello world" "world"))
 
 ; Contains not found
-(⊨ :contains-not-found
+(test-case :contains-not-found
    #f
    (string-contains? "hello" "xyz"))
 
 ; Contains at start
-(⊨ :contains-start
+(test-case :contains-start
    #t
    (string-contains? "hello world" "hello"))
 
 ; Contains at end
-(⊨ :contains-end
+(test-case :contains-end
    #t
    (string-contains? "hello world" "world"))
 
 ; Contains empty string (always true)
-(⊨ :contains-empty
+(test-case :contains-empty
    #t
    (string-contains? "hello" ""))
 
 ; Alias test
-(⊨ :contains-alias
+(test-case :contains-alias
    #t
-   (≈∈? "hello world" "world"))
+   (string-contains? "hello world" "world"))
 
 ; ============================================================================
-; Test: string-replace (≈⇔)
+; Test: string-replace (string-replace)
 ; ============================================================================
 
-(≋ "Testing string-replace...")
+(print "Testing string-replace...")
 
 ; Replace basic
-(⊨ :replace-basic
+(test-case :replace-basic
    "hello there"
    (string-replace "hello world" "world" "there"))
 
 ; Replace multiple occurrences
-(⊨ :replace-multiple
+(test-case :replace-multiple
    "bbb"
    (string-replace "aaa" "a" "b"))
 
 ; Replace not found
-(⊨ :replace-not-found
+(test-case :replace-not-found
    "hello"
    (string-replace "hello" "xyz" "abc"))
 
 ; Replace empty old (should return unchanged)
-(⊨ :replace-empty-old
+(test-case :replace-empty-old
    "hello"
    (string-replace "hello" "" "x"))
 
 ; Replace with empty string (delete)
-(⊨ :replace-delete
+(test-case :replace-delete
    "heo"
    (string-replace "hello" "l" ""))
 
 ; Alias test
-(⊨ :replace-alias
+(test-case :replace-alias
    "hello there"
-   (≈⇔ "hello world" "world" "there"))
+   (string-replace "hello world" "world" "there"))
 
 ; ============================================================================
 ; Test: string-split-lines (≈÷⊳)
 ; ============================================================================
 
-(≋ "Testing string-split-lines...")
+(print "Testing string-split-lines...")
 
 ; Split lines basic
-(⊨ :split-lines-basic
-   (⟨⟩ "a" (⟨⟩ "b" (⟨⟩ "c" ∅)))
+(test-case :split-lines-basic
+   (cons "a" (cons "b" (cons "c" nil)))
    (string-split-lines "a\nb\nc"))
 
 ; Split lines single line
-(⊨ :split-lines-single
-   (⟨⟩ "hello" ∅)
+(test-case :split-lines-single
+   (cons "hello" nil)
    (string-split-lines "hello"))
 
 ; Alias test
-(⊨ :split-lines-alias
-   (⟨⟩ "a" (⟨⟩ "b" ∅))
+(test-case :split-lines-alias
+   (cons "a" (cons "b" nil))
    (≈÷⊳ "a\nb"))
 
 ; ============================================================================
-; Test: string-index-of (≈⊳)
+; Test: string-index-of (string-find)
 ; ============================================================================
 
-(≋ "Testing string-index-of...")
+(print "Testing string-index-of...")
 
 ; Index-of found
-(⊨ :index-of-found
+(test-case :index-of-found
    #6
    (string-index-of "hello world" "world"))
 
 ; Index-of not found
-(⊨ :index-of-not-found
-   ∅
+(test-case :index-of-not-found
+   nil
    (string-index-of "hello" "xyz"))
 
 ; Index-of at start
-(⊨ :index-of-start
+(test-case :index-of-start
    #0
    (string-index-of "hello world" "hello"))
 
 ; Index-of empty string (returns 0)
-(⊨ :index-of-empty
+(test-case :index-of-empty
    #0
    (string-index-of "hello" ""))
 
 ; Alias test
-(⊨ :index-of-alias
+(test-case :index-of-alias
    #6
-   (≈⊳ "hello world" "world"))
+   (string-find "hello world" "world"))
 
 ; ============================================================================
 ; Integration Tests
 ; ============================================================================
 
-(≋ "Testing integration scenarios...")
+(print "Testing integration scenarios...")
 
 ; Parse CSV line
-(⊨ :csv-parse
-   (⟨⟩ "Alice" (⟨⟩ "30" (⟨⟩ "Engineer" ∅)))
+(test-case :csv-parse
+   (cons "Alice" (cons "30" (cons "Engineer" nil)))
    (string-split "Alice,30,Engineer" ","))
 
 ; Build CSV line
-(⊨ :csv-build
+(test-case :csv-build
    "Alice,30,Engineer"
-   (string-join (⟨⟩ "Alice" (⟨⟩ "30" (⟨⟩ "Engineer" ∅))) ","))
+   (string-join (cons "Alice" (cons "30" (cons "Engineer" nil))) ","))
 
 ; Clean user input
-(⊨ :clean-input
+(test-case :clean-input
    "hello world"
    (string-trim "  hello world  "))
 
 ; Word count (split by space, count elements)
-(≔ count-list (λ (lst)
-  (? (∅? lst) #0 (⊕ #1 (count-list (▷ lst))))))
+(define count-list (lambda (lst)
+  (if (null? lst) #0 (+ #1 (count-list (cdr lst))))))
 
-(≔ count-words (λ (s)
+(define count-words (lambda (s)
   (count-list (string-split s " "))))
 
-(⊨ :word-count
+(test-case :word-count
    #3
    (count-words "hello world test"))
 
 ; URL path parsing
-(⊨ :url-parse
-   (⟨⟩ "" (⟨⟩ "api" (⟨⟩ "users" (⟨⟩ "123" ∅))))
+(test-case :url-parse
+   (cons "" (cons "api" (cons "users" (cons "123" nil))))
    (string-split "/api/users/123" "/"))
 
-(≋ "\n✅ All string library tests passed!")
+(print "\n✅ All string library tests passed!")

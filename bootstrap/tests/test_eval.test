@@ -2,148 +2,148 @@
 ;;; Tests for S-Expression Evaluator
 ;;;
 
-(⋘ "bootstrap/stdlib/eval.scm")
+(load "bootstrap/stdlib/eval.scm")
 
 ;;; ===================================================================
 ;;; Test 1: Evaluate atomic values
 ;;; ===================================================================
 
-(≔ empty-env (env-empty))
+(define empty-env (env-empty))
 
 ;; Numbers self-evaluate
-(⊨ :eval-number-zero
+(test-case :eval-number-zero
    #0
    ((eval #0) empty-env))
 
-(⊨ :eval-number-positive
+(test-case :eval-number-positive
    #42
    ((eval #42) empty-env))
 
-(⊨ :eval-number-negative
+(test-case :eval-number-negative
    #-5
    ((eval #-5) empty-env))
 
 ;; Booleans self-evaluate
-(⊨ :eval-bool-true
+(test-case :eval-bool-true
    #t
    ((eval #t) empty-env))
 
-(⊨ :eval-bool-false
+(test-case :eval-bool-false
    #f
    ((eval #f) empty-env))
 
 ;; Nil self-evaluates
-(⊨ :eval-nil
-   ∅
-   ((eval ∅) empty-env))
+(test-case :eval-nil
+   nil
+   ((eval nil) empty-env))
 
 ;;; ===================================================================
 ;;; Test 2: Symbol lookup
 ;;; ===================================================================
 
-(≔ env-with-x (((env-extend empty-env) :x) #42))
+(define env-with-x (((env-extend empty-env) :x) #42))
 
-(⊨ :eval-symbol-lookup
+(test-case :eval-symbol-lookup
    #42
    ((eval :x) env-with-x))
 
 ;; Undefined symbol returns error
-(≔ result-undefined ((eval :undefined) empty-env))
-(⊨ :eval-symbol-undefined
+(define result-undefined ((eval :undefined) empty-env))
+(test-case :eval-symbol-undefined
    #t
-   (⚠? result-undefined))
+   (error? result-undefined))
 
 ;;; ===================================================================
 ;;; Test 3: Lambda creation
 ;;; ===================================================================
 
 ;; Lambda creates closure
-(≔ identity-closure ((eval (⌜ (λ (:x) :x))) empty-env))
+(define identity-closure ((eval (quote (lambda (:x) :x))) empty-env))
 
-(⊨ :eval-lambda-creates-closure
+(test-case :eval-lambda-creates-closure
    :closure
-   (◁ identity-closure))
+   (car identity-closure))
 
 ;;; ===================================================================
 ;;; Test 4: Function application
 ;;; ===================================================================
 
 ;; Identity function
-(⊨ :eval-apply-identity
+(test-case :eval-apply-identity
    #42
-   ((eval (⌜ ((λ (:x) :x) #42))) empty-env))
+   ((eval (quote ((lambda (:x) :x) #42))) empty-env))
 
 ;; Constant function
-(⊨ :eval-apply-const
+(test-case :eval-apply-const
    #100
-   ((eval (⌜ ((λ (:x) #100) #42))) empty-env))
+   ((eval (quote ((lambda (:x) #100) #42))) empty-env))
 
 ;;; ===================================================================
 ;;; Test 5: Arithmetic with primitives
 ;;; ===================================================================
 
 ;; Environment with arithmetic primitives
-(≔ env-arith
+(define env-arith
   (((env-extend
-    (((env-extend empty-env) :⊕) ⊕))
-   :⊗) ⊗))
+    (((env-extend empty-env) :+) +))
+   :*) *))
 
-(⊨ :eval-add
+(test-case :eval-add
    #5
-   ((eval (⌜ (:⊕ #2 #3))) env-arith))
+   ((eval (quote (:+ #2 #3))) env-arith))
 
-(⊨ :eval-multiply
+(test-case :eval-multiply
    #12
-   ((eval (⌜ (:⊗ #3 #4))) env-arith))
+   ((eval (quote (:* #3 #4))) env-arith))
 
-(⊨ :eval-nested-arithmetic
+(test-case :eval-nested-arithmetic
    #14
-   ((eval (⌜ (:⊕ (:⊗ #2 #3) (:⊗ #2 #4)))) env-arith))
+   ((eval (quote (:+ (:* #2 #3) (:* #2 #4)))) env-arith))
 
 ;;; ===================================================================
 ;;; Test 6: Conditionals
 ;;; ===================================================================
 
 ;; Environment with comparison
-(≔ env-cond
+(define env-cond
   (((env-extend env-arith) :>) >))
 
-(⊨ :eval-if-true
+(test-case :eval-if-true
    #1
-   ((eval (⌜ (? #t #1 #2))) env-cond))
+   ((eval (quote (if #t #1 #2))) env-cond))
 
-(⊨ :eval-if-false
+(test-case :eval-if-false
    #2
-   ((eval (⌜ (? #f #1 #2))) env-cond))
+   ((eval (quote (if #f #1 #2))) env-cond))
 
-(⊨ :eval-if-comparison
+(test-case :eval-if-comparison
    #100
-   ((eval (⌜ (? (:> #5 #3) #100 #200))) env-cond))
+   ((eval (quote (if (:> #5 #3) #100 #200))) env-cond))
 
 ;;; ===================================================================
 ;;; Test 7: Lambda with captured variables
 ;;; ===================================================================
 
-(⊨ :eval-lambda-capture
+(test-case :eval-lambda-capture
    #10
-   ((eval (⌜ ((λ (:x) ((λ (:y) (:⊕ :x :y)) #3)) #7))) env-arith))
+   ((eval (quote ((lambda (:x) ((lambda (:y) (:+ :x :y)) #3)) #7))) env-arith))
 
 ;;; ===================================================================
 ;;; Test 8: Multiple parameters
 ;;; ===================================================================
 
-(⊨ :eval-lambda-two-params
+(test-case :eval-lambda-two-params
    #7
-   ((eval (⌜ ((λ (:x :y) (:⊕ :x :y)) #3 #4))) env-arith))
+   ((eval (quote ((lambda (:x :y) (:+ :x :y)) #3 #4))) env-arith))
 
 ;;; ===================================================================
 ;;; Test 9: Higher-order functions
 ;;; ===================================================================
 
 ;; Function that returns a function
-(⊨ :eval-higher-order
+(test-case :eval-higher-order
    #10
-   ((eval (⌜ (((λ (:x) (λ (:y) (:⊕ :x :y))) #3) #7))) env-arith))
+   ((eval (quote (((lambda (:x) (lambda (:y) (:+ :x :y))) #3) #7))) env-arith))
 
 ;;; ===================================================================
 ;;; Test 10: Error cases
@@ -151,372 +151,372 @@
 
 ;; Quoted empty list self-evaluates to nil
 ;; Note: The empty application error only applies to UNQUOTED empty lists.
-;; Since (⌜ ()) creates the VALUE ∅ (nil), it self-evaluates like numbers/booleans.
-(≔ result-empty ((eval (⌜ ())) empty-env))
-(⊨ :eval-quoted-empty-list-is-nil
-   ∅
+;; Since (quote ()) creates the VALUE nil (nil), it self-evaluates like numbers/booleans.
+(define result-empty ((eval (quote ())) empty-env))
+(test-case :eval-quoted-empty-list-is-nil
+   nil
    result-empty)
 
 ;; Non-function application
-(≔ result-not-fn ((eval (⌜ (#42 #1))) empty-env))
-(⊨ :eval-non-function-is-error
+(define result-not-fn ((eval (quote (#42 #1))) empty-env))
+(test-case :eval-non-function-is-error
    #t
-   (⚠? result-not-fn))
+   (error? result-not-fn))
 
 ;;; ===================================================================
 ;;; Test 11: Quote special form
 ;;; ===================================================================
 
 ;; Quote returns expression unevaluated
-(⊨ :eval-quote-symbol
+(test-case :eval-quote-symbol
    :foo
-   ((eval (⌜ (⌜ :foo))) empty-env))
+   ((eval (quote (quote :foo))) empty-env))
 
-(⊨ :eval-quote-list
-   (⌜ (:a :b :c))
-   ((eval (⌜ (⌜ (:a :b :c)))) empty-env))
+(test-case :eval-quote-list
+   (quote (:a :b :c))
+   ((eval (quote (quote (:a :b :c)))) empty-env))
 
-(⊨ :eval-quote-number
+(test-case :eval-quote-number
    #42
-   ((eval (⌜ (⌜ #42))) empty-env))
+   ((eval (quote (quote #42))) empty-env))
 
 ;;; ===================================================================
 ;;; Test 12: Nested lambdas (currying)
 ;;; ===================================================================
 
-(⊨ :eval-curried-add
+(test-case :eval-curried-add
    #15
-   ((eval (⌜ ((((λ (:x) (λ (:y) (λ (:z) (:⊕ :x (:⊕ :y :z))))) #3) #5) #7))) env-arith))
+   ((eval (quote ((((lambda (:x) (lambda (:y) (lambda (:z) (:+ :x (:+ :y :z))))) #3) #5) #7))) env-arith))
 
 ;;; ===================================================================
 ;;; Test 13: Recursive factorial via Y combinator style
 ;;; ===================================================================
 
 ;; Self-application for recursion
-(≔ env-full
+(define env-full
   (((env-extend
     (((env-extend
-      (((env-extend env-arith) :⊖) ⊖))
-     :≡) ≡))
-   :≤) ≤))
+      (((env-extend env-arith) :-) -))
+     :equal?) equal?))
+   :<=) <=))
 
-(⊨ :eval-factorial-3
+(test-case :eval-factorial-3
    #6
-   ((eval (⌜ (((λ (:f) (:f :f))
-               (λ (:self) (λ (:n)
-                 (? (:≤ :n #1)
+   ((eval (quote (((lambda (:f) (:f :f))
+               (lambda (:self) (lambda (:n)
+                 (if (:<= :n #1)
                     #1
-                    (:⊗ :n ((:self :self) (:⊖ :n #1))))))) #3))) env-full))
+                    (:* :n ((:self :self) (:- :n #1))))))) #3))) env-full))
 
 ;;; ===================================================================
 ;;; Test 14: List construction in evaluator
 ;;; ===================================================================
 
-(≔ env-list (((env-extend env-full) :⟨⟩) ⟨⟩))
+(define env-list (((env-extend env-full) :cons) cons))
 
-;; Test pair creation - use ⟨⟩? to verify it's a pair
-(⊨ :eval-cons-is-pair
+;; Test pair creation - use pair? to verify it's a pair
+(test-case :eval-cons-is-pair
    #t
-   (⟨⟩? ((eval (⌜ (:⟨⟩ #1 #2))) env-list)))
+   (pair? ((eval (quote (:cons #1 #2))) env-list)))
 
 ;; Test head of constructed pair
-(⊨ :eval-cons-head
+(test-case :eval-cons-head
    #1
-   (◁ ((eval (⌜ (:⟨⟩ #1 #2))) env-list)))
+   (car ((eval (quote (:cons #1 #2))) env-list)))
 
 ;;; ===================================================================
 ;;; Test 15: Pure lambda calculus - no external functions
 ;;; ===================================================================
 
 ;; K combinator: λx.λy.x
-(⊨ :eval-k-combinator
+(test-case :eval-k-combinator
    #1
-   ((eval (⌜ (((λ (:x) (λ (:y) :x)) #1) #2))) empty-env))
+   ((eval (quote (((lambda (:x) (lambda (:y) :x)) #1) #2))) empty-env))
 
 ;; Simplified test: apply identity twice
-(⊨ :eval-double-apply
+(test-case :eval-double-apply
    #42
-   ((eval (⌜ (((λ (:f) (λ (:x) (:f (:f :x)))) (λ (:y) :y)) #42))) empty-env))
+   ((eval (quote (((lambda (:f) (lambda (:x) (:f (:f :x)))) (lambda (:y) :y)) #42))) empty-env))
 
 ;;; ===================================================================
 ;;; Test 16: Nested conditionals with quoted results
 ;;; ===================================================================
 
 ;; Test nested conditional returning quoted symbols
-(⊨ :eval-nested-cond
+(test-case :eval-nested-cond
    :large
-   ((eval (⌜ (? (:≤ #10 #5) (⌜ :small) (⌜ :large)))) env-full))
+   ((eval (quote (if (:<= #10 #5) (quote :small) (quote :large)))) env-full))
 
 ;;; ===================================================================
-;;; Test 17: Define (≔) in lambda bodies
+;;; Test 17: Define (define) in lambda bodies
 ;;; ===================================================================
 
 ;; Simple define - bind and use (use keywords for consistency)
-(⊨ :eval-define-simple
+(test-case :eval-define-simple
    #5
-   ((eval (⌜ ((λ () (≔ :x #5) :x)))) env-arith))
+   ((eval (quote ((lambda () (define :x #5) :x)))) env-arith))
 
 ;; Define with expression
-(⊨ :eval-define-expr
+(test-case :eval-define-expr
    #7
-   ((eval (⌜ ((λ () (≔ :y (:⊕ #3 #4)) :y)))) env-arith))
+   ((eval (quote ((lambda () (define :y (:+ #3 #4)) :y)))) env-arith))
 
 ;; Sequential defines
-(⊨ :eval-define-seq
+(test-case :eval-define-seq
    #15
-   ((eval (⌜ ((λ () (≔ :a #5) (≔ :b #10) (:⊕ :a :b))))) env-arith))
+   ((eval (quote ((lambda () (define :a #5) (define :b #10) (:+ :a :b))))) env-arith))
 
 ;; Define shadows outer binding
-(⊨ :eval-define-shadow
+(test-case :eval-define-shadow
    #100
-   ((eval (⌜ ((λ (:x) (≔ :x #100) :x) #1))) env-arith))
+   ((eval (quote ((lambda (:x) (define :x #100) :x) #1))) env-arith))
 
 ;; Define uses outer scope
-(⊨ :eval-define-uses-outer
+(test-case :eval-define-uses-outer
    #12
-   ((eval (⌜ ((λ (:x) (≔ :y (:⊕ :x #5)) :y) #7))) env-arith))
+   ((eval (quote ((lambda (:x) (define :y (:+ :x #5)) :y) #7))) env-arith))
 
 ;; Standalone define returns value
-(⊨ :eval-define-standalone
+(test-case :eval-define-standalone
    #42
-   ((eval (⌜ (≔ :z #42))) empty-env))
+   ((eval (quote (define :z #42))) empty-env))
 
 ;;; ===================================================================
-;;; Test 18: Letrec (⊛) - simple let-style binding
+;;; Test 18: Letrec (source) - simple let-style binding
 ;;; ===================================================================
 
 ;; Simple single-binding letrec (same as let for non-recursive)
-(⊨ :eval-letrec-simple
+(test-case :eval-letrec-simple
    #10
-   ((eval (⌜ (⊛ ((:x #10)) :x))) env-arith))
+   ((eval (quote (source ((:x #10)) :x))) env-arith))
 
 ;; Multiple non-recursive bindings
-(⊨ :eval-letrec-multiple
+(test-case :eval-letrec-multiple
    #15
-   ((eval (⌜ (⊛ ((:a #5) (:b #10)) (:⊕ :a :b)))) env-arith))
+   ((eval (quote (source ((:a #5) (:b #10)) (:+ :a :b)))) env-arith))
 
 ;;; ===================================================================
-;;; Test 19: Meta-eval (⌞) - evaluate code as data
+;;; Test 19: Meta-eval (eval) - evaluate code as data
 ;;; ===================================================================
 
 ;; Simple meta-eval of quoted expression
-(⊨ :eval-meta-eval-simple
+(test-case :eval-meta-eval-simple
    #5
-   ((eval (⌜ (⌞ (⌜ (:⊕ #2 #3))))) env-arith))
+   ((eval (quote (eval (quote (:+ #2 #3))))) env-arith))
 
 ;; Meta-eval through a variable
-(⊨ :eval-meta-eval-var
+(test-case :eval-meta-eval-var
    #7
-   ((eval (⌜ ((λ (:code) (⌞ :code)) (⌜ (:⊕ #3 #4))))) env-arith))
+   ((eval (quote ((lambda (:code) (eval :code)) (quote (:+ #3 #4))))) env-arith))
 
 ;; Meta-eval of nested arithmetic
-(⊨ :eval-meta-eval-nested
+(test-case :eval-meta-eval-nested
    #20
-   ((eval (⌜ (⌞ (⌜ (:⊗ (:⊕ #2 #3) #4))))) env-arith))
+   ((eval (quote (eval (quote (:* (:+ #2 #3) #4))))) env-arith))
 
 ;; Meta-eval of conditional
-(⊨ :eval-meta-eval-cond
+(test-case :eval-meta-eval-cond
    :yes
-   ((eval (⌜ (⌞ (⌜ (? #t (⌜ :yes) (⌜ :no)))))) empty-env))
+   ((eval (quote (eval (quote (if #t (quote :yes) (quote :no)))))) empty-env))
 
 ;;; ===================================================================
 ;;; Test 20: Recursive Letrec via Y-combinator transformation
 ;;; ===================================================================
 
 ;; Recursive factorial
-(⊨ :eval-letrec-factorial
+(test-case :eval-letrec-factorial
    #120
-   ((eval (⌜ (⊛ ((:fact (λ (:n)
-                   (? (:≤ :n #1) #1 (:⊗ :n (:fact (:⊖ :n #1)))))))
+   ((eval (quote (source ((:fact (lambda (:n)
+                   (if (:<= :n #1) #1 (:* :n (:fact (:- :n #1)))))))
               (:fact #5)))) env-full))
 
 ;; Recursive factorial - base case
-(⊨ :eval-letrec-factorial-base
+(test-case :eval-letrec-factorial-base
    #1
-   ((eval (⌜ (⊛ ((:fact (λ (:n)
-                   (? (:≤ :n #1) #1 (:⊗ :n (:fact (:⊖ :n #1)))))))
+   ((eval (quote (source ((:fact (lambda (:n)
+                   (if (:<= :n #1) #1 (:* :n (:fact (:- :n #1)))))))
               (:fact #1)))) env-full))
 
 ;; Recursive fibonacci
-(⊨ :eval-letrec-fib
+(test-case :eval-letrec-fib
    #8
-   ((eval (⌜ (⊛ ((:fib (λ (:n)
-                   (? (:≤ :n #1) :n
-                      (:⊕ (:fib (:⊖ :n #1)) (:fib (:⊖ :n #2)))))))
+   ((eval (quote (source ((:fib (lambda (:n)
+                   (if (:<= :n #1) :n
+                      (:+ (:fib (:- :n #1)) (:fib (:- :n #2)))))))
               (:fib #6)))) env-full))
 
 ;;; ===================================================================
 ;;; Test 21: Mutual Recursion in Letrec
 ;;; ===================================================================
 
-;; Environment with ⟨⟩, ◁, ▷ for mutual recursion (required by transformation)
-(≔ env-mutual
+;; Environment with ⟨⟩, ◁, cdr for mutual recursion (required by transformation)
+(define env-mutual
   (((env-extend
     (((env-extend
-      (((env-extend env-full) :⟨⟩) ⟨⟩))
-     :◁) ◁))
-   :▷) ▷))
+      (((env-extend env-full) :cons) cons))
+     :car) car))
+   :cdr) cdr))
 
 ;; even?/odd? mutual recursion - even numbers
-(⊨ :eval-mutual-even-0
+(test-case :eval-mutual-even-0
    #t
-   ((eval (⌜ (⊛ ((:even? (λ (:n) (? (:≡ :n #0) #t (:odd? (:⊖ :n #1)))))
-                 (:odd? (λ (:n) (? (:≡ :n #0) #f (:even? (:⊖ :n #1))))))
+   ((eval (quote (source ((:even? (lambda (:n) (if (:equal? :n #0) #t (:odd? (:- :n #1)))))
+                 (:odd? (lambda (:n) (if (:equal? :n #0) #f (:even? (:- :n #1))))))
               (:even? #0)))) env-mutual))
 
-(⊨ :eval-mutual-even-4
+(test-case :eval-mutual-even-4
    #t
-   ((eval (⌜ (⊛ ((:even? (λ (:n) (? (:≡ :n #0) #t (:odd? (:⊖ :n #1)))))
-                 (:odd? (λ (:n) (? (:≡ :n #0) #f (:even? (:⊖ :n #1))))))
+   ((eval (quote (source ((:even? (lambda (:n) (if (:equal? :n #0) #t (:odd? (:- :n #1)))))
+                 (:odd? (lambda (:n) (if (:equal? :n #0) #f (:even? (:- :n #1))))))
               (:even? #4)))) env-mutual))
 
 ;; even?/odd? mutual recursion - odd numbers
-(⊨ :eval-mutual-odd-3
+(test-case :eval-mutual-odd-3
    #t
-   ((eval (⌜ (⊛ ((:even? (λ (:n) (? (:≡ :n #0) #t (:odd? (:⊖ :n #1)))))
-                 (:odd? (λ (:n) (? (:≡ :n #0) #f (:even? (:⊖ :n #1))))))
+   ((eval (quote (source ((:even? (lambda (:n) (if (:equal? :n #0) #t (:odd? (:- :n #1)))))
+                 (:odd? (lambda (:n) (if (:equal? :n #0) #f (:even? (:- :n #1))))))
               (:odd? #3)))) env-mutual))
 
-(⊨ :eval-mutual-even-5
+(test-case :eval-mutual-even-5
    #f
-   ((eval (⌜ (⊛ ((:even? (λ (:n) (? (:≡ :n #0) #t (:odd? (:⊖ :n #1)))))
-                 (:odd? (λ (:n) (? (:≡ :n #0) #f (:even? (:⊖ :n #1))))))
+   ((eval (quote (source ((:even? (lambda (:n) (if (:equal? :n #0) #t (:odd? (:- :n #1)))))
+                 (:odd? (lambda (:n) (if (:equal? :n #0) #f (:even? (:- :n #1))))))
               (:even? #5)))) env-mutual))
 
 ;; Test calling odd? directly
-(⊨ :eval-mutual-odd-0
+(test-case :eval-mutual-odd-0
    #f
-   ((eval (⌜ (⊛ ((:even? (λ (:n) (? (:≡ :n #0) #t (:odd? (:⊖ :n #1)))))
-                 (:odd? (λ (:n) (? (:≡ :n #0) #f (:even? (:⊖ :n #1))))))
+   ((eval (quote (source ((:even? (lambda (:n) (if (:equal? :n #0) #t (:odd? (:- :n #1)))))
+                 (:odd? (lambda (:n) (if (:equal? :n #0) #f (:even? (:- :n #1))))))
               (:odd? #0)))) env-mutual))
 
 ;;; ===================================================================
 ;;; 3-Function Mutual Recursion Tests (Day 80)
 ;;; ===================================================================
-;;; mod3-0? returns #t if n ≡ 0 (mod 3)
-;;; mod3-1? returns #t if n ≡ 1 (mod 3)
-;;; mod3-2? returns #t if n ≡ 2 (mod 3)
+;;; mod3-0? returns #t if n equal? 0 (mod 3)
+;;; mod3-1? returns #t if n equal? 1 (mod 3)
+;;; mod3-2? returns #t if n equal? 2 (mod 3)
 
-;; mod3-0? 0 → #t
-(⊨ :eval-mutual3-mod0-of-0
+;; mod3-0? 0 -> #t
+(test-case :eval-mutual3-mod0-of-0
    #t
-   ((eval (⌜ (⊛ ((:mod3-0? (λ (:n) (? (:≡ :n #0) #t (:mod3-2? (:⊖ :n #1)))))
-                 (:mod3-1? (λ (:n) (? (:≡ :n #0) #f (:mod3-0? (:⊖ :n #1)))))
-                 (:mod3-2? (λ (:n) (? (:≡ :n #0) #f (:mod3-1? (:⊖ :n #1))))))
+   ((eval (quote (source ((:mod3-0? (lambda (:n) (if (:equal? :n #0) #t (:mod3-2? (:- :n #1)))))
+                 (:mod3-1? (lambda (:n) (if (:equal? :n #0) #f (:mod3-0? (:- :n #1)))))
+                 (:mod3-2? (lambda (:n) (if (:equal? :n #0) #f (:mod3-1? (:- :n #1))))))
               (:mod3-0? #0)))) env-mutual))
 
-;; mod3-0? 3 → #t (3 ≡ 0 mod 3)
-(⊨ :eval-mutual3-mod0-of-3
+;; mod3-0? 3 -> #t (3 equal? 0 mod 3)
+(test-case :eval-mutual3-mod0-of-3
    #t
-   ((eval (⌜ (⊛ ((:mod3-0? (λ (:n) (? (:≡ :n #0) #t (:mod3-2? (:⊖ :n #1)))))
-                 (:mod3-1? (λ (:n) (? (:≡ :n #0) #f (:mod3-0? (:⊖ :n #1)))))
-                 (:mod3-2? (λ (:n) (? (:≡ :n #0) #f (:mod3-1? (:⊖ :n #1))))))
+   ((eval (quote (source ((:mod3-0? (lambda (:n) (if (:equal? :n #0) #t (:mod3-2? (:- :n #1)))))
+                 (:mod3-1? (lambda (:n) (if (:equal? :n #0) #f (:mod3-0? (:- :n #1)))))
+                 (:mod3-2? (lambda (:n) (if (:equal? :n #0) #f (:mod3-1? (:- :n #1))))))
               (:mod3-0? #3)))) env-mutual))
 
-;; mod3-0? 6 → #t (6 ≡ 0 mod 3)
-(⊨ :eval-mutual3-mod0-of-6
+;; mod3-0? 6 -> #t (6 equal? 0 mod 3)
+(test-case :eval-mutual3-mod0-of-6
    #t
-   ((eval (⌜ (⊛ ((:mod3-0? (λ (:n) (? (:≡ :n #0) #t (:mod3-2? (:⊖ :n #1)))))
-                 (:mod3-1? (λ (:n) (? (:≡ :n #0) #f (:mod3-0? (:⊖ :n #1)))))
-                 (:mod3-2? (λ (:n) (? (:≡ :n #0) #f (:mod3-1? (:⊖ :n #1))))))
+   ((eval (quote (source ((:mod3-0? (lambda (:n) (if (:equal? :n #0) #t (:mod3-2? (:- :n #1)))))
+                 (:mod3-1? (lambda (:n) (if (:equal? :n #0) #f (:mod3-0? (:- :n #1)))))
+                 (:mod3-2? (lambda (:n) (if (:equal? :n #0) #f (:mod3-1? (:- :n #1))))))
               (:mod3-0? #6)))) env-mutual))
 
-;; mod3-1? 1 → #t (1 ≡ 1 mod 3)
-(⊨ :eval-mutual3-mod1-of-1
+;; mod3-1? 1 -> #t (1 equal? 1 mod 3)
+(test-case :eval-mutual3-mod1-of-1
    #t
-   ((eval (⌜ (⊛ ((:mod3-0? (λ (:n) (? (:≡ :n #0) #t (:mod3-2? (:⊖ :n #1)))))
-                 (:mod3-1? (λ (:n) (? (:≡ :n #0) #f (:mod3-0? (:⊖ :n #1)))))
-                 (:mod3-2? (λ (:n) (? (:≡ :n #0) #f (:mod3-1? (:⊖ :n #1))))))
+   ((eval (quote (source ((:mod3-0? (lambda (:n) (if (:equal? :n #0) #t (:mod3-2? (:- :n #1)))))
+                 (:mod3-1? (lambda (:n) (if (:equal? :n #0) #f (:mod3-0? (:- :n #1)))))
+                 (:mod3-2? (lambda (:n) (if (:equal? :n #0) #f (:mod3-1? (:- :n #1))))))
               (:mod3-1? #1)))) env-mutual))
 
-;; mod3-1? 4 → #t (4 ≡ 1 mod 3)
-(⊨ :eval-mutual3-mod1-of-4
+;; mod3-1? 4 -> #t (4 equal? 1 mod 3)
+(test-case :eval-mutual3-mod1-of-4
    #t
-   ((eval (⌜ (⊛ ((:mod3-0? (λ (:n) (? (:≡ :n #0) #t (:mod3-2? (:⊖ :n #1)))))
-                 (:mod3-1? (λ (:n) (? (:≡ :n #0) #f (:mod3-0? (:⊖ :n #1)))))
-                 (:mod3-2? (λ (:n) (? (:≡ :n #0) #f (:mod3-1? (:⊖ :n #1))))))
+   ((eval (quote (source ((:mod3-0? (lambda (:n) (if (:equal? :n #0) #t (:mod3-2? (:- :n #1)))))
+                 (:mod3-1? (lambda (:n) (if (:equal? :n #0) #f (:mod3-0? (:- :n #1)))))
+                 (:mod3-2? (lambda (:n) (if (:equal? :n #0) #f (:mod3-1? (:- :n #1))))))
               (:mod3-1? #4)))) env-mutual))
 
-;; mod3-2? 2 → #t (2 ≡ 2 mod 3)
-(⊨ :eval-mutual3-mod2-of-2
+;; mod3-2? 2 -> #t (2 equal? 2 mod 3)
+(test-case :eval-mutual3-mod2-of-2
    #t
-   ((eval (⌜ (⊛ ((:mod3-0? (λ (:n) (? (:≡ :n #0) #t (:mod3-2? (:⊖ :n #1)))))
-                 (:mod3-1? (λ (:n) (? (:≡ :n #0) #f (:mod3-0? (:⊖ :n #1)))))
-                 (:mod3-2? (λ (:n) (? (:≡ :n #0) #f (:mod3-1? (:⊖ :n #1))))))
+   ((eval (quote (source ((:mod3-0? (lambda (:n) (if (:equal? :n #0) #t (:mod3-2? (:- :n #1)))))
+                 (:mod3-1? (lambda (:n) (if (:equal? :n #0) #f (:mod3-0? (:- :n #1)))))
+                 (:mod3-2? (lambda (:n) (if (:equal? :n #0) #f (:mod3-1? (:- :n #1))))))
               (:mod3-2? #2)))) env-mutual))
 
-;; mod3-2? 5 → #t (5 ≡ 2 mod 3)
-(⊨ :eval-mutual3-mod2-of-5
+;; mod3-2? 5 -> #t (5 equal? 2 mod 3)
+(test-case :eval-mutual3-mod2-of-5
    #t
-   ((eval (⌜ (⊛ ((:mod3-0? (λ (:n) (? (:≡ :n #0) #t (:mod3-2? (:⊖ :n #1)))))
-                 (:mod3-1? (λ (:n) (? (:≡ :n #0) #f (:mod3-0? (:⊖ :n #1)))))
-                 (:mod3-2? (λ (:n) (? (:≡ :n #0) #f (:mod3-1? (:⊖ :n #1))))))
+   ((eval (quote (source ((:mod3-0? (lambda (:n) (if (:equal? :n #0) #t (:mod3-2? (:- :n #1)))))
+                 (:mod3-1? (lambda (:n) (if (:equal? :n #0) #f (:mod3-0? (:- :n #1)))))
+                 (:mod3-2? (lambda (:n) (if (:equal? :n #0) #f (:mod3-1? (:- :n #1))))))
               (:mod3-2? #5)))) env-mutual))
 
-;; Negative tests: mod3-0? 1 → #f
-(⊨ :eval-mutual3-mod0-of-1
+;; Negative tests: mod3-0? 1 -> #f
+(test-case :eval-mutual3-mod0-of-1
    #f
-   ((eval (⌜ (⊛ ((:mod3-0? (λ (:n) (? (:≡ :n #0) #t (:mod3-2? (:⊖ :n #1)))))
-                 (:mod3-1? (λ (:n) (? (:≡ :n #0) #f (:mod3-0? (:⊖ :n #1)))))
-                 (:mod3-2? (λ (:n) (? (:≡ :n #0) #f (:mod3-1? (:⊖ :n #1))))))
+   ((eval (quote (source ((:mod3-0? (lambda (:n) (if (:equal? :n #0) #t (:mod3-2? (:- :n #1)))))
+                 (:mod3-1? (lambda (:n) (if (:equal? :n #0) #f (:mod3-0? (:- :n #1)))))
+                 (:mod3-2? (lambda (:n) (if (:equal? :n #0) #f (:mod3-1? (:- :n #1))))))
               (:mod3-0? #1)))) env-mutual))
 
 ;;; ===================================================================
 ;;; 4-Function Mutual Recursion Tests (Day 80)
 ;;; ===================================================================
-;;; State machine: A → B → C → D → A
+;;; State machine: A -> B -> C -> D -> A
 ;;; state-a? returns #t if after n steps we're in state A
 
-;; state-a? 0 → #t (start in A)
-(⊨ :eval-mutual4-stateA-0
+;; state-a? 0 -> #t (start in A)
+(test-case :eval-mutual4-stateA-0
    #t
-   ((eval (⌜ (⊛ ((:state-a? (λ (:n) (? (:≡ :n #0) #t (:state-d? (:⊖ :n #1)))))
-                 (:state-b? (λ (:n) (? (:≡ :n #0) #f (:state-a? (:⊖ :n #1)))))
-                 (:state-c? (λ (:n) (? (:≡ :n #0) #f (:state-b? (:⊖ :n #1)))))
-                 (:state-d? (λ (:n) (? (:≡ :n #0) #f (:state-c? (:⊖ :n #1))))))
+   ((eval (quote (source ((:state-a? (lambda (:n) (if (:equal? :n #0) #t (:state-d? (:- :n #1)))))
+                 (:state-b? (lambda (:n) (if (:equal? :n #0) #f (:state-a? (:- :n #1)))))
+                 (:state-c? (lambda (:n) (if (:equal? :n #0) #f (:state-b? (:- :n #1)))))
+                 (:state-d? (lambda (:n) (if (:equal? :n #0) #f (:state-c? (:- :n #1))))))
               (:state-a? #0)))) env-mutual))
 
-;; state-a? 4 → #t (4 steps cycles back to A)
-(⊨ :eval-mutual4-stateA-4
+;; state-a? 4 -> #t (4 steps cycles back to A)
+(test-case :eval-mutual4-stateA-4
    #t
-   ((eval (⌜ (⊛ ((:state-a? (λ (:n) (? (:≡ :n #0) #t (:state-d? (:⊖ :n #1)))))
-                 (:state-b? (λ (:n) (? (:≡ :n #0) #f (:state-a? (:⊖ :n #1)))))
-                 (:state-c? (λ (:n) (? (:≡ :n #0) #f (:state-b? (:⊖ :n #1)))))
-                 (:state-d? (λ (:n) (? (:≡ :n #0) #f (:state-c? (:⊖ :n #1))))))
+   ((eval (quote (source ((:state-a? (lambda (:n) (if (:equal? :n #0) #t (:state-d? (:- :n #1)))))
+                 (:state-b? (lambda (:n) (if (:equal? :n #0) #f (:state-a? (:- :n #1)))))
+                 (:state-c? (lambda (:n) (if (:equal? :n #0) #f (:state-b? (:- :n #1)))))
+                 (:state-d? (lambda (:n) (if (:equal? :n #0) #f (:state-c? (:- :n #1))))))
               (:state-a? #4)))) env-mutual))
 
-;; state-b? 1 → #t (1 step from A to B)
-(⊨ :eval-mutual4-stateB-1
+;; state-b? 1 -> #t (1 step from A to B)
+(test-case :eval-mutual4-stateB-1
    #t
-   ((eval (⌜ (⊛ ((:state-a? (λ (:n) (? (:≡ :n #0) #t (:state-d? (:⊖ :n #1)))))
-                 (:state-b? (λ (:n) (? (:≡ :n #0) #f (:state-a? (:⊖ :n #1)))))
-                 (:state-c? (λ (:n) (? (:≡ :n #0) #f (:state-b? (:⊖ :n #1)))))
-                 (:state-d? (λ (:n) (? (:≡ :n #0) #f (:state-c? (:⊖ :n #1))))))
+   ((eval (quote (source ((:state-a? (lambda (:n) (if (:equal? :n #0) #t (:state-d? (:- :n #1)))))
+                 (:state-b? (lambda (:n) (if (:equal? :n #0) #f (:state-a? (:- :n #1)))))
+                 (:state-c? (lambda (:n) (if (:equal? :n #0) #f (:state-b? (:- :n #1)))))
+                 (:state-d? (lambda (:n) (if (:equal? :n #0) #f (:state-c? (:- :n #1))))))
               (:state-b? #1)))) env-mutual))
 
-;; state-c? 2 → #t (2 steps: A → B → C)
-(⊨ :eval-mutual4-stateC-2
+;; state-c? 2 -> #t (2 steps: A -> B -> C)
+(test-case :eval-mutual4-stateC-2
    #t
-   ((eval (⌜ (⊛ ((:state-a? (λ (:n) (? (:≡ :n #0) #t (:state-d? (:⊖ :n #1)))))
-                 (:state-b? (λ (:n) (? (:≡ :n #0) #f (:state-a? (:⊖ :n #1)))))
-                 (:state-c? (λ (:n) (? (:≡ :n #0) #f (:state-b? (:⊖ :n #1)))))
-                 (:state-d? (λ (:n) (? (:≡ :n #0) #f (:state-c? (:⊖ :n #1))))))
+   ((eval (quote (source ((:state-a? (lambda (:n) (if (:equal? :n #0) #t (:state-d? (:- :n #1)))))
+                 (:state-b? (lambda (:n) (if (:equal? :n #0) #f (:state-a? (:- :n #1)))))
+                 (:state-c? (lambda (:n) (if (:equal? :n #0) #f (:state-b? (:- :n #1)))))
+                 (:state-d? (lambda (:n) (if (:equal? :n #0) #f (:state-c? (:- :n #1))))))
               (:state-c? #2)))) env-mutual))
 
-;; state-d? 3 → #t (3 steps: A → B → C → D)
-(⊨ :eval-mutual4-stateD-3
+;; state-d? 3 -> #t (3 steps: A -> B -> C -> D)
+(test-case :eval-mutual4-stateD-3
    #t
-   ((eval (⌜ (⊛ ((:state-a? (λ (:n) (? (:≡ :n #0) #t (:state-d? (:⊖ :n #1)))))
-                 (:state-b? (λ (:n) (? (:≡ :n #0) #f (:state-a? (:⊖ :n #1)))))
-                 (:state-c? (λ (:n) (? (:≡ :n #0) #f (:state-b? (:⊖ :n #1)))))
-                 (:state-d? (λ (:n) (? (:≡ :n #0) #f (:state-c? (:⊖ :n #1))))))
+   ((eval (quote (source ((:state-a? (lambda (:n) (if (:equal? :n #0) #t (:state-d? (:- :n #1)))))
+                 (:state-b? (lambda (:n) (if (:equal? :n #0) #f (:state-a? (:- :n #1)))))
+                 (:state-c? (lambda (:n) (if (:equal? :n #0) #f (:state-b? (:- :n #1)))))
+                 (:state-d? (lambda (:n) (if (:equal? :n #0) #f (:state-c? (:- :n #1))))))
               (:state-d? #3)))) env-mutual))
 
-;; state-a? 8 → #t (8 = 2*4, full cycles)
-(⊨ :eval-mutual4-stateA-8
+;; state-a? 8 -> #t (8 = 2*4, full cycles)
+(test-case :eval-mutual4-stateA-8
    #t
-   ((eval (⌜ (⊛ ((:state-a? (λ (:n) (? (:≡ :n #0) #t (:state-d? (:⊖ :n #1)))))
-                 (:state-b? (λ (:n) (? (:≡ :n #0) #f (:state-a? (:⊖ :n #1)))))
-                 (:state-c? (λ (:n) (? (:≡ :n #0) #f (:state-b? (:⊖ :n #1)))))
-                 (:state-d? (λ (:n) (? (:≡ :n #0) #f (:state-c? (:⊖ :n #1))))))
+   ((eval (quote (source ((:state-a? (lambda (:n) (if (:equal? :n #0) #t (:state-d? (:- :n #1)))))
+                 (:state-b? (lambda (:n) (if (:equal? :n #0) #f (:state-a? (:- :n #1)))))
+                 (:state-c? (lambda (:n) (if (:equal? :n #0) #f (:state-b? (:- :n #1)))))
+                 (:state-d? (lambda (:n) (if (:equal? :n #0) #f (:state-c? (:- :n #1))))))
               (:state-a? #8)))) env-mutual))

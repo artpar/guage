@@ -1,174 +1,174 @@
 ; test_cfg_algorithms.test - Graph algorithm primitives
-; Tests for ⊝↦, ⊝⊃, ⊝⊚, ⊝⊙, ⊝⇝, ⊝∘
+; Tests for ⊝↦, ⊝⊃, ⊝⊚, ⊝⊙, ⊝⇝, graph-cycles
 
 ; === Setup: Define :TestGraph type ===
 
 ; Define the graph type
-(⊝≔ (⌜ :TestGraph) (⌜ :cfg) (⌜ :nodes) (⌜ :edges) (⌜ :entry) (⌜ :exit) (⌜ :metadata))
+(graph-define (quote :TestGraph) (quote :cfg) (quote :nodes) (quote :edges) (quote :entry) (quote :exit) (quote :metadata))
 
 ; Simple linear graph: A -> B -> C
-(≔ linear-g (⊝ (⌜ :TestGraph)))
-(≔ linear-g (⊝⊕ linear-g (⌜ :A)))
-(≔ linear-g (⊝⊕ linear-g (⌜ :B)))
-(≔ linear-g (⊝⊕ linear-g (⌜ :C)))
-(≔ linear-g (⊝⊗ linear-g (⌜ :A) (⌜ :B) (⌜ :next)))
-(≔ linear-g (⊝⊗ linear-g (⌜ :B) (⌜ :C) (⌜ :next)))
+(define linear-g (graph-create (quote :TestGraph)))
+(define linear-g (graph-add-node linear-g (quote :A)))
+(define linear-g (graph-add-node linear-g (quote :B)))
+(define linear-g (graph-add-node linear-g (quote :C)))
+(define linear-g (graph-add-edge linear-g (quote :A) (quote :B) (quote :next)))
+(define linear-g (graph-add-edge linear-g (quote :B) (quote :C) (quote :next)))
 
 ; Branching graph: A -> B, A -> C, B -> D, C -> D
-(≔ branch-g (⊝ (⌜ :TestGraph)))
-(≔ branch-g (⊝⊕ branch-g (⌜ :A)))
-(≔ branch-g (⊝⊕ branch-g (⌜ :B)))
-(≔ branch-g (⊝⊕ branch-g (⌜ :C)))
-(≔ branch-g (⊝⊕ branch-g (⌜ :D)))
-(≔ branch-g (⊝⊗ branch-g (⌜ :A) (⌜ :B) (⌜ :left)))
-(≔ branch-g (⊝⊗ branch-g (⌜ :A) (⌜ :C) (⌜ :right)))
-(≔ branch-g (⊝⊗ branch-g (⌜ :B) (⌜ :D) (⌜ :next)))
-(≔ branch-g (⊝⊗ branch-g (⌜ :C) (⌜ :D) (⌜ :next)))
+(define branch-g (graph-create (quote :TestGraph)))
+(define branch-g (graph-add-node branch-g (quote :A)))
+(define branch-g (graph-add-node branch-g (quote :B)))
+(define branch-g (graph-add-node branch-g (quote :C)))
+(define branch-g (graph-add-node branch-g (quote :D)))
+(define branch-g (graph-add-edge branch-g (quote :A) (quote :B) (quote :left)))
+(define branch-g (graph-add-edge branch-g (quote :A) (quote :C) (quote :right)))
+(define branch-g (graph-add-edge branch-g (quote :B) (quote :D) (quote :next)))
+(define branch-g (graph-add-edge branch-g (quote :C) (quote :D) (quote :next)))
 
 ; Cyclic graph: A -> B -> C -> A
-(≔ cycle-g (⊝ (⌜ :TestGraph)))
-(≔ cycle-g (⊝⊕ cycle-g (⌜ :A)))
-(≔ cycle-g (⊝⊕ cycle-g (⌜ :B)))
-(≔ cycle-g (⊝⊕ cycle-g (⌜ :C)))
-(≔ cycle-g (⊝⊗ cycle-g (⌜ :A) (⌜ :B) (⌜ :next)))
-(≔ cycle-g (⊝⊗ cycle-g (⌜ :B) (⌜ :C) (⌜ :next)))
-(≔ cycle-g (⊝⊗ cycle-g (⌜ :C) (⌜ :A) (⌜ :back)))
+(define cycle-g (graph-create (quote :TestGraph)))
+(define cycle-g (graph-add-node cycle-g (quote :A)))
+(define cycle-g (graph-add-node cycle-g (quote :B)))
+(define cycle-g (graph-add-node cycle-g (quote :C)))
+(define cycle-g (graph-add-edge cycle-g (quote :A) (quote :B) (quote :next)))
+(define cycle-g (graph-add-edge cycle-g (quote :B) (quote :C) (quote :next)))
+(define cycle-g (graph-add-edge cycle-g (quote :C) (quote :A) (quote :back)))
 
 ; Disconnected graph: A -> B, C -> D
-(≔ disc-g (⊝ (⌜ :TestGraph)))
-(≔ disc-g (⊝⊕ disc-g (⌜ :A)))
-(≔ disc-g (⊝⊕ disc-g (⌜ :B)))
-(≔ disc-g (⊝⊕ disc-g (⌜ :C)))
-(≔ disc-g (⊝⊕ disc-g (⌜ :D)))
-(≔ disc-g (⊝⊗ disc-g (⌜ :A) (⌜ :B) (⌜ :next)))
-(≔ disc-g (⊝⊗ disc-g (⌜ :C) (⌜ :D) (⌜ :next)))
+(define disc-g (graph-create (quote :TestGraph)))
+(define disc-g (graph-add-node disc-g (quote :A)))
+(define disc-g (graph-add-node disc-g (quote :B)))
+(define disc-g (graph-add-node disc-g (quote :C)))
+(define disc-g (graph-add-node disc-g (quote :D)))
+(define disc-g (graph-add-edge disc-g (quote :A) (quote :B) (quote :next)))
+(define disc-g (graph-add-edge disc-g (quote :C) (quote :D) (quote :next)))
 
 ; Empty graph
-(≔ empty-g (⊝ (⌜ :TestGraph)))
+(define empty-g (graph-create (quote :TestGraph)))
 
 ; Single node graph
-(≔ single-g (⊝ (⌜ :TestGraph)))
-(≔ single-g (⊝⊕ single-g (⌜ :A)))
+(define single-g (graph-create (quote :TestGraph)))
+(define single-g (graph-add-node single-g (quote :A)))
 
 ; Self-loop graph
-(≔ self-loop-g (⊝ (⌜ :TestGraph)))
-(≔ self-loop-g (⊝⊕ self-loop-g (⌜ :A)))
-(≔ self-loop-g (⊝⊗ self-loop-g (⌜ :A) (⌜ :A) (⌜ :loop)))
+(define self-loop-g (graph-create (quote :TestGraph)))
+(define self-loop-g (graph-add-node self-loop-g (quote :A)))
+(define self-loop-g (graph-add-edge self-loop-g (quote :A) (quote :A) (quote :loop)))
 
-; === Tests: Graph Traversal (⊝↦) ===
+; === Tests: Graph Traversal (graph-traverse) ===
 
 ; Test: BFS traversal of linear graph returns non-empty list
-(⊨ (⌜ :bfs-linear) #t (⟨⟩? (⊝↦ linear-g (⌜ :bfs) (⌜ :A) (λ (n) n))))
+(test-case (quote :bfs-linear) #t (pair? (graph-traverse linear-g (quote :bfs) (quote :A) (lambda (n) n))))
 
 ; Test: DFS traversal of linear graph returns non-empty list
-(⊨ (⌜ :dfs-linear) #t (⟨⟩? (⊝↦ linear-g (⌜ :dfs) (⌜ :A) (λ (n) n))))
+(test-case (quote :dfs-linear) #t (pair? (graph-traverse linear-g (quote :dfs) (quote :A) (lambda (n) n))))
 
 ; Test: BFS traversal of branching graph returns non-empty list
-(⊨ (⌜ :bfs-branch) #t (⟨⟩? (⊝↦ branch-g (⌜ :bfs) (⌜ :A) (λ (n) n))))
+(test-case (quote :bfs-branch) #t (pair? (graph-traverse branch-g (quote :bfs) (quote :A) (lambda (n) n))))
 
 ; Test: DFS traversal of branching graph returns non-empty list
-(⊨ (⌜ :dfs-branch) #t (⟨⟩? (⊝↦ branch-g (⌜ :dfs) (⌜ :A) (λ (n) n))))
+(test-case (quote :dfs-branch) #t (pair? (graph-traverse branch-g (quote :dfs) (quote :A) (lambda (n) n))))
 
 ; Test: Visitor function returns correct results
-(⊨ (⌜ :traverse-visitor-result) #t (⟨⟩? (⊝↦ linear-g (⌜ :bfs) (⌜ :A) (λ (n) #1))))
+(test-case (quote :traverse-visitor-result) #t (pair? (graph-traverse linear-g (quote :bfs) (quote :A) (lambda (n) #1))))
 
 ; Test: Empty traversal (node not in graph)
-(⊨ (⌜ :traverse-missing-node) ∅ (⊝↦ linear-g (⌜ :bfs) (⌜ :X) (λ (n) n)))
+(test-case (quote :traverse-missing-node) nil (graph-traverse linear-g (quote :bfs) (quote :X) (lambda (n) n)))
 
 ; Test: Cyclic graph BFS (should visit each node once)
-(⊨ (⌜ :bfs-cycle) #t (⟨⟩? (⊝↦ cycle-g (⌜ :bfs) (⌜ :A) (λ (n) n))))
+(test-case (quote :bfs-cycle) #t (pair? (graph-traverse cycle-g (quote :bfs) (quote :A) (lambda (n) n))))
 
 ; Test: Invalid mode error
-(⊨ (⌜ :traverse-invalid-mode) #t (⚠? (⊝↦ linear-g (⌜ :invalid) (⌜ :A) (λ (n) n))))
+(test-case (quote :traverse-invalid-mode) #t (error? (graph-traverse linear-g (quote :invalid) (quote :A) (lambda (n) n))))
 
 ; Test: Non-function visitor error
-(⊨ (⌜ :traverse-non-function) #t (⚠? (⊝↦ linear-g (⌜ :bfs) (⌜ :A) #42)))
+(test-case (quote :traverse-non-function) #t (error? (graph-traverse linear-g (quote :bfs) (quote :A) #42)))
 
-; === Tests: Reachability (⊝⊃) ===
+; === Tests: Reachability (graph-reachable?) ===
 
 ; Test: Reachable in linear graph
-(⊨ (⌜ :reach-linear-yes) #t (⊝⊃ linear-g (⌜ :A) (⌜ :C)))
+(test-case (quote :reach-linear-yes) #t (graph-reachable? linear-g (quote :A) (quote :C)))
 
 ; Test: Unreachable in linear graph (reverse direction)
-(⊨ (⌜ :reach-linear-no) #f (⊝⊃ linear-g (⌜ :C) (⌜ :A)))
+(test-case (quote :reach-linear-no) #f (graph-reachable? linear-g (quote :C) (quote :A)))
 
 ; Test: Reachable through branching
-(⊨ (⌜ :reach-branch) #t (⊝⊃ branch-g (⌜ :A) (⌜ :D)))
+(test-case (quote :reach-branch) #t (graph-reachable? branch-g (quote :A) (quote :D)))
 
 ; Test: Reachable in cycle (all nodes reach all nodes)
-(⊨ (⌜ :reach-cycle-forward) #t (⊝⊃ cycle-g (⌜ :A) (⌜ :C)))
+(test-case (quote :reach-cycle-forward) #t (graph-reachable? cycle-g (quote :A) (quote :C)))
 
-(⊨ (⌜ :reach-cycle-backward) #t (⊝⊃ cycle-g (⌜ :C) (⌜ :A)))
+(test-case (quote :reach-cycle-backward) #t (graph-reachable? cycle-g (quote :C) (quote :A)))
 
 ; Test: Unreachable in disconnected graph
-(⊨ (⌜ :reach-disconnected) #f (⊝⊃ disc-g (⌜ :A) (⌜ :C)))
+(test-case (quote :reach-disconnected) #f (graph-reachable? disc-g (quote :A) (quote :C)))
 
 ; Test: Node reachable from itself
-(⊨ (⌜ :reach-self) #t (⊝⊃ linear-g (⌜ :A) (⌜ :A)))
+(test-case (quote :reach-self) #t (graph-reachable? linear-g (quote :A) (quote :A)))
 
 ; Test: Missing node
-(⊨ (⌜ :reach-missing) #f (⊝⊃ linear-g (⌜ :A) (⌜ :X)))
+(test-case (quote :reach-missing) #f (graph-reachable? linear-g (quote :A) (quote :X)))
 
-; === Tests: Successors (⊝⊚) ===
+; === Tests: Successors (graph-successors) ===
 
 ; Test: Successors in linear graph (non-empty)
-(⊨ (⌜ :succ-linear-a) #t (⟨⟩? (⊝⊚ linear-g (⌜ :A))))
+(test-case (quote :succ-linear-a) #t (pair? (graph-successors linear-g (quote :A))))
 
 ; Test: Multiple successors in branching graph (non-empty)
-(⊨ (⌜ :succ-branch) #t (⟨⟩? (⊝⊚ branch-g (⌜ :A))))
+(test-case (quote :succ-branch) #t (pair? (graph-successors branch-g (quote :A))))
 
 ; Test: No successors (leaf node)
-(⊨ (⌜ :succ-leaf) ∅ (⊝⊚ linear-g (⌜ :C)))
+(test-case (quote :succ-leaf) nil (graph-successors linear-g (quote :C)))
 
-; === Tests: Predecessors (⊝⊙) ===
+; === Tests: Predecessors (graph-predecessors) ===
 
 ; Test: Predecessors in linear graph (non-empty)
-(⊨ (⌜ :pred-linear-c) #t (⟨⟩? (⊝⊙ linear-g (⌜ :C))))
+(test-case (quote :pred-linear-c) #t (pair? (graph-predecessors linear-g (quote :C))))
 
 ; Test: Multiple predecessors in branching graph (non-empty)
-(⊨ (⌜ :pred-branch-d) #t (⟨⟩? (⊝⊙ branch-g (⌜ :D))))
+(test-case (quote :pred-branch-d) #t (pair? (graph-predecessors branch-g (quote :D))))
 
 ; Test: No predecessors (root node)
-(⊨ (⌜ :pred-root) ∅ (⊝⊙ linear-g (⌜ :A)))
+(test-case (quote :pred-root) nil (graph-predecessors linear-g (quote :A)))
 
-; === Tests: Path Finding (⊝⇝) ===
+; === Tests: Path Finding (graph-path) ===
 
 ; Test: Path in linear graph (non-empty)
-(⊨ (⌜ :path-linear) #t (⟨⟩? (⊝⇝ linear-g (⌜ :A) (⌜ :C))))
+(test-case (quote :path-linear) #t (pair? (graph-path linear-g (quote :A) (quote :C))))
 
 ; Test: No path (reverse direction)
-(⊨ (⌜ :path-none) ∅ (⊝⇝ linear-g (⌜ :C) (⌜ :A)))
+(test-case (quote :path-none) nil (graph-path linear-g (quote :C) (quote :A)))
 
 ; Test: Path through branching (non-empty)
-(⊨ (⌜ :path-branch) #t (⟨⟩? (⊝⇝ branch-g (⌜ :A) (⌜ :D))))
+(test-case (quote :path-branch) #t (pair? (graph-path branch-g (quote :A) (quote :D))))
 
 ; Test: Path in cycle (non-empty)
-(⊨ (⌜ :path-cycle) #t (⟨⟩? (⊝⇝ cycle-g (⌜ :A) (⌜ :C))))
+(test-case (quote :path-cycle) #t (pair? (graph-path cycle-g (quote :A) (quote :C))))
 
 ; Test: No path in disconnected graph
-(⊨ (⌜ :path-disconnected) ∅ (⊝⇝ disc-g (⌜ :A) (⌜ :C)))
+(test-case (quote :path-disconnected) nil (graph-path disc-g (quote :A) (quote :C)))
 
 ; Test: Path to self (non-empty)
-(⊨ (⌜ :path-self) #t (⟨⟩? (⊝⇝ linear-g (⌜ :A) (⌜ :A))))
+(test-case (quote :path-self) #t (pair? (graph-path linear-g (quote :A) (quote :A))))
 
-; === Tests: Cycle Detection (⊝∘) ===
+; === Tests: Cycle Detection (graph-cycles) ===
 
 ; Test: No cycles in linear graph
-(⊨ (⌜ :cycles-linear) ∅ (⊝∘ linear-g))
+(test-case (quote :cycles-linear) nil (graph-cycles linear-g))
 
 ; Test: No cycles in branching graph
-(⊨ (⌜ :cycles-branch) ∅ (⊝∘ branch-g))
+(test-case (quote :cycles-branch) nil (graph-cycles branch-g))
 
 ; Test: Cycle detected in cyclic graph
-(⊨ (⌜ :cycles-detected) #t (¬ (∅? (⊝∘ cycle-g))))
+(test-case (quote :cycles-detected) #t (not (null? (graph-cycles cycle-g))))
 
 ; Test: Self-loop detection
-(⊨ (⌜ :self-loop) #t (¬ (∅? (⊝∘ self-loop-g))))
+(test-case (quote :self-loop) #t (not (null? (graph-cycles self-loop-g))))
 
 ; === Edge Cases ===
 
 ; Test: Empty graph
-(⊨ (⌜ :empty-graph) ∅ (⊝↦ empty-g (⌜ :bfs) (⌜ :A) (λ (n) n)))
+(test-case (quote :empty-graph) nil (graph-traverse empty-g (quote :bfs) (quote :A) (lambda (n) n)))
 
 ; Test: Single node graph
-(⊨ (⌜ :single-node) #t (⟨⟩? (⊝↦ single-g (⌜ :bfs) (⌜ :A) (λ (n) n))))
+(test-case (quote :single-node) #t (pair? (graph-traverse single-g (quote :bfs) (quote :A) (lambda (n) n))))

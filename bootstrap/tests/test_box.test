@@ -1,52 +1,52 @@
-; Test: Mutable References (□) and Sequencing (⪢)
+; Test: Mutable References (box) and Sequencing (begin)
 ; Day 107 - Box create/deref/set/update/swap + sequencing
 
 ; ============ Box Create and Deref ============
 
-(≔ b1 (□ #42))
-(⊨ (⌜ :box-create-deref) #42 (□→ b1))
+(define b1 (box #42))
+(test-case (quote :box-create-deref) #42 (unbox b1))
 
 ; ============ Box Type Check ============
 
-(⊨ (⌜ :box-type-check) #t (□? (□ #1)))
+(test-case (quote :box-type-check) #t (box? (box #1)))
 
 ; ============ Not a Box ============
 
-(⊨ (⌜ :box-not-box) #f (□? #7))
+(test-case (quote :box-not-box) #f (box? #7))
 
 ; ============ Set Returns Old ============
 
-(≔ b2 (□ #10))
-(⊨ (⌜ :box-set-returns-old) #10 (□← b2 #20))
+(define b2 (box #10))
+(test-case (quote :box-set-returns-old) #10 (box-set! b2 #20))
 
 ; ============ Set Updates Value ============
 
-(≔ b3 (□ #100))
-(□← b3 #200)
-(⊨ (⌜ :box-set-updates) #200 (□→ b3))
+(define b3 (box #100))
+(box-set! b3 #200)
+(test-case (quote :box-set-updates) #200 (unbox b3))
 
 ; ============ Update with Function ============
 
-(≔ b4 (□ #5))
-(⊨ (⌜ :box-update-fn) #5 (□⊕ b4 (λ (x) (⊗ x #2))))
+(define b4 (box #5))
+(test-case (quote :box-update-fn) #5 (box-update! b4 (lambda (x) (* x #2))))
 
 ; ============ Update Verify New Value ============
 
-(⊨ (⌜ :box-update-fn-verify) #10 (□→ b4))
+(test-case (quote :box-update-fn-verify) #10 (unbox b4))
 
 ; ============ Swap Two Boxes ============
 
-(≔ bx (□ :alpha))
-(≔ by (□ :beta))
-(□⇌ bx by)
-(⊨ (⌜ :box-swap) #t (∧ (≡ (□→ bx) :beta) (≡ (□→ by) :alpha)))
+(define bx (box :alpha))
+(define by (box :beta))
+(box-swap! bx by)
+(test-case (quote :box-swap) #t (and (equal? (unbox bx) :beta) (equal? (unbox by) :alpha)))
 
 ; ============ Sequencing Basic ============
 
-(⊨ (⌜ :seq-basic) #3 (⪢ #1 #2 #3))
+(test-case (quote :seq-basic) #3 (begin #1 #2 #3))
 
 ; ============ Sequencing with Mutation ============
 
-(≔ b5 (□ #0))
-(⊨ (⌜ :seq-with-mutation) #2
-  (⪢ (□← b5 #1) (□← b5 #2) (□→ b5)))
+(define b5 (box #0))
+(test-case (quote :seq-with-mutation) #2
+  (begin (box-set! b5 #1) (box-set! b5 #2) (unbox b5)))

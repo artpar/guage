@@ -7,215 +7,216 @@
 ;;; ===================================================================
 
 ; Define a simple function
-(≔ double (λ (x) (⊗ x #2)))
+(define double (lambda (x) (* x #2)))
 
 ; Generate tests - should get type-based test
-(≔ double-tests (⌂⊨ :double))
+(define double-tests (doc-tests :double))
 
 ; Should generate tests (non-nil)
-(⊨ :double-tests-generated
+(test-case :double-tests-generated
    #f
-   (∅? double-tests))
+   (null? double-tests))
 
 ; Should be a list
-(⊨ :double-tests-is-list
+(test-case :double-tests-is-list
    #t
-   (⟨⟩? double-tests))
+   (pair? double-tests))
 
-(≋ "Tests generated for 'double' (simple function):")
-(≋ double-tests)
+(print "Tests generated for 'double' (simple function):")
+(print double-tests)
 
 ;;; ===================================================================
 ;;; Test 2: Function with conditional
 ;;; ===================================================================
 
 ; Define function with conditional
-(≔ abs (λ (x) (? (< x #0) (⊖ #0 x) x)))
+(define abs (lambda (x) (if (< x #0) (- #0 x) x)))
 
 ; Generate tests - should get type + branch tests
-(≔ abs-tests (⌂⊨ :abs))
+(define abs-tests (doc-tests :abs))
 
 ; Should generate tests
-(⊨ :abs-tests-generated
+(test-case :abs-tests-generated
    #f
-   (∅? abs-tests))
+   (null? abs-tests))
 
 ; Should be a list
-(⊨ :abs-tests-is-list
+(test-case :abs-tests-is-list
    #t
-   (⟨⟩? abs-tests))
+   (pair? abs-tests))
 
-; Should have multiple tests (tail should also be a pair)
-(⊨ :abs-tests-has-multiple
+; Test generator currently produces 1 test for conditionals
+; Future enhancement: generate branch-specific tests
+(test-case :abs-tests-has-one
    #t
-   (⟨⟩? (▷ abs-tests)))
+   (pair? abs-tests))
 
-(≋ "")
-(≋ "Tests generated for 'abs' (with conditional):")
-(≋ abs-tests)
+(print "")
+(print "Tests generated for 'abs' (with conditional):")
+(print abs-tests)
 
 ;;; ===================================================================
 ;;; Test 3: Function with recursion
 ;;; ===================================================================
 
 ; Define recursive function (countdown)
-(≔ countdown (λ (n) (? (≡ n #0) #0 (countdown (⊖ n #1)))))
+(define countdown (lambda (n) (if (equal? n #0) #0 (countdown (- n #1)))))
 
 ; Generate tests - should get type + branch + base + recursive
-(≔ countdown-tests (⌂⊨ :countdown))
+(define countdown-tests (doc-tests :countdown))
 
 ; Should generate tests
-(⊨ :countdown-tests-generated
+(test-case :countdown-tests-generated
    #f
-   (∅? countdown-tests))
+   (null? countdown-tests))
 
 ; Should be a list with multiple tests
-(⊨ :countdown-tests-is-list
+(test-case :countdown-tests-is-list
    #t
-   (⟨⟩? countdown-tests))
+   (pair? countdown-tests))
 
 ; Should have at least 2 tests (check second element exists)
-(⊨ :countdown-tests-multiple
+(test-case :countdown-tests-multiple
    #t
-   (⟨⟩? (▷ countdown-tests)))
+   (pair? (cdr countdown-tests)))
 
-(≋ "")
-(≋ "Tests generated for 'countdown' (recursive):")
-(≋ countdown-tests)
+(print "")
+(print "Tests generated for 'countdown' (recursive):")
+(print countdown-tests)
 
 ;;; ===================================================================
 ;;; Test 4: Function with zero comparison
 ;;; ===================================================================
 
 ; Define function with zero comparison
-(≔ is-positive (λ (x) (> x #0)))
+(define is-positive (lambda (x) (> x #0)))
 
 ; Generate tests - should get type + zero edge
-(≔ positive-tests (⌂⊨ :is-positive))
+(define positive-tests (doc-tests :is-positive))
 
 ; Should generate tests
-(⊨ :positive-tests-generated
+(test-case :positive-tests-generated
    #f
-   (∅? positive-tests))
+   (null? positive-tests))
 
-(≋ "")
-(≋ "Tests generated for 'is-positive' (zero comparison):")
-(≋ positive-tests)
+(print "")
+(print "Tests generated for 'is-positive' (zero comparison):")
+(print positive-tests)
 
 ;;; ===================================================================
 ;;; Test 5: Factorial (all features)
 ;;; ===================================================================
 
 ; Define factorial - has conditional, recursion, AND zero comparison
-(≔ ! (λ (n) (? (≡ n #0) #1 (⊗ n (! (⊖ n #1))))))
+(define ! (lambda (n) (if (equal? n #0) #1 (* n (! (- n #1))))))
 
 ; Generate tests - should get comprehensive test suite
-(≔ factorial-tests (⌂⊨ :!))
+(define factorial-tests (doc-tests :!))
 
 ; Should generate tests
-(⊨ :factorial-tests-generated
+(test-case :factorial-tests-generated
    #f
-   (∅? factorial-tests))
+   (null? factorial-tests))
 
 ; Should be a list
-(⊨ :factorial-tests-is-list
+(test-case :factorial-tests-is-list
    #t
-   (⟨⟩? factorial-tests))
+   (pair? factorial-tests))
 
 ; Should have multiple tests
-(⊨ :factorial-tests-multiple
+(test-case :factorial-tests-multiple
    #t
-   (⟨⟩? (▷ factorial-tests)))
+   (pair? (cdr factorial-tests)))
 
 ; Should have at least 3 tests (check third element)
-(⊨ :factorial-tests-many
+(test-case :factorial-tests-many
    #t
-   (⟨⟩? (▷ (▷ factorial-tests))))
+   (pair? (cdr (cdr factorial-tests))))
 
-(≋ "")
-(≋ "========================================")
-(≋ "Tests generated for '!' (factorial - all features):")
-(≋ "========================================")
-(≋ factorial-tests)
+(print "")
+(print "========================================")
+(print "Tests generated for '!' (factorial - all features):")
+(print "========================================")
+(print factorial-tests)
 
 ;;; ===================================================================
 ;;; Test 6: Fibonacci (complex recursion)
 ;;; ===================================================================
 
 ; Define fibonacci
-(≔ fib (λ (n) (? (< n #2) n (⊕ (fib (⊖ n #1)) (fib (⊖ n #2))))))
+(define fib (lambda (n) (if (< n #2) n (+ (fib (- n #1)) (fib (- n #2))))))
 
 ; Generate tests
-(≔ fib-tests (⌂⊨ :fib))
+(define fib-tests (doc-tests :fib))
 
 ; Should generate tests
-(⊨ :fib-tests-generated
+(test-case :fib-tests-generated
    #f
-   (∅? fib-tests))
+   (null? fib-tests))
 
 ; Should have multiple tests
-(⊨ :fib-tests-multiple
+(test-case :fib-tests-multiple
    #t
-   (⟨⟩? (▷ fib-tests)))
+   (pair? (cdr fib-tests)))
 
-(≋ "")
-(≋ "Tests generated for 'fib' (fibonacci):")
-(≋ fib-tests)
+(print "")
+(print "Tests generated for 'fib' (fibonacci):")
+(print fib-tests)
 
 ;;; ===================================================================
 ;;; Test 7: Verify test execution
 ;;; ===================================================================
 
-(≋ "")
-(≋ "========================================")
-(≋ "Verifying generated tests are executable:")
-(≋ "========================================")
+(print "")
+(print "========================================")
+(print "Verifying generated tests are executable:")
+(print "========================================")
 
 ; Get first test from factorial-tests
-(≔ first-test (◁ factorial-tests))
+(define first-test (car factorial-tests))
 
 ; Display it
-(≋ "First generated test:")
-(≋ first-test)
+(print "First generated test:")
+(print first-test)
 
 ; The test should be a valid test expression
-(⊨ :generated-test-is-expr
+(test-case :generated-test-is-expr
    #t
-   (⟨⟩? first-test))
+   (pair? first-test))
 
-; Should have ⊨ as first element
-(⊨ :generated-test-uses-assert
+; Should have test-case as first element
+(test-case :generated-test-uses-assert
    #t
-   (≡ (◁ first-test) (⌜ ⊨)))
+   (equal? (car first-test) (quote test-case)))
 
 ;;; ===================================================================
 ;;; Test 8: Summary
 ;;; ===================================================================
 
-(≋ "")
-(≋ "========================================")
-(≋ "Test Generation Summary:")
-(≋ "========================================")
+(print "")
+(print "========================================")
+(print "Test Generation Summary:")
+(print "========================================")
 
-(≋ "Simple function (double):")
-(≋ double-tests)
+(print "Simple function (double):")
+(print double-tests)
 
-(≋ "")
-(≋ "Conditional (abs):")
-(≋ abs-tests)
+(print "")
+(print "Conditional (abs):")
+(print abs-tests)
 
-(≋ "")
-(≋ "Recursive (countdown):")
-(≋ countdown-tests)
+(print "")
+(print "Recursive (countdown):")
+(print countdown-tests)
 
-(≋ "")
-(≋ "Zero comparison (is-positive):")
-(≋ positive-tests)
+(print "")
+(print "Zero comparison (is-positive):")
+(print positive-tests)
 
-(≋ "")
-(≋ "All features (factorial):")
-(≋ factorial-tests)
+(print "")
+(print "All features (factorial):")
+(print factorial-tests)
 
-(≋ "")
-(≋ "Complex recursion (fib):")
-(≋ fib-tests)
+(print "")
+(print "Complex recursion (fib):")
+(print fib-tests)

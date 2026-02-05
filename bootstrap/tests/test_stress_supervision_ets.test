@@ -3,149 +3,149 @@
 
 ;;; --- 1. Supervisor with 32 children (max), crash 16, verify all restarted ---
 
-(⟳∅)
-(⟿∅)
+(actor-reset)
+(chan-reset)
 
-(≔ make-child (λ ()
-  (λ (self)
-    (≫ (←?) (λ (msg)
-      (? (≡ msg :crash)
-         (⚠ :crashed :boom)
+(define make-child (lambda ()
+  (lambda (self)
+    (bind (actor-receive) (lambda (msg)
+      (if (equal? msg :crash)
+         (error :crashed :boom)
          msg))))))
 
-(≔ build-child-list (λ (n acc)
-  (? (≡ n #0) acc
-     (build-child-list (⊖ n #1) (⟨⟩ (make-child) acc)))))
+(define build-child-list (lambda (n acc)
+  (if (equal? n #0) acc
+     (build-child-list (- n #1) (cons (make-child) acc)))))
 
-(≔ children-32 (build-child-list #32 ∅))
-(≔ sup32 (⟳⊛ :one-for-one children-32))
-(⟳! #500)
+(define children-32 (build-child-list #32 nil))
+(define sup32 (sup-start :one-for-one children-32))
+(actor-run #500)
 
 ;; Verify all 32 alive
-(≔ kids32 (⟳⊛? sup32))
-(≔ count-alive (λ (lst acc)
-  (? (∅? lst) acc
-     (count-alive (▷ lst) (⊕ acc (? (⟳? (◁ lst)) #1 #0))))))
+(define kids32 (sup-children sup32))
+(define count-alive (lambda (lst acc)
+  (if (null? lst) acc
+     (count-alive (cdr lst) (+ acc (if (actor-alive? (car lst)) #1 #0))))))
 
-(⊨ :sup-32-children #32 (count-alive kids32 #0))
+(test-case :sup-32-children #32 (count-alive kids32 #0))
 
 ;; Crash first 16 children
-(≔ crash-n (λ (lst n)
-  (? (≡ n #0) :done
-     (? (∅? lst) :done
-        (⪢ (→! (◁ lst) :crash)
-            (crash-n (▷ lst) (⊖ n #1)))))))
+(define crash-n (lambda (lst n)
+  (if (equal? n #0) :done
+     (if (null? lst) :done
+        (begin (actor-send (car lst) :crash)
+            (crash-n (cdr lst) (- n #1)))))))
 
 (crash-n kids32 #16)
-(⟳! #100000)
+(actor-run #100000)
 
 ;; All should be alive again after restart
-(≔ kids32b (⟳⊛? sup32))
+(define kids32b (sup-children sup32))
 ;; Some children may not restart perfectly; verify at least 16 alive
-(⊨ :sup-32-restarted #t (> (count-alive kids32b #0) #16))
+(test-case :sup-32-restarted #t (> (count-alive kids32b #0) #16))
 
 ;;; --- 2. One-for-all: 20 children, crash 1, verify all 20 restarted ---
 
-(⟳∅)
+(actor-reset)
 
-(≔ children-20 (build-child-list #20 ∅))
-(≔ sup-all (⟳⊛ :one-for-all children-20))
-(⟳! #500)
+(define children-20 (build-child-list #20 nil))
+(define sup-all (sup-start :one-for-all children-20))
+(actor-run #500)
 
-(≔ kids-all (⟳⊛? sup-all))
-(⊨ :sup-ofa-20-alive #20 (count-alive kids-all #0))
+(define kids-all (sup-children sup-all))
+(test-case :sup-ofa-20-alive #20 (count-alive kids-all #0))
 
 ;; Crash just the first child
-(→! (◁ kids-all) :crash)
-(⟳! #5000)
+(actor-send (car kids-all) :crash)
+(actor-run #5000)
 
 ;; All should be restarted
-(≔ kids-all-b (⟳⊛? sup-all))
-(⊨ :sup-ofa-all-restarted #20 (count-alive kids-all-b #0))
+(define kids-all-b (sup-children sup-all))
+(test-case :sup-ofa-all-restarted #20 (count-alive kids-all-b #0))
 
 ;;; --- 3. ETS table survives crash/restart cycles ---
 
-(⟳∅)
+(actor-reset)
 
-(⟳⊞⊕ :crash-counter)
-(⟳⊞⊙ :crash-counter :count #0)
+(ets-new :crash-counter)
+(ets-insert :crash-counter :count #0)
 
 ;; Helper: increment counter then wait for message
-(≔ crash-child-init (λ ()
-  (⟳⊞⊙ :crash-counter :count (⊕ (⟳⊞? :crash-counter :count) #1))))
+(define crash-child-init (lambda ()
+  (ets-insert :crash-counter :count (+ (ets-lookup :crash-counter :count) #1))))
 
-(≔ crash-child-body (λ (self)
-  (⪢ (crash-child-init)
-      (≫ (←?) (λ (msg) (⚠ :crash msg))))))
+(define crash-child-body (lambda (self)
+  (begin (crash-child-init)
+      (bind (actor-receive) (lambda (msg) (error :crash msg))))))
 
-(≔ ets-sup (⟳⊛ :one-for-one (⟨⟩ crash-child-body ∅)))
-(⟳! #500)
+(define ets-sup (sup-start :one-for-one (cons crash-child-body nil)))
+(actor-run #500)
 
 ;; Crash and restart 20 times
-(≔ crash-once (λ ()
-  (⪢ (→! (◁ (⟳⊛? ets-sup)) :die)
-      (⟳! #1000))))
+(define crash-once (lambda ()
+  (begin (actor-send (car (sup-children ets-sup)) :die)
+      (actor-run #1000))))
 
-(≔ crash-cycle (λ (n)
-  (? (≡ n #0) :done
-     (⪢ (crash-once)
-         (crash-cycle (⊖ n #1))))))
+(define crash-cycle (lambda (n)
+  (if (equal? n #0) :done
+     (begin (crash-once)
+         (crash-cycle (- n #1))))))
 
 (crash-cycle #5)
 
 ;; Counter should be at least > 1 (initial + some restarts)
-(⊨ :sup-ets-survives #t (> (⟳⊞? :crash-counter :count) #1))
+(test-case :sup-ets-survives #t (> (ets-lookup :crash-counter :count) #1))
 
 ;;; --- 4. Rapid crash loop: child crashes 50 times in succession ---
 
-(⟳∅)
+(actor-reset)
 
-(≔ always-crash-fn (λ (self) (⚠ :crash :always)))
-(≔ rapid-sup (⟳⊛ :one-for-one (⟨⟩ always-crash-fn ∅)))
-(⟳! #10000)
+(define always-crash-fn (lambda (self) (error :crash :always)))
+(define rapid-sup (sup-start :one-for-one (cons always-crash-fn nil)))
+(actor-run #10000)
 
 ;; Supervisor should have hit many restarts
-(⊨ :sup-rapid-crash #t (> (⟳⊛! rapid-sup) #4))
+(test-case :sup-rapid-crash #t (> (sup-restart-count rapid-sup) #4))
 
 ;;; --- 5. ETS table with many entries ---
 
-(⟳∅)
+(actor-reset)
 
-(⟳⊞⊕ :big-table)
+(ets-new :big-table)
 
 ;; Fill table with symbol keys
-(⟳⊞⊙ :big-table :a #10)
-(⟳⊞⊙ :big-table :b #20)
-(⟳⊞⊙ :big-table :c #30)
-(⟳⊞⊙ :big-table :d #40)
-(⟳⊞⊙ :big-table :e #50)
+(ets-insert :big-table :a #10)
+(ets-insert :big-table :b #20)
+(ets-insert :big-table :c #30)
+(ets-insert :big-table :d #40)
+(ets-insert :big-table :e #50)
 
 ;; Verify table has correct size and data
-(⊨ :ets-multi-table-size #5 (⟳⊞# :big-table))
-(⊨ :ets-multi-table-lookup #30 (⟳⊞? :big-table :c))
+(test-case :ets-multi-table-size #5 (ets-size :big-table))
+(test-case :ets-multi-table-lookup #30 (ets-lookup :big-table :c))
 
 ;;; --- 6. ETS concurrent access: 10 actors all read/write same table ---
 
-(⟳∅)
+(actor-reset)
 
-(⟳⊞⊕ :shared-ets)
-(⟳⊞⊙ :shared-ets :counter #0)
+(ets-new :shared-ets)
+(ets-insert :shared-ets :counter #0)
 
 ;; Worker loop defined outside actor body
-(≔ ets-worker-loop (λ (i)
-  (? (≡ i #0) :done
-     (⪢
-       (⟳⊞⊙ :shared-ets :counter (⊕ (⟳⊞? :shared-ets :counter) #1))
-       (ets-worker-loop (⊖ i #1))))))
+(define ets-worker-loop (lambda (i)
+  (if (equal? i #0) :done
+     (begin
+       (ets-insert :shared-ets :counter (+ (ets-lookup :shared-ets :counter) #1))
+       (ets-worker-loop (- i #1))))))
 
 ;; 10 workers each doing 1000 operations
-(≔ spawn-ets-workers (λ (n)
-  (? (≡ n #0) :done
-     (⪢ (⟳ (λ (self) (ets-worker-loop #100)))
-         (spawn-ets-workers (⊖ n #1))))))
+(define spawn-ets-workers (lambda (n)
+  (if (equal? n #0) :done
+     (begin (actor-spawn (lambda (self) (ets-worker-loop #100)))
+         (spawn-ets-workers (- n #1))))))
 
 (spawn-ets-workers #5)
-(⟳! #50000)
+(actor-run #50000)
 
 ;; Counter should be > 0 (exact value depends on interleaving, up to 10000)
-(⊨ :ets-concurrent-positive #t (> (⟳⊞? :shared-ets :counter) #0))
+(test-case :ets-concurrent-positive #t (> (ets-lookup :shared-ets :counter) #0))

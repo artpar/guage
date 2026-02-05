@@ -1,97 +1,97 @@
 ; Day 140: Global trace aggregation — cross-scheduler merged trace events
-; Tests ⟳⊳⊳⊕ (global read) and ⟳⊳⊳⊕# (global count)
+; Tests trace-global-read (global read) and trace-global-count (global count)
 
-(⟳∅)
+(actor-reset)
 
 ; ── Test 1: Single scheduler — global count matches local count ──
 
-(⟳⊳⊳! #t)   ; Enable tracing
-(⟳⊳⊳∅)       ; Clear trace buffer
+(trace-enable! #t)   ; Enable tracing
+(trace-clear)       ; Clear trace buffer
 
-(≔ a1 (⟳ (λ (self) :traced)))
-(⟳! #200)
+(define a1 (actor-spawn (lambda (self) :traced)))
+(actor-run #200)
 
 ; Local count
-(≔ local-count (⟳⊳⊳#))
+(define local-count (trace-count))
 
 ; Global count (should match since single scheduler)
-(≔ global-count (⟳⊳⊳⊕#))
+(define global-count (trace-global-count))
 
-(⊨ (⌜ :single-sched-counts-match)
+(test-case (quote :single-sched-counts-match)
   #t
-  (≡ local-count global-count))
+  (equal? local-count global-count))
 
 ; Global count should be > 0 (at least SPAWN + RESUME + DIE events)
-(⊨ (⌜ :single-sched-has-events)
+(test-case (quote :single-sched-has-events)
   #t
   (> global-count #0))
 
 
 ; ── Test 2: Global count with kind filter ──
 
-(⟳∅)
-(⟳⊳⊳! #t)
-(⟳⊳⊳∅)
+(actor-reset)
+(trace-enable! #t)
+(trace-clear)
 
-(≔ a2 (⟳ (λ (self) :done)))
-(⟳! #200)
+(define a2 (actor-spawn (lambda (self) :done)))
+(actor-run #200)
 
-(≔ spawn-count (⟳⊳⊳⊕# :SPAWN))
-(≔ die-count (⟳⊳⊳⊕# :DIE))
+(define spawn-count (trace-global-count :SPAWN))
+(define die-count (trace-global-count :DIE))
 
 ; At least 1 spawn and 1 die event
-(⊨ (⌜ :global-spawn-count) #t (≥ spawn-count #1))
-(⊨ (⌜ :global-die-count) #t (≥ die-count #1))
+(test-case (quote :global-spawn-count) #t (>= spawn-count #1))
+(test-case (quote :global-die-count) #t (>= die-count #1))
 
 
 ; ── Test 3: Global read returns non-empty list ──
 
-(⟳∅)
-(⟳⊳⊳! #t)
-(⟳⊳⊳∅)
+(actor-reset)
+(trace-enable! #t)
+(trace-clear)
 
-(≔ a3 (⟳ (λ (self) :done)))
-(≔ a4 (⟳ (λ (self) :done)))
-(⟳! #400)
+(define a3 (actor-spawn (lambda (self) :done)))
+(define a4 (actor-spawn (lambda (self) :done)))
+(actor-run #400)
 
-(≔ events (⟳⊳⊳⊕))
+(define events (trace-global-read))
 
 ; Events list should not be empty
-(⊨ (⌜ :global-read-nonempty)
+(test-case (quote :global-read-nonempty)
   #t
-  (¬ (≡ events ∅)))
+  (not (equal? events nil)))
 
 
 ; ── Test 4: Filtered global read returns only matching kind ──
 
-(≔ spawns (⟳⊳⊳⊕ :SPAWN))
+(define spawns (trace-global-read :SPAWN))
 
-(⊨ (⌜ :filtered-global-read-nonempty)
+(test-case (quote :filtered-global-read-nonempty)
   #t
-  (¬ (≡ spawns ∅)))
+  (not (equal? spawns nil)))
 
 ; Each event is an alist — first pair should have :ts key
-(≔ first-event (◁ spawns))
-(≔ first-key (◁ (◁ first-event)))  ; car of first pair = key
+(define first-event (car spawns))
+(define first-key (car (car first-event)))  ; car of first pair = key
 
-(⊨ (⌜ :event-has-ts-key)
+(test-case (quote :event-has-ts-key)
   :ts
   first-key)
 
 
 ; ── Test 5: Global count of filtered matches list length ──
 
-(≔ spawn-list (⟳⊳⊳⊕ :SPAWN))
-(≔ spawn-count-2 (⟳⊳⊳⊕# :SPAWN))
+(define spawn-list (trace-global-read :SPAWN))
+(define spawn-count-2 (trace-global-count :SPAWN))
 
-(≔ list-len (λ (lst)
-  (? (≡ lst ∅) #0
-     (⊕ #1 (list-len (▷ lst))))))
+(define list-len (lambda (lst)
+  (if (equal? lst nil) #0
+     (+ #1 (list-len (cdr lst))))))
 
-(⊨ (⌜ :count-matches-list-length)
+(test-case (quote :count-matches-list-length)
   #t
-  (≡ spawn-count-2 (list-len spawn-list)))
+  (equal? spawn-count-2 (list-len spawn-list)))
 
 
 ; ── Cleanup ──
-(⟳⊳⊳! #f)  ; Disable tracing
+(trace-enable! #f)  ; Disable tracing

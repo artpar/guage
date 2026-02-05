@@ -4,7 +4,7 @@
 ; Status: UPGRADED (Day 79)
 ; Created: 2026-01-29 (Day 76)
 ; Updated: 2026-01-29 (Day 79 - variadic ellipsis patterns)
-; Purpose: Complex macros using pattern-based ⧉⊜ system
+; Purpose: Complex macros using pattern-based macro-rules system
 ;
 ; Symbols defined:
 ; - ⇒* (cond) - Multi-branch conditional (unlimited clauses)
@@ -17,19 +17,19 @@
 ; ═══════════════════════════════════════════════════════════════
 ; Syntax: (⇒* (cond1 result1) (cond2 result2) ...)
 ; Evaluates conditions in order, returns result of first true one
-; Returns ∅ if none match
+; Returns nil if none match
 ;
 ; Uses ellipsis pattern for unlimited clauses (Day 79)
 ; Use #t as final condition for else.
 ; ═══════════════════════════════════════════════════════════════
 
-(⧉⊜ ⇒*
+(macro-rules ⇒*
   ; Zero clauses - nil
-  (() ∅)
+  (() nil)
   ; One clause
-  ((($c $r)) (? $c $r ∅))
+  ((($c $r)) (if $c $r nil))
   ; Multiple clauses - recursive
-  ((($c $r) $rest ...) (? $c $r (⇒* $rest ...))))
+  ((($c $r) $rest ...) (if $c $r (⇒* $rest ...))))
 
 ; ═══════════════════════════════════════════════════════════════
 ; ≔⇊ (let*) - Sequential bindings (UNLIMITED BINDINGS)
@@ -41,15 +41,15 @@
 ; Uses ellipsis pattern for unlimited bindings (Day 79)
 ; ═══════════════════════════════════════════════════════════════
 
-(⧉⊜ ≔⇊
+(macro-rules ≔⇊
   ; Zero bindings - just return body
   ((() $body) $body)
   ; One binding
   (((($v $e)) $body)
-   ((λ ($v) $body) $e))
+   ((lambda ($v) $body) $e))
   ; Multiple bindings - nest recursively
   (((($v $e) $rest ...) $body)
-   ((λ ($v) (≔⇊ ($rest ...) $body)) $e)))
+   ((lambda ($v) (≔⇊ ($rest ...) $body)) $e)))
 
 ; ═══════════════════════════════════════════════════════════════
 ; ⇤ (case) - Value dispatch (UNLIMITED CASES)
@@ -62,15 +62,15 @@
 ; Uses ellipsis pattern for unlimited cases (Day 79)
 ; ═══════════════════════════════════════════════════════════════
 
-(⧉⊜ ⇤
+(macro-rules ⇤
   ; Just :else - always match (base case for recursion)
   (($expr (:else $def)) $def)
   ; Single case, no more clauses
   (($expr ($v $r))
-   ((λ (:⇤tmp) (? (≡ :⇤tmp $v) $r ∅)) $expr))
+   ((lambda (:⇤tmp) (if (equal? :⇤tmp $v) $r nil)) $expr))
   ; Multiple cases - recursive, pass captured tmp to avoid re-evaluation
   (($expr ($v $r) $rest ...)
-   ((λ (:⇤tmp) (? (≡ :⇤tmp $v) $r (⇤ :⇤tmp $rest ...))) $expr)))
+   ((lambda (:⇤tmp) (if (equal? :⇤tmp $v) $r (⇤ :⇤tmp $rest ...))) $expr)))
 
 ; ═══════════════════════════════════════════════════════════════
 ; Module Complete

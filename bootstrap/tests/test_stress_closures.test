@@ -3,90 +3,90 @@
 
 ;;; --- 1. Create 10,000 closures via loop, each capturing different N ---
 
-(≔ make-const (λ (n) (λ () n)))
+(define make-const (lambda (n) (lambda () n)))
 
-(≔ build-closures (λ (i acc)
-  (? (≡ i #0) acc
-     (build-closures (⊖ i #1) (⟨⟩ (make-const i) acc)))))
+(define build-closures (lambda (i acc)
+  (if (equal? i #0) acc
+     (build-closures (- i #1) (cons (make-const i) acc)))))
 
-(≔ closures-list (build-closures #10000 ∅))
+(define closures-list (build-closures #10000 nil))
 
 ;; Verify the first closure (which captured i=1) returns 1
-(⊨ :closure-10k-first #1 ((◁ closures-list)))
+(test-case :closure-10k-first #1 ((car closures-list)))
 
 ;;; --- 2. 500-deep closure nesting (compose make-adder 1, 500x) ---
 
-(≔ make-adder (λ (n) (λ (x) (⊕ x n))))
+(define make-adder (lambda (n) (lambda (x) (+ x n))))
 
-(≔ compose-adders (λ (n f)
-  (? (≡ n #0) f
-     (compose-adders (⊖ n #1) (λ (x) ((make-adder #1) (f x)))))))
+(define compose-adders (lambda (n f)
+  (if (equal? n #0) f
+     (compose-adders (- n #1) (lambda (x) ((make-adder #1) (f x)))))))
 
-(≔ add500 (compose-adders #500 (λ (x) x)))
-(⊨ :closure-nest-500 #500 (add500 #0))
+(define add500 (compose-adders #500 (lambda (x) x)))
+(test-case :closure-nest-500 #500 (add500 #0))
 
 ;;; --- 3. apply-n-times with N=100,000 (closure applied 100K times) ---
 
-(≔ apply-n-times (λ (f n x)
-  (? (≡ n #0) x
-     (apply-n-times f (⊖ n #1) (f x)))))
+(define apply-n-times (lambda (f n x)
+  (if (equal? n #0) x
+     (apply-n-times f (- n #1) (f x)))))
 
-(≔ inc (λ (x) (⊕ x #1)))
-(⊨ :closure-apply-100k #100000 (apply-n-times inc #100000 #0))
+(define inc (lambda (x) (+ x #1)))
+(test-case :closure-apply-100k #100000 (apply-n-times inc #100000 #0))
 
 ;;; --- 4. Build list of 5,000 closures, apply all, sum results ---
 
-(≔ build-fn-list (λ (i acc)
-  (? (≡ i #0) acc
-     (build-fn-list (⊖ i #1) (⟨⟩ (make-const i) acc)))))
+(define build-fn-list (lambda (i acc)
+  (if (equal? i #0) acc
+     (build-fn-list (- i #1) (cons (make-const i) acc)))))
 
-(≔ fn-list (build-fn-list #5000 ∅))
+(define fn-list (build-fn-list #5000 nil))
 
-(≔ sum-apply (λ (lst acc)
-  (? (∅? lst) acc
-     (sum-apply (▷ lst) (⊕ acc ((◁ lst)))))))
+(define sum-apply (lambda (lst acc)
+  (if (null? lst) acc
+     (sum-apply (cdr lst) (+ acc ((car lst)))))))
 
-(⊨ :closure-list-sum #12502500 (sum-apply fn-list #0))
+(test-case :closure-list-sum #12502500 (sum-apply fn-list #0))
 
 ;;; --- 5. Closure captures box, 100,000 increments through closure ---
 
-(≔ ctr-box (□ #0))
-(≔ inc-ctr (λ () (□← ctr-box (⊕ (□→ ctr-box) #1))))
+(define ctr-box (box #0))
+(define inc-ctr (lambda () (box-set! ctr-box (+ (unbox ctr-box) #1))))
 
-(≔ repeat-inc (λ (n)
-  (? (≡ n #0) (□→ ctr-box)
-     (⪢ (inc-ctr) (repeat-inc (⊖ n #1))))))
+(define repeat-inc (lambda (n)
+  (if (equal? n #0) (unbox ctr-box)
+     (begin (inc-ctr) (repeat-inc (- n #1))))))
 
-(⊨ :closure-box-100k #100000 (repeat-inc #100000))
+(test-case :closure-box-100k #100000 (repeat-inc #100000))
 
 ;;; --- 6. 10-level higher-order (fn returns fn... 10 deep), 10,000 applications ---
 
-(≔ nest-fn (λ (depth)
-  (? (≡ depth #0)
-     (λ (x) x)
-     (λ (x) ((nest-fn (⊖ depth #1)) (⊕ x #1))))))
+(define nest-fn (lambda (depth)
+  (if (equal? depth #0)
+     (lambda (x) x)
+     (lambda (x) ((nest-fn (- depth #1)) (+ x #1))))))
 
-(≔ deep-fn (nest-fn #10))
+(define deep-fn (nest-fn #10))
 
-(≔ apply-deep (λ (n acc)
-  (? (≡ n #0) acc
-     (apply-deep (⊖ n #1) (⊕ acc (deep-fn #0))))))
+(define apply-deep (lambda (n acc)
+  (if (equal? n #0) acc
+     (apply-deep (- n #1) (+ acc (deep-fn #0))))))
 
-(⊨ :closure-deep-10k #100000 (apply-deep #10000 #0))
+(test-case :closure-deep-10k #100000 (apply-deep #10000 #0))
 
 ;;; --- 7. Closure capturing many variables from nested scopes ---
 
-(≔ make-multi-capture (λ ()
-  (⪢
-    (≔ a #1) (≔ b #2) (≔ c #3) (≔ d #4) (≔ e #5)
-    (≔ f #6) (≔ g #7) (≔ h #8) (≔ i #9) (≔ j #10)
-    (λ () (⊕ a (⊕ b (⊕ c (⊕ d (⊕ e (⊕ f (⊕ g (⊕ h (⊕ i j)))))))))))))
+(define make-multi-capture (lambda ()
+  (begin
+    (define a #1) (define b #2) (define c #3) (define d #4) (define e #5)
+    (define f #6) (define g #7) (define h #8) (define i #9) (define j #10)
+    (lambda () (+ a (+ b (+ c (+ d (+ e (+ f (+ g (+ h (+ i j)))))))))))))
 
-(≔ multi-fn (make-multi-capture))
+(define multi-fn (make-multi-capture))
 
-(≔ repeat-multi (λ (n acc)
-  (? (≡ n #0) acc
-     (repeat-multi (⊖ n #1) (⊕ acc (multi-fn))))))
+(define repeat-multi (lambda (n acc)
+  (if (equal? n #0) acc
+     (repeat-multi (- n #1) (+ acc (multi-fn))))))
 
 ;; 55 * 10000 = 550000
-(⊨ :closure-multi-capture #550000 (repeat-multi #10000 #0))
+(test-case :closure-multi-capture #550000 (repeat-multi #10000 #0))

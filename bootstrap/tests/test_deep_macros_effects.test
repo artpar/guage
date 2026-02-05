@@ -4,114 +4,114 @@
 
 ;;; --- Define macros ---
 
-(⧉ when (c b) (⌞̃ (? (~ c) (~ b) ∅)))
-(⧉ unless (c b) (⌞̃ (? (~ c) ∅ (~ b))))
-(⧉ twice (e) (⌞̃ (⊕ (~ e) (~ e))))
+(macro when (c b) (quasiquote-tilde (if (~ c) (~ b) nil)))
+(macro unless (c b) (quasiquote-tilde (if (~ c) nil (~ b))))
+(macro twice (e) (quasiquote-tilde (+ (~ e) (~ e))))
 
 ;;; --- Effect declarations ---
 
-(⟪ :State :get :put)
-(⟪ :Logger :log)
+(effect-def :State :get :put)
+(effect-def :Logger :log)
 
-;;; --- `when` macro inside effect handler → performs effect when true ---
+;;; --- `when` macro inside effect handler -> performs effect when true ---
 
-(⊨ :when-true-effect :got-it
-  (⟪⟫
-    (when #t (↯ :Logger :log :hello))
+(test-case :when-true-effect :got-it
+  (handle
+    (when #t (perform :Logger :log :hello))
     (:Logger
-      (:log (λ (msg) :got-it)))))
+      (:log (lambda (msg) :got-it)))))
 
-;;; --- `when` macro with false → returns ∅, skipping effect ---
+;;; --- `when` macro with false -> returns ∅, skipping effect ---
 
-(⊨ :when-false-nil ∅
-  (⟪⟫
-    (when #f (↯ :Logger :log :hello))
+(test-case :when-false-nil nil
+  (handle
+    (when #f (perform :Logger :log :hello))
     (:Logger
-      (:log (λ (msg) :should-not-reach)))))
+      (:log (lambda (msg) :should-not-reach)))))
 
 ;;; --- `unless` macro inside effect handler ---
 
-(⊨ :unless-false-effect :triggered
-  (⟪⟫
-    (unless #f (↯ :Logger :log :world))
+(test-case :unless-false-effect :triggered
+  (handle
+    (unless #f (perform :Logger :log :world))
     (:Logger
-      (:log (λ (msg) :triggered)))))
+      (:log (lambda (msg) :triggered)))))
 
-(⊨ :unless-true-nil ∅
-  (⟪⟫
-    (unless #t (↯ :Logger :log :world))
+(test-case :unless-true-nil nil
+  (handle
+    (unless #t (perform :Logger :log :world))
     (:Logger
-      (:log (λ (msg) :should-not-reach)))))
+      (:log (lambda (msg) :should-not-reach)))))
 
-;;; --- ⪢ sequencing multiple effect performs ---
+;;; --- begin sequencing multiple effect performs ---
 
-(⊨ :seq-effects (⟨⟩ :a (⟨⟩ :b (⟨⟩ :c ∅)))
-  (⟪↺⟫
-    (⪢ (↯ :Yield :value :a)
-        (↯ :Yield :value :b)
-        (↯ :Yield :value :c)
-        ∅)
+(test-case :seq-effects (cons :a (cons :b (cons :c nil)))
+  (handle-resume
+    (begin (perform :Yield :value :a)
+        (perform :Yield :value :b)
+        (perform :Yield :value :c)
+        nil)
     (:Yield
-      (:value (λ (k v) (⟨⟩ v (k ∅)))))))
+      (:value (lambda (k v) (cons v (k nil)))))))
 
 ;;; --- Custom macro `get-state` expands to effect perform ---
 
-(⧉ get-state () (⌞̃ (↯ :State :get)))
+(macro get-state () (quasiquote-tilde (perform :State :get)))
 
-(⊨ :custom-macro-effect #42
-  (⟪↺⟫ (get-state)
+(test-case :custom-macro-effect #42
+  (handle-resume (get-state)
     (:State
-      (:get (λ (k) (k #42)))
-      (:put (λ (k v) (k ∅))))))
+      (:get (lambda (k) (k #42)))
+      (:put (lambda (k v) (k nil))))))
 
 ;;; --- Custom macro wrapping effect with error fallback ---
 
-(⧉ safe-fetch (eff op arg fallback)
-  (⌞̃ (≔ sf-result (↯ (~ eff) (~ op) (~ arg)))
-      (? (⚠? sf-result) (~ fallback) sf-result)))
+(macro safe-fetch (eff op arg fallback)
+  (quasiquote-tilde (define sf-result (perform (~ eff) (~ op) (~ arg)))
+      (if (error? sf-result) (~ fallback) sf-result)))
 
-;;; --- `twice` macro duplicating effect perform → handler called twice ---
+;;; --- `twice` macro duplicating effect perform -> handler called twice ---
 
-(⊨ :twice-effect #20
-  (⟪↺⟫ (twice (↯ :State :get))
+(test-case :twice-effect #20
+  (handle-resume (twice (perform :State :get))
     (:State
-      (:get (λ (k) (k #10)))
-      (:put (λ (k v) (k ∅))))))
+      (:get (lambda (k) (k #10)))
+      (:put (lambda (k v) (k nil))))))
 
 ;;; --- Custom `let1` macro with effect perform as bound value ---
 
-(⧉ let1 (var val body) (⌞̃ ((λ ((~ var)) (~ body)) (~ val))))
+(macro let1 (var val body) (quasiquote-tilde ((lambda ((~ var)) (~ body)) (~ val))))
 
-(⊨ :let1-effect #52
-  (⟪↺⟫ (let1 x (↯ :State :get) (⊕ x #10))
+(test-case :let1-effect #52
+  (handle-resume (let1 x (perform :State :get) (+ x #10))
     (:State
-      (:get (λ (k) (k #42)))
-      (:put (λ (k v) (k ∅))))))
+      (:get (lambda (k) (k #42)))
+      (:put (lambda (k v) (k nil))))))
 
-;;; --- ⪢ + yield-collect pattern ---
+;;; --- begin + yield-collect pattern ---
 
-(⟪ :Yield :value)
+(effect-def :Yield :value)
 
-(⊨ :seq-yield-collect (⟨⟩ #10 (⟨⟩ #20 (⟨⟩ #30 ∅)))
-  (⟪↺⟫
-    (⪢ (↯ :Yield :value #10)
-        (↯ :Yield :value #20)
-        (↯ :Yield :value #30)
-        ∅)
+(test-case :seq-yield-collect (cons #10 (cons #20 (cons #30 nil)))
+  (handle-resume
+    (begin (perform :Yield :value #10)
+        (perform :Yield :value #20)
+        (perform :Yield :value #30)
+        nil)
     (:Yield
-      (:value (λ (k v) (⟨⟩ v (k ∅)))))))
+      (:value (lambda (k v) (cons v (k nil)))))))
 
 ;;; --- Nested `twice` macros applied to value ---
 
-(⊨ :nested-twice #84 (twice (twice #21)))
+(test-case :nested-twice #84 (twice (twice #21)))
 
 ;;; --- Macro-generated pattern classification ---
 
-(⧉ classify-num (n)
-  (⌞̃ (? (> (~ n) #0) :positive
-        (? (< (~ n) #0) :negative
+(macro classify-num (n)
+  (quasiquote-tilde (if (> (~ n) #0) :positive
+        (if (< (~ n) #0) :negative
            :zero))))
 
-(⊨ :classify-pos :positive (classify-num #5))
-(⊨ :classify-neg :negative (classify-num (⊖ #0 #3)))
-(⊨ :classify-zero :zero (classify-num #0))
+(test-case :classify-pos :positive (classify-num #5))
+(test-case :classify-neg :negative (classify-num (- #0 #3)))
+(test-case :classify-zero :zero (classify-num #0))

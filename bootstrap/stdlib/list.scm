@@ -5,217 +5,217 @@
 ; Core List Operations
 ; ============================================================================
 
-; ↦ :: (α → β) → [α] → [β]
+; list-map :: (α -> β) -> [α] -> [β]
 ; Map - transform each element using function
-(≔ ↦ (λ (ƒ) (λ (lst)
-  (? (∅? lst)
-     ∅
-     (⟨⟩ (ƒ (◁ lst)) ((↦ ƒ) (▷ lst)))))))
+(define list-map (lambda (ƒ) (lambda (lst)
+  (if (null? lst)
+     nil
+     (cons (ƒ (car lst)) ((list-map ƒ) (cdr lst)))))))
 
-; ⊲ :: (α → 𝔹) → [α] → [α]
+; list-filter :: (α -> Bool) -> [α] -> [α]
 ; Filter - keep only elements satisfying predicate
-(≔ ⊲ (λ (pred) (λ (lst)
-  (? (∅? lst)
-     ∅
-     (? (pred (◁ lst))
-        (⟨⟩ (◁ lst) ((⊲ pred) (▷ lst)))
-        ((⊲ pred) (▷ lst)))))))
+(define list-filter (lambda (pred) (lambda (lst)
+  (if (null? lst)
+     nil
+     (if (pred (car lst))
+        (cons (car lst) ((list-filter pred) (cdr lst)))
+        ((list-filter pred) (cdr lst)))))))
 
-; ⊕← :: (α → β → α) → α → [β] → α
+; fold-left :: (α -> β -> α) -> α -> [β] -> α
 ; Fold-left - accumulate from left to right
-(≔ ⊕← (λ (ƒ) (λ (acc) (λ (lst)
-  (? (∅? lst)
+(define fold-left (lambda (ƒ) (lambda (acc) (lambda (lst)
+  (if (null? lst)
      acc
-     (((⊕← ƒ) ((ƒ acc) (◁ lst))) (▷ lst)))))))
+     (((fold-left ƒ) ((ƒ acc) (car lst))) (cdr lst)))))))
 
-; ⊕→ :: (α → β → β) → [α] → β → β
+; fold-right :: (α -> β -> β) -> [α] -> β -> β
 ; Fold-right - accumulate from right to left
-(≔ ⊕→ (λ (ƒ) (λ (lst) (λ (acc)
-  (? (∅? lst)
+(define fold-right (lambda (ƒ) (lambda (lst) (lambda (acc)
+  (if (null? lst)
      acc
-     ((ƒ (◁ lst)) (((⊕→ ƒ) (▷ lst)) acc)))))))
+     ((ƒ (car lst)) (((fold-right ƒ) (cdr lst)) acc)))))))
 
 ; ============================================================================
 ; List Utilities
 ; ============================================================================
 
-; # :: [α] → ℕ
+; # :: [α] -> ℕ
 ; Length - count elements
-(≔ # (λ (lst)
-  (((⊕← (λ (acc) (λ (_) (⊕ acc #1)))) #0) lst)))
+(define # (lambda (lst)
+  (((fold-left (lambda (acc) (lambda (_) (+ acc #1)))) #0) lst)))
 
-; ⧺ :: [α] → [α] → [α]
+; ⧺ :: [α] -> [α] -> [α]
 ; Append - concatenate two lists
-(≔ ⧺ (λ (lst2) (λ (lst1)
-  (((⊕→ (λ (x) (λ (acc) (⟨⟩ x acc)))) lst1) lst2))))
+(define ⧺ (lambda (lst2) (lambda (lst1)
+  (((fold-right (lambda (x) (lambda (acc) (cons x acc)))) lst1) lst2))))
 
-; ⇄ :: [α] → [α]
+; ⇄ :: [α] -> [α]
 ; Reverse - reverse order
-(≔ ⇄ (λ (lst)
-  (((⊕← (λ (acc) (λ (x) (⟨⟩ x acc)))) ∅) lst)))
+(define ⇄ (lambda (lst)
+  (((fold-left (lambda (acc) (lambda (x) (cons x acc)))) nil) lst)))
 
 ; ============================================================================
 ; List Slicing
 ; ============================================================================
 
-; ↑ :: ℕ → [α] → [α]
+; ↑ :: ℕ -> [α] -> [α]
 ; Take - first n elements
-(≔ ↑ (λ (n) (λ (lst)
-  (? (≡ n #0)
-     ∅
-     (? (∅? lst)
-        ∅
-        (⟨⟩ (◁ lst) ((↑ (⊖ n #1)) (▷ lst))))))))
+(define ↑ (lambda (n) (lambda (lst)
+  (if (equal? n #0)
+     nil
+     (if (null? lst)
+        nil
+        (cons (car lst) ((↑ (- n #1)) (cdr lst))))))))
 
-; ↓ :: ℕ → [α] → [α]
+; ↓ :: ℕ -> [α] -> [α]
 ; Drop - skip first n elements
-(≔ ↓ (λ (n) (λ (lst)
-  (? (≡ n #0)
+(define ↓ (lambda (n) (lambda (lst)
+  (if (equal? n #0)
      lst
-     (? (∅? lst)
-        ∅
-        ((↓ (⊖ n #1)) (▷ lst)))))))
+     (if (null? lst)
+        nil
+        ((↓ (- n #1)) (cdr lst)))))))
 
 ; ============================================================================
 ; List Combinators
 ; ============================================================================
 
-; ⊼ :: [α] → [β] → [⟨α β⟩]
+; ⊼ :: [α] -> [β] -> [⟨α β⟩]
 ; Zip - pair corresponding elements
-(≔ ⊼ (λ (lst2) (λ (lst1)
-  (? (∅? lst1)
-     ∅
-     (? (∅? lst2)
-        ∅
-        (⟨⟩ (⟨⟩ (◁ lst1) (◁ lst2)) ((⊼ (▷ lst2)) (▷ lst1))))))))
+(define ⊼ (lambda (lst2) (lambda (lst1)
+  (if (null? lst1)
+     nil
+     (if (null? lst2)
+        nil
+        (cons (cons (car lst1) (car lst2)) ((⊼ (cdr lst2)) (cdr lst1))))))))
 
-; ∃ :: (α → 𝔹) → [α] → 𝔹
+; ∃ :: (α -> Bool) -> [α] -> Bool
 ; Exists (any) - test if any element satisfies predicate
-(≔ ∃ (λ (pred) (λ (lst)
-  (? (∅? lst)
+(define ∃ (lambda (pred) (lambda (lst)
+  (if (null? lst)
      #f
-     (? (pred (◁ lst))
+     (if (pred (car lst))
         #t
-        ((∃ pred) (▷ lst)))))))
+        ((∃ pred) (cdr lst)))))))
 
-; ∀ :: (α → 𝔹) → [α] → 𝔹
+; ∀ :: (α -> Bool) -> [α] -> Bool
 ; Forall (all) - test if all elements satisfy predicate
-(≔ ∀ (λ (pred) (λ (lst)
-  (? (∅? lst)
+(define ∀ (lambda (pred) (lambda (lst)
+  (if (null? lst)
      #t
-     (? (pred (◁ lst))
-        ((∀ pred) (▷ lst))
+     (if (pred (car lst))
+        ((∀ pred) (cdr lst))
         #f)))))
 
 ; ============================================================================
 ; List Search
 ; ============================================================================
 
-; ∋ :: α → [α] → 𝔹
+; ∋ :: α -> [α] -> Bool
 ; Contains (element of) - test membership
-; Note: ∈ is reserved for type annotation (∈ name type)
-(≔ ∋ (λ (elem) (λ (lst)
-  ((∃ (λ (x) (≡ elem x))) lst))))
+; Note: type-decl is reserved for type annotation (type-decl name type)
+(define ∋ (lambda (elem) (lambda (lst)
+  ((∃ (lambda (x) (equal? elem x))) lst))))
 
 ; ============================================================================
 ; List Building
 ; ============================================================================
 
-; ⋯ :: ℕ → ℕ → [ℕ]
+; range :: ℕ -> ℕ -> [ℕ]
 ; Range - numbers from start to end (exclusive)
-(≔ ⋯ (λ (end) (λ (start)
-  (? (≥ start end)
-     ∅
-     (⟨⟩ start ((⋯ end) (⊕ start #1)))))))
+(define range (lambda (end) (lambda (start)
+  (if (>= start end)
+     nil
+     (cons start ((range end) (+ start #1)))))))
 
-; ⊚⊚ :: ℕ → α → [α]
+; ⊚⊚ :: ℕ -> α -> [α]
 ; Replicate - n copies of value
-(≔ ⊚⊚ (λ (val) (λ (n)
-  (? (≡ n #0)
-     ∅
-     (⟨⟩ val ((⊚⊚ val) (⊖ n #1)))))))
+(define ⊚⊚ (lambda (val) (lambda (n)
+  (if (equal? n #0)
+     nil
+     (cons val ((⊚⊚ val) (- n #1)))))))
 
 ; ============================================================================
 ; Advanced List Transformation
 ; ============================================================================
 
-; ⊽ :: [⟨α β⟩] → ⟨[α] [β]⟩
+; ⊽ :: [⟨α β⟩] -> ⟨[α] [β]⟩
 ; Unzip - split paired list into two lists
-(≔ ⊽ (λ (pairs)
-  ((λ (fsts) ((λ (snds)
-    (⟨⟩ fsts snds))
-    ((↦ ▷) pairs)))
-   ((↦ ◁) pairs))))
+(define ⊽ (lambda (pairs)
+  ((lambda (fsts) ((lambda (snds)
+    (cons fsts snds))
+    ((list-map cdr) pairs)))
+   ((list-map car) pairs))))
 
-; ⊤⊥ :: [[α]] → [[α]]
+; ⊤⊥ :: [[α]] -> [[α]]
 ; Transpose - rotate matrix of lists
-(≔ ⊤⊥ (λ (matrix)
-  (? (∅? matrix)
-     ∅
-     (? (∅? (◁ matrix))
-        ∅
-        (⟨⟩ ((↦ ◁) matrix)
-            (⊤⊥ ((↦ ▷) matrix)))))))
+(define ⊤⊥ (lambda (matrix)
+  (if (null? matrix)
+     nil
+     (if (null? (car matrix))
+        nil
+        (cons ((list-map car) matrix)
+            (⊤⊥ ((list-map cdr) matrix)))))))
 
 ; Helper for flatten
-(≔ ⊟-helper (λ (acc) (λ (sublist) ((⧺ sublist) acc))))
+(define ⊟-helper (lambda (acc) (lambda (sublist) ((⧺ sublist) acc))))
 
-; ⊟ :: [[α]] → [α]
+; deque :: [[α]] -> [α]
 ; Flatten - deep list flattening (one level)
-(≔ ⊟ (λ (lst)
-  (((⊕← ⊟-helper) ∅) lst)))
+(define deque (lambda (lst)
+  (((fold-left ⊟-helper) nil) lst)))
 
-; ↦⊟ :: (α → [β]) → [α] → [β]
+; ↦⊟ :: (α -> [β]) -> [α] -> [β]
 ; Flat-map - map function then flatten
-(≔ ↦⊟ (λ (ƒ) (λ (lst)
-  (⊟ ((↦ ƒ) lst)))))
+(define ↦⊟ (lambda (ƒ) (lambda (lst)
+  (deque ((list-map ƒ) lst)))))
 
 ; ============================================================================
 ; Conditional List Operations
 ; ============================================================================
 
-; ↑? :: (α → 𝔹) → [α] → [α]
+; ↑? :: (α -> Bool) -> [α] -> [α]
 ; Take-while - take elements while predicate true
-(≔ ↑? (λ (pred) (λ (lst)
-  (? (∅? lst)
-     ∅
-     (? (pred (◁ lst))
-        (⟨⟩ (◁ lst) ((↑? pred) (▷ lst)))
-        ∅)))))
+(define ↑? (lambda (pred) (lambda (lst)
+  (if (null? lst)
+     nil
+     (if (pred (car lst))
+        (cons (car lst) ((↑? pred) (cdr lst)))
+        nil)))))
 
-; ↓? :: (α → 𝔹) → [α] → [α]
+; ↓? :: (α -> Bool) -> [α] -> [α]
 ; Drop-while - drop elements while predicate true
-(≔ ↓? (λ (pred) (λ (lst)
-  (? (∅? lst)
-     ∅
-     (? (pred (◁ lst))
-        ((↓? pred) (▷ lst))
+(define ↓? (lambda (pred) (lambda (lst)
+  (if (null? lst)
+     nil
+     (if (pred (car lst))
+        ((↓? pred) (cdr lst))
         lst)))))
 
-; ⊠ :: (α → 𝔹) → [α] → ⟨[α] [α]⟩
+; ⊠ :: (α -> Bool) -> [α] -> ⟨[α] [α]⟩
 ; Partition - split into [true, false] by predicate
-(≔ ⊠ (λ (pred) (λ (lst)
-  ((λ (trues) ((λ (falses)
-    (⟨⟩ trues falses))
-    ((⊲ (λ (x) (¬ (pred x)))) lst)))
-   ((⊲ pred) lst)))))
+(define ⊠ (lambda (pred) (lambda (lst)
+  ((lambda (trues) ((lambda (falses)
+    (cons trues falses))
+    ((list-filter (lambda (x) (not (pred x)))) lst)))
+   ((list-filter pred) lst)))))
 
 ; Helper for group-by: insert into association list
-(≔ ⊡-insert (λ (k) (λ (v) (λ (alist)
-  (? (∅? alist)
-     (⟨⟩ (⟨⟩ k (⟨⟩ v ∅)) ∅)
-     (? (≡ k (◁ (◁ alist)))
-        (⟨⟩ (⟨⟩ k (⟨⟩ v (▷ (◁ alist))))
-            (▷ alist))
-        (⟨⟩ (◁ alist) (((⊡-insert k) v) (▷ alist)))))))))
+(define ⊡-insert (lambda (k) (lambda (v) (lambda (alist)
+  (if (null? alist)
+     (cons (cons k (cons v nil)) nil)
+     (if (equal? k (car (car alist)))
+        (cons (cons k (cons v (cdr (car alist))))
+            (cdr alist))
+        (cons (car alist) (((⊡-insert k) v) (cdr alist)))))))))
 
-; ⊡ :: (α → β) → [α] → [⟨β [α]⟩]
+; apply-primitive :: (α -> β) -> [α] -> [⟨β [α]⟩]
 ; Group-by - group elements by key function
-(≔ ⊡ (λ (keyfn) (λ (lst)
-  (((⊕← (λ (acc) (λ (x)
-    ((λ (k) (((⊡-insert k) x) acc))
+(define apply-primitive (lambda (keyfn) (lambda (lst)
+  (((fold-left (lambda (acc) (lambda (x)
+    ((lambda (k) (((⊡-insert k) x) acc))
      (keyfn x)))))
-   ∅)
+   nil)
    lst))))
 
 ; ============================================================================
@@ -223,47 +223,47 @@
 ; ============================================================================
 
 ; Helper for interleave
-(≔ ⋈-helper (λ (l1) (λ (l2)
-  (? (∅? l1)
+(define ⋈-helper (lambda (l1) (lambda (l2)
+  (if (null? l1)
      l2
-     (? (∅? l2)
+     (if (null? l2)
         l1
-        (⟨⟩ (◁ l1) (⟨⟩ (◁ l2) ((⋈-helper (▷ l1)) (▷ l2)))))))))
+        (cons (car l1) (cons (car l2) ((⋈-helper (cdr l1)) (cdr l2)))))))))
 
-; ⋈ :: [α] → [α] → [α]
+; ⋈ :: [α] -> [α] -> [α]
 ; Interleave - merge lists alternating elements
-(≔ ⋈ ⋈-helper)
+(define ⋈ ⋈-helper)
 
-; ∪ :: [α] → [α]
+; ∪ :: [α] -> [α]
 ; Deduplicate - remove duplicates (keeps first occurrence)
-(≔ ∪ (λ (lst)
-  (((⊕← (λ (acc) (λ (x)
-    (? ((∋ x) acc)
+(define ∪ (lambda (lst)
+  (((fold-left (lambda (acc) (lambda (x)
+    (if ((∋ x) acc)
        acc
-       ((⧺ (⟨⟩ x ∅)) acc)))))
-   ∅)
+       ((⧺ (cons x nil)) acc)))))
+   nil)
    lst)))
 
-; ⊳ :: (α → 𝔹) → [α] → α | ∅
-; Find - first element matching predicate (or ∅)
-(≔ ⊳ (λ (pred) (λ (lst)
-  (? (∅? lst)
-     ∅
-     (? (pred (◁ lst))
-        (◁ lst)
-        ((⊳ pred) (▷ lst)))))))
+; generic-param :: (α -> Bool) -> [α] -> α | nil
+; Find - first element matching predicate (or nil)
+(define generic-param (lambda (pred) (lambda (lst)
+  (if (null? lst)
+     nil
+     (if (pred (car lst))
+        (car lst)
+        ((generic-param pred) (cdr lst)))))))
 
 ; Helper for index-of
-(≔ ⊳#-helper (λ (elem) (λ (lst) (λ (idx)
-  (? (∅? lst)
-     ∅
-     (? (≡ elem (◁ lst))
+(define ⊳#-helper (lambda (elem) (lambda (lst) (lambda (idx)
+  (if (null? lst)
+     nil
+     (if (equal? elem (car lst))
         idx
-        (((⊳#-helper elem) (▷ lst)) (⊕ idx #1))))))))
+        (((⊳#-helper elem) (cdr lst)) (+ idx #1))))))))
 
-; ⊳# :: α → [α] → ℕ | ∅
-; Index-of - position of first matching element (or ∅)
-(≔ ⊳# (λ (elem) (λ (lst)
+; ⊳# :: α -> [α] -> ℕ | nil
+; Index-of - position of first matching element (or nil)
+(define ⊳# (lambda (elem) (lambda (lst)
   (((⊳#-helper elem) lst) #0))))
 
 ; ============================================================================
@@ -271,59 +271,59 @@
 ; ============================================================================
 
 ; Comparison wrappers (primitives need wrapping for currying)
-(≔ <′ (λ (a) (λ (b) (< a b))))
-(≔ >′ (λ (a) (λ (b) (> a b))))
-(≔ ≤′ (λ (a) (λ (b) (≤ a b))))
-(≔ ≥′ (λ (a) (λ (b) (≥ a b))))
+(define <′ (lambda (a) (lambda (b) (< a b))))
+(define >′ (lambda (a) (lambda (b) (> a b))))
+(define ≤′ (lambda (a) (lambda (b) (<= a b))))
+(define ≥′ (lambda (a) (lambda (b) (>= a b))))
 
 ; Helper for merge (merge sort)
-(≔ ⊴-merge (λ (cmp) (λ (l1) (λ (l2)
-  (? (∅? l1)
+(define ⊴-merge (lambda (cmp) (lambda (l1) (lambda (l2)
+  (if (null? l1)
      l2
-     (? (∅? l2)
+     (if (null? l2)
         l1
-        (? ((cmp (◁ l2)) (◁ l1))
-           (⟨⟩ (◁ l2) (((⊴-merge cmp) l1) (▷ l2)))
-           (⟨⟩ (◁ l1) (((⊴-merge cmp) (▷ l1)) l2)))))))))
+        (if ((cmp (car l2)) (car l1))
+           (cons (car l2) (((⊴-merge cmp) l1) (cdr l2)))
+           (cons (car l1) (((⊴-merge cmp) (cdr l1)) l2)))))))))
 
 ; Helper for merge sort
-(≔ ⊴-sort (λ (cmp) (λ (lst)
-  (? (∅? lst)
-     ∅
-     (? (∅? (▷ lst))
+(define ⊴-sort (lambda (cmp) (lambda (lst)
+  (if (null? lst)
+     nil
+     (if (null? (cdr lst))
         lst
-        ((λ (mid) ((λ (left) ((λ (right)
+        ((lambda (mid) ((lambda (left) ((lambda (right)
           (((⊴-merge cmp) ((⊴-sort cmp) left)) ((⊴-sort cmp) right)))
          ((↓ mid) lst)))
          ((↑ mid) lst)))
-        (÷ (# lst) #2)))))))
+        (quotient (# lst) #2)))))))
 
-; ⊴ :: (α → α → 𝔹) → [α] → [α]
+; ⊴ :: (α -> α -> Bool) -> [α] -> [α]
 ; Sort - sort with comparison function (merge sort)
-(≔ ⊴ ⊴-sort)
+(define ⊴ ⊴-sort)
 
-; ⊴< :: (α → β) → [α] → [α]
+; ⊴< :: (α -> β) -> [α] -> [α]
 ; Sort-by - sort by key function (using <)
-(≔ ⊴< (λ (keyfn) (λ (lst)
-  ((⊴ (λ (a) (λ (b) (< (keyfn a) (keyfn b))))) lst))))
+(define ⊴< (lambda (keyfn) (lambda (lst)
+  ((⊴ (lambda (a) (lambda (b) (< (keyfn a) (keyfn b))))) lst))))
 
 ; ============================================================================
 ; Examples
 ; ============================================================================
 
-; Sum: (⊕← ⊕ #0 (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅))))  ; → #6
-; Product: (⊕← ⊗ #1 (⟨⟩ #2 (⟨⟩ #3 (⟨⟩ #4 ∅))))  ; → #24
-; Map double: (↦ (λ (x) (⊗ x #2)) (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅))))
-; Filter >5: (⊲ (λ (x) (> x #5)) (⟨⟩ #3 (⟨⟩ #7 (⟨⟩ #2 (⟨⟩ #9 ∅)))))
-; Reverse: (⇄ (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅))))
-; Range: (⋯ #5 #1)  ; → (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 (⟨⟩ #4 ∅))))
-; Length: (# (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅))))  ; → #3
+; Sum: (fold-left + #0 (cons #1 (cons #2 (cons #3 nil))))  ; -> #6
+; Product: (fold-left * #1 (cons #2 (cons #3 (cons #4 nil))))  ; -> #24
+; Map double: (list-map (lambda (x) (* x #2)) (cons #1 (cons #2 (cons #3 nil))))
+; Filter >5: (list-filter (lambda (x) (> x #5)) (cons #3 (cons #7 (cons #2 (cons #9 nil)))))
+; Reverse: (⇄ (cons #1 (cons #2 (cons #3 nil))))
+; Range: (range #5 #1)  ; -> (cons #1 (cons #2 (cons #3 (cons #4 nil))))
+; Length: (# (cons #1 (cons #2 (cons #3 nil))))  ; -> #3
 
 ; Advanced examples:
-; Unzip: (⊽ (⟨⟩ (⟨⟩ #1 #2) (⟨⟩ (⟨⟩ #3 #4) ∅)))  ; → ⟨⟨#1 ⟨#3 ∅⟩⟩ ⟨#2 ⟨#4 ∅⟩⟩⟩
-; Transpose: (⊤⊥ (⟨⟩ (⟨⟩ #1 (⟨⟩ #2 ∅)) (⟨⟩ (⟨⟩ #3 (⟨⟩ #4 ∅)) ∅)))  ; → ⟨⟨#1 ⟨#3 ∅⟩⟩ ⟨#2 ⟨#4 ∅⟩⟩⟩
-; Flatten: (⊟ (⟨⟩ (⟨⟩ #1 (⟨⟩ #2 ∅)) (⟨⟩ (⟨⟩ #3 ∅) ∅)))  ; → ⟨#1 ⟨#2 ⟨#3 ∅⟩⟩⟩
-; Take-while: (↑? (λ (x) (< x #5)) (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #7 ∅))))  ; → ⟨#1 ⟨#2 ∅⟩⟩
-; Partition: (⊠ (λ (x) (≡ (% x #2) #0)) (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 (⟨⟩ #4 ∅)))))  ; → ⟨⟨#2 ⟨#4 ∅⟩⟩ ⟨#1 ⟨#3 ∅⟩⟩⟩
-; Interleave: (⋈ (⟨⟩ #1 (⟨⟩ #2 ∅)) (⟨⟩ #3 (⟨⟩ #4 ∅)))  ; → ⟨#1 ⟨#3 ⟨#2 ⟨#4 ∅⟩⟩⟩⟩
-; Sort: (⊴ < (⟨⟩ #3 (⟨⟩ #1 (⟨⟩ #4 (⟨⟩ #2 ∅)))))  ; → ⟨#1 ⟨#2 ⟨#3 ⟨#4 ∅⟩⟩⟩⟩
+; Unzip: (⊽ (cons (cons #1 #2) (cons (cons #3 #4) nil)))  ; -> ⟨⟨#1 ⟨#3 ∅⟩⟩ ⟨#2 ⟨#4 ∅⟩⟩⟩
+; Transpose: (⊤⊥ (cons (cons #1 (cons #2 nil)) (cons (cons #3 (cons #4 nil)) nil)))  ; -> ⟨⟨#1 ⟨#3 ∅⟩⟩ ⟨#2 ⟨#4 ∅⟩⟩⟩
+; Flatten: (deque (cons (cons #1 (cons #2 nil)) (cons (cons #3 nil) nil)))  ; -> ⟨#1 ⟨#2 ⟨#3 ∅⟩⟩⟩
+; Take-while: (↑? (lambda (x) (< x #5)) (cons #1 (cons #2 (cons #7 nil))))  ; -> ⟨#1 ⟨#2 ∅⟩⟩
+; Partition: (⊠ (lambda (x) (equal? (% x #2) #0)) (cons #1 (cons #2 (cons #3 (cons #4 nil)))))  ; -> ⟨⟨#2 ⟨#4 ∅⟩⟩ ⟨#1 ⟨#3 ∅⟩⟩⟩
+; Interleave: (⋈ (cons #1 (cons #2 nil)) (cons #3 (cons #4 nil)))  ; -> ⟨#1 ⟨#3 ⟨#2 ⟨#4 ∅⟩⟩⟩⟩
+; Sort: (⊴ < (cons #3 (cons #1 (cons #4 (cons #2 nil)))))  ; -> ⟨#1 ⟨#2 ⟨#3 ⟨#4 ∅⟩⟩⟩⟩

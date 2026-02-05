@@ -1,49 +1,49 @@
-; Test: Weak References (◇)
+; Test: Weak References (weak-ref)
 ; Day 108 - Intrusive dual-count zombie weak references
 
 ; ============ Type Predicate Positive ============
 
-(≔ t1 (□ #42))
-(≔ w1 (◇ t1))
-(⊨ (⌜ :weak-is-weak) #t (◇⊙ w1))
+(define t1 (box #42))
+(define w1 (weak-ref t1))
+(test-case (quote :weak-is-weak) #t (weak-ref? w1))
 
 ; ============ Type Predicate Negative ============
 
-(⊨ (⌜ :weak-not-weak) #f (◇⊙ #7))
+(test-case (quote :weak-not-weak) #f (weak-ref? #7))
 
 ; ============ Deref Returns Target When Alive ============
 
-(⊨ (⌜ :weak-deref-alive) #t (□? (◇→ w1)))
+(test-case (quote :weak-deref-alive) #t (box? (weak-deref w1)))
 
 ; ============ Alive Check Returns True ============
 
-(⊨ (⌜ :weak-alive-true) #t (◇? w1))
+(test-case (quote :weak-alive-true) #t (weak-alive? w1))
 
 ; ============ Deref Through Box ============
 
-(⊨ (⌜ :weak-deref-value) #42 (□→ (◇→ w1)))
+(test-case (quote :weak-deref-value) #42 (unbox (weak-deref w1)))
 
 ; ============ Weak Ref to Pair ============
 
-(≔ t2 (⟨⟩ #1 #2))
-(≔ w2 (◇ t2))
-(⊨ (⌜ :weak-ref-pair) #1 (◁ (◇→ w2)))
+(define t2 (cons #1 #2))
+(define w2 (weak-ref t2))
+(test-case (quote :weak-ref-pair) #1 (car (weak-deref w2)))
 
 ; ============ Weak Ref to Number ============
 
-(≔ t3 #99)
-(≔ w3 (◇ t3))
-(⊨ (⌜ :weak-ref-number) #99 (◇→ w3))
+(define t3 #99)
+(define w3 (weak-ref t3))
+(test-case (quote :weak-ref-number) #99 (weak-deref w3))
 
 ; ============ Weak Ref to Nil ============
 
-(≔ w4 (◇ ∅))
-(⊨ (⌜ :weak-ref-nil) #t (◇⊙ w4))
+(define w4 (weak-ref nil))
+(test-case (quote :weak-ref-nil) #t (weak-ref? w4))
 
 ; ============ Error: Deref Non-Weak ============
 
-(⊨ (⌜ :weak-deref-error) #t (⚠? (◇→ #5)))
+(test-case (quote :weak-deref-error) #t (error? (weak-deref #5)))
 
 ; ============ Error: Alive Check on Non-Weak ============
 
-(⊨ (⌜ :weak-alive-error) #t (⚠? (◇? #5)))
+(test-case (quote :weak-alive-error) #t (error? (weak-alive? #5)))

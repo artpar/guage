@@ -22,19 +22,19 @@
 ; Short-circuits: stops evaluating after first #f
 ;
 ; Lisp semantics: returns actual values, not just booleans
-; (∧* #t #42) → #42
-; (∧* #f anything) → #f (anything not evaluated)
+; (∧* #t #42) -> #42
+; (∧* #f anything) -> #f (anything not evaluated)
 ;
 ; Uses ellipsis pattern for unlimited arity (Day 79)
 ; ═══════════════════════════════════════════════════════════════
 
-(⧉⊜ ∧*
+(macro-rules ∧*
   ; Zero args - vacuous truth
   (() #t)
   ; Single arg - identity
   (($a) $a)
   ; Multiple args - short-circuit recursively
-  (($a $rest ...) (? $a (∧* $rest ...) #f)))
+  (($a $rest ...) (if $a (∧* $rest ...) #f)))
 
 ; ═══════════════════════════════════════════════════════════════
 ; ∨* (or*) - Short-circuit OR (UNLIMITED ARGS)
@@ -45,46 +45,46 @@
 ; Short-circuits: stops evaluating after first truthy
 ;
 ; Lisp semantics: returns actual values, not just booleans
-; (∨* #f #42) → #42
-; (∨* #42 anything) → #42 (anything not evaluated)
+; (∨* #f #42) -> #42
+; (∨* #42 anything) -> #42 (anything not evaluated)
 ;
 ; Uses ellipsis pattern for unlimited arity (Day 79)
 ; ═══════════════════════════════════════════════════════════════
 
-(⧉⊜ ∨*
+(macro-rules ∨*
   ; Zero args - vacuous false
   (() #f)
   ; Single arg - identity
   (($a) $a)
   ; Multiple args - short-circuit recursively
   ; Use lambda to avoid double evaluation, check for "not #f" (Lisp semantics)
-  (($a $rest ...) ((λ (:∨tmp) (? (≡ :∨tmp #f) (∨* $rest ...) :∨tmp)) $a)))
+  (($a $rest ...) ((lambda (:∨tmp) (if (equal? :∨tmp #f) (∨* $rest ...) :∨tmp)) $a)))
 
 ; ═══════════════════════════════════════════════════════════════
 ; ⇒ (when) - Conditional execution
 ; ═══════════════════════════════════════════════════════════════
 ; Syntax: (⇒ condition body)
 ; If condition is truthy, evaluates and returns body
-; If condition is falsy, returns ∅ (nil)
+; If condition is falsy, returns nil (nil)
 ; Body is not evaluated if condition is false
 ; ═══════════════════════════════════════════════════════════════
 
-(⧉⊜ ⇒
+(macro-rules ⇒
   (($cond $body)
-   (? $cond $body ∅)))
+   (if $cond $body nil)))
 
 ; ═══════════════════════════════════════════════════════════════
 ; ⇏ (unless) - Negative conditional
 ; ═══════════════════════════════════════════════════════════════
 ; Syntax: (⇏ condition body)
 ; If condition is falsy, evaluates and returns body
-; If condition is truthy, returns ∅ (nil)
+; If condition is truthy, returns nil (nil)
 ; Body is not evaluated if condition is true
 ; ═══════════════════════════════════════════════════════════════
 
-(⧉⊜ ⇏
+(macro-rules ⇏
   (($cond $body)
-   (? $cond ∅ $body)))
+   (if $cond nil $body)))
 
 ; ═══════════════════════════════════════════════════════════════
 ; Module Complete

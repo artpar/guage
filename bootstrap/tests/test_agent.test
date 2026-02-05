@@ -1,74 +1,74 @@
-; Day 102: Agent (state wrapper) tests — ⟳⊶, ⟳⊶?, ⟳⊶!, ⟳⊶⊕, ⟳⊶×
+; Day 102: Agent (state wrapper) tests — ⟳⊶, ⟳⊶?, ⟳⊶!, ⟳⊶⊕, agent-stop
 
 ; Reset state
-(⟳∅)
+(actor-reset)
 
 ; === agent-start-basic ===
 ; Start agent with initial state from zero-arg function
-(⟳∅)
-(≔ ag (⟳⊶ (λ () #0)))
-(⊨ (⌜ :agent-start-basic) #t (≥ ag #0))
+(actor-reset)
+(define ag (agent-start (lambda () #0)))
+(test-case (quote :agent-start-basic) #t (>= ag #0))
 
 ; === agent-get-basic ===
 ; Get state with identity function
-(⟳∅)
-(≔ ag (⟳⊶ (λ () #42)))
-(⊨ (⌜ :agent-get-basic) #42 (⟳⊶? ag (λ (s) s)))
+(actor-reset)
+(define ag (agent-start (lambda () #42)))
+(test-case (quote :agent-get-basic) #42 (agent-get ag (lambda (s) s)))
 
 ; === agent-get-transform ===
 ; Get transformed state
-(⟳∅)
-(≔ ag (⟳⊶ (λ () #10)))
-(⊨ (⌜ :agent-get-transform) #20 (⟳⊶? ag (λ (s) (⊗ s #2))))
+(actor-reset)
+(define ag (agent-start (lambda () #10)))
+(test-case (quote :agent-get-transform) #20 (agent-get ag (lambda (s) (* s #2))))
 
 ; === agent-update-basic ===
 ; Update state returns #t
-(⟳∅)
-(≔ ag (⟳⊶ (λ () #0)))
-(⊨ (⌜ :agent-update-basic) #t (⟳⊶! ag (λ (s) (⊕ s #1))))
+(actor-reset)
+(define ag (agent-start (lambda () #0)))
+(test-case (quote :agent-update-basic) #t (agent-update ag (lambda (s) (+ s #1))))
 
 ; === agent-get-after-update ===
 ; Get after update shows new state
-(⟳∅)
-(≔ ag (⟳⊶ (λ () #0)))
-(⟳⊶! ag (λ (s) (⊕ s #5)))
-(⟳⊶! ag (λ (s) (⊕ s #3)))
-(⊨ (⌜ :agent-get-after-update) #8 (⟳⊶? ag (λ (s) s)))
+(actor-reset)
+(define ag (agent-start (lambda () #0)))
+(agent-update ag (lambda (s) (+ s #5)))
+(agent-update ag (lambda (s) (+ s #3)))
+(test-case (quote :agent-get-after-update) #8 (agent-get ag (lambda (s) s)))
 
 ; === agent-get-and-update ===
 ; Atomic get-and-update: fn returns ⟨reply new-state⟩
-(⟳∅)
-(≔ ag (⟳⊶ (λ () #10)))
-(≔ result (⟳⊶⊕ ag (λ (s) (⟨⟩ s (⊕ s #1)))))
+(actor-reset)
+(define ag (agent-start (lambda () #10)))
+(define result (agent-get-and-update ag (lambda (s) (cons s (+ s #1)))))
 ; Result is old state (10), new state should be 11
-(⊨ (⌜ :agent-get-and-update) #10 result)
+(test-case (quote :agent-get-and-update) #10 result)
 
 ; === agent-get-and-update-verify ===
 ; Verify state changed after get-and-update
-(⟳∅)
-(≔ ag (⟳⊶ (λ () #10)))
-(⟳⊶⊕ ag (λ (s) (⟨⟩ s (⊕ s #1))))
-(⊨ (⌜ :agent-get-and-update-verify) #11 (⟳⊶? ag (λ (s) s)))
+(actor-reset)
+(define ag (agent-start (lambda () #10)))
+(agent-get-and-update ag (lambda (s) (cons s (+ s #1))))
+(test-case (quote :agent-get-and-update-verify) #11 (agent-get ag (lambda (s) s)))
 
 ; === agent-stop ===
 ; Stop returns final state
-(⟳∅)
-(≔ ag (⟳⊶ (λ () :hello)))
-(⊨ (⌜ :agent-stop) :hello (⟳⊶× ag))
+(actor-reset)
+(define ag (agent-start (lambda () :hello)))
+(test-case (quote :agent-stop) :hello (agent-stop ag))
 
 ; === agent-stop-get-error ===
 ; Get on stopped agent returns error
-(⟳∅)
-(≔ ag (⟳⊶ (λ () #0)))
-(⟳⊶× ag)
-(⊨ (⌜ :agent-stop-get-error) #t (⚠? (⟳⊶? ag (λ (s) s))))
+(actor-reset)
+(define ag (agent-start (lambda () #0)))
+(agent-stop ag)
+(test-case (quote :agent-stop-get-error) #t (error? (agent-get ag (lambda (s) s))))
 
 ; === agent-multiple ===
 ; Multiple independent agents
-(⟳∅)
-(≔ a1 (⟳⊶ (λ () #0)))
-(≔ a2 (⟳⊶ (λ () #100)))
-(⟳⊶! a1 (λ (s) (⊕ s #1)))
-(⟳⊶! a2 (λ (s) (⊕ s #1)))
-(⊨ (⌜ :agent-multiple) (⟨⟩ #1 #101)
-  (⟨⟩ (⟳⊶? a1 (λ (s) s)) (⟳⊶? a2 (λ (s) s))))
+(actor-reset)
+(define a1 (agent-start (lambda () #0)))
+(define a2 (agent-start (lambda () #100)))
+(agent-update a1 (lambda (s) (+ s #1)))
+(agent-update a2 (lambda (s) (+ s #1)))
+(test-case (quote :agent-multiple) (cons #1 #101)
+  (cons (agent-get a1 (lambda (s) s)) (agent-get a2 (lambda (s) s))))

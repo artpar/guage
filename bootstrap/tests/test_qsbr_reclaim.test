@@ -2,78 +2,78 @@
 ; Tests actor lifecycle with QSBR infrastructure in single-scheduler mode.
 ; Multi-scheduler QSBR integration tested via test_multi_scheduler.
 
-(⟳∅)
+(actor-reset)
 
 ; ── Test 1: Single-scheduler actors complete and results preserved ──
 
-(≔ a1 (⟳ (λ (self) :a)))
-(≔ a2 (⟳ (λ (self) :b)))
-(≔ a3 (⟳ (λ (self) :c)))
-(⟳! #500)
+(define a1 (actor-spawn (lambda (self) :a)))
+(define a2 (actor-spawn (lambda (self) :b)))
+(define a3 (actor-spawn (lambda (self) :c)))
+(actor-run #500)
 
-(⊨ (⌜ :dead-a1) #f (⟳? a1))
-(⊨ (⌜ :dead-a2) #f (⟳? a2))
-(⊨ (⌜ :dead-a3) #f (⟳? a3))
-(⊨ (⌜ :result-a1) :a (⟳→ a1))
-(⊨ (⌜ :result-a2) :b (⟳→ a2))
-(⊨ (⌜ :result-a3) :c (⟳→ a3))
+(test-case (quote :dead-a1) #f (actor-alive? a1))
+(test-case (quote :dead-a2) #f (actor-alive? a2))
+(test-case (quote :dead-a3) #f (actor-alive? a3))
+(test-case (quote :result-a1) :a (actor-result a1))
+(test-case (quote :result-a2) :b (actor-result a2))
+(test-case (quote :result-a3) :c (actor-result a3))
 
 
 ; ── Test 2: Many short-lived actors — all complete ──
 
-(⟳∅)
+(actor-reset)
 
-(≔ spawn-batch (λ (n acc)
-  (? (≡ n #0)
+(define spawn-batch (lambda (n acc)
+  (if (equal? n #0)
      acc
-     (spawn-batch (⊖ n #1) (⟨⟩ (⟳ (λ (self) :done)) acc)))))
+     (spawn-batch (- n #1) (cons (actor-spawn (lambda (self) :done)) acc)))))
 
-(≔ actors (spawn-batch #50 ∅))
-(⟳! #2000)
+(define actors (spawn-batch #50 nil))
+(actor-run #2000)
 
-(≔ count-alive (λ (lst)
-  (? (≡ lst ∅)
+(define count-alive (lambda (lst)
+  (if (equal? lst nil)
      #0
-     (⊕ (? (⟳? (◁ lst)) #1 #0)
-        (count-alive (▷ lst))))))
+     (+ (if (actor-alive? (car lst)) #1 #0)
+        (count-alive (cdr lst))))))
 
-(⊨ (⌜ :batch-50-all-complete)
+(test-case (quote :batch-50-all-complete)
   #0
   (count-alive actors))
 
 
 ; ── Test 3: Chain-spawn (actors spawn children before dying) ──
 
-(⟳∅)
+(actor-reset)
 
-(≔ chain-spawn (λ (self)
-  ((λ (_) :parent-done) (⟳ (λ (s) :child-done)))))
+(define chain-spawn (lambda (self)
+  ((lambda (_) :parent-done) (actor-spawn (lambda (s) :child-done)))))
 
-(≔ p1 (⟳ chain-spawn))
-(≔ p2 (⟳ chain-spawn))
-(≔ p3 (⟳ chain-spawn))
-(⟳! #2000)
+(define p1 (actor-spawn chain-spawn))
+(define p2 (actor-spawn chain-spawn))
+(define p3 (actor-spawn chain-spawn))
+(actor-run #2000)
 
-(⊨ (⌜ :chain-p1-done) #f (⟳? p1))
-(⊨ (⌜ :chain-p2-done) #f (⟳? p2))
-(⊨ (⌜ :chain-p3-done) #f (⟳? p3))
-(⊨ (⌜ :chain-results) :parent-done (⟳→ p1))
+(test-case (quote :chain-p1-done) #f (actor-alive? p1))
+(test-case (quote :chain-p2-done) #f (actor-alive? p2))
+(test-case (quote :chain-p3-done) #f (actor-alive? p3))
+(test-case (quote :chain-results) :parent-done (actor-result p1))
 
 
 ; ── Test 4: Rapid reset/respawn cycles — actors stay queryable after reset ──
 
-(⟳∅)
+(actor-reset)
 
-(≔ b1 (⟳ (λ (self) :x)))
-(≔ b2 (⟳ (λ (self) :y)))
-(⟳! #500)
-(⊨ (⌜ :pre-reset-b1) :x (⟳→ b1))
-(⊨ (⌜ :pre-reset-b2) :y (⟳→ b2))
+(define b1 (actor-spawn (lambda (self) :x)))
+(define b2 (actor-spawn (lambda (self) :y)))
+(actor-run #500)
+(test-case (quote :pre-reset-b1) :x (actor-result b1))
+(test-case (quote :pre-reset-b2) :y (actor-result b2))
 
 ; Reset and respawn
-(⟳∅)
-(≔ c1 (⟳ (λ (self) :p)))
-(≔ c2 (⟳ (λ (self) :q)))
-(⟳! #500)
-(⊨ (⌜ :post-reset-c1) :p (⟳→ c1))
-(⊨ (⌜ :post-reset-c2) :q (⟳→ c2))
+(actor-reset)
+(define c1 (actor-spawn (lambda (self) :p)))
+(define c2 (actor-spawn (lambda (self) :q)))
+(actor-run #500)
+(test-case (quote :post-reset-c1) :p (actor-result c1))
+(test-case (quote :post-reset-c2) :q (actor-result c2))

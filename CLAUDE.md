@@ -1,5 +1,233 @@
 # Guage: The Ultralanguage
 
+## AI Quick Reference — READ THIS FIRST
+
+**This section teaches you to write correct Guage code.** Guage uses Scheme-like English syntax.
+
+### Literal Syntax
+
+| Syntax | Type | Examples |
+|--------|------|---------|
+| `#42` `#-3` `#3.14` | Number | `#0`, `#100`, `#0.5` |
+| `#t` `#f` | Boolean | |
+| `nil` | Nil (empty list) | |
+| `:name` | Symbol/keyword | `:error`, `:ok`, `:div-by-zero` |
+| `"hello"` | String | `"config"`, `""` |
+| `#42i` `#xFFi` | Native integer | |
+
+### Core Forms and Primitives
+
+**Definition & Functions:**
+| Name | Meaning | Example |
+|------|---------|---------|
+| `define` | Define binding | `(define x #42)` |
+| `lambda` | Lambda expression | `(lambda (x) (+ x #1))` |
+| `if` | Conditional — exactly 3 args | `(if cond then else)` |
+
+**Arithmetic (all prefix, all take 2 args):**
+| Name | Meaning | Example |
+|------|---------|---------|
+| `+` | Add | `(+ #1 #2)` |
+| `-` | Subtract | `(- #5 #3)` |
+| `*` | Multiply | `(* #2 #3)` |
+| `/` | Divide | `(/ #6 #2)` |
+| `%` | Modulo | `(% #7 #3)` |
+| `^` | Exponent | `(^ #2 #10)` |
+
+**Comparison:**
+| Name | Meaning | Example |
+|------|---------|---------|
+| `equal?` | Equals | `(equal? x y)` |
+| `not-equal?` | Not equals | `(not-equal? x y)` |
+| `<` `>` `<=` `>=` | Ordering | `(< #1 #2)` |
+| `and` | AND (short-circuit) | `(and #t #f)` |
+| `or` | OR (short-circuit) | `(or #t #f)` |
+| `not` | Logical NOT | `(not #f)` |
+
+**Pairs & Lists:**
+| Name | Meaning | Example |
+|------|---------|---------|
+| `cons` | Cons pair — **STRICTLY 2 args** | `(cons #1 nil)` |
+| `car` | Head | `(car pair)` |
+| `cdr` | Tail | `(cdr pair)` |
+| `null?` | Is nil? | `(null? lst)` |
+| `pair?` | Is pair? | `(pair? lst)` |
+
+**Errors (values, NOT exceptions):**
+| Name | Meaning | Example |
+|------|---------|---------|
+| `error` | Create error | `(error :div-by-zero #0)` |
+| `error?` | Is error? | `(error? val)` |
+| `error-type` | Get error type | `(error-type err)` |
+| `error-data` | Get error data | `(error-data err)` |
+| `try` | Try (propagate error) | `(try expr)` |
+
+**Control & Sequencing:**
+| Name | Meaning | Example |
+|------|---------|---------|
+| `begin` | Sequence | `(begin expr1 expr2 ... last)` |
+| `bind` | Bind/chain | `(bind val (lambda (x) body))` |
+| `quote` | Quote | `(quote :name)` |
+
+**Effects:**
+| Name | Meaning |
+|------|---------|
+| `effect-def` | Declare effect |
+| `perform` | Perform effect |
+| `handle` | Handle effect |
+| `handle-resume` | Resumable handler |
+
+**Pattern Matching:**
+| Name | Meaning | Example |
+|------|---------|---------|
+| `match` | Match expression | `(match val clauses)` |
+
+**Mutable State:**
+| Name | Meaning | Example |
+|------|---------|---------|
+| `box` | Create box | `(box #0)` |
+| `unbox` | Read box | `(unbox b)` |
+| `box-set!` | Write box | `(box-set! b #99)` |
+
+**Structures & Types:**
+| Name | Meaning |
+|------|---------|
+| `type-of` | Get type of value |
+| `adt` | Construct ADT |
+| `adt-define` | Define ADT |
+| `struct-define` | Define struct |
+| `struct-create` | Create struct instance |
+| `struct-get` | Get struct field |
+
+**Testing:**
+| Name | Meaning | Example |
+|------|---------|---------|
+| `test-case` | Test case | `(test-case (quote :name) expected actual)` |
+| `assert` | Assert | `(assert condition :msg)` |
+| `deep-equal?` | Deep equal | `(deep-equal? val1 val2)` |
+
+**Macros:**
+| Name | Meaning | Example |
+|------|---------|---------|
+| `macro` | Define macro | `(macro name (args) body)` |
+| `macro-rules` | Pattern-based macro | `(macro-rules name clauses)` |
+
+### Worked Examples
+
+```scheme
+; 1. Factorial
+(define factorial (lambda (n)
+  (if (equal? n #0)
+     #1
+     (* n (factorial (- n #1))))))
+
+; 2. Map over a list
+(define my-map (lambda (f lst)
+  (if (null? lst)
+     nil
+     (cons (f (car lst)) (my-map f (cdr lst))))))
+
+; 3. Filter a list
+(define my-filter (lambda (pred lst)
+  (if (null? lst)
+     nil
+     (if (pred (car lst))
+        (cons (car lst) (my-filter pred (cdr lst)))
+        (my-filter pred (cdr lst))))))
+
+; 4. Fold-left
+(define my-fold (lambda (f acc lst)
+  (if (null? lst)
+     acc
+     (my-fold f (f acc (car lst)) (cdr lst)))))
+
+; 5. Build a list (3 elements) — note nested cons
+(define my-list (cons #1 (cons #2 (cons #3 nil))))
+
+; 6. Safe division with error handling
+(define safe-div (lambda (x y)
+  (if (equal? y #0)
+     (error :div-by-zero y)
+     (/ x y))))
+
+; 7. Pattern matching
+(match (cons #1 #2) (quote (
+  (((cons h t)) (+ h t))
+  (_ #0))))
+
+; 8. Effect handling
+(handle (perform :State :get)
+  (:State
+    (:get (lambda () #42))
+    (:put (lambda (v) nil))))
+
+; 9. ADT construction and matching
+(adt-define :Maybe (quote (:Just :value)) (quote (:Nothing)))
+(define val (adt :Maybe :Just #42))
+(match val (quote (
+  ((adt :Maybe :Just v) v)
+  ((adt :Maybe :Nothing) #0))))
+
+; 10. Sequencing with mutable state
+(define counter (box #0))
+(begin
+  (box-set! counter #1)
+  (box-set! counter (+ (unbox counter) #1))
+  (unbox counter))  ; → #2
+
+; 11. Test case
+(test-case (quote :add-basic) #5 (+ #2 #3))
+
+; 12. Accumulator with tail recursion
+(define sum-to (lambda (n acc)
+  (if (equal? n #0)
+     acc
+     (sum-to (- n #1) (+ acc n)))))
+```
+
+### Common Mistakes — DON'T / DO
+
+| DON'T | DO | Why |
+|-------|-----|-----|
+| `(+ 1 2)` | `(+ #1 #2)` | Numbers need `#` prefix |
+| `(define x 42)` | `(define x #42)` | Numbers need `#` prefix |
+| `(list 1 2 3)` | `(cons #1 (cons #2 (cons #3 nil)))` | Build lists with nested `cons` |
+| `(cons a b c)` | `(cons a (cons b (cons c nil)))` | `cons` takes exactly 2 args |
+| `(a . b)` | `(cons a b)` | No dotted-pair syntax |
+| `(lambda (x) e1 e2)` | `(lambda (x) (begin e1 e2))` | Multi-body needs `begin` |
+| `(if c t)` | `(if c t nil)` | `if` requires exactly 3 args |
+| `(error "msg")` | `(error :tag data)` | Errors need symbol tag + data |
+| `(let ((x 1)) x)` | `(begin (define x #1) x)` | No `let` — use `begin` + `define` |
+| `'symbol` | `(quote :symbol)` or `:symbol` | Symbols self-evaluate with `:` prefix |
+| `(assert x)` | `(assert x :msg)` | `assert` needs condition AND message |
+| `()` | `nil` | Empty list is `nil` |
+
+### Data Structures
+
+| Type | Create | Access | Example |
+|------|--------|--------|---------|
+| Pair/List | `cons` | `car`, `cdr` | `(cons #1 (cons #2 nil))` |
+| Vector | `vector-create` | `vector-get` | `(vector-create #3 #0)` |
+| HashMap | `hashmap-create` | `hashmap-get` | `(hashmap-set (hashmap-create) :key val)` |
+| HashSet | `set-create` | `set-contains?` | `(set-add (set-create) #1)` |
+| Box | `box` | `unbox` | `(box #42)` |
+| Deque | `deque-create` | `deque-front` | `(deque-push-back (deque-create) #1)` |
+
+### Type Predicates
+
+| Name | Tests for |
+|------|-----------|
+| `number?` | Number |
+| `boolean?` | Boolean |
+| `string?` | String |
+| `symbol?` | Symbol |
+| `pair?` | Pair/cons cell |
+| `null?` | Nil |
+| `error?` | Error value |
+| `procedure?` | Function |
+
+---
+
 ## Vision
 
 Guage is a **Turing-complete ultralanguage** designed to be the ultimate programming language - one that subsumes all others through careful design of core primitives and systematic extension.
@@ -9,7 +237,7 @@ Guage is a **Turing-complete ultralanguage** designed to be the ultimate program
 1. **Expressive power** - Can express any computable abstraction
 2. **Universality** - Can express any computable function
 3. **First-class everything** - Debugging, errors, testing, types, effects
-4. **Pure symbolic syntax** - No English keywords, only mathematical symbols
+4. **Scheme-like syntax** - Familiar Lisp/Scheme naming with `#` number literals
 5. **Type safety** - Gradual dependent types
 6. **Concurrency** - Actor model with message passing
 7. **Effects** - Algebraic effect handlers
@@ -17,34 +245,36 @@ Guage is a **Turing-complete ultralanguage** designed to be the ultimate program
 
 ## Core Principles
 
-### 1. Pure Symbols Only
+### 1. Scheme-Like Syntax
 
-**No English keywords.** Every construct uses mathematical or symbolic notation:
+Guage uses familiar English/Scheme names for readability:
 
 ```scheme
-λ   - Lambda (not "lambda" or "fn")
-≔   - Define (not "def" or "let")
-?   - Conditional (not "if")
-⊕   - Add (not "add" or "+")
-⚠   - Error (not "error" or "throw")
-⊢   - Assert (not "assert")
+lambda  - Lambda expressions
+define  - Global definitions
+if      - Conditional (requires 3 args)
++       - Addition
+error   - Create error values
+assert  - Assertions
 ```
 
-**Why:** Universal. Language-independent. Mathematically precise.
+**Number literals use `#` prefix:** `#42`, `#3.14`, `#-5`
+
+**Why:** Familiar to Lisp/Scheme programmers. Easy for AI to generate correct code.
 
 ### 2. First-Class Everything (Including Metaprogramming)
 
 **CRITICAL:** Everything is a value - not just data, but **ALL aspects of computation**:
 
 **Already Implemented:**
-- **Functions:** λ expressions with closures
-- **Errors:** ⚠ values, not exceptions
-- **Debugging:** ⟲ trace returns the value
-- **Tests:** ⊨ test cases are expressions
-- **Structures:** ⊙/⊚ user-defined types
+- **Functions:** `lambda` expressions with closures
+- **Errors:** `error` values, not exceptions
+- **Debugging:** `trace` returns the value
+- **Tests:** `test-case` are expressions
+- **Structures:** `struct-define`/`adt-define` user-defined types
 
 **Being Built NOW (Phase 2C):**
-- **CFG/DFG:** Control and data flow graphs as ⊝ graph structures
+- **CFG/DFG:** Control and data flow graphs as graph structures
 - **Type Schemas:** Stored in registry, queryable
 - **Code Structure:** AST as data you can transform
 
@@ -63,26 +293,26 @@ Guage is a **Turing-complete ultralanguage** designed to be the ultimate program
 **This is what makes Guage an "ultralanguage":**
 
 **Queryable:**
-- CFG/DFG are graph structures you can search: `(⊝→ cfg :entry)`
-- Execution traces are queryable: `(⨳ trace predicate)`
-- Types are inspectable: `(⊢ value Type)`
-- Code structure is analyzable: `(⊙⋈ program₁ program₂)`
+- CFG/DFG are graph structures you can search: `(graph-query cfg :entry)`
+- Execution traces are queryable
+- Types are inspectable: `(assert value Type)`
+- Code structure is analyzable
 
 **Provable:**
-- Types carry proofs: `(⊡ Sorted [ℤ] (∀ i (≼ (⊇ ⊙ i) (⊇ ⊙ (⊕ i 1)))))`
-- Termination provable: `(⊢ φ ↓)`
-- Complexity provable: `(⊢ φ (O (⊗ n (ℓ n))))`
-- Correctness provable: `(⊢ φ spec)`
+- Types carry proofs
+- Termination provable
+- Complexity provable
+- Correctness provable
 
 **Transformable:**
-- Synthesize from specs: `(⊛ spec)`
-- Repair broken code: `(⊛ spec ◂ broken_code)`
-- Optimize automatically: `(◎ code)`
-- Generate docs/tests: `(📖 code)` `(⊙? code)`
-- Hot-swap: `(⇝ old_version new_version)`
+- Synthesize from specs
+- Repair broken code
+- Optimize automatically
+- Generate docs/tests
+- Hot-swap code
 
 **Current Infrastructure (Phase 2C):**
-- ✅ Graph structures (⊝) for CFG/DFG
+- ✅ Graph structures for CFG/DFG
 - ✅ Type registry for queryable schemas
 - ✅ Immutable operations for time-travel
 - ✅ Reference counting for serialization
@@ -133,13 +363,13 @@ Based on:
 
 ```
 ┌──────────────────────────────────────┐
-│   Surface Language (Pure Symbols)    │  ← User writes this
+│   Surface Language (Scheme-like)     │  ← User writes this
 ├──────────────────────────────────────┤
 │   Core Language (Lambda Calculus)    │  ← De Bruijn indices
 ├──────────────────────────────────────┤
 │   Runtime (Closures + References)    │  ← Memory management
 ├──────────────────────────────────────┤
-│   Primitives (Built-in Operations)   │  ← ⊕, ⊗, ⟨⟩, etc.
+│   Primitives (Built-in Operations)   │  ← +, *, cons, etc.
 └──────────────────────────────────────┘
 ```
 
@@ -156,16 +386,16 @@ Based on:
 
 ```scheme
 ; Error creation
-(≔ safe-div (λ (x y)
-  (? (≡ y #0)
-     (⚠ :div-by-zero y)    ; Return error value
-     (⊘ x y))))             ; Return result
+(define safe-div (lambda (x y)
+  (if (equal? y #0)
+     (error :div-by-zero y)    ; Return error value
+     (/ x y))))                 ; Return result
 
 ; Error checking
-(⚠? result)                 ; Test if error
+(error? result)                 ; Test if error
 
 ; Error handling
-(? (⚠? result)
+(if (error? result)
    (handle-error result)
    (use-value result))
 ```
@@ -174,38 +404,38 @@ Based on:
 
 ## Feature Set
 
-### Current (Day 148+ — 175 tests, 540 primitives)
+### Current (Day 148+ — 173 tests passing, 558 primitives)
 
 **Core:**
-- λ abstraction with De Bruijn indices
+- `lambda` abstraction with De Bruijn indices
 - Function application (beta reduction)
 - Lexical scoping with closures
-- ≔ global definitions, named recursion
+- `define` global definitions, named recursion
 - TCO (tail call optimization via goto)
-- ⪢ sequencing
+- `begin` sequencing
 
 **Data:**
-- Numbers (#42), Booleans (#t, #f), Nil (∅)
-- Pairs (⟨⟩), Symbols (:name), Strings
-- Errors (⚠ — first-class values, not exceptions)
-- Mutable refs (□ box/unbox/swap)
+- Numbers (#42), Booleans (#t, #f), Nil (nil)
+- Pairs (cons), Symbols (:name), Strings
+- Errors (error — first-class values, not exceptions)
+- Mutable refs (box/unbox/box-set!)
 
 **Data Structures:**
-- HashMap (⊞), HashSet (⊍), Vector (⟦⟧)
-- Deque (⊟), Priority Queue (△), Trie (⊮)
-- Sorted Map (⋔), Byte Buffer (◈)
+- HashMap (hashmap-*), HashSet (set-*), Vector (vector-*)
+- Deque (deque-*), Priority Queue (heap-*), Trie (trie-*)
+- Sorted Map (sorted-map-*), Byte Buffer (bytebuf-*)
 
 **Control:**
-- ? conditional, ⌜ quote
-- ∇ pattern matching (guards, as-patterns, or-patterns, view patterns)
+- `if` conditional, `quote`
+- `match` pattern matching (guards, as-patterns, or-patterns, view patterns)
 
 **Effects:**
-- ⟪ perform, ⟪⟫ handler, ⟪↺⟫ resumable handler
-- ↯ raise, ⟪⊸⟫ linear effect, ⊸ consume
-- ⤴ resume, ≫ chain
+- `perform`, `handle`, `handle-resume`
+- Linear effects with `consume`
+- `bind` for chaining
 
 **Actors/Concurrency:**
-- ⟳ actors, →!/←? messages, channels
+- Actors, messages, channels
 - Supervisors (one-for-one, one-for-all, rest-for-one)
 - GenServer, ETS tables, process registry, timers
 - Tasks, Agents, GenStage, DynamicSupervisor, Flow
@@ -213,25 +443,25 @@ Based on:
 - Eventcount parking (Folly/Vyukov), QSBR reclamation
 
 **Types:**
-- Annotations (∈), validation (∈✓), inference (∈⍜)
+- Annotations (`type-decl`), validation (`type-validate`), inference (`type-infer`)
 
 **Macros:**
-- Pattern-based macros (⧉⊜), stdlib macros (control, iteration, exception, pattern, unicode)
+- Pattern-based macros (`macro-rules`), stdlib macros (control, iteration, exception, pattern)
 
 **Structures:**
-- ⊙ leaf, ⊚ node/ADT, ⊝ graphs (CFG/DFG)
+- `struct-define`, `adt-define`, graph structures (CFG/DFG)
 
 **Debug/Test:**
-- ⊢ assertions, ⟲ trace, ⊙ type-of
-- ⧉ arity, ⊛ source, ≟ deep-equal, ⊨ test-case
+- `assert` assertions, `trace`, `type-of`
+- `arity`, `source`, `deep-equal?`, `test-case`
 - Structured test runner (--test mode, JSON Lines, coverage, leak detection)
 - gen-int-shrink, gen-list-shrink (integrated Hedgehog-style shrinking)
 
 **FFI:**
-- JIT-compiled stubs (⌁) — ARM64 + x86-64
+- JIT-compiled stubs (`ffi-call`) — ARM64 + x86-64
 
 **Stdlib:**
-- Math (√, ^, trig, log, π, e, rand), strings, POSIX
+- Math (sqrt, ^, trig, log, pi, e, rand), strings, POSIX
 - Lists (extended utilities, sort, comprehensions)
 - Iterator protocol, option/result types, networking
 
@@ -261,32 +491,32 @@ Based on:
 
 ## Syntax Philosophy
 
-### Symbol Selection
+### Scheme-Like Naming
 
-Each symbol chosen for **intuitive meaning**:
+Guage uses familiar Scheme/Lisp naming conventions:
 
 ```
-λ  - Lambda shape suggests function abstraction
-≔  - Assignment/definition (colon-equals)
-?  - Question suggests conditional
-⊕  - Circled plus (pure addition)
-⚠  - Warning triangle (error)
-⊢  - Turnstile (proves/asserts)
-⟲  - Circular arrows (trace/loop)
-⊙  - Circled dot (examine/inspect)
-∅  - Empty set (nil)
-⟨⟩ - Angle brackets (pair/cons)
-◁  - Left triangle (head/car)
-▷  - Right triangle (tail/cdr)
+lambda  - Function abstraction
+define  - Global definitions
+if      - Conditional (3 args)
++       - Addition
+error   - Create error values
+assert  - Assertions
+trace   - Debugging
+type-of - Type inspection
+nil     - Empty list
+cons    - Pair constructor
+car     - Head of pair
+cdr     - Tail of pair
 ```
 
 ### Consistency Rules
 
-1. **Operators are symbolic** - No word operators
-2. **Prefix notation** - (operator args...)
-3. **Pure symbols** - No mixing symbols and English
-4. **Unicode encouraged** - Use proper mathematical symbols
-5. **Self-documenting** - Symbols suggest meaning
+1. **Prefix notation** - `(operator args...)`
+2. **English names** - Familiar Scheme/Lisp vocabulary
+3. **Predicate convention** - Names ending in `?` return boolean (`null?`, `error?`)
+4. **Mutator convention** - Names ending in `!` mutate state (`box-set!`)
+5. **Number literals** - Use `#` prefix (`#42`, `#3.14`)
 
 ## Development Workflow
 
@@ -334,13 +564,13 @@ Tests are **part of the language**, not external:
 
 ```scheme
 ; Test cases are expressions
-(⊨ (⌜ :test-name) expected actual)
+(test-case (quote :test-name) expected actual)
 
 ; Assertions are expressions
-(⊢ condition :error-message)
+(assert condition :error-message)
 
 ; Deep equality is primitive
-(≟ value1 value2)
+(deep-equal? value1 value2)
 ```
 
 ### Test-Driven Development
@@ -354,10 +584,10 @@ Tests are **part of the language**, not external:
 ### No External Test Frameworks
 
 Everything needed is **in the language**:
-- ⊨ for test cases
-- ⊢ for assertions
-- ≟ for equality
-- ⟲ for tracing
+- `test-case` for test cases
+- `assert` for assertions
+- `deep-equal?` for equality
+- `trace` for tracing
 
 ## Performance Philosophy
 
@@ -388,9 +618,9 @@ Everything needed is **in the language**:
 
 1. **Primitives** - Add new built-in operations
 2. **Special forms** - Extend evaluator
-3. **Macros** - Pattern-based syntax transformation (⧉⊜)
-4. **Effects** - User-defined algebraic effect handlers (⟪⟫)
-5. **Types** - User-defined types with ADTs (⊚)
+3. **Macros** - Pattern-based syntax transformation (`macro-rules`)
+4. **Effects** - User-defined algebraic effect handlers (`handle`)
+5. **Types** - User-defined types with ADTs (`adt-define`)
 
 ### Library Design
 
@@ -411,28 +641,25 @@ stdlib/
 
 ### Code Comments
 
-Use **symbolic documentation**:
+Use standard documentation comments:
 
 ```scheme
-; ⌂: Description (house = home/description)
-; ∈: Type signature (element-of)
-; ⊢: Property/invariant (proves)
-; Ex: Example usage
+; Description: Factorial function
+; Type: Int -> Int
+; Property: (factorial 0) = 1
+; Example: (factorial #5) -> #120
 
-(≔ ! (λ (n)
-  "⌂: Factorial function
-   ∈: ℕ → ℕ
-   ⊢: (! 0) ≡ 1
-   ⊢: (! n) ≡ (⊗ n (! (⊖ n 1)))
-   Ex: (! 5) → #120"
-  (? (≡ n #0) #1 (⊗ n ((! (⊖ n 1)))))))
+(define factorial (lambda (n)
+  (if (equal? n #0)
+     #1
+     (* n (factorial (- n #1))))))
 ```
 
 ### API Documentation
 
-- **Symbols first** - Show the symbol
-- **Type signature** - Using ∈ notation
-- **Properties** - Using ⊢ notation
+- **Function name** - Show the name
+- **Type signature** - Using arrow notation
+- **Properties** - Using `assert`
 - **Examples** - Real code that works
 
 ## Community Principles
@@ -459,8 +686,8 @@ Use **symbolic documentation**:
 **GC:** Reference counting + QSBR for actors
 **Representation:** De Bruijn indices
 **Environment:** Hybrid (named at top, indexed in lambdas)
-**Primitives:** 511
-**Tests:** 175/175 passing ✅
+**Primitives:** 558
+**Tests:** 173/179 passing (97%)
 **Status:** Turing complete + effects + actors + multi-scheduler + pattern matching
 
 ### Code Organization
@@ -479,7 +706,7 @@ Use **symbolic documentation**:
     ├── eval.{c,h}        - Evaluator (TCO, effects, actors)
     ├── debruijn.{c,h}    - De Bruijn conversion
     ├── debug.{c,h}       - Stack traces
-    ├── primitives.{c,h}  - Built-in operations (511 primitives)
+    ├── primitives.{c,h}  - Built-in operations (558 primitives)
     ├── main.c            - Parser and REPL
     ├── actor.{c,h}       - BEAM-style actors, supervisors, GenServer
     ├── fiber.{c,h}       - Fiber/coroutine runtime
@@ -492,7 +719,7 @@ Use **symbolic documentation**:
     ├── macro.{c,h}       - Pattern-based macro system
     ├── type.{c,h}        - Type annotations and validation
     ├── intern.{c,h}      - String interning (SipHash)
-    ├── module.{c,h}      - Module loading (⋘)
+    ├── module.{c,h}      - Module loading (load)
     ├── ffi_jit.{c,h}     - JIT FFI stubs
     ├── ffi_emit_a64.c    - ARM64 JIT emitter
     ├── ffi_emit_x64.c    - x86-64 JIT emitter
@@ -530,7 +757,7 @@ make rebuild            # Clean and rebuild from scratch
 - ✅ First-class errors/debug/test
 - ✅ Named recursion
 - ✅ Standard library basics
-- ✅ Module system (⋘ load, ⌂⊚ info)
+- ✅ Module system (`load`, `module-info`)
 - ✅ Pattern matching (guards, as-patterns, or-patterns, view patterns)
 - ✅ Effect system (algebraic effects with resumable handlers)
 - ✅ Actor runtime (BEAM-style with supervisors, GenServer, ETS)
@@ -566,38 +793,37 @@ Unlike traditional languages where metaprogramming is an afterthought, **Guage i
 **Program Synthesis & Repair:**
 ```scheme
 ; Synthesize sort from specification
-(≔ spec (⌜⟨
-  (∀ xs (≡ (# (φ xs)) (# xs)))           ; same length
-  (∀ xs (∀ i (≼ (⊇ (φ xs) i) ...)))     ; ordered
-⟩⌝))
-(≔ sort (⊛ spec))                         ; ⊛ = synthesize
+(define spec (quote
+  ((forall xs (equal? (length (sort xs)) (length xs)))  ; same length
+   (forall xs (forall i (leq (get (sort xs) i) ...)))))) ; ordered
+(define sort (synthesize spec))
 
 ; Repair broken implementation
-(≔ broken (λ (xs) (⊳ xs ⌽)))            ; just reverses
-(≔ fixed (⊛ spec ◂ broken))              ; ◂ = repair
+(define broken (lambda (xs) (reverse xs)))   ; just reverses
+(define fixed (repair spec broken))
 ```
 
 **Time-Travel Debugging:**
 ```scheme
-(≔ τ (⊙⊳ (φ x)))                         ; traced execution
-(⊇ τ (⌜ ⟨t∷42⟩⌝))                        ; state at step 42
-(⊇ τ (⌜ ⟨←∷z⟩⌝))                         ; what caused z?
-(≔ τ′ (⊆ τ (⌜ ⟨t∷10 x∷999⟩⌝)))          ; counterfactual
+(define trace (trace-exec (f x)))            ; traced execution
+(trace-at trace #42)                         ; state at step 42
+(trace-cause trace :z)                       ; what caused z?
+(define trace2 (trace-counterfactual trace (quote ((t #10) (x #999)))))
 ```
 
 **Types That Prove:**
 ```scheme
-(⊡ Sorted (⊢ [ℤ] (∀ i (≼ (⊇ ⊙ i) (⊇ ⊙ (⊕ i 1))))))
-(≔ merge ∷ (→ Sorted (→ Sorted Sorted))) ; proven at compile time
-(⊢ quicksort (O (⊗ n (ℓ n))))            ; complexity proven
+(type-refine Sorted (assert (list Int) (forall i (leq (get self i) ...))))
+(define merge (type-annotate (-> Sorted (-> Sorted Sorted))))
+(assert quicksort (complexity O(n*log(n))))
 ```
 
 **Cross-Program Analysis:**
 ```scheme
-(≔ π₁ (⋘ (⌜ :service1.η)))               ; load program as value
-(≔ π₂ (⋘ (⌜ :service2.η)))
-(⊙⋈ π₁ π₂)                                ; joint CFG/DFG
-(⊢ (⊙⋈) (¬ deadlock))                    ; prove no deadlock
+(define p1 (load (quote :service1)))         ; load program as value
+(define p2 (load (quote :service2)))
+(cfg-join p1 p2)                             ; joint CFG/DFG
+(assert (cfg-join) (not deadlock))           ; prove no deadlock
 ```
 
 ### Why Current Work (Phase 2C) Matters
@@ -652,10 +878,10 @@ This isn't science fiction - it's **architectural requirements** being built int
 
 When contributing to Guage:
 
-1. **Follow symbol-only syntax** - No English keywords
+1. **Follow Scheme-like syntax** - Use `lambda`, `define`, `if`, etc.
 2. **Maintain first-class principles** - Everything is a value
-3. **Write tests** - Use ⊨ and ⊢
-4. **Document with symbols** - Use ⌂, ∈, ⊢, Ex
+3. **Write tests** - Use `test-case` and `assert`
+4. **Document with conventions** - Use `; description:`, `; type:`, `; property:`, `Ex:`
 5. **Keep it simple** - Single path, no complexity
 6. **Reference count carefully** - No leaks
 

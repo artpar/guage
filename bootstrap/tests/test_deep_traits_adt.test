@@ -4,111 +4,111 @@
 
 ;;; --- ADT definitions ---
 
-(⊚≔ :Shape (⌜ (:Circle :radius)) (⌜ (:Rect :width :height)))
-(⊚≔ :Maybe (⌜ (:Just :value)) (⌜ (:Nothing)))
-(⊚≔ :Tree  (⌜ (:Leaf :value)) (⌜ (:Branch :left :right)))
+(adt-define :Shape (quote (:Circle :radius)) (quote (:Rect :width :height)))
+(adt-define :Maybe (quote (:Just :value)) (quote (:Nothing)))
+(adt-define :Tree  (quote (:Leaf :value)) (quote (:Branch :left :right)))
 
 ;;; --- Helper: list append ---
-(≔ append (λ (xs ys)
-  (? (∅? xs) ys
-     (⟨⟩ (◁ xs) (append (▷ xs) ys)))))
+(define append (lambda (xs ys)
+  (if (null? xs) ys
+     (cons (car xs) (append (cdr xs) ys)))))
 
 ;;; --- Shape area via pattern match ---
 
-(≔ area (λ (s)
-  (∇ s (⌜ (
-    ((⊚ :Shape :Circle r) (⊗ #3 (⊗ r r)))
-    ((⊚ :Shape :Rect w h)  (⊗ w h)))))))
+(define area (lambda (s)
+  (match s (quote (
+    ((adt-create :Shape :Circle r) (* #3 (* r r)))
+    ((adt-create :Shape :Rect w h)  (* w h)))))))
 
-(⊨ :circle-area #75 (area (⊚ :Shape :Circle #5)))
-(⊨ :rect-area   #24 (area (⊚ :Shape :Rect #4 #6)))
+(test-case :circle-area #75 (area (adt-create :Shape :Circle #5)))
+(test-case :rect-area   #24 (area (adt-create :Shape :Rect #4 #6)))
 
 ;;; --- Maybe unwrap-or ---
 
-(≔ unwrap-or (λ (m default)
-  (∇ m (⌜ (
-    ((⊚ :Maybe :Just v) v)
-    ((⊚ :Maybe :Nothing) default))))))
+(define unwrap-or (lambda (m default)
+  (match m (quote (
+    ((adt-create :Maybe :Just v) v)
+    ((adt-create :Maybe :Nothing) default))))))
 
-(⊨ :unwrap-just    #42 (unwrap-or (⊚ :Maybe :Just #42) #0))
-(⊨ :unwrap-nothing #0  (unwrap-or (⊚ :Maybe :Nothing) #0))
+(test-case :unwrap-just    #42 (unwrap-or (adt-create :Maybe :Just #42) #0))
+(test-case :unwrap-nothing #0  (unwrap-or (adt-create :Maybe :Nothing) #0))
 
-;;; --- maybe-map: use conditional to avoid De Bruijn issue with closures in ∇ ---
+;;; --- maybe-map: use conditional to avoid De Bruijn issue with closures in match ---
 
-(≔ maybe-map (λ (m f)
-  (? (⊚? m :Maybe :Just)
-     (⊚ :Maybe :Just (f (⊚→ m :value)))
-     (⊚ :Maybe :Nothing))))
+(define maybe-map (lambda (m f)
+  (if (adt? m :Maybe :Just)
+     (adt-create :Maybe :Just (f (adt-get m :value)))
+     (adt-create :Maybe :Nothing))))
 
-(⊨ :maybe-map-just #t
-  (⊚? (maybe-map (⊚ :Maybe :Just #10) (λ (x) (⊗ x #2))) :Maybe :Just))
-(⊨ :maybe-map-just-val #20
-  (⊚→ (maybe-map (⊚ :Maybe :Just #10) (λ (x) (⊗ x #2))) :value))
-(⊨ :maybe-map-nothing #t
-  (⊚? (maybe-map (⊚ :Maybe :Nothing) (λ (x) (⊗ x #2))) :Maybe :Nothing))
+(test-case :maybe-map-just #t
+  (adt? (maybe-map (adt-create :Maybe :Just #10) (lambda (x) (* x #2))) :Maybe :Just))
+(test-case :maybe-map-just-val #20
+  (adt-get (maybe-map (adt-create :Maybe :Just #10) (lambda (x) (* x #2))) :value))
+(test-case :maybe-map-nothing #t
+  (adt? (maybe-map (adt-create :Maybe :Nothing) (lambda (x) (* x #2))) :Maybe :Nothing))
 
 ;;; --- Recursive tree-sum via pattern match (no outer vars needed) ---
 
-(≔ tree-sum (λ (t)
-  (∇ t (⌜ (
-    ((⊚ :Tree :Leaf v)       v)
-    ((⊚ :Tree :Branch l r)   (⊕ (tree-sum l) (tree-sum r))))))))
+(define tree-sum (lambda (t)
+  (match t (quote (
+    ((adt-create :Tree :Leaf v)       v)
+    ((adt-create :Tree :Branch l r)   (+ (tree-sum l) (tree-sum r))))))))
 
-(≔ t1 (⊚ :Tree :Branch
-  (⊚ :Tree :Leaf #10)
-  (⊚ :Tree :Branch
-    (⊚ :Tree :Leaf #20)
-    (⊚ :Tree :Leaf #30))))
+(define t1 (adt-create :Tree :Branch
+  (adt-create :Tree :Leaf #10)
+  (adt-create :Tree :Branch
+    (adt-create :Tree :Leaf #20)
+    (adt-create :Tree :Leaf #30))))
 
-(⊨ :tree-sum #60 (tree-sum t1))
+(test-case :tree-sum #60 (tree-sum t1))
 
 ;;; --- tree-map: use conditional to reference closure param ---
 
-(≔ tree-map (λ (t f)
-  (? (⊚? t :Tree :Leaf)
-     (⊚ :Tree :Leaf (f (⊚→ t :value)))
-     (⊚ :Tree :Branch (tree-map (⊚→ t :left) f) (tree-map (⊚→ t :right) f)))))
+(define tree-map (lambda (t f)
+  (if (adt? t :Tree :Leaf)
+     (adt-create :Tree :Leaf (f (adt-get t :value)))
+     (adt-create :Tree :Branch (tree-map (adt-get t :left) f) (tree-map (adt-get t :right) f)))))
 
-(≔ t2 (tree-map t1 (λ (x) (⊗ x #2))))
-(⊨ :tree-map-doubles #120 (tree-sum t2))
+(define t2 (tree-map t1 (lambda (x) (* x #2))))
+(test-case :tree-map-doubles #120 (tree-sum t2))
 
 ;;; --- tree-to-list (only uses globals, no outer vars) ---
 
-(≔ tree-to-list (λ (t)
-  (∇ t (⌜ (
-    ((⊚ :Tree :Leaf v)       (⟨⟩ v ∅))
-    ((⊚ :Tree :Branch l r)   (append (tree-to-list l) (tree-to-list r))))))))
+(define tree-to-list (lambda (t)
+  (match t (quote (
+    ((adt-create :Tree :Leaf v)       (cons v nil))
+    ((adt-create :Tree :Branch l r)   (append (tree-to-list l) (tree-to-list r))))))))
 
-(≔ flat (tree-to-list t1))
-(⊨ :tree-to-list-head #10 (◁ flat))
+(define flat (tree-to-list t1))
+(test-case :tree-to-list-head #10 (car flat))
 
 ;;; --- Guard on ADT computed field ---
 
-(≔ big-circle? (λ (s)
-  (∇ s (⌜ (
-    (((⊚ :Shape :Circle r) | (> (⊗ #3 (⊗ r r)) #50)) #t)
+(define big-circle? (lambda (s)
+  (match s (quote (
+    (((adt-create :Shape :Circle r) | (> (* #3 (* r r)) #50)) #t)
     (_ #f))))))
 
-(⊨ :big-circle-yes #t (big-circle? (⊚ :Shape :Circle #5)))
-(⊨ :big-circle-no  #f (big-circle? (⊚ :Shape :Circle #2)))
+(test-case :big-circle-yes #t (big-circle? (adt-create :Shape :Circle #5)))
+(test-case :big-circle-no  #f (big-circle? (adt-create :Shape :Circle #2)))
 
 ;;; --- List of ADTs processed by recursive sum-areas ---
 
-(≔ sum-areas (λ (shapes)
-  (? (∅? shapes) #0
-     (⊕ (area (◁ shapes)) (sum-areas (▷ shapes))))))
+(define sum-areas (lambda (shapes)
+  (if (null? shapes) #0
+     (+ (area (car shapes)) (sum-areas (cdr shapes))))))
 
-(≔ shapes (⟨⟩ (⊚ :Shape :Circle #5)
-  (⟨⟩ (⊚ :Shape :Rect #4 #6)
-    (⟨⟩ (⊚ :Shape :Circle #3) ∅))))
+(define shapes (cons (adt-create :Shape :Circle #5)
+  (cons (adt-create :Shape :Rect #4 #6)
+    (cons (adt-create :Shape :Circle #3) nil))))
 
-(⊨ :sum-areas #126 (sum-areas shapes))
+(test-case :sum-areas #126 (sum-areas shapes))
 
 ;;; --- Trait-based sort (needs stdlib) ---
 
-(⋘ "bootstrap/stdlib/sort.scm")
-(⋘ "bootstrap/stdlib/traits.scm")
+(load "bootstrap/stdlib/sort.scm")
+(load "bootstrap/stdlib/traits.scm")
 
-(⊨ :trait-sort #t
-  (≟ (⊧sort (⟨⟩ #3 (⟨⟩ #1 (⟨⟩ #5 (⟨⟩ #2 (⟨⟩ #4 ∅))))))
-     (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 (⟨⟩ #4 (⟨⟩ #5 ∅)))))))
+(test-case :trait-sort #t
+  (deep-equal? (⊧sort (cons #3 (cons #1 (cons #5 (cons #2 (cons #4 nil))))))
+     (cons #1 (cons #2 (cons #3 (cons #4 (cons #5 nil)))))))

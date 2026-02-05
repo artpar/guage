@@ -3,127 +3,127 @@
 
 ;;; --- 1. Allocate 10,000 HashMaps in loop, let all go out of scope ---
 
-(≔ alloc-hm-loop (λ (n)
-  (? (≡ n #0) :done
-     (⪢
-       (≔ tmp-hm (⊞))
-       (⊞← tmp-hm :key #1)
-       (⊞← tmp-hm :key2 #2)
-       (⊞← tmp-hm :key3 #3)
-       (alloc-hm-loop (⊖ n #1))))))
+(define alloc-hm-loop (lambda (n)
+  (if (equal? n #0) :done
+     (begin
+       (define tmp-hm (hashmap))
+       (hashmap-put tmp-hm :key #1)
+       (hashmap-put tmp-hm :key2 #2)
+       (hashmap-put tmp-hm :key3 #3)
+       (alloc-hm-loop (- n #1))))))
 
-(⊨ :mem-hm-alloc-10k :done (alloc-hm-loop #10000))
+(test-case :mem-hm-alloc-10k :done (alloc-hm-loop #10000))
 
 ;;; --- 2. Recursive fn building/discarding 100-element lists, 10,000 iterations ---
 
-(≔ build-list (λ (n acc)
-  (? (≡ n #0) acc
-     (build-list (⊖ n #1) (⟨⟩ n acc)))))
+(define build-list (lambda (n acc)
+  (if (equal? n #0) acc
+     (build-list (- n #1) (cons n acc)))))
 
-(≔ churn-lists (λ (i)
-  (? (≡ i #0) :done
-     (⪢
-       (≔ tmp-list (build-list #100 ∅))
+(define churn-lists (lambda (i)
+  (if (equal? i #0) :done
+     (begin
+       (define tmp-list (build-list #100 nil))
        ;; Use it briefly then discard
-       (≔ _ (◁ tmp-list))
-       (churn-lists (⊖ i #1))))))
+       (define _ (car tmp-list))
+       (churn-lists (- i #1))))))
 
-(⊨ :mem-list-churn-10k :done (churn-lists #10000))
+(test-case :mem-list-churn-10k :done (churn-lists #10000))
 
 ;;; --- 3. 5,000 closures each capturing 10-element vector ---
 
-(≔ make-capturing-closure (λ (i)
-  (⪢
-    (≔ v (⟦⟧))
-    (≔ fill-v (λ (j)
-      (? (≡ j #10) v
-         (⪢ (⟦⊕ v (⊕ i j))
-             (fill-v (⊕ j #1))))))
+(define make-capturing-closure (lambda (i)
+  (begin
+    (define v (vector))
+    (define fill-v (lambda (j)
+      (if (equal? j #10) v
+         (begin (vector-push! v (+ i j))
+             (fill-v (+ j #1))))))
     (fill-v #0)
-    (λ () (⟦→ v #0)))))
+    (lambda () (vector-ref v #0)))))
 
-(≔ closure-vec (⟦⟧))
+(define closure-vec (vector))
 
-(≔ build-closures (λ (i)
-  (? (≡ i #0) :done
-     (⪢ (⟦⊕ closure-vec (make-capturing-closure i))
-         (build-closures (⊖ i #1))))))
+(define build-closures (lambda (i)
+  (if (equal? i #0) :done
+     (begin (vector-push! closure-vec (make-capturing-closure i))
+         (build-closures (- i #1))))))
 
 (build-closures #5000)
 
-(⊨ :mem-closure-vec-5k #5000 (⟦# closure-vec))
+(test-case :mem-closure-vec-5k #5000 (vector-length closure-vec))
 ;; First closure should return its captured value
-(⊨ :mem-closure-first-val #t (≥ ((⟦→ closure-vec #0)) #0))
+(test-case :mem-closure-first-val #t (>= ((vector-ref closure-vec #0)) #0))
 
 ;;; --- 4. Actor spawn/die cycle: 200 actors, repeated 5 times ---
 
-(≔ actor-churn (λ (rounds)
-  (? (≡ rounds #0) :done
-     (⪢
-       (⟳∅)
-       (≔ spawn-batch (λ (n)
-         (? (≡ n #0) :done
-            (⪢ (⟳ (λ (self) :bye))
-                (spawn-batch (⊖ n #1))))))
+(define actor-churn (lambda (rounds)
+  (if (equal? rounds #0) :done
+     (begin
+       (actor-reset)
+       (define spawn-batch (lambda (n)
+         (if (equal? n #0) :done
+            (begin (actor-spawn (lambda (self) :bye))
+                (spawn-batch (- n #1))))))
        (spawn-batch #200)
-       (⟳! #10000)
-       (actor-churn (⊖ rounds #1))))))
+       (actor-run #10000)
+       (actor-churn (- rounds #1))))))
 
-(⊨ :mem-actor-churn :done (actor-churn #5))
+(test-case :mem-actor-churn :done (actor-churn #5))
 
 ;;; --- 5. Box swap chain: 1,000,000 swaps ---
 
-(≔ swap-box (□ #0))
+(define swap-box (box #0))
 
-(≔ swap-loop (λ (i)
-  (? (≡ i #0) (□→ swap-box)
-     (⪢ (□← swap-box i)
-         (swap-loop (⊖ i #1))))))
+(define swap-loop (lambda (i)
+  (if (equal? i #0) (unbox swap-box)
+     (begin (box-set! swap-box i)
+         (swap-loop (- i #1))))))
 
-(⊨ :mem-swap-million #1 (swap-loop #1000000))
+(test-case :mem-swap-million #1 (swap-loop #1000000))
 
 ;;; --- 6. Deep pair nesting: 10,000-deep, traverse to bottom ---
 
-(≔ build-deep-pair (λ (depth val)
-  (? (≡ depth #0) val
-     (⟨⟩ depth (build-deep-pair (⊖ depth #1) val)))))
+(define build-deep-pair (lambda (depth val)
+  (if (equal? depth #0) val
+     (cons depth (build-deep-pair (- depth #1) val)))))
 
-(≔ deep-pair (build-deep-pair #10000 :bottom))
+(define deep-pair (build-deep-pair #10000 :bottom))
 
 ;; Traverse to bottom
-(≔ traverse-pair (λ (p depth)
-  (? (≡ depth #0) p
-     (traverse-pair (▷ p) (⊖ depth #1)))))
+(define traverse-pair (lambda (p depth)
+  (if (equal? depth #0) p
+     (traverse-pair (cdr p) (- depth #1)))))
 
-(⊨ :mem-deep-pair :bottom (traverse-pair deep-pair #10000))
+(test-case :mem-deep-pair :bottom (traverse-pair deep-pair #10000))
 
 ;;; --- 7. Allocate 5,000 Vectors of 100 elements each, discard all ---
 
-(≔ vec-alloc (λ (n)
-  (? (≡ n #0) :done
-     (⪢
-       (≔ v (⟦⟧))
-       (≔ fill (λ (j)
-         (? (≡ j #100) :done
-            (⪢ (⟦⊕ v j) (fill (⊕ j #1))))))
+(define vec-alloc (lambda (n)
+  (if (equal? n #0) :done
+     (begin
+       (define v (vector))
+       (define fill (lambda (j)
+         (if (equal? j #100) :done
+            (begin (vector-push! v j) (fill (+ j #1))))))
        (fill #0)
-       (vec-alloc (⊖ n #1))))))
+       (vec-alloc (- n #1))))))
 
-(⊨ :mem-vec-alloc-5k :done (vec-alloc #5000))
+(test-case :mem-vec-alloc-5k :done (vec-alloc #5000))
 
 ;;; --- 8. Interleaved alloc/free: create HashMap, fill, discard, repeat ---
 
-(≔ interleave-loop (λ (n)
-  (? (≡ n #0) :done
-     (⪢
-       (≔ m (⊞))
-       (≔ fill-m (λ (i)
-         (? (≡ i #0) :done
-            (⪢ (⊞← m i (⊗ i #2))
-                (fill-m (⊖ i #1))))))
+(define interleave-loop (lambda (n)
+  (if (equal? n #0) :done
+     (begin
+       (define m (hashmap))
+       (define fill-m (lambda (i)
+         (if (equal? i #0) :done
+            (begin (hashmap-put m i (* i #2))
+                (fill-m (- i #1))))))
        (fill-m #100)
        ;; Verify it works before discarding
-       (⊢ (≡ (⊞# m) #100) :wrong-size)
-       (interleave-loop (⊖ n #1))))))
+       (assert (equal? (hashmap-size m) #100) :wrong-size)
+       (interleave-loop (- n #1))))))
 
-(⊨ :mem-interleave-5k :done (interleave-loop #5000))
+(test-case :mem-interleave-5k :done (interleave-loop #5000))

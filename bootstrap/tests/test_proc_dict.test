@@ -1,108 +1,108 @@
-; Day 98: Process Dictionary tests — ⟳⊔⊕, ⟳⊔?, ⟳⊔⊖, ⟳⊔*
+; Day 98: Process Dictionary tests — ⟳⊔⊕, ⟳⊔?, ⟳⊔⊖, proc-dict-all
 
 ; Reset state
-(⟳∅)
+(actor-reset)
 
 ; === put-get-basic ===
 ; Store and retrieve a value
-(⟳∅)
-(≔ a1 (⟳ (λ (self)
-  (≫ (⟳⊔⊕ :name :alice) (λ (_)
-    (⟳⊔? :name))))))
-(⟳! #10)
-(⊨ (⌜ :put-get-basic) :alice (⟳→ a1))
+(actor-reset)
+(define a1 (actor-spawn (lambda (self)
+  (bind (proc-dict-put :name :alice) (lambda (_)
+    (proc-dict-get :name))))))
+(actor-run #10)
+(test-case (quote :put-get-basic) :alice (actor-result a1))
 
 ; === put-overwrite ===
 ; Overwriting returns old value
-(⟳∅)
-(≔ a2 (⟳ (λ (self)
-  (≫ (⟳⊔⊕ :x #10) (λ (_)
-    (⟳⊔⊕ :x #20))))))
-(⟳! #10)
-(⊨ (⌜ :put-overwrite) #10 (⟳→ a2))
+(actor-reset)
+(define a2 (actor-spawn (lambda (self)
+  (bind (proc-dict-put :x #10) (lambda (_)
+    (proc-dict-put :x #20))))))
+(actor-run #10)
+(test-case (quote :put-overwrite) #10 (actor-result a2))
 
 ; === get-missing ===
-; Lookup missing key returns ∅
-(⟳∅)
-(≔ a3 (⟳ (λ (self)
-  (⟳⊔? :nonexistent))))
-(⟳! #10)
-(⊨ (⌜ :get-missing) ∅ (⟳→ a3))
+; Lookup missing key returns nil
+(actor-reset)
+(define a3 (actor-spawn (lambda (self)
+  (proc-dict-get :nonexistent))))
+(actor-run #10)
+(test-case (quote :get-missing) nil (actor-result a3))
 
 ; === erase-basic ===
 ; Erase returns old value
-(⟳∅)
-(≔ a4 (⟳ (λ (self)
-  (≫ (⟳⊔⊕ :key #42) (λ (_)
-    (⟳⊔⊖ :key))))))
-(⟳! #10)
-(⊨ (⌜ :erase-basic) #42 (⟳→ a4))
+(actor-reset)
+(define a4 (actor-spawn (lambda (self)
+  (bind (proc-dict-put :key #42) (lambda (_)
+    (proc-dict-erase :key))))))
+(actor-run #10)
+(test-case (quote :erase-basic) #42 (actor-result a4))
 
 ; === erase-missing ===
-; Erase missing key returns ∅
-(⟳∅)
-(≔ a5 (⟳ (λ (self)
-  (⟳⊔⊖ :ghost))))
-(⟳! #10)
-(⊨ (⌜ :erase-missing) ∅ (⟳→ a5))
+; Erase missing key returns nil
+(actor-reset)
+(define a5 (actor-spawn (lambda (self)
+  (proc-dict-erase :ghost))))
+(actor-run #10)
+(test-case (quote :erase-missing) nil (actor-result a5))
 
 ; === get-all ===
 ; List all entries as pairs — verify it's a 2-element list
-(⟳∅)
-(≔ a6 (⟳ (λ (self)
-  (≫ (⟳⊔⊕ :a #1) (λ (_)
-    (≫ (⟳⊔⊕ :b #2) (λ (_)
-      (⟳⊔*))))))))
-(⟳! #10)
+(actor-reset)
+(define a6 (actor-spawn (lambda (self)
+  (bind (proc-dict-put :a #1) (lambda (_)
+    (bind (proc-dict-put :b #2) (lambda (_)
+      (proc-dict-all))))))))
+(actor-run #10)
 ; get-all returns list of pairs; check non-nil and second element exists
-(≔ all-entries (⟳→ a6))
-(⊨ (⌜ :get-all) #t (¬ (≡ all-entries ∅)))
+(define all-entries (actor-result a6))
+(test-case (quote :get-all) #t (not (equal? all-entries nil)))
 
 ; === multiple-keys ===
 ; Store several key-value pairs and retrieve each
-(⟳∅)
-(≔ a7 (⟳ (λ (self)
-  (≫ (⟳⊔⊕ :x #1) (λ (_)
-    (≫ (⟳⊔⊕ :y #2) (λ (_)
-      (≫ (⟳⊔⊕ :z #3) (λ (_)
-        (⟨⟩ (⟳⊔? :x) (⟨⟩ (⟳⊔? :y) (⟳⊔? :z))))))))))))
-(⟳! #10)
-(⊨ (⌜ :multiple-keys) (⟨⟩ #1 (⟨⟩ #2 #3)) (⟳→ a7))
+(actor-reset)
+(define a7 (actor-spawn (lambda (self)
+  (bind (proc-dict-put :x #1) (lambda (_)
+    (bind (proc-dict-put :y #2) (lambda (_)
+      (bind (proc-dict-put :z #3) (lambda (_)
+        (cons (proc-dict-get :x) (cons (proc-dict-get :y) (proc-dict-get :z))))))))))))
+(actor-run #10)
+(test-case (quote :multiple-keys) (cons #1 (cons #2 #3)) (actor-result a7))
 
 ; === not-in-actor ===
 ; Calling outside actor returns error
-(⟳∅)
-(⊨ (⌜ :not-in-actor) #t (⚠? (⟳⊔⊕ :k :v)))
+(actor-reset)
+(test-case (quote :not-in-actor) #t (error? (proc-dict-put :k :v)))
 
 ; === isolation ===
 ; Two actors have separate dicts
-(⟳∅)
-(≔ actor-a (⟳ (λ (self)
-  (≫ (⟳⊔⊕ :shared #100) (λ (_)
-    (≫ (←?) (λ (_)
-      (⟳⊔? :shared))))))))
-(≔ actor-b (⟳ (λ (self)
-  (≫ (⟳⊔⊕ :shared #999) (λ (_)
-    (→! actor-a :go))))))
-(⟳! #20)
+(actor-reset)
+(define actor-a (actor-spawn (lambda (self)
+  (bind (proc-dict-put :shared #100) (lambda (_)
+    (bind (actor-receive) (lambda (_)
+      (proc-dict-get :shared))))))))
+(define actor-b (actor-spawn (lambda (self)
+  (bind (proc-dict-put :shared #999) (lambda (_)
+    (actor-send actor-a :go))))))
+(actor-run #20)
 ; actor-a stored 100, actor-b stored 999 under same key
 ; actor-a should still see 100
-(⊨ (⌜ :isolation) #100 (⟳→ actor-a))
+(test-case (quote :isolation) #100 (actor-result actor-a))
 
 ; === genserver-state ===
 ; GenServer using dict for mutable state (counter)
-(⟳∅)
-(≔ counter-server (⟳ (λ (self)
-  (≫ (⟳⊔⊕ :count #0) (λ (_)
-    (≫ (←?) (λ (msg1)
-      (≫ (⟳⊔⊕ :count (⊕ (⟳⊔? :count) #1)) (λ (_)
-        (≫ (⟳⇅! (◁ (▷ msg1)) (⟳⊔? :count)) (λ (_)
-          (≫ (←?) (λ (msg2)
-            (≫ (⟳⊔⊕ :count (⊕ (⟳⊔? :count) #1)) (λ (_)
-              (⟳⇅! (◁ (▷ msg2)) (⟳⊔? :count)))))))))))))))))
-(≔ client (⟳ (λ (self)
-  (≫ (⟳⇅ counter-server :inc) (λ (r1)
-    (≫ (⟳⇅ counter-server :inc) (λ (r2)
-      (⟨⟩ r1 r2))))))))
-(⟳! #50)
-(⊨ (⌜ :genserver-state) (⟨⟩ #1 #2) (⟳→ client))
+(actor-reset)
+(define counter-server (actor-spawn (lambda (self)
+  (bind (proc-dict-put :count #0) (lambda (_)
+    (bind (actor-receive) (lambda (msg1)
+      (bind (proc-dict-put :count (+ (proc-dict-get :count) #1)) (lambda (_)
+        (bind (actor-reply (car (cdr msg1)) (proc-dict-get :count)) (lambda (_)
+          (bind (actor-receive) (lambda (msg2)
+            (bind (proc-dict-put :count (+ (proc-dict-get :count) #1)) (lambda (_)
+              (actor-reply (car (cdr msg2)) (proc-dict-get :count)))))))))))))))))
+(define client (actor-spawn (lambda (self)
+  (bind (actor-call counter-server :inc) (lambda (r1)
+    (bind (actor-call counter-server :inc) (lambda (r2)
+      (cons r1 r2))))))))
+(actor-run #50)
+(test-case (quote :genserver-state) (cons #1 #2) (actor-result client))

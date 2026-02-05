@@ -1,138 +1,138 @@
 #!/usr/bin/env guage
 ; Test suite for generics and traits
 
-(≋ "Testing Generics & Traits...")
+(print "Testing Generics & Traits...")
 
-; --- ⊳ generic parameter extraction + instantiation ---
+; --- generic-param generic parameter extraction + instantiation ---
 
-; Generic identity (curried): ⊳ marks T as type param in lambda
-(≔ id (λ (⊳ T) (λ (x) x)))
+; Generic identity (curried): generic-param marks T as type param in lambda
+(define id (lambda (generic-param T) (lambda (x) x)))
 
 ; Instantiate with a type and apply via regular function application
-(⊨ :generic-identity-number
+(test-case :generic-identity-number
    #42
    ((id :Number) #42))
 
-(⊨ :generic-identity-bool
+(test-case :generic-identity-bool
    #t
    ((id :Bool) #t))
 
-; --- ⊧∈ runtime type-of ---
+; --- runtime-type-of runtime type-of ---
 
-(⊨ :type-of-number
+(test-case :type-of-number
    :Number
-   (⊧∈ #42))
+   (runtime-type-of #42))
 
-(⊨ :type-of-bool
+(test-case :type-of-bool
    :Bool
-   (⊧∈ #t))
+   (runtime-type-of #t))
 
-(⊨ :type-of-nil
+(test-case :type-of-nil
    :Nil
-   (⊧∈ ∅))
+   (runtime-type-of nil))
 
-(⊨ :type-of-lambda
+(test-case :type-of-lambda
    :Lambda
-   (⊧∈ (λ (x) x)))
+   (runtime-type-of (lambda (x) x)))
 
-(⊨ :type-of-pair
+(test-case :type-of-pair
    :Pair
-   (⊧∈ (⟨⟩ #1 #2)))
+   (runtime-type-of (cons #1 #2)))
 
-(⊨ :type-of-symbol
+(test-case :type-of-symbol
    :Symbol
-   (⊧∈ :foo))
+   (runtime-type-of :foo))
 
-(⊨ :type-of-error
+(test-case :type-of-error
    :Error
-   (⊧∈ (⚠ :test ∅)))
+   (runtime-type-of (error :test nil)))
 
-; --- ⊧≔ trait define ---
+; --- trait-define trait define ---
 
 ; Define trait with quoted list of required ops
-(⊧≔ :Showable (⟨⟩ :show (⟨⟩ :format ∅)))
+(trait-define :Showable (cons :show (cons :format nil)))
 
-(⊨ :trait-ops-showable
+(test-case :trait-ops-showable
    #t
-   (⟨⟩? (⊧⊙ :Showable)))
+   (pair? (trait-ops :Showable)))
 
-; --- ⊧⊕ trait implement ---
+; --- trait-implement trait implement ---
 
-(≔ show-num (λ (x) x))
-(≔ format-num (λ (x) x))
+(define show-num (lambda (x) x))
+(define format-num (lambda (x) x))
 
 ; Build impl alist: ((:show . show-num) (:format . format-num))
-(⊧⊕ :Number :Showable
-     (⟨⟩ (⟨⟩ :show show-num) (⟨⟩ (⟨⟩ :format format-num) ∅)))
+(trait-implement :Number :Showable
+     (cons (cons :show show-num) (cons (cons :format format-num) nil)))
 
-; --- ⊧? trait check ---
+; --- trait? trait check ---
 
-(⊨ :trait-check-satisfied
+(test-case :trait-check-satisfied
    #t
-   (⊧? :Number :Showable))
+   (trait? :Number :Showable))
 
-(⊨ :trait-check-not-satisfied
+(test-case :trait-check-not-satisfied
    #f
-   (⊧? :String :Showable))
+   (trait? :String :Showable))
 
-; --- ⊧⊙ trait ops listing ---
+; --- trait-ops trait ops listing ---
 
-(⊨ :trait-ops-unknown
+(test-case :trait-ops-unknown
    #t
-   (∅? (⊧⊙ :NonExistent)))
+   (null? (trait-ops :NonExistent)))
 
-; --- ⊧→ trait dispatch ---
+; --- trait-dispatch trait dispatch ---
 
-(⊨ :trait-dispatch-missing-error
+(test-case :trait-dispatch-missing-error
    #t
-   (⚠? (⊧→ :String :Showable :show)))
+   (error? (trait-dispatch :String :Showable :show)))
 
 ; --- Trait defaults ---
 
 ; Define trait with defaults
-(≔ default-show (λ (x) x))
-(≔ default-fmt (λ (x) x))
-(⊧≔ :Printable
-     (⟨⟩ :show (⟨⟩ :format ∅))
-     (⟨⟩ (⟨⟩ :show default-show) (⟨⟩ (⟨⟩ :format default-fmt) ∅)))
+(define default-show (lambda (x) x))
+(define default-fmt (lambda (x) x))
+(trait-define :Printable
+     (cons :show (cons :format nil))
+     (cons (cons :show default-show) (cons (cons :format default-fmt) nil)))
 
 ; Override only :show for :Number
-(≔ num-show (λ (x) x))
-(⊧⊕ :Number :Printable
-     (⟨⟩ (⟨⟩ :show num-show) ∅))
+(define num-show (lambda (x) x))
+(trait-implement :Number :Printable
+     (cons (cons :show num-show) nil))
 
 ; Dispatch :show should use override
-(⊨ :trait-dispatch-override
+(test-case :trait-dispatch-override
    #42
-   ((⊧→ :Number :Printable :show) #42))
+   ((trait-dispatch :Number :Printable :show) #42))
 
 ; Dispatch :format should fall back to default
-(⊨ :trait-dispatch-default-fallback
+(test-case :trait-dispatch-default-fallback
    #99
-   ((⊧→ :Number :Printable :format) #99))
+   ((trait-dispatch :Number :Printable :format) #99))
 
-; ⊧⊙? returns defaults alist
-(⊨ :trait-defaults-exists
+; trait-defaults returns defaults alist
+(test-case :trait-defaults-exists
    #t
-   (⟨⟩? (⊧⊙? :Printable)))
+   (pair? (trait-defaults :Printable)))
 
-(⊨ :trait-defaults-nil-for-unknown
+(test-case :trait-defaults-nil-for-unknown
    #t
-   (∅? (⊧⊙? :NonExistent)))
+   (null? (trait-defaults :NonExistent)))
 
 ; --- Trait constraints ---
 
-; Define constrained generic: (⊳ T :Showable) constrains T
-(≔ show-it (λ (⊳ T :Showable) (λ (x) ((⊧→ T :Showable :show) x))))
+; Define constrained generic: (generic-param T :Showable) constrains T
+(define show-it (lambda (generic-param T :Showable) (lambda (x) ((trait-dispatch T :Showable :show) x))))
 
 ; :Number implements :Showable — should work
-(⊨ :constraint-satisfied
+(test-case :constraint-satisfied
    #42
    ((show-it :Number) #42))
 
 ; :String does NOT implement :Showable — should error
-(⊨ :constraint-unsatisfied
+(test-case :constraint-unsatisfied
    #t
-   (⚠? (show-it :String)))
+   (error? (show-it :String)))
 
-(≋ "\nGenerics & traits tests complete.")
+(print "\nGenerics & traits tests complete.")

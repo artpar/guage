@@ -3,30 +3,30 @@
 ;;;
 
 ;;; Step 1: Create and test quote directly
-(≋ :step1-create-quote)
-(≔ qval (⌜ (a b c)))
-(≋ qval)
+(print :step1-create-quote)
+(define qval (quote (a b c)))
+(print qval)
 
 ;;; Step 2: Create identity function
-(≋ :step2-create-id)
-(≔ id (λ (x) x))
+(print :step2-create-id)
+(define id (lambda (x) x))
 
 ;;; Step 3: Test with non-quote value first
-(≋ :step3-test-with-number)
-(≋ (id #42))
+(print :step3-test-with-number)
+(print (id #42))
 
 ;;; Step 4: Test with the quote variable
-(≋ :step4-test-with-qval)
-(≋ (id qval))
+(print :step4-test-with-qval)
+(print (id qval))
 
 ;;; Step 5: Test with inline quote
-(≋ :step5-test-with-inline)
-(≋ (id (⌜ (d e f))))
+(print :step5-test-with-inline)
+(print (id (quote (d e f))))
 
 ;;; Step 6: Create a function that traces its argument
-(≋ :step6-create-tracer)
-(≔ tracer (λ (y) (⟲ y)))
+(print :step6-create-tracer)
+(define tracer (lambda (y) (trace y)))
 
 ;;; Step 7: Call tracer with quote
-(≋ :step7-call-tracer)
-(tracer (⌜ (g h i)))
+(print :step7-call-tracer)
+(tracer (quote (g h i)))

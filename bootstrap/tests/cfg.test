@@ -1,49 +1,49 @@
 ; CFG (Control Flow Graph) Tests - Phase 2C Week 2
 
 ; Define a simple factorial function
-(≔ ! (λ (n) (? (≡ n #0) #1 (⊗ n (! (⊖ n #1))))))
+(define ! (lambda (n) (if (equal? n #0) #1 (* n (! (- n #1))))))
 
 ; Get CFG for factorial
-(≔ cfg (⌂⟿ (⌜ !)))
+(define cfg (query-cfg (quote !)))
 
 ; Test that CFG is a graph
-(⊨ (⌜ :cfg-is-graph) #t (⊝? cfg (⌜ :CFG)))
+(test-case (quote :cfg-is-graph) #t (graph? cfg (quote :CFG)))
 
 ; Test that CFG has nodes
-(⊨ (⌜ :cfg-has-nodes) #t (⟨⟩? (⊝→ cfg (⌜ :nodes))))
+(test-case (quote :cfg-has-nodes) #t (pair? (graph-query cfg (quote :nodes))))
 
 ; Test that CFG has edges
-(⊨ (⌜ :cfg-has-edges) #t (⟨⟩? (⊝→ cfg (⌜ :edges))))
+(test-case (quote :cfg-has-edges) #t (pair? (graph-query cfg (quote :edges))))
 
 ; Test that CFG has entry point
-(⊨ (⌜ :cfg-has-entry) #t (ℕ? (⊝→ cfg (⌜ :entry))))
+(test-case (quote :cfg-has-entry) #t (number? (graph-query cfg (quote :entry))))
 
 ; Test that CFG has exit point
-(⊨ (⌜ :cfg-has-exit) #t (ℕ? (⊝→ cfg (⌜ :exit))))
+(test-case (quote :cfg-has-exit) #t (number? (graph-query cfg (quote :exit))))
 
 ; Define a simple add function (no branches)
-(≔ add (λ (a b) (⊕ a b)))
+(define add (lambda (a b) (+ a b)))
 
 ; Get CFG for add
-(≔ cfg-add (⌂⟿ (⌜ add)))
+(define cfg-add (query-cfg (quote add)))
 
 ; Test add CFG is a graph
-(⊨ (⌜ :cfg-add-is-graph) #t (⊝? cfg-add (⌜ :CFG)))
+(test-case (quote :cfg-add-is-graph) #t (graph? cfg-add (quote :CFG)))
 
 ; Test add CFG has nodes
-(⊨ (⌜ :cfg-add-has-nodes) #t (⟨⟩? (⊝→ cfg-add (⌜ :nodes))))
+(test-case (quote :cfg-add-has-nodes) #t (pair? (graph-query cfg-add (quote :nodes))))
 
 ; Define conditional function
-(≔ max (λ (a b) (? (> a b) a b)))
+(define max (lambda (a b) (if (> a b) a b)))
 
 ; Get CFG for max
-(≔ cfg-max (⌂⟿ (⌜ max)))
+(define cfg-max (query-cfg (quote max)))
 
 ; Test max CFG is a graph
-(⊨ (⌜ :cfg-max-is-graph) #t (⊝? cfg-max (⌜ :CFG)))
+(test-case (quote :cfg-max-is-graph) #t (graph? cfg-max (quote :CFG)))
 
 ; Test max CFG has nodes (should have at least test + branches)
-(⊨ (⌜ :cfg-max-has-nodes) #t (⟨⟩? (⊝→ cfg-max (⌜ :nodes))))
+(test-case (quote :cfg-max-has-nodes) #t (pair? (graph-query cfg-max (quote :nodes))))
 
 ; Test max CFG has edges (true/false branches)
-(⊨ (⌜ :cfg-max-has-edges) #t (⟨⟩? (⊝→ cfg-max (⌜ :edges))))
+(test-case (quote :cfg-max-has-edges) #t (pair? (graph-query cfg-max (quote :edges))))

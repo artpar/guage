@@ -1,85 +1,85 @@
-; Day 101: Task / Async-Await tests — ⟳⊳, ⟳⊲, ⟳⊲?
+; Day 101: Task / Async-Await tests — ⟳⊳, ⟳⊲, task-yield
 
 ; Reset state
-(⟳∅)
+(actor-reset)
 
 ; === task-async-basic ===
 ; Spawn a task from zero-arg function, get result
-(⟳∅)
-(≔ t (⟳⊳ (λ () (⊕ #2 #3))))
-(⟳! #10)
-(⊨ (⌜ :task-async-basic) #5 (⟳→ t))
+(actor-reset)
+(define t (task-async (lambda () (+ #2 #3))))
+(actor-run #10)
+(test-case (quote :task-async-basic) #5 (actor-result t))
 
 ; === task-yield-done ===
 ; Non-blocking yield on completed task returns result
-(⟳∅)
-(≔ t (⟳⊳ (λ () :hello)))
-(⟳! #10)
-(⊨ (⌜ :task-yield-done) :hello (⟳⊲? t))
+(actor-reset)
+(define t (task-async (lambda () :hello)))
+(actor-run #10)
+(test-case (quote :task-yield-done) :hello (task-yield t))
 
 ; === task-yield-pending ===
-; Non-blocking yield on still-running task returns ∅
-(⟳∅)
-(≔ t (⟳⊳ (λ () (≫ (←?) (λ (m) m)))))
+; Non-blocking yield on still-running task returns nil
+(actor-reset)
+(define t (task-async (lambda () (bind (actor-receive) (lambda (m) m)))))
 ; Don't run scheduler — task is blocked on receive
-(⊨ (⌜ :task-yield-pending) ∅ (⟳⊲? t))
+(test-case (quote :task-yield-pending) nil (task-yield t))
 
 ; === task-await-basic ===
 ; Blocking await from within an actor
-(⟳∅)
-(≔ t (⟳⊳ (λ () (⊗ #6 #7))))
-(≔ waiter (⟳ (λ (self) (⟳⊲ t))))
-(⟳! #20)
-(⊨ (⌜ :task-await-basic) #42 (⟳→ waiter))
+(actor-reset)
+(define t (task-async (lambda () (* #6 #7))))
+(define waiter (actor-spawn (lambda (self) (task-await t))))
+(actor-run #20)
+(test-case (quote :task-await-basic) #42 (actor-result waiter))
 
 ; === task-await-immediate ===
 ; Await on already-finished task returns immediately
-(⟳∅)
-(≔ t (⟳⊳ (λ () :done)))
-(⟳! #10)
+(actor-reset)
+(define t (task-async (lambda () :done)))
+(actor-run #10)
 ; Task is finished now
-(≔ waiter (⟳ (λ (self) (⟳⊲ t))))
-(⟳! #10)
-(⊨ (⌜ :task-await-immediate) :done (⟳→ waiter))
+(define waiter (actor-spawn (lambda (self) (task-await t))))
+(actor-run #10)
+(test-case (quote :task-await-immediate) :done (actor-result waiter))
 
 ; === task-async-closure ===
 ; Task captures closure variables
-(⟳∅)
-(≔ x #100)
-(≔ t (⟳⊳ (λ () (⊕ x #1))))
-(⟳! #10)
-(⊨ (⌜ :task-async-closure) #101 (⟳→ t))
+(actor-reset)
+(define x #100)
+(define t (task-async (lambda () (+ x #1))))
+(actor-run #10)
+(test-case (quote :task-async-closure) #101 (actor-result t))
 
 ; === task-await-error ===
 ; Task that produces error — await gets the error
-(⟳∅)
-(≔ t (⟳⊳ (λ () (⚠ :oops #0))))
-(⟳! #10)
-(≔ waiter (⟳ (λ (self) (⟳⊲ t))))
-(⟳! #10)
-(⊨ (⌜ :task-await-error) #t (⚠? (⟳→ waiter)))
+(actor-reset)
+(define t (task-async (lambda () (error :oops #0))))
+(actor-run #10)
+(define waiter (actor-spawn (lambda (self) (task-await t))))
+(actor-run #10)
+(test-case (quote :task-await-error) #t (error? (actor-result waiter)))
 
 ; === task-await-not-actor ===
 ; Await non-actor value returns error
-(⟳∅)
-(⊨ (⌜ :task-await-not-actor) #t (⚠? (⟳⊲ #42)))
+(actor-reset)
+(test-case (quote :task-await-not-actor) #t (error? (task-await #42)))
 
 ; === task-yield-not-actor ===
 ; Yield non-actor value returns error
-(⟳∅)
-(⊨ (⌜ :task-yield-not-actor) #t (⚠? (⟳⊲? #42)))
+(actor-reset)
+(test-case (quote :task-yield-not-actor) #t (error? (task-yield #42)))
 
 ; === task-multiple ===
 ; Multiple tasks awaited sequentially
-(⟳∅)
-(≔ t1 (⟳⊳ (λ () :a)))
-(≔ t2 (⟳⊳ (λ () :b)))
-(≔ t3 (⟳⊳ (λ () :c)))
-(⟳! #10)
-(≔ collector (⟳ (λ (self)
-  (≫ (⟳⊲ t1) (λ (r1)
-    (≫ (⟳⊲ t2) (λ (r2)
-      (≫ (⟳⊲ t3) (λ (r3)
-        (⟨⟩ r1 (⟨⟩ r2 r3)))))))))))
-(⟳! #20)
-(⊨ (⌜ :task-multiple) (⟨⟩ :a (⟨⟩ :b :c)) (⟳→ collector))
+(actor-reset)
+(define t1 (task-async (lambda () :a)))
+(define t2 (task-async (lambda () :b)))
+(define t3 (task-async (lambda () :c)))
+(actor-run #10)
+(define collector (actor-spawn (lambda (self)
+  (bind (task-await t1) (lambda (r1)
+    (bind (task-await t2) (lambda (r2)
+      (bind (task-await t3) (lambda (r3)
+        (cons r1 (cons r2 r3)))))))))))
+(actor-run #20)
+(test-case (quote :task-multiple) (cons :a (cons :b :c)) (actor-result collector))

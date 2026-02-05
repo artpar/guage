@@ -2,20 +2,20 @@
 ;;; Test nested quotes
 ;;;
 
-(≔ id (λ (x) x))
+(define id (lambda (x) x))
 
 ;;; Test 1: Direct nested quote
-(≋ :nested-quote-direct)
-(≋ (⌜ (⌜ (a b c))))
+(print :nested-quote-direct)
+(print (quote (quote (a b c))))
 
 ;;; Test 2: Nested quote through closure
-(≋ :nested-quote-closure)
-(≋ (id (⌜ (⌜ (d e f)))))
+(print :nested-quote-closure)
+(print (id (quote (quote (d e f)))))
 
 ;;; Test 3: Quote containing if
-(≋ :quote-if-direct)
-(≋ (⌜ (? #t #1 #2)))
+(print :quote-if-direct)
+(print (quote (if #t #1 #2)))
 
 ;;; Test 4: Quote containing if through closure
-(≋ :quote-if-closure)
-(≋ (id (⌜ (? #t #3 #4))))
+(print :quote-if-closure)
+(print (id (quote (if #t #3 #4))))

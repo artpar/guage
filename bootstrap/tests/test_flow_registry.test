@@ -1,83 +1,83 @@
 ; Day 106: Flow Registry — Named Flow Pipelines
-; Primitives: ⟳⊸⊜⊕, ⟳⊸⊜?, ⟳⊸⊜⊖, ⟳⊸⊜*
+; Primitives: ⟳⊸⊜⊕, ⟳⊸⊜?, ⟳⊸⊜⊖, flow-registry-list
 
 ;;; Test 1: flow-register-basic — register and whereis returns flow-id
-(⟳∅)
-(≔ fr1 (⟳⊸ (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅)))))
-(⟳⊸⊜⊕ :my-pipeline fr1)
-(⊨ (⌜ :flow-register-basic)
+(actor-reset)
+(define fr1 (flow-from (cons #1 (cons #2 (cons #3 nil)))))
+(flow-registry-register :my-pipeline fr1)
+(test-case (quote :flow-register-basic)
   fr1
-  (⟳⊸⊜? :my-pipeline))
+  (flow-registry-whereis :my-pipeline))
 
-;;; Test 2: flow-whereis-unregistered — returns ∅
-(⟳∅)
-(⊨ (⌜ :flow-whereis-unregistered)
-  ∅
-  (⟳⊸⊜? :nonexistent))
+;;; Test 2: flow-whereis-unregistered — returns nil
+(actor-reset)
+(test-case (quote :flow-whereis-unregistered)
+  nil
+  (flow-registry-whereis :nonexistent))
 
-;;; Test 3: flow-unregister-basic — unregister then whereis returns ∅
-(⟳∅)
-(≔ fr3 (⟳⊸ (⟨⟩ #1 ∅)))
-(⟳⊸⊜⊕ :temp-flow fr3)
-(⟳⊸⊜⊖ :temp-flow)
-(⊨ (⌜ :flow-unregister-basic)
-  ∅
-  (⟳⊸⊜? :temp-flow))
+;;; Test 3: flow-unregister-basic — unregister then whereis returns nil
+(actor-reset)
+(define fr3 (flow-from (cons #1 nil)))
+(flow-registry-register :temp-flow fr3)
+(flow-registry-unregister :temp-flow)
+(test-case (quote :flow-unregister-basic)
+  nil
+  (flow-registry-whereis :temp-flow))
 
 ;;; Test 4: flow-register-duplicate-name — error on same name twice
-(⟳∅)
-(≔ fr4a (⟳⊸ (⟨⟩ #1 ∅)))
-(≔ fr4b (⟳⊸ (⟨⟩ #2 ∅)))
-(⟳⊸⊜⊕ :dup-name fr4a)
-(⊨ (⌜ :flow-register-duplicate-name)
+(actor-reset)
+(define fr4a (flow-from (cons #1 nil)))
+(define fr4b (flow-from (cons #2 nil)))
+(flow-registry-register :dup-name fr4a)
+(test-case (quote :flow-register-duplicate-name)
   #t
-  (⚠? (⟳⊸⊜⊕ :dup-name fr4b)))
+  (error? (flow-registry-register :dup-name fr4b)))
 
 ;;; Test 5: flow-register-duplicate-flow — error if flow already registered
-(⟳∅)
-(≔ fr5 (⟳⊸ (⟨⟩ #1 ∅)))
-(⟳⊸⊜⊕ :name1 fr5)
-(⊨ (⌜ :flow-register-duplicate-flow)
+(actor-reset)
+(define fr5 (flow-from (cons #1 nil)))
+(flow-registry-register :name1 fr5)
+(test-case (quote :flow-register-duplicate-flow)
   #t
-  (⚠? (⟳⊸⊜⊕ :name2 fr5)))
+  (error? (flow-registry-register :name2 fr5)))
 
 ;;; Test 6: flow-registered-list — returns list of all flow names
-(⟳∅)
-(≔ fr6a (⟳⊸ (⟨⟩ #1 ∅)))
-(≔ fr6b (⟳⊸ (⟨⟩ #2 ∅)))
-(⟳⊸⊜⊕ :svc-a fr6a)
-(⟳⊸⊜⊕ :svc-b fr6b)
-(≔ names (⟳⊸⊜*))
+(actor-reset)
+(define fr6a (flow-from (cons #1 nil)))
+(define fr6b (flow-from (cons #2 nil)))
+(flow-registry-register :svc-a fr6a)
+(flow-registry-register :svc-b fr6b)
+(define names (flow-registry-list))
 ; List should have 2 elements
-(⊨ (⌜ :flow-registered-list-count)
+(test-case (quote :flow-registered-list-count)
   #t
-  (∧ (¬ (≡ names ∅))
-      (¬ (≡ (▷ names) ∅))))
+  (and (not (equal? names nil))
+      (not (equal? (cdr names) nil))))
 
 ;;; Test 7: flow-register-not-symbol — error if name isn't a symbol
-(⟳∅)
-(≔ fr7 (⟳⊸ (⟨⟩ #1 ∅)))
-(⊨ (⌜ :flow-register-not-symbol)
+(actor-reset)
+(define fr7 (flow-from (cons #1 nil)))
+(test-case (quote :flow-register-not-symbol)
   #t
-  (⚠? (⟳⊸⊜⊕ #42 fr7)))
+  (error? (flow-registry-register #42 fr7)))
 
 ;;; Test 8: flow-register-not-number — error if flow-id isn't a number
-(⟳∅)
-(⊨ (⌜ :flow-register-not-number)
+(actor-reset)
+(test-case (quote :flow-register-not-number)
   #t
-  (⚠? (⟳⊸⊜⊕ :bad :not-a-flow-id)))
+  (error? (flow-registry-register :bad :not-a-flow-id)))
 
 ;;; Test 9: flow-run-by-name — create, register, run by looking up name
-(⟳∅)
-(≔ fr9 (⟳⊸ (⟨⟩ #10 (⟨⟩ #20 (⟨⟩ #30 ∅)))))
-(⟳⊸↦ fr9 (λ (x) (⊗ x #2)))
-(⟳⊸⊜⊕ :doubler fr9)
-(⊨ (⌜ :flow-run-by-name)
-  (⟨⟩ #20 (⟨⟩ #40 (⟨⟩ #60 ∅)))
-  (⟳⊸! (⟳⊸⊜? :doubler)))
+(actor-reset)
+(define fr9 (flow-from (cons #10 (cons #20 (cons #30 nil)))))
+(flow-map fr9 (lambda (x) (* x #2)))
+(flow-registry-register :doubler fr9)
+(test-case (quote :flow-run-by-name)
+  (cons #20 (cons #40 (cons #60 nil)))
+  (flow-run (flow-registry-whereis :doubler)))
 
 ;;; Test 10: flow-unregister-not-found — error on unregistering unknown name
-(⟳∅)
-(⊨ (⌜ :flow-unregister-not-found)
+(actor-reset)
+(test-case (quote :flow-unregister-not-found)
   #t
-  (⚠? (⟳⊸⊜⊖ :nonexistent)))
+  (error? (flow-registry-unregister :nonexistent)))

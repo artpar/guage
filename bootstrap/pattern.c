@@ -28,7 +28,7 @@ static bool is_variable_pattern(Cell* pattern) {
         return false;
     }
     const char* sym = pattern->data.atom.symbol;
-    return !is_keyword(sym) && strcmp(sym, "_") != 0 && strcmp(sym, "∅") != 0;
+    return !is_keyword(sym) && strcmp(sym, "_") != 0 && strcmp(sym, "nil") != 0;
 }
 
 /* Helper: Check if two numbers are equal */
@@ -75,7 +75,7 @@ static bool has_guard(Cell* pattern_expr) {
         return false;
     }
 
-    /* Second element should be the pipe symbol "|" */
+    /* Second element should be the pipe symbol "|" (guard separator) */
     Cell* second = cell_car(rest);
     if (!second || second->type != CELL_ATOM_SYMBOL) {
         return false;
@@ -179,7 +179,7 @@ static bool is_view_pattern(Cell* pattern) {
     if (!first || first->type != CELL_ATOM_SYMBOL) {
         return false;
     }
-    if (strcmp(first->data.atom.symbol, "→") != 0) {
+    if (strcmp(first->data.atom.symbol, "->") != 0) {
         return false;
     }
 
@@ -222,12 +222,12 @@ static bool is_or_pattern(Cell* pattern) {
         return false;
     }
 
-    /* First element should be the logical-or symbol "∨" */
+    /* First element should be the logical-or symbol "or" */
     Cell* first = cell_car(pattern);
     if (!first || first->type != CELL_ATOM_SYMBOL) {
         return false;
     }
-    if (strcmp(first->data.atom.symbol, "∨") != 0) {
+    if (strcmp(first->data.atom.symbol, "or") != 0) {
         return false;
     }
 
@@ -349,12 +349,12 @@ static Cell* extract_pattern_variables(Cell* pattern) {
         Cell* first = cell_car(pattern);
         if (first && first->type == CELL_ATOM_SYMBOL) {
             const char* sym = first->data.atom.symbol;
-            if (strcmp(sym, "⊙") == 0 || strcmp(sym, "⊚") == 0) {
+            if (strcmp(sym, "struct-create") == 0 || strcmp(sym, "adt-create") == 0) {
                 /* Skip structure symbol and type/variant, extract from fields */
                 Cell* rest = cell_cdr(pattern);
                 if (rest && rest->type == CELL_PAIR) {
                     rest = cell_cdr(rest);  /* Skip type */
-                    if (strcmp(sym, "⊚") == 0 && rest && rest->type == CELL_PAIR) {
+                    if (strcmp(sym, "adt-create") == 0 && rest && rest->type == CELL_PAIR) {
                         rest = cell_cdr(rest);  /* Skip variant for ADT */
                     }
 
@@ -471,12 +471,12 @@ static bool is_pair_pattern(Cell* pattern) {
         return false;
     }
 
-    /* First element should be the cons symbol "⟨⟩" */
+    /* First element should be the cons symbol "cons" */
     Cell* first = cell_car(pattern);
     if (!first || first->type != CELL_ATOM_SYMBOL) {
         return false;
     }
-    if (strcmp(first->data.atom.symbol, "⟨⟩") != 0) {
+    if (strcmp(first->data.atom.symbol, "cons") != 0) {
         return false;
     }
 
@@ -635,7 +635,7 @@ static Cell* eval_transform(Cell* transform, Cell* value, Cell* env) {
     /* Build application: (transform (⌜ value))
      * We need to quote the value because it's already evaluated,
      * but eval_internal expects unevaluated expressions */
-    Cell* quote_symbol = cell_symbol("⌜");
+    Cell* quote_symbol = cell_symbol("quote");
     Cell* quoted_value = cell_cons(quote_symbol, cell_cons(value, cell_nil()));
     Cell* args = cell_cons(quoted_value, cell_nil());
     Cell* app_expr = cell_cons(transform, args);
@@ -767,7 +767,7 @@ MatchResult pattern_try_match(Cell* value, Cell* pattern) {
 
     /* Symbol ∅ pattern - matches only nil values (Day 67 fix) */
     if (pattern && pattern->type == CELL_ATOM_SYMBOL &&
-        strcmp(pattern->data.atom.symbol, "∅") == 0) {
+        strcmp(pattern->data.atom.symbol, "nil") == 0) {
         if (value && (value->type == CELL_ATOM_NIL || value == NULL)) {
             return success;
         }
@@ -856,7 +856,7 @@ MatchResult pattern_try_match(Cell* value, Cell* pattern) {
     if (pattern && pattern->type == CELL_PAIR) {
         Cell* first = cell_car(pattern);
         if (first && first->type == CELL_ATOM_SYMBOL &&
-            strcmp(first->data.atom.symbol, "⊙") == 0) {
+            strcmp(first->data.atom.symbol, "struct-create") == 0) {
             /* Value must be a structure */
             if (!value || value->type != CELL_STRUCT) {
                 return failure;
@@ -937,7 +937,7 @@ MatchResult pattern_try_match(Cell* value, Cell* pattern) {
     if (pattern && pattern->type == CELL_PAIR) {
         Cell* first = cell_car(pattern);
         if (first && first->type == CELL_ATOM_SYMBOL &&
-            strcmp(first->data.atom.symbol, "⊚") == 0) {
+            strcmp(first->data.atom.symbol, "adt-create") == 0) {
             /* Value must be a structure */
             if (!value || value->type != CELL_STRUCT) {
                 return failure;

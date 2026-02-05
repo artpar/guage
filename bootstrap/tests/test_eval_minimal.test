@@ -2,29 +2,29 @@
 ;;; Minimal evaluator test - isolate the crash
 ;;;
 
-(⋘ "bootstrap/stdlib/eval-env.scm")
+(load "bootstrap/stdlib/eval-env.scm")
 
 ;; Test 1: Just create empty environment
-(≔ empty-env (env-empty))
-(≋ empty-env)
+(define empty-env (env-empty))
+(print empty-env)
 
 ;; Test 2: Create a simple environment
-(≔ env-with-x (((env-extend empty-env) :x) #42))
-(≋ env-with-x)
+(define env-with-x (((env-extend empty-env) :x) #42))
+(print env-with-x)
 
 ;; Test 3: Look up in environment
-(≋ ((env-lookup env-with-x) :x))
+(print ((env-lookup env-with-x) :x))
 
 ;; Test 4: Examine structure of quoted lambda
-(≔ lambda-expr (⌜ (λ (:x) :x)))
-(≋ lambda-expr)
-(≋ (◁ lambda-expr))  ; Should be :λ
-(≋ (▷ lambda-expr))  ; Should be the rest
+(define lambda-expr (quote (lambda (:x) :x)))
+(print lambda-expr)
+(print (car lambda-expr))  ; Should be :lambda
+(print (cdr lambda-expr))  ; Should be the rest
 
 ;; Test 5: Try to detect if it's a list
-(≋ (⟨⟩? lambda-expr))
+(print (pair? lambda-expr))
 
 ;; Test 6: Get the operator
-(? (⟨⟩? lambda-expr)
-   (≋ (◁ lambda-expr))
-   (≋ :not-a-list))
+(if (pair? lambda-expr)
+   (print (car lambda-expr))
+   (print :not-a-list))

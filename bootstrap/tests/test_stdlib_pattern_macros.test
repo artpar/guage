@@ -1,11 +1,11 @@
 ; ═══════════════════════════════════════════════════════════════
 ; Test suite for stdlib pattern-based macros (Day 76)
 ; ═══════════════════════════════════════════════════════════════
-; Using ⧉⊜ pattern macros to implement cond, let*, case
+; Using macro-rules pattern macros to implement cond, let*, case
 ; ═══════════════════════════════════════════════════════════════
 
 ; Load the pattern-based stdlib macros
-(⋘ "bootstrap/stdlib/macros_pattern.scm")
+(load "bootstrap/stdlib/macros_pattern.scm")
 
 ; ═══════════════════════════════════════════════════════════════
 ; Section 1: ⇒* (cond) - Multi-branch conditional
@@ -15,32 +15,32 @@
 
 ; Test 1: Single clause with :else
 (⇒* (#t :yes))
-(⊨ :cond-single-true :yes (⇒* (#t :yes)))
+(test-case :cond-single-true :yes (⇒* (#t :yes)))
 
 ; Test 2: Multiple clauses, first true
-(⊨ :cond-first-true :one
-   (⇒* ((≡ #1 #1) :one)
-       ((≡ #2 #2) :two)))
+(test-case :cond-first-true :one
+   (⇒* ((equal? #1 #1) :one)
+       ((equal? #2 #2) :two)))
 
 ; Test 3: Multiple clauses, second true
-(⊨ :cond-second-true :two
-   (⇒* ((≡ #1 #2) :one)
-       ((≡ #2 #2) :two)))
+(test-case :cond-second-true :two
+   (⇒* ((equal? #1 #2) :one)
+       ((equal? #2 #2) :two)))
 
 ; Test 4: With else clause (using #t as else)
-(⊨ :cond-with-else :default
-   (⇒* ((≡ #1 #2) :one)
-       ((≡ #2 #3) :two)
+(test-case :cond-with-else :default
+   (⇒* ((equal? #1 #2) :one)
+       ((equal? #2 #3) :two)
        (#t :default)))
 
 ; Test 5: Nested expression in condition
-(⊨ :cond-nested #42
+(test-case :cond-nested #42
    (⇒* ((> #10 #5) #42)
        (#t #0)))
 
 ; Test 6: Nested expression in result
-(⊨ :cond-result-expr #15
-   (⇒* (#t (⊕ #10 #5))))
+(test-case :cond-result-expr #15
+   (⇒* (#t (+ #10 #5))))
 
 ; ═══════════════════════════════════════════════════════════════
 ; Section 2: ≔⇊ (let*) - Sequential bindings
@@ -49,28 +49,28 @@
 ; Each binding can reference previous bindings
 
 ; Test 7: Single binding
-(⊨ :let*-single #6
-   (≔⇊ ((:x #5)) (⊕ :x #1)))
+(test-case :let*-single #6
+   (≔⇊ ((:x #5)) (+ :x #1)))
 
 ; Test 8: Two bindings, second references first
-(⊨ :let*-chain #11
+(test-case :let*-chain #11
    (≔⇊ ((:x #5)
-         (:y (⊕ :x #1)))
-        (⊕ :x :y)))
+         (:y (+ :x #1)))
+        (+ :x :y)))
 
 ; Test 9: Three bindings in sequence
-(⊨ :let*-three #60
+(test-case :let*-three #60
    (≔⇊ ((:a #10)
-         (:b (⊗ :a #2))
-         (:c (⊗ :b #3)))
+         (:b (* :a #2))
+         (:c (* :b #3)))
         :c))
 
 ; Test 10: Complex expression in binding
 ; :x = 15, :y = 30, result = 30 + 5 = 35
-(⊨ :let*-complex #35
-   (≔⇊ ((:x (⊕ #10 #5))
-         (:y (⊕ :x :x)))
-        (⊕ :y (⊖ :x #10))))
+(test-case :let*-complex #35
+   (≔⇊ ((:x (+ #10 #5))
+         (:y (+ :x :x)))
+        (+ :y (- :x #10))))
 
 ; ═══════════════════════════════════════════════════════════════
 ; Section 3: ⇤ (case) - Value dispatch
@@ -79,23 +79,23 @@
 ; Matches expr against literal values
 
 ; Test 11: Simple number case
-(⊨ :case-num-1 :one (⇤ #1 (#1 :one) (#2 :two)))
-(⊨ :case-num-2 :two (⇤ #2 (#1 :one) (#2 :two)))
+(test-case :case-num-1 :one (⇤ #1 (#1 :one) (#2 :two)))
+(test-case :case-num-2 :two (⇤ #2 (#1 :one) (#2 :two)))
 
 ; Test 12: Symbol case
-(⊨ :case-sym-a :first (⇤ :a (:a :first) (:b :second)))
-(⊨ :case-sym-b :second (⇤ :b (:a :first) (:b :second)))
+(test-case :case-sym-a :first (⇤ :a (:a :first) (:b :second)))
+(test-case :case-sym-b :second (⇤ :b (:a :first) (:b :second)))
 
 ; Test 13: Case with else
-(⊨ :case-else :other
+(test-case :case-else :other
    (⇤ #5
       (#1 :one)
       (#2 :two)
       (:else :other)))
 
 ; Test 14: Case with expression to match
-(⊨ :case-expr :three
-   (⇤ (⊕ #1 #2)
+(test-case :case-expr :three
+   (⇤ (+ #1 #2)
       (#1 :one)
       (#2 :two)
       (#3 :three)))
@@ -105,60 +105,60 @@
 ; ═══════════════════════════════════════════════════════════════
 
 ; Test 15: Let* with cond in body
-(⊨ :let*-cond :big
+(test-case :let*-cond :big
    (≔⇊ ((:x #100))
         (⇒* ((> :x #50) :big)
             (#t :small))))
 
 ; Test 16: Cond with let* in result
-(⊨ :cond-let* #15
-   (⇒* (#t (≔⇊ ((:a #10) (:b #5)) (⊕ :a :b)))))
+(test-case :cond-let* #15
+   (⇒* (#t (≔⇊ ((:a #10) (:b #5)) (+ :a :b)))))
 
 ; ═══════════════════════════════════════════════════════════════
 ; Section 5: Edge Cases
 ; ═══════════════════════════════════════════════════════════════
 
 ; Test 17: Cond with all false (returns nil)
-(⊨ :cond-all-false ∅
-   (⇒* ((≡ #1 #2) :one)
-       ((≡ #2 #3) :two)))
+(test-case :cond-all-false nil
+   (⇒* ((equal? #1 #2) :one)
+       ((equal? #2 #3) :two)))
 
 ; Test 18: Let* with single binding and complex body
 ; :n = 10, result = 10 + (10 * (10 - 5)) = 10 + 50 = 60
-(⊨ :let*-single-complex #60
+(test-case :let*-single-complex #60
    (≔⇊ ((:n #10))
-        (⊕ :n (⊗ :n (⊖ :n #5)))))
+        (+ :n (* :n (- :n #5)))))
 
 ; Test 19: Case with computed value matching
-; (⊗ #2 (⊕ #1 #1)) = 2 * 2 = 4, matches #4
-(⊨ :case-computed :four
-   (⇤ (⊗ #2 (⊕ #1 #1))
+; (* #2 (+ #1 #1)) = 2 * 2 = 4, matches #4
+(test-case :case-computed :four
+   (⇤ (* #2 (+ #1 #1))
       (#2 :two)
       (#4 :four)
       (:else :five)))
 
 ; Test 20: Nested cond
-(⊨ :nested-cond :inner-two
-   (⇒* (#t (⇒* ((≡ #1 #2) :inner-one)
+(test-case :nested-cond :inner-two
+   (⇒* (#t (⇒* ((equal? #1 #2) :inner-one)
                (#t :inner-two)))))
 
 ; Test 21: Cond with 5 clauses (max supported)
-(⊨ :cond-five :five
-   (⇒* ((≡ #1 #2) :one)
-       ((≡ #2 #3) :two)
-       ((≡ #3 #4) :three)
-       ((≡ #4 #5) :four)
+(test-case :cond-five :five
+   (⇒* ((equal? #1 #2) :one)
+       ((equal? #2 #3) :two)
+       ((equal? #3 #4) :three)
+       ((equal? #4 #5) :four)
        (#t :five)))
 
 ; Test 22: Let* with 4 bindings (max supported)
-(⊨ :let*-four #120
+(test-case :let*-four #120
    (≔⇊ ((:a #2)
-         (:b (⊗ :a #3))
-         (:c (⊗ :b #4))
-         (:d (⊗ :c #5)))
+         (:b (* :a #3))
+         (:c (* :b #4))
+         (:d (* :c #5)))
         :d))
 
 ; ═══════════════════════════════════════════════════════════════
 ; Summary
 ; ═══════════════════════════════════════════════════════════════
-(≋ "✓ 22 stdlib pattern macro tests")
+(print "✓ 22 stdlib pattern macro tests")

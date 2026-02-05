@@ -1,38 +1,38 @@
 ; Just sort tests
-(⋘ "bootstrap/stdlib/list.scm")
+(load "bootstrap/stdlib/list.scm")
 
-(⊨ :sort-ascending
-   (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 (⟨⟩ #4 ∅))))
-   ((⊴ <′) (⟨⟩ #3 (⟨⟩ #1 (⟨⟩ #4 (⟨⟩ #2 ∅))))))
+(test-case :sort-ascending
+   (cons #1 (cons #2 (cons #3 (cons #4 nil))))
+   ((⊴ <′) (cons #3 (cons #1 (cons #4 (cons #2 nil))))))
 
-(⊨ :sort-descending
-   (⟨⟩ #4 (⟨⟩ #3 (⟨⟩ #2 (⟨⟩ #1 ∅))))
-   ((⊴ >′) (⟨⟩ #3 (⟨⟩ #1 (⟨⟩ #4 (⟨⟩ #2 ∅))))))
+(test-case :sort-descending
+   (cons #4 (cons #3 (cons #2 (cons #1 nil))))
+   ((⊴ >′) (cons #3 (cons #1 (cons #4 (cons #2 nil))))))
 
-(⊨ :sort-already-sorted
-   (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅)))
-   ((⊴ <′) (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅)))))
+(test-case :sort-already-sorted
+   (cons #1 (cons #2 (cons #3 nil)))
+   ((⊴ <′) (cons #1 (cons #2 (cons #3 nil)))))
 
-(⊨ :sort-single
-   (⟨⟩ #1 ∅)
-   ((⊴ <′) (⟨⟩ #1 ∅)))
+(test-case :sort-single
+   (cons #1 nil)
+   ((⊴ <′) (cons #1 nil)))
 
-(⊨ :sort-empty
-   ∅
-   ((⊴ <′) ∅))
+(test-case :sort-empty
+   nil
+   ((⊴ <′) nil))
 
-(⊨ :sort-duplicates
-   (⟨⟩ #1 (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 (⟨⟩ #3 ∅)))))
-   ((⊴ <′) (⟨⟩ #3 (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 (⟨⟩ #1 ∅)))))))
+(test-case :sort-duplicates
+   (cons #1 (cons #1 (cons #2 (cons #3 (cons #3 nil)))))
+   ((⊴ <′) (cons #3 (cons #1 (cons #2 (cons #3 (cons #1 nil)))))))
 
-(⊨ :sortby-modulo
-   (⟨⟩ #4 (⟨⟩ #2 (⟨⟩ #3 (⟨⟩ #1 ∅))))
-   ((⊴< (λ (n) (% n #2))) (⟨⟩ #3 (⟨⟩ #1 (⟨⟩ #4 (⟨⟩ #2 ∅))))))
+(test-case :sortby-modulo
+   (cons #4 (cons #2 (cons #3 (cons #1 nil))))
+   ((⊴< (lambda (n) (% n #2))) (cons #3 (cons #1 (cons #4 (cons #2 nil))))))
 
-(⊨ :sortby-identity
-   (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅)))
-   ((⊴< (λ (n) n)) (⟨⟩ #3 (⟨⟩ #1 (⟨⟩ #2 ∅)))))
+(test-case :sortby-identity
+   (cons #1 (cons #2 (cons #3 nil)))
+   ((⊴< (lambda (n) n)) (cons #3 (cons #1 (cons #2 nil)))))
 
-(⊨ :sortby-empty
-   ∅
-   ((⊴< (λ (n) n)) ∅))
+(test-case :sortby-empty
+   nil
+   ((⊴< (lambda (n) n)) nil))

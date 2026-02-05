@@ -1,57 +1,57 @@
 ; Test module system enhancements (Day 70)
-; Tests for: module-version (⌂⊚#), module-exports (⌂⊚↑), module-cycles (⌂⊚⊛)
+; Tests for: module-version (module-version), module-exports (module-exports), module-cycles (module-cycles)
 
 ; Load a module to test with
-(⋘ "bootstrap/stdlib/list.scm")
+(load "bootstrap/stdlib/list.scm")
 
 ; ========== Module Version Tests ==========
 
 ; Test 1: Set module version
-(⊨ :set-version :ok
-    (⌂⊚# "bootstrap/stdlib/list.scm" "1.0.0"))
+(test-case :set-version :ok
+    (module-version "bootstrap/stdlib/list.scm" "1.0.0"))
 
 ; Test 2: Get module version
-(⊨ :get-version "1.0.0"
-    (⌂⊚# "bootstrap/stdlib/list.scm"))
+(test-case :get-version "1.0.0"
+    (module-version "bootstrap/stdlib/list.scm"))
 
 ; Test 3: Update module version
-(⌂⊚# "bootstrap/stdlib/list.scm" "1.1.0")
-(⊨ :update-version "1.1.0"
-    (⌂⊚# "bootstrap/stdlib/list.scm"))
+(module-version "bootstrap/stdlib/list.scm" "1.1.0")
+(test-case :update-version "1.1.0"
+    (module-version "bootstrap/stdlib/list.scm"))
 
 ; Test 4: Non-existent module returns error
-(⊨ :version-nonexistent #t
-    (⚠? (⌂⊚# "nonexistent.scm")))
+(test-case :version-nonexistent #t
+    (error? (module-version "nonexistent.scm")))
 
 ; ========== Module Exports Tests ==========
 
 ; Test 5: Get default exports (all symbols)
-(⊨ :default-exports-is-list #t
-    (⟨⟩? (⌂⊚↑ "bootstrap/stdlib/list.scm")))
+(test-case :default-exports-is-list #t
+    (pair? (module-exports "bootstrap/stdlib/list.scm")))
 
 ; Test 6: Set explicit exports
-(⊨ :set-exports :ok
-    (⌂⊚↑ "bootstrap/stdlib/list.scm" (⌜ (:map :filter :foldl))))
+(test-case :set-exports :ok
+    (module-exports "bootstrap/stdlib/list.scm" (quote (:map :filter :foldl))))
 
 ; Test 7: Get explicit exports
-(≔ exports (⌂⊚↑ "bootstrap/stdlib/list.scm"))
-(⊨ :get-exports-list #t
-    (⟨⟩? exports))
+(define exports (module-exports "bootstrap/stdlib/list.scm"))
+(test-case :get-exports-list #t
+    (pair? exports))
 
 ; Test 8: Exports list has correct count (3)
-(≔ count #0)
-(≔ check-exports exports)
-(⊨ :exports-is-list #t
-    (⟨⟩? check-exports))
+(define count #0)
+(define check-exports exports)
+(test-case :exports-is-list #t
+    (pair? check-exports))
 
 ; ========== Module Cycles Tests ==========
 
 ; Test 9: Detect cycles returns list
-(⊨ :cycles-returns-list #t
-    (? (∅? (⌂⊚⊛ "bootstrap/stdlib/list.scm"))
+(test-case :cycles-returns-list #t
+    (if (null? (module-cycles "bootstrap/stdlib/list.scm"))
        #t  ; nil is fine - no cycles
-       (⟨⟩? (⌂⊚⊛ "bootstrap/stdlib/list.scm"))))
+       (pair? (module-cycles "bootstrap/stdlib/list.scm"))))
 
 ; Test 10: No cycles for normal module (should return nil)
-(⊨ :no-cycles #t
-    (∅? (⌂⊚⊛ "bootstrap/stdlib/list.scm")))
+(test-case :no-cycles #t
+    (null? (module-cycles "bootstrap/stdlib/list.scm")))

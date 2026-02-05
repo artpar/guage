@@ -2,145 +2,145 @@
 ; Day 90 - Create, send, recv, close, scheduler integration
 
 ; ============ Reset ============
-(⟳∅)
-(⟿∅)
+(actor-reset)
+(chan-reset)
 
 ; ============ Channel Creation ============
 
 ; Create channel with default capacity
-(≔ ch1 (⟿⊚))
-(⊨ (⌜ :chan-create) #f (⚠? ch1))
+(define ch1 (chan-create))
+(test-case (quote :chan-create) #f (error? ch1))
 
 ; ============ Reset ============
-(⟳∅)
-(⟿∅)
+(actor-reset)
+(chan-reset)
 
 ; ============ Buffered Send/Recv ============
 
 ; Send then recv in same actor (buffered, no blocking)
-(≔ ch2 (⟿⊚))
-(≔ buf-actor (⟳ (λ (self)
-  (≫ (⟿→ ch2 :hello) (λ (_)
-    (⟿← ch2))))))
-(⟳! #100)
-(⊨ (⌜ :buffered-send-recv) :hello (⟳→ buf-actor))
+(define ch2 (chan-create))
+(define buf-actor (actor-spawn (lambda (self)
+  (bind (chan-send ch2 :hello) (lambda (_)
+    (chan-recv ch2))))))
+(actor-run #100)
+(test-case (quote :buffered-send-recv) :hello (actor-result buf-actor))
 
 ; ============ Reset ============
-(⟳∅)
-(⟿∅)
+(actor-reset)
+(chan-reset)
 
 ; ============ FIFO Ordering ============
 
 ; Send multiple values, receive in order
-(≔ ch3 (⟿⊚))
-(≔ fifo-actor (⟳ (λ (self)
-  (≫ (⟿→ ch3 :first) (λ (_)
-  (≫ (⟿→ ch3 :second) (λ (_)
-  (≫ (⟿→ ch3 :third) (λ (_)
-  (≫ (⟿← ch3) (λ (va)
-  (≫ (⟿← ch3) (λ (vb)
-  (≫ (⟿← ch3) (λ (vc)
-    (⟨⟩ va (⟨⟩ vb vc)))))))))))))))))
-(⟳! #100)
-(⊨ (⌜ :fifo-order) (⟨⟩ :first (⟨⟩ :second :third)) (⟳→ fifo-actor))
+(define ch3 (chan-create))
+(define fifo-actor (actor-spawn (lambda (self)
+  (bind (chan-send ch3 :first) (lambda (_)
+  (bind (chan-send ch3 :second) (lambda (_)
+  (bind (chan-send ch3 :third) (lambda (_)
+  (bind (chan-recv ch3) (lambda (va)
+  (bind (chan-recv ch3) (lambda (vb)
+  (bind (chan-recv ch3) (lambda (vc)
+    (cons va (cons vb vc)))))))))))))))))
+(actor-run #100)
+(test-case (quote :fifo-order) (cons :first (cons :second :third)) (actor-result fifo-actor))
 
 ; ============ Reset ============
-(⟳∅)
-(⟿∅)
+(actor-reset)
+(chan-reset)
 
 ; ============ Blocking Recv ============
 
 ; Consumer starts before producer, wakes up when data arrives
-(≔ ch4 (⟿⊚))
-(≔ consumer (⟳ (λ (self) (⟿← ch4))))
-(≔ producer (⟳ (λ (self) (⟿→ ch4 :wakeup))))
-(⟳! #100)
-(⊨ (⌜ :blocking-recv) :wakeup (⟳→ consumer))
+(define ch4 (chan-create))
+(define consumer (actor-spawn (lambda (self) (chan-recv ch4))))
+(define producer (actor-spawn (lambda (self) (chan-send ch4 :wakeup))))
+(actor-run #100)
+(test-case (quote :blocking-recv) :wakeup (actor-result consumer))
 
 ; ============ Reset ============
-(⟳∅)
-(⟿∅)
+(actor-reset)
+(chan-reset)
 
 ; ============ Blocking Send (capacity 1) ============
 
 ; Sender blocks when channel full, resumes after recv drains
-(≔ ch5 (⟿⊚ #1))
-(≔ sender (⟳ (λ (self)
-  (≫ (⟿→ ch5 :a) (λ (_)
-  (≫ (⟿→ ch5 :b) (λ (_)
+(define ch5 (chan-create #1))
+(define sender (actor-spawn (lambda (self)
+  (bind (chan-send ch5 :a) (lambda (_)
+  (bind (chan-send ch5 :b) (lambda (_)
     :sent-both)))))))
-(≔ drainer (⟳ (λ (self)
-  (≫ (⟿← ch5) (λ (v1)
-    (≫ (⟿← ch5) (λ (v2)
-      (⟨⟩ v1 v2))))))))
-(⟳! #200)
-(⊨ (⌜ :blocking-send-result) :sent-both (⟳→ sender))
-(⊨ (⌜ :blocking-send-values) (⟨⟩ :a :b) (⟳→ drainer))
+(define drainer (actor-spawn (lambda (self)
+  (bind (chan-recv ch5) (lambda (v1)
+    (bind (chan-recv ch5) (lambda (v2)
+      (cons v1 v2))))))))
+(actor-run #200)
+(test-case (quote :blocking-send-result) :sent-both (actor-result sender))
+(test-case (quote :blocking-send-values) (cons :a :b) (actor-result drainer))
 
 ; ============ Reset ============
-(⟳∅)
-(⟿∅)
+(actor-reset)
+(chan-reset)
 
 ; ============ Close Channel ============
 
 ; Send to closed channel returns error
-(≔ ch6 (⟿⊚))
-(⟿× ch6)
-(⊨ (⌜ :send-to-closed) #t (⚠? (⟿→ ch6 :nope)))
+(define ch6 (chan-create))
+(chan-close ch6)
+(test-case (quote :send-to-closed) #t (error? (chan-send ch6 :nope)))
 
 ; ============ Reset ============
-(⟳∅)
-(⟿∅)
+(actor-reset)
+(chan-reset)
 
 ; ============ Recv from Closed Empty ============
 
 ; Recv from closed empty channel returns error
-(≔ ch7 (⟿⊚))
-(⟿× ch7)
-(⊨ (⌜ :recv-from-closed-empty) #t (⚠? (⟿← ch7)))
+(define ch7 (chan-create))
+(chan-close ch7)
+(test-case (quote :recv-from-closed-empty) #t (error? (chan-recv ch7)))
 
 ; ============ Reset ============
-(⟳∅)
-(⟿∅)
+(actor-reset)
+(chan-reset)
 
 ; ============ Shared Channel (2 producers, 1 consumer) ============
 
-(≔ ch8 (⟿⊚))
-(≔ prod1 (⟳ (λ (self) (⟿→ ch8 #10))))
-(≔ prod2 (⟳ (λ (self) (⟿→ ch8 #20))))
-(≔ cons8 (⟳ (λ (self)
-  (≫ (⟿← ch8) (λ (a)
-    (≫ (⟿← ch8) (λ (b)
-      (⊕ a b))))))))
-(⟳! #200)
-(⊨ (⌜ :shared-channel-sum) #30 (⟳→ cons8))
+(define ch8 (chan-create))
+(define prod1 (actor-spawn (lambda (self) (chan-send ch8 #10))))
+(define prod2 (actor-spawn (lambda (self) (chan-send ch8 #20))))
+(define cons8 (actor-spawn (lambda (self)
+  (bind (chan-recv ch8) (lambda (a)
+    (bind (chan-recv ch8) (lambda (b)
+      (+ a b))))))))
+(actor-run #200)
+(test-case (quote :shared-channel-sum) #30 (actor-result cons8))
 
 ; ============ Reset ============
-(⟳∅)
-(⟿∅)
+(actor-reset)
+(chan-reset)
 
 ; ============ Mixed Mailbox + Channel ============
 
 ; Actor uses both its mailbox and a channel
-(≔ ch9 (⟿⊚))
-(≔ mixer (⟳ (λ (self)
-  (≫ (⟿→ ch9 :from-chan) (λ (_)
-    (←?))))))
-(→! mixer :from-mailbox)
-(⟳! #100)
+(define ch9 (chan-create))
+(define mixer (actor-spawn (lambda (self)
+  (bind (chan-send ch9 :from-chan) (lambda (_)
+    (actor-receive))))))
+(actor-send mixer :from-mailbox)
+(actor-run #100)
 ; Actor returned mailbox message
-(⊨ (⌜ :mixed-mailbox-result) :from-mailbox (⟳→ mixer))
+(test-case (quote :mixed-mailbox-result) :from-mailbox (actor-result mixer))
 ; Channel still has the value
-(⊨ (⌜ :mixed-chan-value) :from-chan (⟿← ch9))
+(test-case (quote :mixed-chan-value) :from-chan (chan-recv ch9))
 
 ; ============ Reset ============
-(⟳∅)
-(⟿∅)
+(actor-reset)
+(chan-reset)
 
 ; ============ Channel Reset ============
 
-(≔ ch10 (⟿⊚))
-(⟿→ ch10 :val)
-(⟿∅)
+(define ch10 (chan-create))
+(chan-send ch10 :val)
+(chan-reset)
 ; After reset, old channel is gone
-(⊨ (⌜ :chan-reset) #t (⚠? (⟿← ch10)))
+(test-case (quote :chan-reset) #t (error? (chan-recv ch10)))

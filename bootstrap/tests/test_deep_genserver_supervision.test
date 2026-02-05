@@ -2,124 +2,124 @@
 ;;; Deep Integration: GenServer + Supervisors + Pattern Matching + Channels + ETS
 ;;;
 
-(⟳∅)
-(⟿∅)
+(actor-reset)
+(chan-reset)
 
 ;;; --- Supervisor creates GenServer child, client calls it ---
 
-(≔ echo-server (λ (self)
-  (≫ (←?) (λ (msg)
-    (≫ (⟳⇅! (◁ (▷ msg)) (◁ (▷ (▷ msg)))) (λ (_) :done))))))
+(define echo-server (lambda (self)
+  (bind (actor-receive) (lambda (msg)
+    (bind (actor-reply (car (cdr msg)) (car (cdr (cdr msg)))) (lambda (_) :done))))))
 
-(≔ sup1 (⟳⊛ :one-for-one (⟨⟩ echo-server ∅)))
-(⟳! #100)
+(define sup1 (sup-start :one-for-one (cons echo-server nil)))
+(actor-run #100)
 
-(≔ kids1 (⟳⊛? sup1))
-(≔ srv1 (◁ kids1))
+(define kids1 (sup-children sup1))
+(define srv1 (car kids1))
 
-(≔ c1 (⟳ (λ (self) (⟳⇅ srv1 :ping))))
-(⟳! #100)
+(define c1 (actor-spawn (lambda (self) (actor-call srv1 :ping))))
+(actor-run #100)
 
-(⊨ :sup-genserver-call :ping (⟳→ c1))
+(test-case :sup-genserver-call :ping (actor-result c1))
 
-;;; --- GenServer crashes, supervisor restarts → new incarnation ---
+;;; --- GenServer crashes, supervisor restarts -> new incarnation ---
 
-(≔ crash-server (λ (self)
-  (≫ (←?) (λ (msg)
-    (? (≡ msg :crash)
-       (⊘ #1 #0)
+(define crash-server (lambda (self)
+  (bind (actor-receive) (lambda (msg)
+    (if (equal? msg :crash)
+       (/ #1 #0)
        msg)))))
 
-(≔ sup2 (⟳⊛ :one-for-one (⟨⟩ crash-server ∅)))
-(⟳! #100)
+(define sup2 (sup-start :one-for-one (cons crash-server nil)))
+(actor-run #100)
 
-(≔ kids2a (⟳⊛? sup2))
-(≔ old-srv (◁ kids2a))
+(define kids2a (sup-children sup2))
+(define old-srv (car kids2a))
 
 ;;; Crash it
-(→! old-srv :crash)
-(⟳! #200)
+(actor-send old-srv :crash)
+(actor-run #200)
 
 ;;; --- Old incarnation dead, new incarnation alive after restart ---
-(≔ kids2b (⟳⊛? sup2))
-(≔ new-srv (◁ kids2b))
+(define kids2b (sup-children sup2))
+(define new-srv (car kids2b))
 
-(⊨ :old-dead  #f (⟳? old-srv))
-(⊨ :new-alive #t (⟳? new-srv))
-(⊨ :different-ids #f (≡ old-srv new-srv))
+(test-case :old-dead  #f (actor-alive? old-srv))
+(test-case :new-alive #t (actor-alive? new-srv))
+(test-case :different-ids #f (equal? old-srv new-srv))
 
 ;;; --- GenServer dispatches on message shape (pair vs atom) ---
 
-(≔ dispatch-server (λ (self)
-  (≫ (←?) (λ (msg)
-    (≫ (⟳⇅! (◁ (▷ msg))
-      (? (⟨⟩? (◁ (▷ (▷ msg))))
-         (⊕ (◁ (◁ (▷ (▷ msg)))) (▷ (◁ (▷ (▷ msg)))))
-         (⊗ (◁ (▷ (▷ msg))) #2)))
-    (λ (_) (dispatch-server self)))))))
+(define dispatch-server (lambda (self)
+  (bind (actor-receive) (lambda (msg)
+    (bind (actor-reply (car (cdr msg))
+      (if (pair? (car (cdr (cdr msg))))
+         (+ (car (car (cdr (cdr msg)))) (cdr (car (cdr (cdr msg)))))
+         (* (car (cdr (cdr msg))) #2)))
+    (lambda (_) (dispatch-server self)))))))
 
-(≔ disp-srv (⟳ dispatch-server))
-(⟳! #50)
+(define disp-srv (actor-spawn dispatch-server))
+(actor-run #50)
 
-(≔ c2 (⟳ (λ (self) (⟳⇅ disp-srv (⟨⟩ #3 #4)))))
-(⟳! #100)
-(⊨ :dispatch-pair #7 (⟳→ c2))
+(define c2 (actor-spawn (lambda (self) (actor-call disp-srv (cons #3 #4)))))
+(actor-run #100)
+(test-case :dispatch-pair #7 (actor-result c2))
 
-(≔ c3 (⟳ (λ (self) (⟳⇅ disp-srv #5))))
-(⟳! #100)
-(⊨ :dispatch-atom #10 (⟳→ c3))
+(define c3 (actor-spawn (lambda (self) (actor-call disp-srv #5))))
+(actor-run #100)
+(test-case :dispatch-atom #10 (actor-result c3))
 
 ;;; --- Two GenServers communicate via channel pipeline ---
 
-(≔ ch3 (⟿⊚))
+(define ch3 (chan-create))
 
-(≔ adder-server (λ (self)
-  (≫ (←?) (λ (msg)
-    (≫ (⟳⇅! (◁ (▷ msg)) (⊕ (◁ (▷ (▷ msg))) #100))
-    (λ (_) :done))))))
+(define adder-server (lambda (self)
+  (bind (actor-receive) (lambda (msg)
+    (bind (actor-reply (car (cdr msg)) (+ (car (cdr (cdr msg))) #100))
+    (lambda (_) :done))))))
 
-(≔ pipeline-client (⟳ (λ (self)
-  (⪢
-    (≔ g1 (⟳ adder-server))
-    (⟳! #50)
-    (≔ r1 (⟳⇅ g1 #5))
-    (⟿→ ch3 r1)))))
+(define pipeline-client (actor-spawn (lambda (self)
+  (begin
+    (define g1 (actor-spawn adder-server))
+    (actor-run #50)
+    (define r1 (actor-call g1 #5))
+    (chan-send ch3 r1)))))
 
-(⟳! #300)
+(actor-run #300)
 
-(⊨ :pipeline-channel #105 (⟿← ch3))
+(test-case :pipeline-channel #105 (chan-recv ch3))
 
 ;;; --- ETS table preserves state across supervisor restarts ---
 
-(⟳⊞⊕ :persist)
-(⟳⊞⊙ :persist :counter #0)
+(ets-new :persist)
+(ets-insert :persist :counter #0)
 
-(≔ ets-server (λ (self)
-  (≫ (←?) (λ (msg)
-    (? (≡ (◁ (▷ (▷ msg))) :inc)
-       (⪢
-         (≔ ets-old (⟳⊞? :persist :counter))
-         (⟳⊞⊙ :persist :counter (⊕ ets-old #1))
-         (⟳⇅! (◁ (▷ msg)) (⊕ ets-old #1)))
-       (⟳⇅! (◁ (▷ msg)) (⟳⊞? :persist :counter)))))))
+(define ets-server (lambda (self)
+  (bind (actor-receive) (lambda (msg)
+    (if (equal? (car (cdr (cdr msg))) :inc)
+       (begin
+         (define ets-old (ets-lookup :persist :counter))
+         (ets-insert :persist :counter (+ ets-old #1))
+         (actor-reply (car (cdr msg)) (+ ets-old #1)))
+       (actor-reply (car (cdr msg)) (ets-lookup :persist :counter)))))))
 
-(≔ sup3 (⟳⊛ :one-for-one (⟨⟩ ets-server ∅)))
-(⟳! #100)
+(define sup3 (sup-start :one-for-one (cons ets-server nil)))
+(actor-run #100)
 
-(≔ kids3 (⟳⊛? sup3))
-(≔ es1 (◁ kids3))
+(define kids3 (sup-children sup3))
+(define es1 (car kids3))
 
 ;;; Increment once
-(≔ c4 (⟳ (λ (self) (⟳⇅ es1 :inc))))
-(⟳! #100)
-(⊨ :ets-inc #1 (⟳→ c4))
+(define c4 (actor-spawn (lambda (self) (actor-call es1 :inc))))
+(actor-run #100)
+(test-case :ets-inc #1 (actor-result c4))
 
 ;;; Verify ETS directly
-(⊨ :ets-direct #1 (⟳⊞? :persist :counter))
+(test-case :ets-direct #1 (ets-lookup :persist :counter))
 
 ;;; --- Send to dead actor returns error ---
 
-(≔ dead-actor (⟳ (λ (self) :done)))
-(⟳! #100)
-(⊨ :dead-actor-done #f (⟳? dead-actor))
-(⊨ :send-to-dead #t (⚠? (→! dead-actor :hello)))
+(define dead-actor (actor-spawn (lambda (self) :done)))
+(actor-run #100)
+(test-case :dead-actor-done #f (actor-alive? dead-actor))
+(test-case :send-to-dead #t (error? (actor-send dead-actor :hello)))

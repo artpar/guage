@@ -1,88 +1,88 @@
 #!/usr/bin/env guage
 ; Test suite for string conversion primitives
-; ≈→ℕ (string-to-number) and ≈→: (string-to-symbol)
+; string->number (string-to-number) and string->symbol (string-to-symbol)
 
-(≋ "Testing String Conversion Primitives...")
+(print "Testing String Conversion Primitives...")
 
 ; ============================================================================
-; ≈→ℕ — String to Number
+; string->number — String to Number
 ; ============================================================================
 
-(≋ "\nTesting ≈→ℕ (string-to-number)...")
+(print "\nTesting string->number (string-to-number)...")
 
 ; Integer conversions
-(⊨ :str-to-num-int
+(test-case :str-to-num-int
    #42
-   (≈→ℕ "42"))
+   (string->number "42"))
 
-(⊨ :str-to-num-zero
+(test-case :str-to-num-zero
    #0
-   (≈→ℕ "0"))
+   (string->number "0"))
 
-(⊨ :str-to-num-negative
+(test-case :str-to-num-negative
    #-7
-   (≈→ℕ "-7"))
+   (string->number "-7"))
 
 ; Float conversions
-(⊨ :str-to-num-float
+(test-case :str-to-num-float
    #3.14
-   (≈→ℕ "3.14"))
+   (string->number "3.14"))
 
-(⊨ :str-to-num-neg-float
+(test-case :str-to-num-neg-float
    #-0.5
-   (≈→ℕ "-0.5"))
+   (string->number "-0.5"))
 
 ; Scientific notation
-(⊨ :str-to-num-sci
+(test-case :str-to-num-sci
    #1000
-   (≈→ℕ "1e3"))
+   (string->number "1e3"))
 
 ; Invalid strings return error
-(⊨ :str-to-num-invalid
+(test-case :str-to-num-invalid
    #t
-   (⚠? (≈→ℕ "abc")))
+   (error? (string->number "abc")))
 
-(⊨ :str-to-num-empty
+(test-case :str-to-num-empty
    #t
-   (⚠? (≈→ℕ "")))
+   (error? (string->number "")))
 
-(⊨ :str-to-num-partial
+(test-case :str-to-num-partial
    #t
-   (⚠? (≈→ℕ "42abc")))
+   (error? (string->number "42abc")))
 
 ; Arithmetic on converted numbers
-(⊨ :str-to-num-arithmetic
+(test-case :str-to-num-arithmetic
    #10
-   (⊕ (≈→ℕ "3") (≈→ℕ "7")))
+   (+ (string->number "3") (string->number "7")))
 
 ; ============================================================================
-; ≈→: — String to Symbol
+; string->symbol — String to Symbol
 ; ============================================================================
 
-(≋ "\nTesting ≈→: (string-to-symbol)...")
+(print "\nTesting string->symbol (string-to-symbol)...")
 
 ; Basic conversion
-(⊨ :str-to-sym-basic
+(test-case :str-to-sym-basic
    #t
-   (:? (≈→: "hello")))
+   (symbol? (string->symbol "hello")))
 
-(⊨ :str-to-sym-eq
+(test-case :str-to-sym-eq
    #t
-   (≡ (≈→: "hello") (⌜ hello)))
+   (equal? (string->symbol "hello") (quote hello)))
 
 ; Unicode symbol
-(⊨ :str-to-sym-unicode
+(test-case :str-to-sym-unicode
    #t
-   (:? (≈→: "λ")))
+   (symbol? (string->symbol "λ")))
 
 ; Symbol predicate on result
-(⊨ :str-to-sym-predicate
+(test-case :str-to-sym-predicate
    #t
-   (:? (≈→: "test-name")))
+   (symbol? (string->symbol "test-name")))
 
-; Round-trip: symbol → string → symbol
-(⊨ :str-to-sym-roundtrip
+; Round-trip: symbol -> string -> symbol
+(test-case :str-to-sym-roundtrip
    #t
-   (≡ (≈→: (≈ (⌜ foo))) (⌜ foo)))
+   (equal? (string->symbol (string (quote foo))) (quote foo)))
 
-(≋ "\nAll conversion tests complete.")
+(print "\nAll conversion tests complete.")

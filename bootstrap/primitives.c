@@ -159,11 +159,11 @@ static void cell_to_json_string(FILE* out, Cell* c) {
     if (cell_is_number(c)) { fprintf(out, "%g", cell_get_number(c)); return; }
     if (cell_is_integer(c)) { fprintf(out, "%lld", (long long)cell_get_integer(c)); return; }
     if (cell_is_bool(c)) { fputs(cell_get_bool(c) ? "true" : "false", out); return; }
-    if (cell_is_nil(c)) { fputs("\"∅\"", out); return; }
+    if (cell_is_nil(c)) { fputs("\"nil\"", out); return; }
     if (cell_is_symbol(c)) { json_escape_string(out, cell_get_symbol(c)); return; }
     if (cell_is_string(c)) { json_escape_string(out, cell_get_string(c)); return; }
     if (cell_is_error(c)) {
-        fputs("\"⚠:", out);
+        fputs("\"error:", out);
         const char* msg = cell_error_message(c);
         /* Inline escape for error messages */
         for (const char* p = msg; *p; p++) {
@@ -324,7 +324,7 @@ Cell* prim_cons(Cell* args) {
 Cell* prim_car(Cell* args) {
     Cell* pair = arg1(args);
     if (UNLIKELY(!cell_is_pair(pair)))
-        return cell_error("◁ requires pair", pair);
+        return cell_error("car requires pair", pair);
     Cell* result = cell_car(pair);
     cell_retain(result);
     return result;
@@ -334,7 +334,7 @@ Cell* prim_car(Cell* args) {
 Cell* prim_cdr(Cell* args) {
     Cell* pair = arg1(args);
     if (UNLIKELY(!cell_is_pair(pair)))
-        return cell_error("▷ requires pair", pair);
+        return cell_error("cdr requires pair", pair);
     Cell* result = cell_cdr(pair);
     cell_retain(result);
     return result;
@@ -423,7 +423,7 @@ Cell* prim_not_equal(Cell* args) {
 /* ¬ - logical NOT */
 Cell* prim_not(Cell* args) {
     Cell* a = arg1(args);
-    if (UNLIKELY(!cell_is_bool(a))) return cell_error("¬ requires boolean", a);
+    if (UNLIKELY(!cell_is_bool(a))) return cell_error("not requires boolean", a);
     return cell_bool(!cell_get_bool(a));
 }
 
@@ -441,7 +441,7 @@ Cell* prim_add(Cell* args) {
         return cell_integer(result);
     }
     /* Mixed or both double → promote to double */
-    if (UNLIKELY(!(cell_is_numeric(a) && cell_is_numeric(b)))) return cell_error("⊕ requires numbers", a);
+    if (UNLIKELY(!(cell_is_numeric(a) && cell_is_numeric(b)))) return cell_error("+ requires numbers", a);
     return cell_number(cell_to_double(a) + cell_to_double(b));
 }
 
@@ -455,7 +455,7 @@ Cell* prim_sub(Cell* args) {
             return cell_error("integer-overflow", args);
         return cell_integer(result);
     }
-    if (UNLIKELY(!(cell_is_numeric(a) && cell_is_numeric(b)))) return cell_error("⊖ requires numbers", a);
+    if (UNLIKELY(!(cell_is_numeric(a) && cell_is_numeric(b)))) return cell_error("- requires numbers", a);
     return cell_number(cell_to_double(a) - cell_to_double(b));
 }
 
@@ -469,7 +469,7 @@ Cell* prim_mul(Cell* args) {
             return cell_error("integer-overflow", args);
         return cell_integer(result);
     }
-    if (UNLIKELY(!(cell_is_numeric(a) && cell_is_numeric(b)))) return cell_error("⊗ requires numbers", a);
+    if (UNLIKELY(!(cell_is_numeric(a) && cell_is_numeric(b)))) return cell_error("* requires numbers", a);
     return cell_number(cell_to_double(a) * cell_to_double(b));
 }
 
@@ -477,7 +477,7 @@ Cell* prim_mul(Cell* args) {
 Cell* prim_div(Cell* args) {
     Cell* a = arg1(args);
     Cell* b = arg2(args);
-    if (UNLIKELY(!(cell_is_numeric(a) && cell_is_numeric(b)))) return cell_error("⊘ requires numbers", a);
+    if (UNLIKELY(!(cell_is_numeric(a) && cell_is_numeric(b)))) return cell_error("/ requires numbers", a);
     double divisor = cell_to_double(b);
     if (divisor == 0.0) {
         return cell_error("div-by-zero", b);
@@ -498,7 +498,7 @@ Cell* prim_quot(Cell* args) {
             return cell_error("integer-overflow", args);
         return cell_integer(a->data.atom.integer / db);
     }
-    if (UNLIKELY(!(cell_is_numeric(a) && cell_is_numeric(b)))) return cell_error("÷ requires numbers", a);
+    if (UNLIKELY(!(cell_is_numeric(a) && cell_is_numeric(b)))) return cell_error("quotient requires numbers", a);
     double divisor = cell_to_double(b);
     if (divisor == 0.0) {
         return cell_error("quot-by-zero", b);
@@ -550,7 +550,7 @@ Cell* prim_le(Cell* args) {
     Cell* b = arg2(args);
     if (LIKELY(cell_is_integer(a) && cell_is_integer(b)))
         return cell_bool(a->data.atom.integer <= b->data.atom.integer);
-    if (UNLIKELY(!(cell_is_numeric(a) && cell_is_numeric(b)))) return cell_error("≤ requires numbers", a);
+    if (UNLIKELY(!(cell_is_numeric(a) && cell_is_numeric(b)))) return cell_error("<= requires numbers", a);
     return cell_bool(cell_to_double(a) <= cell_to_double(b));
 }
 
@@ -560,7 +560,7 @@ Cell* prim_ge(Cell* args) {
     Cell* b = arg2(args);
     if (LIKELY(cell_is_integer(a) && cell_is_integer(b)))
         return cell_bool(a->data.atom.integer >= b->data.atom.integer);
-    if (UNLIKELY(!(cell_is_numeric(a) && cell_is_numeric(b)))) return cell_error("≥ requires numbers", a);
+    if (UNLIKELY(!(cell_is_numeric(a) && cell_is_numeric(b)))) return cell_error(">= requires numbers", a);
     return cell_bool(cell_to_double(a) >= cell_to_double(b));
 }
 
@@ -645,7 +645,7 @@ Cell* prim_bit_rotr(Cell* args) {
 Cell* prim_to_integer(Cell* args) {
     Cell* a = arg1(args);
     if (cell_is_integer(a)) return a;
-    if (UNLIKELY(!cell_is_numeric(a))) return cell_error("→ℤ requires number", a);
+    if (UNLIKELY(!cell_is_numeric(a))) return cell_error("->integer requires number", a);
     return cell_integer(cell_to_int64(a));
 }
 
@@ -653,7 +653,7 @@ Cell* prim_to_integer(Cell* args) {
 Cell* prim_to_double(Cell* args) {
     Cell* a = arg1(args);
     if (cell_is_number(a)) return a;
-    if (UNLIKELY(!cell_is_numeric(a))) return cell_error("→ℝ requires number", a);
+    if (UNLIKELY(!cell_is_numeric(a))) return cell_error("->double requires number", a);
     return cell_number(cell_to_double(a));
 }
 
@@ -667,7 +667,7 @@ Cell* prim_is_integer(Cell* args) {
 /* √ - square root */
 Cell* prim_sqrt(Cell* args) {
     Cell* a = arg1(args);
-    if (UNLIKELY(!cell_is_numeric(a))) return cell_error("√ requires number", a);
+    if (UNLIKELY(!cell_is_numeric(a))) return cell_error("sqrt requires number", a);
     double val = cell_to_double(a);
     if (val < 0.0) {
         return cell_error("sqrt-negative", a);
@@ -1236,14 +1236,14 @@ Cell* prim_type_nil(Cell* args) {
  */
 Cell* prim_type_func(Cell* args) {
     if (!cell_is_pair(args)) {
-        return cell_error("→ requires at least two type arguments", cell_nil());
+        return cell_error("-> requires at least two type arguments", cell_nil());
     }
 
     Cell* domain = arg1(args);
     Cell* rest = cell_cdr(args);
 
     if (!cell_is_pair(rest)) {
-        return cell_error("→ requires at least two type arguments", cell_nil());
+        return cell_error("-> requires at least two type arguments", cell_nil());
     }
 
     Cell* codomain = cell_car(rest);
@@ -1290,14 +1290,14 @@ Cell* prim_type_list(Cell* args) {
  */
 Cell* prim_type_pair(Cell* args) {
     if (!cell_is_pair(args)) {
-        return cell_error("⟨⟩ₜ requires two type arguments", cell_nil());
+        return cell_error("Pair-type requires two type arguments", cell_nil());
     }
 
     Cell* car_type = arg1(args);
     Cell* rest = cell_cdr(args);
 
     if (!cell_is_pair(rest)) {
-        return cell_error("⟨⟩ₜ requires two type arguments", cell_nil());
+        return cell_error("Pair-type requires two type arguments", cell_nil());
     }
 
     Cell* cdr_type = cell_car(rest);
@@ -1317,14 +1317,14 @@ Cell* prim_type_pair(Cell* args) {
  */
 Cell* prim_type_union(Cell* args) {
     if (!cell_is_pair(args)) {
-        return cell_error("∪ₜ requires two type arguments", cell_nil());
+        return cell_error("Union-type requires two type arguments", cell_nil());
     }
 
     Cell* left = arg1(args);
     Cell* rest = cell_cdr(args);
 
     if (!cell_is_pair(rest)) {
-        return cell_error("∪ₜ requires two type arguments", cell_nil());
+        return cell_error("Union-type requires two type arguments", cell_nil());
     }
 
     Cell* right = cell_car(rest);
@@ -1464,7 +1464,7 @@ Cell* prim_type_declare(Cell* args) {
     Cell* type = arg2(args);
 
     if (!cell_is_symbol(name)) {
-        return cell_error("∈ requires symbol as first argument", name);
+        return cell_error("type-decl requires symbol as first argument", name);
     }
 
     /* Initialize registry if needed */
@@ -1506,7 +1506,7 @@ Cell* prim_type_query(Cell* args) {
     Cell* name = arg1(args);
 
     if (!cell_is_symbol(name)) {
-        return cell_error("∈? requires symbol", name);
+        return cell_error("type-check requires symbol", name);
     }
 
     if (type_annotation_registry == NULL) {
@@ -1533,12 +1533,12 @@ Cell* prim_type_domain(Cell* args) {
     Cell* func_type = arg1(args);
 
     if (!is_type_struct(func_type)) {
-        return cell_error("∈◁ requires function type", func_type);
+        return cell_error("type-domain requires function type", func_type);
     }
 
     const char* kind = get_type_kind(func_type);
     if (!kind || strcmp(kind, ":func") != 0) {
-        return cell_error("∈◁ requires function type", func_type);
+        return cell_error("type-domain requires function type", func_type);
     }
 
     Cell* domain = cell_struct_get_field(func_type, cell_symbol(":domain"));
@@ -1554,12 +1554,12 @@ Cell* prim_type_codomain(Cell* args) {
     Cell* func_type = arg1(args);
 
     if (!is_type_struct(func_type)) {
-        return cell_error("∈▷ requires function type", func_type);
+        return cell_error("type-codomain requires function type", func_type);
     }
 
     const char* kind = get_type_kind(func_type);
     if (!kind || strcmp(kind, ":func") != 0) {
-        return cell_error("∈▷ requires function type", func_type);
+        return cell_error("type-codomain requires function type", func_type);
     }
 
     Cell* codomain = cell_struct_get_field(func_type, cell_symbol(":codomain"));
@@ -1575,12 +1575,12 @@ Cell* prim_type_element(Cell* args) {
     Cell* list_type = arg1(args);
 
     if (!is_type_struct(list_type)) {
-        return cell_error("∈⊙ₜ requires list type", list_type);
+        return cell_error("type-element requires list type", list_type);
     }
 
     const char* kind = get_type_kind(list_type);
     if (!kind || strcmp(kind, ":list") != 0) {
-        return cell_error("∈⊙ₜ requires list type", list_type);
+        return cell_error("type-element requires list type", list_type);
     }
 
     Cell* element = cell_struct_get_field(list_type, cell_symbol(":element"));
@@ -1666,7 +1666,7 @@ Cell* prim_type_validate(Cell* args) {
     Cell* name = arg1(args);
 
     if (!cell_is_symbol(name)) {
-        return cell_error("∈✓ requires symbol", name);
+        return cell_error("type-validate requires symbol", name);
     }
 
     /* Query declared type */
@@ -1754,7 +1754,7 @@ Cell* prim_type_check_apply(Cell* args) {
     Cell* fn = arg1(args);
 
     if (!cell_is_symbol(fn)) {
-        return cell_error("∈⊢ requires symbol as first argument", fn);
+        return cell_error("type-assert requires symbol as first argument", fn);
     }
 
     /* Query declared type for the function */
@@ -1977,7 +1977,7 @@ Cell* prim_type_prim_sig(Cell* args) {
     Cell* sym = arg1(args);
 
     if (!cell_is_symbol(sym)) {
-        return cell_error("∈⍜⊕ requires symbol", sym);
+        return cell_error("type-prim-sig requires symbol", sym);
     }
 
     const char* name = cell_get_symbol(sym);
@@ -2007,92 +2007,92 @@ Cell* prim_type_prim_sig(Cell* args) {
     #define FUNC2(a, b, c) FUNC1((a), FUNC1((b), (c)))
 
     /* Arithmetic: ℤ → ℤ → ℤ */
-    if (strcmp(name, "⊕") == 0 || strcmp(name, "⊖") == 0 ||
-        strcmp(name, "⊗") == 0 || strcmp(name, "⊘") == 0 ||
+    if (strcmp(name, "+") == 0 || strcmp(name, "-") == 0 ||
+        strcmp(name, "*") == 0 || strcmp(name, "/") == 0 ||
         strcmp(name, "%") == 0) {
         return FUNC2(SIG_INT, SIG_INT, SIG_INT);
     }
 
     /* Comparison: ℤ → ℤ → 𝔹 */
     if (strcmp(name, "<") == 0 || strcmp(name, ">") == 0 ||
-        strcmp(name, "≤") == 0 || strcmp(name, "≥") == 0) {
+        strcmp(name, "<=") == 0 || strcmp(name, ">=") == 0) {
         return FUNC2(SIG_INT, SIG_INT, SIG_BOOL);
     }
 
     /* Equality: ⊤ → ⊤ → 𝔹 */
-    if (strcmp(name, "≡") == 0 || strcmp(name, "≢") == 0 ||
-        strcmp(name, "≟") == 0) {
+    if (strcmp(name, "equal?") == 0 || strcmp(name, "not-equal?") == 0 ||
+        strcmp(name, "deep-equal?") == 0) {
         return FUNC2(SIG_ANY, SIG_ANY, SIG_BOOL);
     }
 
     /* Logic: 𝔹 → 𝔹 → 𝔹 */
-    if (strcmp(name, "∧") == 0 || strcmp(name, "∨") == 0) {
+    if (strcmp(name, "and") == 0 || strcmp(name, "or") == 0) {
         return FUNC2(SIG_BOOL, SIG_BOOL, SIG_BOOL);
     }
 
     /* Logic: 𝔹 → 𝔹 */
-    if (strcmp(name, "¬") == 0) {
+    if (strcmp(name, "not") == 0) {
         return FUNC1(SIG_BOOL, SIG_BOOL);
     }
 
     /* List primitives: ⊤ → ⊤ → ⊤ */
-    if (strcmp(name, "⟨⟩") == 0) {
+    if (strcmp(name, "cons") == 0) {
         return FUNC2(SIG_ANY, SIG_ANY, SIG_ANY);
     }
 
     /* List access: ⊤ → ⊤ */
-    if (strcmp(name, "◁") == 0 || strcmp(name, "▷") == 0) {
+    if (strcmp(name, "car") == 0 || strcmp(name, "cdr") == 0) {
         return FUNC1(SIG_ANY, SIG_ANY);
     }
 
     /* Type predicates: ⊤ → 𝔹 */
-    if (strcmp(name, "⚠?") == 0 || strcmp(name, "∅?") == 0) {
+    if (strcmp(name, "error?") == 0 || strcmp(name, "null?") == 0) {
         return FUNC1(SIG_ANY, SIG_BOOL);
     }
 
     /* Type introspection: ⊤ → ⊤ */
-    if (strcmp(name, "∈⊙") == 0 || strcmp(name, "⊙") == 0) {
+    if (strcmp(name, "type-of") == 0 || strcmp(name, "struct-create") == 0) {
         return FUNC1(SIG_ANY, SIG_ANY);
     }
 
     /* String operations: 𝕊 → ℤ */
-    if (strcmp(name, "≈#") == 0) {
+    if (strcmp(name, "string-length") == 0) {
         return FUNC1(SIG_STR, SIG_INT);
     }
 
     /* String concat: 𝕊 → 𝕊 → 𝕊 */
-    if (strcmp(name, "≈⊕") == 0) {
+    if (strcmp(name, "string-append") == 0) {
         return FUNC2(SIG_STR, SIG_STR, SIG_STR);
     }
 
     /* String compare: 𝕊 → 𝕊 → 𝔹 */
-    if (strcmp(name, "≈≡") == 0) {
+    if (strcmp(name, "string-equal?") == 0) {
         return FUNC2(SIG_STR, SIG_STR, SIG_BOOL);
     }
 
     /* String substring: 𝕊 → ℤ → ℤ → 𝕊 */
-    if (strcmp(name, "≈⊂") == 0) {
+    if (strcmp(name, "string-slice") == 0) {
         Cell* inner = FUNC2(SIG_INT, SIG_INT, SIG_STR);
         return FUNC1(SIG_STR, inner);
     }
 
     /* String index: 𝕊 → ℤ → 𝕊 */
-    if (strcmp(name, "≈@") == 0) {
+    if (strcmp(name, "string@") == 0) {
         return FUNC2(SIG_STR, SIG_INT, SIG_STR);
     }
 
     /* Trace: ⊤ → ⊤ */
-    if (strcmp(name, "⟲") == 0) {
+    if (strcmp(name, "trace") == 0) {
         return FUNC1(SIG_ANY, SIG_ANY);
     }
 
     /* Error create: ⊤ → ⊤ → ⊤ */
-    if (strcmp(name, "⚠") == 0) {
+    if (strcmp(name, "error") == 0) {
         return FUNC2(SIG_ANY, SIG_ANY, SIG_ANY);
     }
 
     /* Math functions: ℤ → ℤ */
-    if (strcmp(name, "√") == 0 || strcmp(name, "⌊") == 0 ||
+    if (strcmp(name, "sqrt") == 0 || strcmp(name, "⌊") == 0 ||
         strcmp(name, "⌈") == 0 || strcmp(name, "abs") == 0 ||
         strcmp(name, "sin") == 0 || strcmp(name, "cos") == 0 ||
         strcmp(name, "tan") == 0 || strcmp(name, "log") == 0 ||
@@ -2268,7 +2268,7 @@ Cell* prim_assert(Cell* args) {
 /* ⟳ - trace (print and return value) */
 Cell* prim_trace(Cell* args) {
     Cell* value = arg1(args);
-    printf("⟳ ");
+    printf("actor-spawn ");
     cell_print(value);
     printf("\n");
     cell_retain(value);
@@ -2389,7 +2389,7 @@ Cell* prim_test_case(Cell* args) {
     double elapsed_us = (t1.tv_sec - t0.tv_sec) * 1e6 + (t1.tv_nsec - t0.tv_nsec) / 1e3;
 
     /* Print (backward compatible) */
-    printf("⊨ Test: ");
+    printf("test-case Test: ");
     cell_print(name);
 
     if (passed) {
@@ -2492,7 +2492,7 @@ Cell* prim_test_property(Cell* args) {
         return cell_error("no-context", cell_nil());
     }
 
-    printf("⊨-prop Property Test: ");
+    printf("test-property Property Test: ");
     cell_print(name);
     printf(" (%d cases)\n", num_tests);
 
@@ -2687,10 +2687,10 @@ Cell* prim_test_register(Cell* args) {
     Cell* fn = arg2(args);
 
     if (!cell_is_symbol(name)) {
-        return cell_error("⊨⊕⊙: name must be a symbol", name);
+        return cell_error("test-register: name must be a symbol", name);
     }
     if (!cell_is_lambda(fn)) {
-        return cell_error("⊨⊕⊙: second arg must be a lambda", fn);
+        return cell_error("test-register: second arg must be a lambda", fn);
     }
 
     /* Lazily create the global test registry trie */
@@ -2746,12 +2746,12 @@ Cell* prim_test_register(Cell* args) {
  */
 Cell* prim_test_run_registry(Cell* args) {
     if (!g_test_registry) {
-        return cell_error("⊨⊕!: no tests registered", cell_nil());
+        return cell_error("test-run-registry: no tests registered", cell_nil());
     }
 
     EvalContext* ctx = eval_get_current_context();
     if (!ctx) {
-        return cell_error("⊨⊕!: no eval context", cell_nil());
+        return cell_error("test-run-registry: no eval context", cell_nil());
     }
 
     /* Determine prefix filter */
@@ -5740,12 +5740,12 @@ extern EvalContext* eval_get_current_context(void);
  */
 Cell* prim_struct_define_leaf(Cell* args) {
     if (!cell_is_pair(args)) {
-        return cell_error("⊙≔ requires at least a type tag", cell_nil());
+        return cell_error("struct-define requires at least a type tag", cell_nil());
     }
 
     Cell* type_tag = arg1(args);
     if (!cell_is_symbol(type_tag)) {
-        return cell_error("⊙≔ type tag must be a symbol", type_tag);
+        return cell_error("struct-define type tag must be a symbol", type_tag);
     }
 
     /* Collect field names from remaining args */
@@ -5755,7 +5755,7 @@ Cell* prim_struct_define_leaf(Cell* args) {
         Cell* field = cell_car(rest);
         if (!cell_is_symbol(field)) {
             cell_release(fields);
-            return cell_error("⊙≔ field names must be symbols", field);
+            return cell_error("struct-define field names must be symbols", field);
         }
         cell_retain(field);
         fields = cell_cons(field, fields);
@@ -5793,25 +5793,25 @@ Cell* prim_struct_define_leaf(Cell* args) {
  */
 Cell* prim_struct_create(Cell* args) {
     if (!cell_is_pair(args)) {
-        return cell_error("⊙ requires type tag", cell_nil());
+        return cell_error("struct-create requires type tag", cell_nil());
     }
 
     Cell* type_tag = arg1(args);
     if (!cell_is_symbol(type_tag)) {
-        return cell_error("⊙ type tag must be a symbol", type_tag);
+        return cell_error("struct-create type tag must be a symbol", type_tag);
     }
 
     /* Lookup type schema */
     EvalContext* ctx = eval_get_current_context();
     Cell* schema = eval_lookup_type(ctx, type_tag);
     if (!schema) {
-        return cell_error("⊙ undefined type", type_tag);
+        return cell_error("struct-create undefined type", type_tag);
     }
 
     /* Extract field names from schema: ⟨:leaf fields⟩ */
     if (!cell_is_pair(schema)) {
         cell_release(schema);
-        return cell_error("⊙ invalid schema", type_tag);
+        return cell_error("struct-create invalid schema", type_tag);
     }
 
     Cell* field_names = cell_cdr(schema);  /* Skip :leaf tag */
@@ -5839,12 +5839,12 @@ Cell* prim_struct_create(Cell* args) {
     if (cell_is_pair(names)) {
         cell_release(schema);
         cell_release(field_pairs);
-        return cell_error("⊙ not enough field values", type_tag);
+        return cell_error("struct-create not enough field values", type_tag);
     }
     if (cell_is_pair(rest)) {
         cell_release(schema);
         cell_release(field_pairs);
-        return cell_error("⊙ too many field values", type_tag);
+        return cell_error("struct-create too many field values", type_tag);
     }
 
     /* Reverse field_pairs to preserve order */
@@ -5873,28 +5873,28 @@ Cell* prim_struct_create(Cell* args) {
  */
 Cell* prim_struct_get_field(Cell* args) {
     if (!cell_is_pair(args)) {
-        return cell_error("⊙→ requires struct and field name", cell_nil());
+        return cell_error("struct-get requires struct and field name", cell_nil());
     }
 
     Cell* structure = arg1(args);
     if (!cell_is_struct(structure)) {
-        return cell_error("⊙→ first arg must be struct", structure);
+        return cell_error("struct-get first arg must be struct", structure);
     }
 
     Cell* rest = cell_cdr(args);
     if (!cell_is_pair(rest)) {
-        return cell_error("⊙→ requires field name", cell_nil());
+        return cell_error("struct-get requires field name", cell_nil());
     }
 
     Cell* field_name = cell_car(rest);
     if (!cell_is_symbol(field_name)) {
-        return cell_error("⊙→ field name must be symbol", field_name);
+        return cell_error("struct-get field name must be symbol", field_name);
     }
 
     /* Use existing accessor */
     Cell* value = cell_struct_get_field(structure, field_name);
     if (!value) {
-        return cell_error("⊙→ field not found", field_name);
+        return cell_error("struct-get field not found", field_name);
     }
 
     return value;
@@ -5907,27 +5907,27 @@ Cell* prim_struct_get_field(Cell* args) {
  */
 Cell* prim_struct_update_field(Cell* args) {
     if (!cell_is_pair(args)) {
-        return cell_error("⊙← requires struct, field name, and value", cell_nil());
+        return cell_error("struct-set requires struct, field name, and value", cell_nil());
     }
 
     Cell* structure = arg1(args);
     if (!cell_is_struct(structure)) {
-        return cell_error("⊙← first arg must be struct", structure);
+        return cell_error("struct-set first arg must be struct", structure);
     }
 
     Cell* rest = cell_cdr(args);
     if (!cell_is_pair(rest)) {
-        return cell_error("⊙← requires field name and value", cell_nil());
+        return cell_error("struct-set requires field name and value", cell_nil());
     }
 
     Cell* field_name = cell_car(rest);
     if (!cell_is_symbol(field_name)) {
-        return cell_error("⊙← field name must be symbol", field_name);
+        return cell_error("struct-set field name must be symbol", field_name);
     }
 
     Cell* rest2 = cell_cdr(rest);
     if (!cell_is_pair(rest2)) {
-        return cell_error("⊙← requires new value", cell_nil());
+        return cell_error("struct-set requires new value", cell_nil());
     }
 
     Cell* new_value = cell_car(rest2);
@@ -5961,7 +5961,7 @@ Cell* prim_struct_update_field(Cell* args) {
 
     if (!found) {
         cell_release(new_fields);
-        return cell_error("⊙← field not found", field_name);
+        return cell_error("struct-set field not found", field_name);
     }
 
     /* Reverse to maintain order */
@@ -6005,7 +6005,7 @@ Cell* prim_struct_type_check(Cell* args) {
 
     Cell* expected_type = cell_car(rest);
     if (!cell_is_symbol(expected_type)) {
-        return cell_error("⊙? type tag must be symbol", expected_type);
+        return cell_error("struct? type tag must be symbol", expected_type);
     }
 
     Cell* actual_type = cell_struct_type_tag(value);
@@ -6022,12 +6022,12 @@ Cell* prim_struct_type_check(Cell* args) {
  */
 Cell* prim_struct_define_node(Cell* args) {
     if (!cell_is_pair(args)) {
-        return cell_error("⊚≔ requires at least a type tag", cell_nil());
+        return cell_error("adt-define requires at least a type tag", cell_nil());
     }
 
     Cell* type_tag = arg1(args);
     if (!cell_is_symbol(type_tag)) {
-        return cell_error("⊚≔ type tag must be a symbol", type_tag);
+        return cell_error("adt-define type tag must be a symbol", type_tag);
     }
 
     /* Collect variant definitions from remaining args */
@@ -6040,13 +6040,13 @@ Cell* prim_struct_define_node(Cell* args) {
         /* Each variant should be a list [variant_tag field1 field2 ...] */
         if (!cell_is_pair(variant_def)) {
             cell_release(variants);
-            return cell_error("⊚≔ each variant must be a list", variant_def);
+            return cell_error("adt-define each variant must be a list", variant_def);
         }
 
         Cell* variant_tag = cell_car(variant_def);
         if (!cell_is_symbol(variant_tag)) {
             cell_release(variants);
-            return cell_error("⊚≔ variant tag must be a symbol", variant_tag);
+            return cell_error("adt-define variant tag must be a symbol", variant_tag);
         }
 
         /* Collect field names for this variant */
@@ -6057,7 +6057,7 @@ Cell* prim_struct_define_node(Cell* args) {
             if (!cell_is_symbol(field)) {
                 cell_release(fields);
                 cell_release(variants);
-                return cell_error("⊚≔ field names must be symbols", field);
+                return cell_error("adt-define field names must be symbols", field);
             }
             cell_retain(field);
             fields = cell_cons(field, fields);
@@ -6086,7 +6086,7 @@ Cell* prim_struct_define_node(Cell* args) {
 
     /* Check that at least one variant was provided */
     if (cell_is_nil(variants)) {
-        return cell_error("⊚≔ requires at least one variant", type_tag);
+        return cell_error("adt-define requires at least one variant", type_tag);
     }
 
     /* Reverse variants to preserve order */
@@ -6120,34 +6120,34 @@ Cell* prim_struct_define_node(Cell* args) {
  */
 Cell* prim_struct_create_node(Cell* args) {
     if (!cell_is_pair(args)) {
-        return cell_error("⊚ requires type tag", cell_nil());
+        return cell_error("adt-create requires type tag", cell_nil());
     }
 
     Cell* type_tag = arg1(args);
     if (!cell_is_symbol(type_tag)) {
-        return cell_error("⊚ type tag must be a symbol", type_tag);
+        return cell_error("adt-create type tag must be a symbol", type_tag);
     }
 
     if (!cell_is_pair(cell_cdr(args))) {
-        return cell_error("⊚ requires variant tag", type_tag);
+        return cell_error("adt-create requires variant tag", type_tag);
     }
 
     Cell* variant_tag = arg2(args);
     if (!cell_is_symbol(variant_tag)) {
-        return cell_error("⊚ variant tag must be a symbol", variant_tag);
+        return cell_error("adt-create variant tag must be a symbol", variant_tag);
     }
 
     /* Lookup type schema */
     EvalContext* ctx = eval_get_current_context();
     Cell* schema = eval_lookup_type(ctx, type_tag);
     if (!schema) {
-        return cell_error("⊚ undefined type", type_tag);
+        return cell_error("adt-create undefined type", type_tag);
     }
 
     /* Extract variants from schema: ⟨:node variants⟩ */
     if (!cell_is_pair(schema)) {
         cell_release(schema);
-        return cell_error("⊚ invalid schema", type_tag);
+        return cell_error("adt-create invalid schema", type_tag);
     }
 
     Cell* variants = cell_cdr(schema);  /* Skip :node tag */
@@ -6169,7 +6169,7 @@ Cell* prim_struct_create_node(Cell* args) {
 
     if (!variant_schema) {
         cell_release(schema);
-        return cell_error("⊚ unknown variant", variant_tag);
+        return cell_error("adt-create unknown variant", variant_tag);
     }
 
     Cell* field_names = cell_cdr(variant_schema);  /* Skip variant tag */
@@ -6197,12 +6197,12 @@ Cell* prim_struct_create_node(Cell* args) {
     if (cell_is_pair(names)) {
         cell_release(field_pairs);
         cell_release(schema);
-        return cell_error("⊚ not enough field values", type_tag);
+        return cell_error("adt-create not enough field values", type_tag);
     }
     if (cell_is_pair(rest)) {
         cell_release(field_pairs);
         cell_release(schema);
-        return cell_error("⊚ too many field values", type_tag);
+        return cell_error("adt-create too many field values", type_tag);
     }
 
     /* Reverse field pairs to preserve order */
@@ -6235,20 +6235,20 @@ Cell* prim_struct_get_node(Cell* args) {
     Cell* field_name = arg2(args);
 
     if (!cell_is_struct(st)) {
-        return cell_error("⊚→ first arg must be struct", st);
+        return cell_error("adt-get first arg must be struct", st);
     }
 
     if (cell_struct_kind(st) != STRUCT_NODE) {
-        return cell_error("⊚→ requires node structure", st);
+        return cell_error("adt-get requires node structure", st);
     }
 
     if (!cell_is_symbol(field_name)) {
-        return cell_error("⊚→ field name must be symbol", field_name);
+        return cell_error("adt-get field name must be symbol", field_name);
     }
 
     Cell* value = cell_struct_get_field(st, field_name);
     if (!value) {
-        return cell_error("⊚→ field not found", field_name);
+        return cell_error("adt-get field not found", field_name);
     }
 
     return value;
@@ -6298,22 +6298,22 @@ Cell* prim_struct_is_node(Cell* args) {
  */
 Cell* prim_graph_define(Cell* args) {
     if (!cell_is_pair(args)) {
-        return cell_error("⊝≔ requires at least type tag and graph type", cell_nil());
+        return cell_error("graph-define requires at least type tag and graph type", cell_nil());
     }
 
     Cell* type_tag = arg1(args);
     if (!cell_is_symbol(type_tag)) {
-        return cell_error("⊝≔ type tag must be a symbol", type_tag);
+        return cell_error("graph-define type tag must be a symbol", type_tag);
     }
 
     Cell* rest = cell_cdr(args);
     if (!cell_is_pair(rest)) {
-        return cell_error("⊝≔ requires graph type", type_tag);
+        return cell_error("graph-define requires graph type", type_tag);
     }
 
     Cell* graph_type_sym = cell_car(rest);
     if (!cell_is_symbol(graph_type_sym)) {
-        return cell_error("⊝≔ graph type must be a symbol", graph_type_sym);
+        return cell_error("graph-define graph type must be a symbol", graph_type_sym);
     }
 
     /* Validate graph type - must be :generic, :cfg, :dfg, :call, or :dep */
@@ -6323,7 +6323,7 @@ Cell* prim_graph_define(Cell* args) {
         strcmp(gtype, ":dfg") != 0 &&
         strcmp(gtype, ":call") != 0 &&
         strcmp(gtype, ":dep") != 0) {
-        return cell_error("⊝≔ graph type must be :generic, :cfg, :dfg, :call, or :dep", graph_type_sym);
+        return cell_error("graph-define graph type must be :generic, :cfg, :dfg, :call, or :dep", graph_type_sym);
     }
 
     /* Collect field names from remaining args */
@@ -6333,7 +6333,7 @@ Cell* prim_graph_define(Cell* args) {
         Cell* field = cell_car(rest);
         if (!cell_is_symbol(field)) {
             cell_release(fields);
-            return cell_error("⊝≔ field names must be symbols", field);
+            return cell_error("graph-define field names must be symbols", field);
         }
         cell_retain(field);
         fields = cell_cons(field, fields);
@@ -6374,33 +6374,33 @@ Cell* prim_graph_define(Cell* args) {
 Cell* prim_graph_create(Cell* args) {
     Cell* type_tag = arg1(args);
     if (!cell_is_symbol(type_tag)) {
-        return cell_error("⊝ type tag must be a symbol", type_tag);
+        return cell_error("graph-create type tag must be a symbol", type_tag);
     }
 
     /* Lookup type schema */
     EvalContext* ctx = eval_get_current_context();
     Cell* schema = eval_lookup_type(ctx, type_tag);
     if (!schema) {
-        return cell_error("⊝ undefined type", type_tag);
+        return cell_error("graph-create undefined type", type_tag);
     }
 
     /* Extract graph type from schema: ⟨:graph ⟨graph_type fields⟩⟩ */
     if (!cell_is_pair(schema)) {
         cell_release(schema);
-        return cell_error("⊝ invalid schema", type_tag);
+        return cell_error("graph-create invalid schema", type_tag);
     }
 
     Cell* kind = cell_car(schema);
     const char* kind_str = cell_get_symbol(kind);
     if (strcmp(kind_str, ":graph") != 0) {
         cell_release(schema);
-        return cell_error("⊝ type is not a graph", type_tag);
+        return cell_error("graph-create type is not a graph", type_tag);
     }
 
     Cell* type_and_fields = cell_cdr(schema);
     if (!cell_is_pair(type_and_fields)) {
         cell_release(schema);
-        return cell_error("⊝ invalid schema format", type_tag);
+        return cell_error("graph-create invalid schema format", type_tag);
     }
 
     Cell* graph_type_sym = cell_car(type_and_fields);
@@ -6420,7 +6420,7 @@ Cell* prim_graph_create(Cell* args) {
         graph_type = GRAPH_DEP;
     } else {
         cell_release(schema);
-        return cell_error("⊝ unknown graph type", graph_type_sym);
+        return cell_error("graph-create unknown graph type", graph_type_sym);
     }
 
     /* Create empty graph */
@@ -6440,7 +6440,7 @@ Cell* prim_graph_add_node(Cell* args) {
     Cell* node_data = arg2(args);
 
     if (!cell_is_graph(graph)) {
-        return cell_error("⊝⊕ first arg must be graph", graph);
+        return cell_error("graph-add-node first arg must be graph", graph);
     }
 
     /* Use cell.c function to add node (returns new graph) */
@@ -6460,7 +6460,7 @@ Cell* prim_graph_add_edge(Cell* args) {
     Cell* label = arg4(args);
 
     if (!cell_is_graph(graph)) {
-        return cell_error("⊝⊗ first arg must be graph", graph);
+        return cell_error("graph-add-edge first arg must be graph", graph);
     }
 
     /* Use cell.c function to add edge (returns new graph) */
@@ -6478,11 +6478,11 @@ Cell* prim_graph_query(Cell* args) {
     Cell* property = arg2(args);
 
     if (!cell_is_graph(graph)) {
-        return cell_error("⊝→ first arg must be graph", graph);
+        return cell_error("graph-query first arg must be graph", graph);
     }
 
     if (!cell_is_symbol(property)) {
-        return cell_error("⊝→ property must be symbol", property);
+        return cell_error("graph-query property must be symbol", property);
     }
 
     const char* prop = cell_get_symbol(property);
@@ -6500,7 +6500,7 @@ Cell* prim_graph_query(Cell* args) {
     } else if (strcmp(prop, ":metadata") == 0) {
         return cell_graph_metadata(graph);
     } else {
-        return cell_error("⊝→ unknown property", property);
+        return cell_error("graph-query unknown property", property);
     }
 }
 
@@ -6572,15 +6572,15 @@ Cell* prim_graph_traverse(Cell* args) {
     Cell* visitor = arg4(args);
 
     if (!cell_is_graph(graph)) {
-        return cell_error("⊝↦ first arg must be graph", graph);
+        return cell_error("graph-traverse first arg must be graph", graph);
     }
 
     if (!cell_is_symbol(mode)) {
-        return cell_error("⊝↦ mode must be :bfs or :dfs", mode);
+        return cell_error("graph-traverse mode must be :bfs or :dfs", mode);
     }
 
     if (!cell_is_lambda(visitor)) {
-        return cell_error("⊝↦ visitor must be function", visitor);
+        return cell_error("graph-traverse visitor must be function", visitor);
     }
 
     const char* mode_str = cell_get_symbol(mode);
@@ -6588,7 +6588,7 @@ Cell* prim_graph_traverse(Cell* args) {
     bool is_dfs = strcmp(mode_str, ":dfs") == 0;
 
     if (!is_bfs && !is_dfs) {
-        return cell_error("⊝↦ mode must be :bfs or :dfs", mode);
+        return cell_error("graph-traverse mode must be :bfs or :dfs", mode);
     }
 
     /* Check if start node exists in graph */
@@ -6800,7 +6800,7 @@ Cell* prim_graph_reachable(Cell* args) {
     Cell* to = arg3(args);
 
     if (!cell_is_graph(graph)) {
-        return cell_error("⊝⊃ first arg must be graph", graph);
+        return cell_error("graph-reachable? first arg must be graph", graph);
     }
 
     /* Use BFS to check reachability */
@@ -6888,7 +6888,7 @@ Cell* prim_graph_successors(Cell* args) {
     Cell* node = arg2(args);
 
     if (!cell_is_graph(graph)) {
-        return cell_error("⊝⊚ first arg must be graph", graph);
+        return cell_error("graph-successors first arg must be graph", graph);
     }
 
     Cell* edges = cell_graph_edges(graph);
@@ -6929,7 +6929,7 @@ Cell* prim_graph_predecessors(Cell* args) {
     Cell* node = arg2(args);
 
     if (!cell_is_graph(graph)) {
-        return cell_error("⊝⊙ first arg must be graph", graph);
+        return cell_error("graph-predecessors first arg must be graph", graph);
     }
 
     Cell* edges = cell_graph_edges(graph);
@@ -6971,7 +6971,7 @@ Cell* prim_graph_path(Cell* args) {
     Cell* to = arg3(args);
 
     if (!cell_is_graph(graph)) {
-        return cell_error("⊝⇝ first arg must be graph", graph);
+        return cell_error("graph-path first arg must be graph", graph);
     }
 
     /* BFS with parent tracking */
@@ -7122,7 +7122,7 @@ Cell* prim_graph_cycles(Cell* args) {
     Cell* graph = arg1(args);
 
     if (!cell_is_graph(graph)) {
-        return cell_error("⊝∘ first arg must be graph", graph);
+        return cell_error("graph-cycles first arg must be graph", graph);
     }
 
     Cell* nodes = cell_graph_nodes(graph);
@@ -7303,9 +7303,9 @@ Cell* prim_str(Cell* args) {
         cell_retain(value);  /* Already a string */
         return value;
     } else if (cell_is_nil(value)) {
-        return cell_string("∅");
+        return cell_string("nil");
     } else {
-        return cell_error("≈ cannot convert type to string", value);
+        return cell_error("string cannot convert type to string", value);
     }
 }
 
@@ -7315,7 +7315,7 @@ Cell* prim_str_concat(Cell* args) {
     Cell* str2 = arg2(args);
 
     if (!cell_is_string(str1) || !cell_is_string(str2)) {
-        return cell_error("≈⊕ requires two strings", str1);
+        return cell_error("string-append requires two strings", str1);
     }
 
     const char* s1 = cell_get_string(str1);
@@ -7350,7 +7350,7 @@ Cell* prim_str_ref(Cell* args) {
     int len = strlen(s);
 
     if (i < 0 || i >= len) {
-        return cell_error("≈→ index out of bounds", idx);
+        return cell_error("string-ref index out of bounds", idx);
     }
 
     char ch[2] = {s[i], '\0'};
@@ -7427,7 +7427,7 @@ Cell* prim_str_char_code(Cell* args) {
     Cell* idx = arg2(args);
 
     if (!cell_is_string(str) || !cell_is_number(idx)) {
-        return cell_error("≈→# requires string and number", str);
+        return cell_error("string-char-code requires string and number", str);
     }
 
     const char* s = cell_get_string(str);
@@ -7435,7 +7435,7 @@ Cell* prim_str_char_code(Cell* args) {
     int len = strlen(s);
 
     if (i < 0 || i >= len) {
-        return cell_error("≈→# index out of bounds", idx);
+        return cell_error("string-char-code index out of bounds", idx);
     }
 
     return cell_number((double)(unsigned char)s[i]);
@@ -7446,12 +7446,12 @@ Cell* prim_code_to_char(Cell* args) {
     Cell* code = arg1(args);
 
     if (!cell_is_number(code)) {
-        return cell_error("#→≈ requires a number", code);
+        return cell_error("code->char requires a number", code);
     }
 
     int c = (int)cell_get_number(code);
     if (c < 0 || c > 127) {
-        return cell_error("#→≈ code must be 0-127", code);
+        return cell_error("code->char code must be 0-127", code);
     }
 
     char buf[2] = {(char)c, '\0'};
@@ -7487,7 +7487,7 @@ Cell* prim_str_to_symbol(Cell* args) {
     Cell* str = arg1(args);
 
     if (!cell_is_string(str)) {
-        return cell_error("≈→: requires a string", str);
+        return cell_error("string->symbol requires a string", str);
     }
 
     const char* s = cell_get_string(str);
@@ -7499,7 +7499,7 @@ Cell* prim_str_upcase(Cell* args) {
     Cell* str = arg1(args);
 
     if (!cell_is_string(str)) {
-        return cell_error("≈↑ requires a string", str);
+        return cell_error("string-upcase requires a string", str);
     }
 
     const char* s = cell_get_string(str);
@@ -7521,7 +7521,7 @@ Cell* prim_str_downcase(Cell* args) {
     Cell* str = arg1(args);
 
     if (!cell_is_string(str)) {
-        return cell_error("≈↓ requires a string", str);
+        return cell_error("string-downcase requires a string", str);
     }
 
     const char* s = cell_get_string(str);
@@ -7545,7 +7545,7 @@ Cell* prim_str_find(Cell* args) {
     Cell* str = arg1(args);
     Cell* needle = arg2(args);
     if (!cell_is_string(str) || !cell_is_string(needle))
-        return cell_error("≈⊳ requires two strings", str);
+        return cell_error("string-find requires two strings", str);
     const char* s = cell_get_string(str);
     const char* n = cell_get_string(needle);
     size_t slen = strlen(s);
@@ -7561,7 +7561,7 @@ Cell* prim_str_rfind(Cell* args) {
     Cell* str = arg1(args);
     Cell* needle = arg2(args);
     if (!cell_is_string(str) || !cell_is_string(needle))
-        return cell_error("≈⊲ requires two strings", str);
+        return cell_error("string-rfind requires two strings", str);
     const char* s = cell_get_string(str);
     const char* n = cell_get_string(needle);
     size_t slen = strlen(s);
@@ -7577,7 +7577,7 @@ Cell* prim_str_contains(Cell* args) {
     Cell* str = arg1(args);
     Cell* needle = arg2(args);
     if (!cell_is_string(str) || !cell_is_string(needle))
-        return cell_error("≈∈? requires two strings", str);
+        return cell_error("string-contains? requires two strings", str);
     const char* s = cell_get_string(str);
     const char* n = cell_get_string(needle);
     size_t slen = strlen(s);
@@ -7591,7 +7591,7 @@ Cell* prim_str_starts_with(Cell* args) {
     Cell* str = arg1(args);
     Cell* prefix = arg2(args);
     if (!cell_is_string(str) || !cell_is_string(prefix))
-        return cell_error("≈⊲? requires two strings", str);
+        return cell_error("string-starts-with? requires two strings", str);
     const char* s = cell_get_string(str);
     const char* p = cell_get_string(prefix);
     size_t slen = strlen(s);
@@ -7606,7 +7606,7 @@ Cell* prim_str_ends_with(Cell* args) {
     Cell* str = arg1(args);
     Cell* suffix = arg2(args);
     if (!cell_is_string(str) || !cell_is_string(suffix))
-        return cell_error("≈⊳? requires two strings", str);
+        return cell_error("string-ends-with? requires two strings", str);
     const char* s = cell_get_string(str);
     const char* x = cell_get_string(suffix);
     size_t slen = strlen(s);
@@ -7621,7 +7621,7 @@ Cell* prim_str_count(Cell* args) {
     Cell* str = arg1(args);
     Cell* needle = arg2(args);
     if (!cell_is_string(str) || !cell_is_string(needle))
-        return cell_error("≈⊳# requires two strings", str);
+        return cell_error("string-count requires two strings", str);
     const char* s = cell_get_string(str);
     const char* n = cell_get_string(needle);
     size_t slen = strlen(s);
@@ -7645,7 +7645,7 @@ Cell* prim_str_count(Cell* args) {
 Cell* prim_str_reverse(Cell* args) {
     Cell* str = arg1(args);
     if (!cell_is_string(str))
-        return cell_error("≈⇄ requires a string", str);
+        return cell_error("string-reverse requires a string", str);
     const char* s = cell_get_string(str);
     size_t len = strlen(s);
     char* result = (char*)malloc(len + 1);
@@ -7662,7 +7662,7 @@ Cell* prim_str_repeat(Cell* args) {
     Cell* str = arg1(args);
     Cell* n_cell = arg2(args);
     if (!cell_is_string(str) || !cell_is_number(n_cell))
-        return cell_error("≈⊛ requires string and number", str);
+        return cell_error("string-repeat requires string and number", str);
     const char* s = cell_get_string(str);
     int n = (int)cell_get_number(n_cell);
     if (n <= 0) return cell_string("");
@@ -7683,7 +7683,7 @@ Cell* prim_str_replace(Cell* args) {
     Cell* old_s = arg2(args);
     Cell* new_s = arg3(args);
     if (!cell_is_string(str) || !cell_is_string(old_s) || !cell_is_string(new_s))
-        return cell_error("≈⇔ requires three strings", str);
+        return cell_error("string-replace requires three strings", str);
     const char* s = cell_get_string(str);
     const char* old = cell_get_string(old_s);
     const char* nw = cell_get_string(new_s);
@@ -7746,7 +7746,7 @@ Cell* prim_str_replacen(Cell* args) {
     Cell* new_s = arg3(args);
     Cell* max_cell = arg4(args);
     if (!cell_is_string(str) || !cell_is_string(old_s) || !cell_is_string(new_s) || !cell_is_number(max_cell))
-        return cell_error("≈⇔# requires three strings and a number", str);
+        return cell_error("string-replace-n requires three strings and a number", str);
     const char* s = cell_get_string(str);
     const char* old = cell_get_string(old_s);
     const char* nw = cell_get_string(new_s);
@@ -7807,7 +7807,7 @@ Cell* prim_str_replacen(Cell* args) {
 Cell* prim_str_trim_left(Cell* args) {
     Cell* str = arg1(args);
     if (!cell_is_string(str))
-        return cell_error("≈⊏ requires a string", str);
+        return cell_error("string-trim-left requires a string", str);
     const char* s = cell_get_string(str);
     size_t len = strlen(s);
     const char* start = str_simd_find_non_whitespace(s, len);
@@ -7825,7 +7825,7 @@ Cell* prim_str_trim_left(Cell* args) {
 Cell* prim_str_trim_right(Cell* args) {
     Cell* str = arg1(args);
     if (!cell_is_string(str))
-        return cell_error("≈⊐ requires a string", str);
+        return cell_error("string-trim-right requires a string", str);
     const char* s = cell_get_string(str);
     size_t len = strlen(s);
     /* Scan backwards for last non-whitespace */
@@ -7844,7 +7844,7 @@ Cell* prim_str_trim_right(Cell* args) {
 Cell* prim_str_trim(Cell* args) {
     Cell* str = arg1(args);
     if (!cell_is_string(str))
-        return cell_error("≈⊏⊐ requires a string", str);
+        return cell_error("string-trim requires a string", str);
     const char* s = cell_get_string(str);
     size_t len = strlen(s);
     const char* start = str_simd_find_non_whitespace(s, len);
@@ -7866,7 +7866,7 @@ Cell* prim_str_split(Cell* args) {
     Cell* str = arg1(args);
     Cell* delim = arg2(args);
     if (!cell_is_string(str) || !cell_is_string(delim))
-        return cell_error("≈÷ requires two strings", str);
+        return cell_error("string-split requires two strings", str);
     const char* s = cell_get_string(str);
     const char* d = cell_get_string(delim);
     size_t slen = strlen(s);
@@ -7936,7 +7936,7 @@ Cell* prim_str_splitn(Cell* args) {
     Cell* delim = arg2(args);
     Cell* max_cell = arg3(args);
     if (!cell_is_string(str) || !cell_is_string(delim) || !cell_is_number(max_cell))
-        return cell_error("≈÷# requires two strings and a number", str);
+        return cell_error("string-split-n requires two strings and a number", str);
     const char* s = cell_get_string(str);
     const char* d = cell_get_string(delim);
     int max_n = (int)cell_get_number(max_cell);
@@ -7998,7 +7998,7 @@ Cell* prim_str_splitn(Cell* args) {
 Cell* prim_str_fields(Cell* args) {
     Cell* str = arg1(args);
     if (!cell_is_string(str))
-        return cell_error("≈÷⊔ requires a string", str);
+        return cell_error("string-fields requires a string", str);
     const char* s = cell_get_string(str);
     size_t len = strlen(s);
 
@@ -8041,7 +8041,7 @@ Cell* prim_str_pad_left(Cell* args) {
     Cell* width_cell = arg2(args);
     Cell* fill = arg3(args);
     if (!cell_is_string(str) || !cell_is_number(width_cell) || !cell_is_string(fill))
-        return cell_error("≈⊏⊕ requires string, number, string", str);
+        return cell_error("string-pad-left requires string, number, string", str);
     const char* s = cell_get_string(str);
     int width = (int)cell_get_number(width_cell);
     const char* f = cell_get_string(fill);
@@ -8069,7 +8069,7 @@ Cell* prim_str_pad_right(Cell* args) {
     Cell* width_cell = arg2(args);
     Cell* fill = arg3(args);
     if (!cell_is_string(str) || !cell_is_number(width_cell) || !cell_is_string(fill))
-        return cell_error("≈⊐⊕ requires string, number, string", str);
+        return cell_error("string-pad-right requires string, number, string", str);
     const char* s = cell_get_string(str);
     int width = (int)cell_get_number(width_cell);
     const char* f = cell_get_string(fill);
@@ -8095,7 +8095,7 @@ Cell* prim_str_strip_prefix(Cell* args) {
     Cell* str = arg1(args);
     Cell* prefix = arg2(args);
     if (!cell_is_string(str) || !cell_is_string(prefix))
-        return cell_error("≈⊏⊖ requires two strings", str);
+        return cell_error("string-strip-prefix requires two strings", str);
     const char* s = cell_get_string(str);
     const char* p = cell_get_string(prefix);
     size_t slen = strlen(s);
@@ -8118,7 +8118,7 @@ Cell* prim_str_strip_suffix(Cell* args) {
     Cell* str = arg1(args);
     Cell* suffix = arg2(args);
     if (!cell_is_string(str) || !cell_is_string(suffix))
-        return cell_error("≈⊐⊖ requires two strings", str);
+        return cell_error("string-strip-suffix requires two strings", str);
     const char* s = cell_get_string(str);
     const char* x = cell_get_string(suffix);
     size_t slen = strlen(s);
@@ -8151,7 +8151,7 @@ Cell* prim_print(Cell* args) {
     } else if (cell_is_symbol(value)) {
         printf("%s\n", cell_get_symbol(value));
     } else if (cell_is_nil(value)) {
-        printf("∅\n");
+        printf("nil\n");
     } else {
         printf("<value>\n");
     }
@@ -8166,7 +8166,7 @@ Cell* prim_print_str(Cell* args) {
     Cell* str = arg1(args);
 
     if (!cell_is_string(str)) {
-        return cell_error("≋≈ requires a string", str);
+        return cell_error("display requires a string", str);
     }
 
     printf("%s", cell_get_string(str));
@@ -8199,7 +8199,7 @@ Cell* prim_read_file(Cell* args) {
     Cell* path = arg1(args);
 
     if (!cell_is_string(path)) {
-        return cell_error("≋⊳ requires a string path", path);
+        return cell_error("read-file requires a string path", path);
     }
 
     const char* filename = cell_get_string(path);
@@ -8238,11 +8238,11 @@ Cell* prim_write_file(Cell* args) {
     Cell* content = arg2(args);
 
     if (!cell_is_string(path)) {
-        return cell_error("≋⊲ requires string path", path);
+        return cell_error("write-file requires string path", path);
     }
 
     if (!cell_is_string(content)) {
-        return cell_error("≋⊲ requires string content", content);
+        return cell_error("write-file requires string content", content);
     }
 
     const char* filename = cell_get_string(path);
@@ -8266,11 +8266,11 @@ Cell* prim_append_file(Cell* args) {
     Cell* content = arg2(args);
 
     if (!cell_is_string(path)) {
-        return cell_error("≋⊕ requires string path", path);
+        return cell_error("append-file requires string path", path);
     }
 
     if (!cell_is_string(content)) {
-        return cell_error("≋⊕ requires string content", content);
+        return cell_error("append-file requires string content", content);
     }
 
     const char* filename = cell_get_string(path);
@@ -8341,7 +8341,7 @@ Cell* prim_load(Cell* args) {
     Cell* path = arg1(args);
 
     if (!cell_is_string(path)) {
-        return cell_error("⋘ requires a string path", path);
+        return cell_error("load requires a string path", path);
     }
 
     const char* filename = cell_get_string(path);
@@ -8656,7 +8656,7 @@ Cell* prim_module_info(Cell* args) {
     }
 
     /* Invalid argument type */
-    return cell_error("⌂⊚ requires nil, symbol, or string", arg1_val);
+    return cell_error("module-info requires nil, symbol, or string", arg1_val);
 }
 
 /* ⋖ - Selective import (Day 28) */
@@ -8899,7 +8899,7 @@ Cell* prim_module_loaded_p(Cell* args) {
     Cell* name = arg1(args);
 
     if (!cell_is_string(name) && !cell_is_symbol(name)) {
-        return cell_error("⋘? requires a string or symbol", name);
+        return cell_error("module-loaded? requires a string or symbol", name);
     }
 
     const char* mod_name = cell_is_string(name) ? cell_get_string(name) : cell_get_symbol(name);
@@ -8914,7 +8914,7 @@ Cell* prim_module_define(Cell* args) {
     Cell* export_list = arg2(args);
 
     if (!cell_is_string(mod_name) && !cell_is_symbol(mod_name)) {
-        return cell_error("⊞◇ requires module name as string or symbol", mod_name);
+        return cell_error("module-define requires module name as string or symbol", mod_name);
     }
 
     const char* name = cell_is_string(mod_name) ? cell_get_string(mod_name) : cell_get_symbol(mod_name);
@@ -8996,7 +8996,7 @@ Cell* prim_module_import_validated(Cell* args) {
     Cell* mod_path = arg1(args);
 
     if (!cell_is_string(mod_path)) {
-        return cell_error("⋘⊳ requires a string path", mod_path);
+        return cell_error("module-import-validated requires a string path", mod_path);
     }
 
     /* Load module (will use cache if already loaded) */
@@ -9478,7 +9478,7 @@ static bool has_conditional(Cell* expr) {
         Cell* first = cell_car(expr);
         if (cell_is_symbol(first)) {
             const char* sym = cell_get_symbol(first);
-            if (strcmp(sym, "?") == 0) {
+            if (strcmp(sym, "if") == 0) {
                 return true;
             }
         }
@@ -9521,9 +9521,9 @@ static bool has_zero_comparison(Cell* expr) {
         Cell* first = cell_car(expr);
         if (cell_is_symbol(first)) {
             const char* sym = cell_get_symbol(first);
-            if (strcmp(sym, "≡") == 0 || strcmp(sym, "<") == 0 ||
-                strcmp(sym, ">") == 0 || strcmp(sym, "≤") == 0 ||
-                strcmp(sym, "≥") == 0) {
+            if (strcmp(sym, "equal?") == 0 || strcmp(sym, "<") == 0 ||
+                strcmp(sym, ">") == 0 || strcmp(sym, "<=") == 0 ||
+                strcmp(sym, ">=") == 0) {
                 /* Check if any argument is #0 */
                 Cell* rest = cell_cdr(expr);
                 while (cell_is_pair(rest)) {
@@ -9554,9 +9554,9 @@ static Cell* generate_branch_test(const char* func_name, Cell* test_list) {
     Cell* test_arg = cell_number(1);
     Cell* test_call = cell_cons(cell_symbol(func_name),
                                cell_cons(test_arg, cell_nil()));
-    Cell* test_check = cell_cons(cell_symbol("ℕ?"),
+    Cell* test_check = cell_cons(cell_symbol("number?"),
                                  cell_cons(test_call, cell_nil()));
-    Cell* test = cell_cons(cell_symbol("⊨"),
+    Cell* test = cell_cons(cell_symbol("test-case"),
                           cell_cons(test_name_sym,
                           cell_cons(cell_bool(true),
                           cell_cons(test_check, cell_nil()))));
@@ -9573,9 +9573,9 @@ static Cell* generate_base_case_test(const char* func_name, Cell* test_list) {
     Cell* test_arg = cell_number(0);  /* Test with zero for base case */
     Cell* test_call = cell_cons(cell_symbol(func_name),
                                cell_cons(test_arg, cell_nil()));
-    Cell* test_check = cell_cons(cell_symbol("ℕ?"),
+    Cell* test_check = cell_cons(cell_symbol("number?"),
                                  cell_cons(test_call, cell_nil()));
-    Cell* test = cell_cons(cell_symbol("⊨"),
+    Cell* test = cell_cons(cell_symbol("test-case"),
                           cell_cons(test_name_sym,
                           cell_cons(cell_bool(true),
                           cell_cons(test_check, cell_nil()))));
@@ -9592,9 +9592,9 @@ static Cell* generate_recursive_test(const char* func_name, Cell* test_list) {
     Cell* test_arg = cell_number(3);  /* Test with small number for recursion */
     Cell* test_call = cell_cons(cell_symbol(func_name),
                                cell_cons(test_arg, cell_nil()));
-    Cell* test_check = cell_cons(cell_symbol("ℕ?"),
+    Cell* test_check = cell_cons(cell_symbol("number?"),
                                  cell_cons(test_call, cell_nil()));
-    Cell* test = cell_cons(cell_symbol("⊨"),
+    Cell* test = cell_cons(cell_symbol("test-case"),
                           cell_cons(test_name_sym,
                           cell_cons(cell_bool(true),
                           cell_cons(test_check, cell_nil()))));
@@ -9611,9 +9611,9 @@ static Cell* generate_zero_edge_test(const char* func_name, Cell* test_list) {
     Cell* test_arg = cell_number(0);
     Cell* test_call = cell_cons(cell_symbol(func_name),
                                cell_cons(test_arg, cell_nil()));
-    Cell* test_check = cell_cons(cell_symbol("ℕ?"),
+    Cell* test_check = cell_cons(cell_symbol("number?"),
                                  cell_cons(test_call, cell_nil()));
-    Cell* test = cell_cons(cell_symbol("⊨"),
+    Cell* test = cell_cons(cell_symbol("test-case"),
                           cell_cons(test_name_sym,
                           cell_cons(cell_bool(true),
                           cell_cons(test_check, cell_nil()))));
@@ -9632,7 +9632,7 @@ static Cell* generate_zero_edge_test(const char* func_name, Cell* test_list) {
 Cell* prim_doc_tests(Cell* args) {
     Cell* name = arg1(args);
     if (!cell_is_symbol(name)) {
-        return cell_error("⌂⊨ requires a symbol argument", name);
+        return cell_error("doc-tests requires a symbol argument", name);
     }
 
     const char* sym = cell_get_symbol(name);
@@ -9650,7 +9650,7 @@ Cell* prim_doc_tests(Cell* args) {
         TypeExpr* type = type_parse(type_sig);
 
         if (!type) {
-            return cell_error("⌂⊨ invalid type signature", name);
+            return cell_error("doc-tests invalid type signature", name);
         }
 
         /* Generate tests using type-directed generation */
@@ -9710,7 +9710,7 @@ Cell* prim_doc_tests(Cell* args) {
         return tests;
     }
 
-    return cell_error("⌂⊨ symbol not found", name);
+    return cell_error("doc-tests symbol not found", name);
 }
 
 /* ⌂⊨! - Execute auto-generated tests for function
@@ -9821,35 +9821,35 @@ static Cell* mutate_operator(Cell* expr, int mutation_index, int* current_index)
     int num_mutations = 0;
 
     /* Define mutation alternatives for each operator */
-    if (strcmp(op, "⊕") == 0) {
-        mutations[0] = "⊖"; mutations[1] = "⊗"; mutations[2] = "⊘";
+    if (strcmp(op, "+") == 0) {
+        mutations[0] = "-"; mutations[1] = "*"; mutations[2] = "/";
         num_mutations = 3;
-    } else if (strcmp(op, "⊖") == 0) {
-        mutations[0] = "⊕"; mutations[1] = "⊗"; mutations[2] = "⊘";
+    } else if (strcmp(op, "-") == 0) {
+        mutations[0] = "+"; mutations[1] = "*"; mutations[2] = "/";
         num_mutations = 3;
-    } else if (strcmp(op, "⊗") == 0) {
-        mutations[0] = "⊕"; mutations[1] = "⊖"; mutations[2] = "⊘";
+    } else if (strcmp(op, "*") == 0) {
+        mutations[0] = "+"; mutations[1] = "-"; mutations[2] = "/";
         num_mutations = 3;
-    } else if (strcmp(op, "⊘") == 0) {
-        mutations[0] = "⊕"; mutations[1] = "⊖"; mutations[2] = "⊗";
+    } else if (strcmp(op, "/") == 0) {
+        mutations[0] = "+"; mutations[1] = "-"; mutations[2] = "*";
         num_mutations = 3;
-    } else if (strcmp(op, "≡") == 0) {
-        mutations[0] = "≢"; mutations[1] = "<"; mutations[2] = ">";
+    } else if (strcmp(op, "equal?") == 0) {
+        mutations[0] = "not-equal?"; mutations[1] = "<"; mutations[2] = ">";
         num_mutations = 3;
-    } else if (strcmp(op, "≢") == 0) {
-        mutations[0] = "≡";
+    } else if (strcmp(op, "not-equal?") == 0) {
+        mutations[0] = "equal?";
         num_mutations = 1;
     } else if (strcmp(op, "<") == 0) {
-        mutations[0] = ">"; mutations[1] = "≤"; mutations[2] = "≥";
+        mutations[0] = ">"; mutations[1] = "<="; mutations[2] = ">=";
         num_mutations = 3;
     } else if (strcmp(op, ">") == 0) {
-        mutations[0] = "<"; mutations[1] = "≤"; mutations[2] = "≥";
+        mutations[0] = "<"; mutations[1] = "<="; mutations[2] = ">=";
         num_mutations = 3;
-    } else if (strcmp(op, "∧") == 0) {
-        mutations[0] = "∨";
+    } else if (strcmp(op, "and") == 0) {
+        mutations[0] = "or";
         num_mutations = 1;
-    } else if (strcmp(op, "∨") == 0) {
-        mutations[0] = "∧";
+    } else if (strcmp(op, "or") == 0) {
+        mutations[0] = "and";
         num_mutations = 1;
     }
 
@@ -9900,7 +9900,7 @@ static Cell* mutate_conditional(Cell* expr, int mutation_index, int* current_ind
 
     Cell* first = cell_car(expr);
     if (!cell_is_symbol(first)) return NULL;
-    if (strcmp(cell_get_symbol(first), "?") != 0) return NULL;
+    if (strcmp(cell_get_symbol(first), "if") != 0) return NULL;
 
     /* This is a conditional: (? cond then else) */
     Cell* rest = cell_cdr(expr);
@@ -9922,7 +9922,7 @@ static Cell* mutate_conditional(Cell* expr, int mutation_index, int* current_ind
         Cell* mutated_then = clone_cell_deep(else_branch);  /* Swapped! */
         Cell* mutated_else = clone_cell_deep(then_branch);  /* Swapped! */
 
-        Cell* result = cell_cons(cell_symbol("?"),
+        Cell* result = cell_cons(cell_symbol("if"),
                        cell_cons(mutated_cond,
                        cell_cons(mutated_then,
                        cell_cons(mutated_else, cell_nil()))));
@@ -9995,21 +9995,21 @@ static int count_mutation_points(Cell* expr) {
         if (cell_is_symbol(first)) {
             const char* op = cell_get_symbol(first);
             /* Arithmetic operators */
-            if (strcmp(op, "⊕") == 0 || strcmp(op, "⊖") == 0 ||
-                strcmp(op, "⊗") == 0 || strcmp(op, "⊘") == 0) {
+            if (strcmp(op, "+") == 0 || strcmp(op, "-") == 0 ||
+                strcmp(op, "*") == 0 || strcmp(op, "/") == 0) {
                 count++;
             }
             /* Comparison operators */
-            else if (strcmp(op, "≡") == 0 || strcmp(op, "≢") == 0 ||
+            else if (strcmp(op, "equal?") == 0 || strcmp(op, "not-equal?") == 0 ||
                      strcmp(op, "<") == 0 || strcmp(op, ">") == 0) {
                 count++;
             }
             /* Logical operators */
-            else if (strcmp(op, "∧") == 0 || strcmp(op, "∨") == 0) {
+            else if (strcmp(op, "and") == 0 || strcmp(op, "or") == 0) {
                 count++;
             }
             /* Conditionals */
-            else if (strcmp(op, "?") == 0) {
+            else if (strcmp(op, "if") == 0) {
                 count++;
             }
         }
@@ -10042,12 +10042,12 @@ static int count_mutation_points(Cell* expr) {
  */
 Cell* prim_mutation_test(Cell* args) {
     if (!cell_is_pair(args)) {
-        return cell_error("⌂⊨⊗ requires a quoted function name", cell_nil());
+        return cell_error("mutation-test requires a quoted function name", cell_nil());
     }
 
     Cell* quoted = arg1(args);
     if (!cell_is_symbol(quoted)) {
-        return cell_error("⌂⊨⊗ requires a symbol argument", quoted);
+        return cell_error("mutation-test requires a symbol argument", quoted);
     }
 
     const char* func_name = cell_get_symbol(quoted);
@@ -10062,13 +10062,13 @@ Cell* prim_mutation_test(Cell* args) {
     Cell* original_func = eval_lookup(ctx, func_name);
 
     if (!original_func) {
-        return cell_error("⌂⊨⊗ function not found", quoted);
+        return cell_error("mutation-test function not found", quoted);
     }
 
     /* Verify it's a lambda */
     if (original_func->type != CELL_LAMBDA) {
         cell_release(original_func);
-        return cell_error("⌂⊨⊗ argument must be a function", quoted);
+        return cell_error("mutation-test argument must be a function", quoted);
     }
 
     /* Get lambda body */
@@ -10171,12 +10171,12 @@ Cell* prim_mutation_test(Cell* args) {
  */
 Cell* prim_query_cfg(Cell* args) {
     if (!cell_is_pair(args)) {
-        return cell_error("⌂⟿ requires a quoted function name", cell_nil());
+        return cell_error("query-cfg requires a quoted function name", cell_nil());
     }
 
     Cell* quoted = arg1(args);
     if (!cell_is_symbol(quoted)) {
-        return cell_error("⌂⟿ requires a symbol argument", quoted);
+        return cell_error("query-cfg requires a symbol argument", quoted);
     }
 
     const char* func_name = cell_get_symbol(quoted);
@@ -10186,13 +10186,13 @@ Cell* prim_query_cfg(Cell* args) {
     Cell* func_value = eval_lookup(ctx, func_name);
 
     if (!func_value) {
-        return cell_error("⌂⟿ function not found", quoted);
+        return cell_error("query-cfg function not found", quoted);
     }
 
     /* Verify it's a lambda */
     if (func_value->type != CELL_LAMBDA) {
         cell_release(func_value);
-        return cell_error("⌂⟿ argument must be a function", quoted);
+        return cell_error("query-cfg argument must be a function", quoted);
     }
 
     /* Get lambda body */
@@ -10208,12 +10208,12 @@ Cell* prim_query_cfg(Cell* args) {
 /* Query data flow graph for function - ⌂⇝ */
 Cell* prim_query_dfg(Cell* args) {
     if (!cell_is_pair(args)) {
-        return cell_error("⌂⇝ requires a quoted function name", cell_nil());
+        return cell_error("query-dfg requires a quoted function name", cell_nil());
     }
 
     Cell* quoted = arg1(args);
     if (!cell_is_symbol(quoted)) {
-        return cell_error("⌂⇝ requires a symbol argument", quoted);
+        return cell_error("query-dfg requires a symbol argument", quoted);
     }
 
     const char* func_name = cell_get_symbol(quoted);
@@ -10223,13 +10223,13 @@ Cell* prim_query_dfg(Cell* args) {
     Cell* func_value = eval_lookup(ctx, func_name);
 
     if (!func_value) {
-        return cell_error("⌂⇝ function not found", quoted);
+        return cell_error("query-dfg function not found", quoted);
     }
 
     /* Verify it's a lambda */
     if (func_value->type != CELL_LAMBDA) {
         cell_release(func_value);
-        return cell_error("⌂⇝ argument must be a function", quoted);
+        return cell_error("query-dfg argument must be a function", quoted);
     }
 
     /* Get lambda body and parameter count */
@@ -10277,7 +10277,7 @@ Cell* prim_box_create(Cell* args) {
 Cell* prim_box_deref(Cell* args) {
     Cell* box = arg1(args);
     if (!cell_is_box(box)) {
-        return cell_error("□→ requires box", box);
+        return cell_error("unbox requires box", box);
     }
     Cell* val = cell_box_get(box);
     cell_retain(val);
@@ -10289,7 +10289,7 @@ Cell* prim_box_set(Cell* args) {
     Cell* box = arg1(args);
     Cell* new_val = arg2(args);
     if (!cell_is_box(box)) {
-        return cell_error("□← requires box", box);
+        return cell_error("box-set! requires box", box);
     }
     /* cell_box_set returns old value with caller-owned ref */
     return cell_box_set(box, new_val);
@@ -10306,10 +10306,10 @@ Cell* prim_box_update(Cell* args) {
     Cell* box = arg1(args);
     Cell* fn = arg2(args);
     if (!cell_is_box(box)) {
-        return cell_error("□⊕ requires box", box);
+        return cell_error("box-update! requires box", box);
     }
     if (!cell_is_lambda(fn) && fn->type != CELL_BUILTIN) {
-        return cell_error("□⊕ requires function", fn);
+        return cell_error("box-update! requires function", fn);
     }
 
     Cell* old_val = cell_box_get(box);
@@ -10336,10 +10336,10 @@ Cell* prim_box_swap(Cell* args) {
     Cell* box1 = arg1(args);
     Cell* box2 = arg2(args);
     if (!cell_is_box(box1)) {
-        return cell_error("□⇌ first arg requires box", box1);
+        return cell_error("box-swap! first arg requires box", box1);
     }
     if (!cell_is_box(box2)) {
-        return cell_error("□⇌ second arg requires box", box2);
+        return cell_error("box-swap! second arg requires box", box2);
     }
 
     Cell* val1 = cell_box_get(box1);
@@ -10367,7 +10367,7 @@ Cell* prim_weak_create(Cell* args) {
 Cell* prim_weak_deref(Cell* args) {
     Cell* wr = arg1(args);
     if (!cell_is_weak_ref(wr)) {
-        return cell_error("◇→ requires weak-ref", wr);
+        return cell_error("weak-deref requires weak-ref", wr);
     }
     Cell* target = wr->data.weak_ref.target;
     if (target && (target->rc.biased > 0 ||
@@ -10382,7 +10382,7 @@ Cell* prim_weak_deref(Cell* args) {
 Cell* prim_weak_alive(Cell* args) {
     Cell* wr = arg1(args);
     if (!cell_is_weak_ref(wr)) {
-        return cell_error("◇? requires weak-ref", wr);
+        return cell_error("weak-alive? requires weak-ref", wr);
     }
     Cell* target = wr->data.weak_ref.target;
     return cell_bool(target && (target->rc.biased > 0 ||
@@ -10420,7 +10420,7 @@ Cell* prim_hashmap_new(Cell* args) {
 Cell* prim_hashmap_get(Cell* args) {
     Cell* map = arg1(args);
     if (!cell_is_hashmap(map))
-        return cell_error("⊞→ requires hashmap", map);
+        return cell_error("hashmap-get requires hashmap", map);
     Cell* key = arg2(args);
     return cell_hashmap_get(map, key);
 }
@@ -10429,7 +10429,7 @@ Cell* prim_hashmap_get(Cell* args) {
 Cell* prim_hashmap_put(Cell* args) {
     Cell* map = arg1(args);
     if (!cell_is_hashmap(map))
-        return cell_error("⊞← requires hashmap", map);
+        return cell_error("hashmap-put requires hashmap", map);
     Cell* key = arg2(args);
     Cell* value = arg3(args);
     return cell_hashmap_put(map, key, value);
@@ -10439,7 +10439,7 @@ Cell* prim_hashmap_put(Cell* args) {
 Cell* prim_hashmap_del(Cell* args) {
     Cell* map = arg1(args);
     if (!cell_is_hashmap(map))
-        return cell_error("⊞⊖ requires hashmap", map);
+        return cell_error("hashmap-del requires hashmap", map);
     Cell* key = arg2(args);
     return cell_hashmap_delete(map, key);
 }
@@ -10454,7 +10454,7 @@ Cell* prim_hashmap_is(Cell* args) {
 Cell* prim_hashmap_has(Cell* args) {
     Cell* map = arg1(args);
     if (!cell_is_hashmap(map))
-        return cell_error("⊞∋ requires hashmap", map);
+        return cell_error("hashmap-has? requires hashmap", map);
     Cell* key = arg2(args);
     return cell_bool(cell_hashmap_has(map, key));
 }
@@ -10463,7 +10463,7 @@ Cell* prim_hashmap_has(Cell* args) {
 Cell* prim_hashmap_size(Cell* args) {
     Cell* map = arg1(args);
     if (!cell_is_hashmap(map))
-        return cell_error("⊞# requires hashmap", map);
+        return cell_error("hashmap-size requires hashmap", map);
     return cell_number((double)cell_hashmap_size(map));
 }
 
@@ -10471,7 +10471,7 @@ Cell* prim_hashmap_size(Cell* args) {
 Cell* prim_hashmap_keys(Cell* args) {
     Cell* map = arg1(args);
     if (!cell_is_hashmap(map))
-        return cell_error("⊞⊙ requires hashmap", map);
+        return cell_error("hashmap-keys requires hashmap", map);
     return cell_hashmap_keys(map);
 }
 
@@ -10479,7 +10479,7 @@ Cell* prim_hashmap_keys(Cell* args) {
 Cell* prim_hashmap_vals(Cell* args) {
     Cell* map = arg1(args);
     if (!cell_is_hashmap(map))
-        return cell_error("⊞⊗ requires hashmap", map);
+        return cell_error("hashmap-vals requires hashmap", map);
     return cell_hashmap_values(map);
 }
 
@@ -10487,7 +10487,7 @@ Cell* prim_hashmap_vals(Cell* args) {
 Cell* prim_hashmap_entries(Cell* args) {
     Cell* map = arg1(args);
     if (!cell_is_hashmap(map))
-        return cell_error("⊞* requires hashmap", map);
+        return cell_error("hashmap-entries requires hashmap", map);
     return cell_hashmap_entries(map);
 }
 
@@ -10496,9 +10496,9 @@ Cell* prim_hashmap_merge(Cell* args) {
     Cell* m1 = arg1(args);
     Cell* m2 = arg2(args);
     if (!cell_is_hashmap(m1))
-        return cell_error("⊞⊕ requires hashmap as first arg", m1);
+        return cell_error("hashmap-merge requires hashmap as first arg", m1);
     if (!cell_is_hashmap(m2))
-        return cell_error("⊞⊕ requires hashmap as second arg", m2);
+        return cell_error("hashmap-merge requires hashmap as second arg", m2);
     return cell_hashmap_merge(m1, m2);
 }
 
@@ -10520,7 +10520,7 @@ Cell* prim_set_add(Cell* args) {
     Cell* set = arg1(args);
     Cell* val = arg2(args);
     if (!cell_is_hashset(set))
-        return cell_error("⊍⊕ requires set as first arg", set);
+        return cell_error("set-add requires set as first arg", set);
     bool added = cell_hashset_add(set, val);
     return cell_bool(added);
 }
@@ -10529,7 +10529,7 @@ Cell* prim_set_remove(Cell* args) {
     Cell* set = arg1(args);
     Cell* val = arg2(args);
     if (!cell_is_hashset(set))
-        return cell_error("⊍⊖ requires set as first arg", set);
+        return cell_error("set-remove requires set as first arg", set);
     bool removed = cell_hashset_remove(set, val);
     return cell_bool(removed);
 }
@@ -10542,21 +10542,21 @@ Cell* prim_set_has(Cell* args) {
     Cell* set = arg1(args);
     Cell* val = arg2(args);
     if (!cell_is_hashset(set))
-        return cell_error("⊍∋ requires set as first arg", set);
+        return cell_error("set-has? requires set as first arg", set);
     return cell_bool(cell_hashset_has(set, val));
 }
 
 Cell* prim_set_size(Cell* args) {
     Cell* set = arg1(args);
     if (!cell_is_hashset(set))
-        return cell_error("⊍# requires set", set);
+        return cell_error("set-size requires set", set);
     return cell_number((double)cell_hashset_size(set));
 }
 
 Cell* prim_set_elements(Cell* args) {
     Cell* set = arg1(args);
     if (!cell_is_hashset(set))
-        return cell_error("⊍⊙ requires set", set);
+        return cell_error("set-elements requires set", set);
     return cell_hashset_elements(set);
 }
 
@@ -10564,9 +10564,9 @@ Cell* prim_set_union(Cell* args) {
     Cell* s1 = arg1(args);
     Cell* s2 = arg2(args);
     if (!cell_is_hashset(s1))
-        return cell_error("⊍∪ requires set as first arg", s1);
+        return cell_error("set-union requires set as first arg", s1);
     if (!cell_is_hashset(s2))
-        return cell_error("⊍∪ requires set as second arg", s2);
+        return cell_error("set-union requires set as second arg", s2);
     return cell_hashset_union(s1, s2);
 }
 
@@ -10574,9 +10574,9 @@ Cell* prim_set_intersection(Cell* args) {
     Cell* s1 = arg1(args);
     Cell* s2 = arg2(args);
     if (!cell_is_hashset(s1))
-        return cell_error("⊍∩ requires set as first arg", s1);
+        return cell_error("set-intersection requires set as first arg", s1);
     if (!cell_is_hashset(s2))
-        return cell_error("⊍∩ requires set as second arg", s2);
+        return cell_error("set-intersection requires set as second arg", s2);
     return cell_hashset_intersection(s1, s2);
 }
 
@@ -10584,9 +10584,9 @@ Cell* prim_set_difference(Cell* args) {
     Cell* s1 = arg1(args);
     Cell* s2 = arg2(args);
     if (!cell_is_hashset(s1))
-        return cell_error("⊍∖ requires set as first arg", s1);
+        return cell_error("set-difference requires set as first arg", s1);
     if (!cell_is_hashset(s2))
-        return cell_error("⊍∖ requires set as second arg", s2);
+        return cell_error("set-difference requires set as second arg", s2);
     return cell_hashset_difference(s1, s2);
 }
 
@@ -10594,9 +10594,9 @@ Cell* prim_set_subset(Cell* args) {
     Cell* s1 = arg1(args);
     Cell* s2 = arg2(args);
     if (!cell_is_hashset(s1))
-        return cell_error("⊍⊆ requires set as first arg", s1);
+        return cell_error("set-subset? requires set as first arg", s1);
     if (!cell_is_hashset(s2))
-        return cell_error("⊍⊆ requires set as second arg", s2);
+        return cell_error("set-subset? requires set as second arg", s2);
     return cell_bool(cell_hashset_subset(s1, s2));
 }
 
@@ -10618,7 +10618,7 @@ Cell* prim_deque_push_front(Cell* args) {
     Cell* d = arg1(args);
     Cell* val = arg2(args);
     if (!cell_is_deque(d))
-        return cell_error("⊟◁ requires deque as first arg", d);
+        return cell_error("deque-push-front requires deque as first arg", d);
     cell_deque_push_front(d, val);
     return cell_bool(true);
 }
@@ -10627,7 +10627,7 @@ Cell* prim_deque_push_back(Cell* args) {
     Cell* d = arg1(args);
     Cell* val = arg2(args);
     if (!cell_is_deque(d))
-        return cell_error("⊟▷ requires deque as first arg", d);
+        return cell_error("deque-push-back requires deque as first arg", d);
     cell_deque_push_back(d, val);
     return cell_bool(true);
 }
@@ -10635,7 +10635,7 @@ Cell* prim_deque_push_back(Cell* args) {
 Cell* prim_deque_pop_front(Cell* args) {
     Cell* d = arg1(args);
     if (!cell_is_deque(d))
-        return cell_error("⊟◁⊖ requires deque", d);
+        return cell_error("deque-pop-front requires deque", d);
     Cell* val = cell_deque_pop_front(d);
     if (!val) return cell_error("deque-empty", cell_nil());
     return val;
@@ -10644,7 +10644,7 @@ Cell* prim_deque_pop_front(Cell* args) {
 Cell* prim_deque_pop_back(Cell* args) {
     Cell* d = arg1(args);
     if (!cell_is_deque(d))
-        return cell_error("⊟▷⊖ requires deque", d);
+        return cell_error("deque-pop-back requires deque", d);
     Cell* val = cell_deque_pop_back(d);
     if (!val) return cell_error("deque-empty", cell_nil());
     return val;
@@ -10653,7 +10653,7 @@ Cell* prim_deque_pop_back(Cell* args) {
 Cell* prim_deque_peek_front(Cell* args) {
     Cell* d = arg1(args);
     if (!cell_is_deque(d))
-        return cell_error("⊟◁? requires deque", d);
+        return cell_error("deque-peek-front requires deque", d);
     Cell* val = cell_deque_peek_front(d);
     if (!val) return cell_nil();
     cell_retain(val);
@@ -10663,7 +10663,7 @@ Cell* prim_deque_peek_front(Cell* args) {
 Cell* prim_deque_peek_back(Cell* args) {
     Cell* d = arg1(args);
     if (!cell_is_deque(d))
-        return cell_error("⊟▷? requires deque", d);
+        return cell_error("deque-peek-back requires deque", d);
     Cell* val = cell_deque_peek_back(d);
     if (!val) return cell_nil();
     cell_retain(val);
@@ -10673,7 +10673,7 @@ Cell* prim_deque_peek_back(Cell* args) {
 Cell* prim_deque_size(Cell* args) {
     Cell* d = arg1(args);
     if (!cell_is_deque(d))
-        return cell_error("⊟# requires deque", d);
+        return cell_error("deque-size requires deque", d);
     return cell_number((double)cell_deque_size(d));
 }
 
@@ -10684,14 +10684,14 @@ Cell* prim_deque_is(Cell* args) {
 Cell* prim_deque_to_list(Cell* args) {
     Cell* d = arg1(args);
     if (!cell_is_deque(d))
-        return cell_error("⊟⊙ requires deque", d);
+        return cell_error("deque-to-list requires deque", d);
     return cell_deque_to_list(d);
 }
 
 Cell* prim_deque_empty(Cell* args) {
     Cell* d = arg1(args);
     if (!cell_is_deque(d))
-        return cell_error("⊟∅? requires deque", d);
+        return cell_error("deque-empty? requires deque", d);
     return cell_bool(cell_deque_size(d) == 0);
 }
 
@@ -10709,7 +10709,7 @@ Cell* prim_buffer_new(Cell* args) {
         Cell* val = cell_car(cur);
         if (!cell_is_number(val)) {
             cell_release(buf);
-            return cell_error("◈ args must be numbers", val);
+            return cell_error("bytebuf args must be numbers", val);
         }
         double n = cell_get_number(val);
         if (n < 0 || n > 255 || n != (int)n) {
@@ -10726,10 +10726,10 @@ Cell* prim_buffer_new(Cell* args) {
 Cell* prim_buffer_get(Cell* args) {
     Cell* buf = arg1(args);
     if (!cell_is_buffer(buf))
-        return cell_error("◈← requires buffer", buf);
+        return cell_error("bytebuf-get requires buffer", buf);
     Cell* idx_cell = arg2(args);
     if (!cell_is_number(idx_cell))
-        return cell_error("◈← index must be number", idx_cell);
+        return cell_error("bytebuf-get index must be number", idx_cell);
     double n = cell_get_number(idx_cell);
     uint32_t idx = (uint32_t)n;
     if (n < 0 || n != idx || idx >= cell_buffer_size(buf))
@@ -10741,13 +10741,13 @@ Cell* prim_buffer_get(Cell* args) {
 Cell* prim_buffer_set(Cell* args) {
     Cell* buf = arg1(args);
     if (!cell_is_buffer(buf))
-        return cell_error("◈→ requires buffer", buf);
+        return cell_error("bytebuf-set requires buffer", buf);
     Cell* idx_cell = arg2(args);
     Cell* val_cell = arg3(args);
     if (!cell_is_number(idx_cell))
-        return cell_error("◈→ index must be number", idx_cell);
+        return cell_error("bytebuf-set index must be number", idx_cell);
     if (!cell_is_number(val_cell))
-        return cell_error("◈→ value must be number", val_cell);
+        return cell_error("bytebuf-set value must be number", val_cell);
     double ni = cell_get_number(idx_cell);
     double nv = cell_get_number(val_cell);
     uint32_t idx = (uint32_t)ni;
@@ -10763,10 +10763,10 @@ Cell* prim_buffer_set(Cell* args) {
 Cell* prim_buffer_append(Cell* args) {
     Cell* buf = arg1(args);
     if (!cell_is_buffer(buf))
-        return cell_error("◈⊕ requires buffer", buf);
+        return cell_error("bytebuf-append requires buffer", buf);
     Cell* val_cell = arg2(args);
     if (!cell_is_number(val_cell))
-        return cell_error("◈⊕ value must be number", val_cell);
+        return cell_error("bytebuf-append value must be number", val_cell);
     double nv = cell_get_number(val_cell);
     if (nv < 0 || nv > 255 || nv != (int)nv)
         return cell_error("byte-out-of-range", val_cell);
@@ -10779,9 +10779,9 @@ Cell* prim_buffer_concat(Cell* args) {
     Cell* a = arg1(args);
     Cell* b = arg2(args);
     if (!cell_is_buffer(a))
-        return cell_error("◈⊕⊕ first arg must be buffer", a);
+        return cell_error("bytebuf-concat first arg must be buffer", a);
     if (!cell_is_buffer(b))
-        return cell_error("◈⊕⊕ second arg must be buffer", b);
+        return cell_error("bytebuf-concat second arg must be buffer", b);
     return cell_buffer_concat(a, b);
 }
 
@@ -10789,7 +10789,7 @@ Cell* prim_buffer_concat(Cell* args) {
 Cell* prim_buffer_size(Cell* args) {
     Cell* buf = arg1(args);
     if (!cell_is_buffer(buf))
-        return cell_error("◈# requires buffer", buf);
+        return cell_error("bytebuf-size requires buffer", buf);
     return cell_number((double)cell_buffer_size(buf));
 }
 
@@ -10803,11 +10803,11 @@ Cell* prim_buffer_is(Cell* args) {
 Cell* prim_buffer_slice(Cell* args) {
     Cell* buf = arg1(args);
     if (!cell_is_buffer(buf))
-        return cell_error("◈⊂ requires buffer", buf);
+        return cell_error("bytebuf-slice requires buffer", buf);
     Cell* start_cell = arg2(args);
     Cell* end_cell = arg3(args);
     if (!cell_is_number(start_cell) || !cell_is_number(end_cell))
-        return cell_error("◈⊂ indices must be numbers", start_cell);
+        return cell_error("bytebuf-slice indices must be numbers", start_cell);
     uint32_t start = (uint32_t)cell_get_number(start_cell);
     uint32_t end = (uint32_t)cell_get_number(end_cell);
     return cell_buffer_slice(buf, start, end);
@@ -10817,7 +10817,7 @@ Cell* prim_buffer_slice(Cell* args) {
 Cell* prim_buffer_to_list(Cell* args) {
     Cell* buf = arg1(args);
     if (!cell_is_buffer(buf))
-        return cell_error("◈⊙ requires buffer", buf);
+        return cell_error("bytebuf-to-list requires buffer", buf);
     return cell_buffer_to_list(buf);
 }
 
@@ -10825,7 +10825,7 @@ Cell* prim_buffer_to_list(Cell* args) {
 Cell* prim_buffer_to_string(Cell* args) {
     Cell* buf = arg1(args);
     if (!cell_is_buffer(buf))
-        return cell_error("◈≈ requires buffer", buf);
+        return cell_error("bytebuf->string requires buffer", buf);
     const char* str = cell_buffer_to_string(buf);
     Cell* result = cell_string(str);
     free((void*)str);
@@ -10836,7 +10836,7 @@ Cell* prim_buffer_to_string(Cell* args) {
 Cell* prim_buffer_from_string(Cell* args) {
     Cell* s = arg1(args);
     if (!cell_is_string(s))
-        return cell_error("≈◈ requires string", s);
+        return cell_error("string->bytebuf requires string", s);
     return cell_buffer_from_string(cell_get_string(s));
 }
 
@@ -10881,10 +10881,10 @@ Cell* prim_vector_new(Cell* args) {
 Cell* prim_vector_get(Cell* args) {
     Cell* v = arg1(args);
     if (!cell_is_vector(v))
-        return cell_error("⟦→ requires vector", v);
+        return cell_error("vector-ref requires vector", v);
     Cell* idx_cell = arg2(args);
     if (!cell_is_number(idx_cell))
-        return cell_error("⟦→ index must be number", idx_cell);
+        return cell_error("vector-ref index must be number", idx_cell);
     double n = cell_get_number(idx_cell);
     uint32_t idx = (uint32_t)n;
     if (n < 0 || n != idx)
@@ -10899,11 +10899,11 @@ Cell* prim_vector_get(Cell* args) {
 Cell* prim_vector_set(Cell* args) {
     Cell* v = arg1(args);
     if (!cell_is_vector(v))
-        return cell_error("⟦← requires vector", v);
+        return cell_error("vector-set! requires vector", v);
     Cell* idx_cell = arg2(args);
     Cell* val = arg3(args);
     if (!cell_is_number(idx_cell))
-        return cell_error("⟦← index must be number", idx_cell);
+        return cell_error("vector-set! index must be number", idx_cell);
     double n = cell_get_number(idx_cell);
     uint32_t idx = (uint32_t)n;
     if (n < 0 || n != idx)
@@ -10917,7 +10917,7 @@ Cell* prim_vector_set(Cell* args) {
 Cell* prim_vector_push(Cell* args) {
     Cell* v = arg1(args);
     if (!cell_is_vector(v))
-        return cell_error("⟦⊕ requires vector", v);
+        return cell_error("vector-push! requires vector", v);
     Cell* val = arg2(args);
     cell_vector_push(v, val);
     return cell_bool(true);
@@ -10927,7 +10927,7 @@ Cell* prim_vector_push(Cell* args) {
 Cell* prim_vector_pop(Cell* args) {
     Cell* v = arg1(args);
     if (!cell_is_vector(v))
-        return cell_error("⟦⊖ requires vector", v);
+        return cell_error("vector-pop! requires vector", v);
     Cell* val = cell_vector_pop(v);
     if (!val) return cell_error("vector-empty", v);
     return val;
@@ -10937,7 +10937,7 @@ Cell* prim_vector_pop(Cell* args) {
 Cell* prim_vector_size(Cell* args) {
     Cell* v = arg1(args);
     if (!cell_is_vector(v))
-        return cell_error("⟦# requires vector", v);
+        return cell_error("vector-length requires vector", v);
     return cell_number((double)cell_vector_size(v));
 }
 
@@ -10951,7 +10951,7 @@ Cell* prim_vector_is(Cell* args) {
 Cell* prim_vector_to_list(Cell* args) {
     Cell* v = arg1(args);
     if (!cell_is_vector(v))
-        return cell_error("⟦⊙ requires vector", v);
+        return cell_error("vector->list requires vector", v);
     return cell_vector_to_list(v);
 }
 
@@ -10959,7 +10959,7 @@ Cell* prim_vector_to_list(Cell* args) {
 Cell* prim_vector_empty(Cell* args) {
     Cell* v = arg1(args);
     if (!cell_is_vector(v))
-        return cell_error("⟦∅? requires vector", v);
+        return cell_error("vector-empty? requires vector", v);
     return cell_bool(cell_vector_size(v) == 0);
 }
 
@@ -10967,11 +10967,11 @@ Cell* prim_vector_empty(Cell* args) {
 Cell* prim_vector_slice(Cell* args) {
     Cell* v = arg1(args);
     if (!cell_is_vector(v))
-        return cell_error("⟦⊞ requires vector", v);
+        return cell_error("vector-slice requires vector", v);
     Cell* start_cell = arg2(args);
     Cell* end_cell = arg3(args);
     if (!cell_is_number(start_cell) || !cell_is_number(end_cell))
-        return cell_error("⟦⊞ indices must be numbers", start_cell);
+        return cell_error("vector-slice indices must be numbers", start_cell);
     uint32_t start = (uint32_t)cell_get_number(start_cell);
     uint32_t end = (uint32_t)cell_get_number(end_cell);
     return cell_vector_slice(v, start, end);
@@ -10982,9 +10982,9 @@ Cell* prim_vector_map(Cell* args) {
     Cell* v = arg1(args);
     Cell* fn = arg2(args);
     if (!cell_is_vector(v))
-        return cell_error("⟦↦ requires vector", v);
+        return cell_error("vector-map requires vector", v);
     if (!cell_is_lambda(fn) && fn->type != CELL_BUILTIN)
-        return cell_error("⟦↦ requires function", fn);
+        return cell_error("vector-map requires function", fn);
 
     EvalContext* ctx = eval_get_current_context();
     if (!ctx) return cell_error("no-context", cell_nil());
@@ -11019,10 +11019,10 @@ Cell* prim_heap_new(Cell* args) {
 Cell* prim_heap_push(Cell* args) {
     Cell* h = arg1(args);
     if (!cell_is_heap(h))
-        return cell_error("△⊕ requires heap", h);
+        return cell_error("heap-push! requires heap", h);
     Cell* prio = arg2(args);
     if (!cell_is_number(prio))
-        return cell_error("△⊕ priority must be number", prio);
+        return cell_error("heap-push! priority must be number", prio);
     Cell* val = arg3(args);
     cell_heap_push(h, cell_get_number(prio), val);
     return cell_bool(true);
@@ -11032,7 +11032,7 @@ Cell* prim_heap_push(Cell* args) {
 Cell* prim_heap_pop(Cell* args) {
     Cell* h = arg1(args);
     if (!cell_is_heap(h))
-        return cell_error("△⊖ requires heap", h);
+        return cell_error("heap-pop! requires heap", h);
     Cell* result = cell_heap_pop(h);
     if (!result) return cell_error("heap-empty", h);
     return result;
@@ -11042,7 +11042,7 @@ Cell* prim_heap_pop(Cell* args) {
 Cell* prim_heap_peek(Cell* args) {
     Cell* h = arg1(args);
     if (!cell_is_heap(h))
-        return cell_error("△◁ requires heap", h);
+        return cell_error("heap-peek requires heap", h);
     Cell* result = cell_heap_peek(h);
     if (!result) return cell_nil();
     return result;
@@ -11052,7 +11052,7 @@ Cell* prim_heap_peek(Cell* args) {
 Cell* prim_heap_size(Cell* args) {
     Cell* h = arg1(args);
     if (!cell_is_heap(h))
-        return cell_error("△# requires heap", h);
+        return cell_error("heap-size requires heap", h);
     return cell_number((double)cell_heap_size(h));
 }
 
@@ -11066,7 +11066,7 @@ Cell* prim_heap_is(Cell* args) {
 Cell* prim_heap_empty(Cell* args) {
     Cell* h = arg1(args);
     if (!cell_is_heap(h))
-        return cell_error("△∅? requires heap", h);
+        return cell_error("heap-empty? requires heap", h);
     return cell_bool(cell_heap_size(h) == 0);
 }
 
@@ -11074,7 +11074,7 @@ Cell* prim_heap_empty(Cell* args) {
 Cell* prim_heap_to_list(Cell* args) {
     Cell* h = arg1(args);
     if (!cell_is_heap(h))
-        return cell_error("△⊙ requires heap", h);
+        return cell_error("heap->list requires heap", h);
     return cell_heap_to_list(h);
 }
 
@@ -11083,9 +11083,9 @@ Cell* prim_heap_merge(Cell* args) {
     Cell* h1 = arg1(args);
     Cell* h2 = arg2(args);
     if (!cell_is_heap(h1))
-        return cell_error("△⊕* first arg must be heap", h1);
+        return cell_error("heap-merge first arg must be heap", h1);
     if (!cell_is_heap(h2))
-        return cell_error("△⊕* second arg must be heap", h2);
+        return cell_error("heap-merge second arg must be heap", h2);
     return cell_heap_merge(h1, h2);
 }
 
@@ -11112,7 +11112,7 @@ Cell* prim_sorted_map_new(Cell* args) {
 Cell* prim_sorted_map_get(Cell* args) {
     Cell* m = arg1(args);
     if (!cell_is_sorted_map(m))
-        return cell_error("⋔→ requires sorted-map", m);
+        return cell_error("sorted-map-get requires sorted-map", m);
     Cell* key = arg2(args);
     Cell* val = cell_sorted_map_get(m, key);
     return val ? val : cell_nil();
@@ -11122,7 +11122,7 @@ Cell* prim_sorted_map_get(Cell* args) {
 Cell* prim_sorted_map_put(Cell* args) {
     Cell* m = arg1(args);
     if (!cell_is_sorted_map(m))
-        return cell_error("⋔← requires sorted-map", m);
+        return cell_error("sorted-map-put requires sorted-map", m);
     Cell* key = arg2(args);
     Cell* val = arg3(args);
     cell_sorted_map_put(m, key, val);
@@ -11133,7 +11133,7 @@ Cell* prim_sorted_map_put(Cell* args) {
 Cell* prim_sorted_map_del(Cell* args) {
     Cell* m = arg1(args);
     if (!cell_is_sorted_map(m))
-        return cell_error("⋔⊖ requires sorted-map", m);
+        return cell_error("sorted-map-del requires sorted-map", m);
     Cell* key = arg2(args);
     Cell* old = cell_sorted_map_del(m, key);
     return old ? old : cell_nil();
@@ -11148,7 +11148,7 @@ Cell* prim_sorted_map_is(Cell* args) {
 Cell* prim_sorted_map_has(Cell* args) {
     Cell* m = arg1(args);
     if (!cell_is_sorted_map(m))
-        return cell_error("⋔∋ requires sorted-map", m);
+        return cell_error("sorted-map-has? requires sorted-map", m);
     Cell* key = arg2(args);
     return cell_bool(cell_sorted_map_has(m, key));
 }
@@ -11157,7 +11157,7 @@ Cell* prim_sorted_map_has(Cell* args) {
 Cell* prim_sorted_map_size(Cell* args) {
     Cell* m = arg1(args);
     if (!cell_is_sorted_map(m))
-        return cell_error("⋔# requires sorted-map", m);
+        return cell_error("sorted-map-size requires sorted-map", m);
     return cell_number((double)cell_sorted_map_size(m));
 }
 
@@ -11165,7 +11165,7 @@ Cell* prim_sorted_map_size(Cell* args) {
 Cell* prim_sorted_map_keys(Cell* args) {
     Cell* m = arg1(args);
     if (!cell_is_sorted_map(m))
-        return cell_error("⋔⊙ requires sorted-map", m);
+        return cell_error("sorted-map-keys requires sorted-map", m);
     return cell_sorted_map_keys(m);
 }
 
@@ -11173,7 +11173,7 @@ Cell* prim_sorted_map_keys(Cell* args) {
 Cell* prim_sorted_map_vals(Cell* args) {
     Cell* m = arg1(args);
     if (!cell_is_sorted_map(m))
-        return cell_error("⋔⊗ requires sorted-map", m);
+        return cell_error("sorted-map-vals requires sorted-map", m);
     return cell_sorted_map_values(m);
 }
 
@@ -11181,7 +11181,7 @@ Cell* prim_sorted_map_vals(Cell* args) {
 Cell* prim_sorted_map_entries(Cell* args) {
     Cell* m = arg1(args);
     if (!cell_is_sorted_map(m))
-        return cell_error("⋔* requires sorted-map", m);
+        return cell_error("sorted-map-entries requires sorted-map", m);
     return cell_sorted_map_entries(m);
 }
 
@@ -11190,9 +11190,9 @@ Cell* prim_sorted_map_merge(Cell* args) {
     Cell* m1 = arg1(args);
     Cell* m2 = arg2(args);
     if (!cell_is_sorted_map(m1))
-        return cell_error("⋔⊕ first arg must be sorted-map", m1);
+        return cell_error("sorted-map-merge first arg must be sorted-map", m1);
     if (!cell_is_sorted_map(m2))
-        return cell_error("⋔⊕ second arg must be sorted-map", m2);
+        return cell_error("sorted-map-merge second arg must be sorted-map", m2);
     return cell_sorted_map_merge(m1, m2);
 }
 
@@ -11200,7 +11200,7 @@ Cell* prim_sorted_map_merge(Cell* args) {
 Cell* prim_sorted_map_min(Cell* args) {
     Cell* m = arg1(args);
     if (!cell_is_sorted_map(m))
-        return cell_error("⋔◁ requires sorted-map", m);
+        return cell_error("sorted-map-min requires sorted-map", m);
     Cell* result = cell_sorted_map_min(m);
     return result ? result : cell_nil();
 }
@@ -11209,7 +11209,7 @@ Cell* prim_sorted_map_min(Cell* args) {
 Cell* prim_sorted_map_max(Cell* args) {
     Cell* m = arg1(args);
     if (!cell_is_sorted_map(m))
-        return cell_error("⋔▷ requires sorted-map", m);
+        return cell_error("sorted-map-max requires sorted-map", m);
     Cell* result = cell_sorted_map_max(m);
     return result ? result : cell_nil();
 }
@@ -11218,7 +11218,7 @@ Cell* prim_sorted_map_max(Cell* args) {
 Cell* prim_sorted_map_range(Cell* args) {
     Cell* m = arg1(args);
     if (!cell_is_sorted_map(m))
-        return cell_error("⋔⊂ requires sorted-map", m);
+        return cell_error("sorted-map-range requires sorted-map", m);
     Cell* lo = arg2(args);
     Cell* hi = arg3(args);
     return cell_sorted_map_range(m, lo, hi);
@@ -11228,7 +11228,7 @@ Cell* prim_sorted_map_range(Cell* args) {
 Cell* prim_sorted_map_floor(Cell* args) {
     Cell* m = arg1(args);
     if (!cell_is_sorted_map(m))
-        return cell_error("⋔≤ requires sorted-map", m);
+        return cell_error("sorted-map-floor requires sorted-map", m);
     Cell* key = arg2(args);
     Cell* result = cell_sorted_map_floor(m, key);
     return result ? result : cell_nil();
@@ -11238,7 +11238,7 @@ Cell* prim_sorted_map_floor(Cell* args) {
 Cell* prim_sorted_map_ceiling(Cell* args) {
     Cell* m = arg1(args);
     if (!cell_is_sorted_map(m))
-        return cell_error("⋔≥ requires sorted-map", m);
+        return cell_error("sorted-map-ceiling requires sorted-map", m);
     Cell* key = arg2(args);
     Cell* result = cell_sorted_map_ceiling(m, key);
     return result ? result : cell_nil();
@@ -11266,7 +11266,7 @@ Cell* prim_trie_new(Cell* args) {
 Cell* prim_trie_get(Cell* args) {
     Cell* t = arg1(args);
     if (!cell_is_trie(t))
-        return cell_error("⊮→ requires trie", t);
+        return cell_error("trie-get requires trie", t);
     Cell* key = arg2(args);
     Cell* val = cell_trie_get(t, key);
     return val ? val : cell_nil();
@@ -11276,7 +11276,7 @@ Cell* prim_trie_get(Cell* args) {
 Cell* prim_trie_put(Cell* args) {
     Cell* t = arg1(args);
     if (!cell_is_trie(t))
-        return cell_error("⊮← requires trie", t);
+        return cell_error("trie-put requires trie", t);
     Cell* key = arg2(args);
     Cell* val = arg3(args);
     cell_trie_put(t, key, val);
@@ -11287,7 +11287,7 @@ Cell* prim_trie_put(Cell* args) {
 Cell* prim_trie_del(Cell* args) {
     Cell* t = arg1(args);
     if (!cell_is_trie(t))
-        return cell_error("⊮⊖ requires trie", t);
+        return cell_error("trie-del requires trie", t);
     Cell* key = arg2(args);
     Cell* old = cell_trie_del(t, key);
     return old ? old : cell_nil();
@@ -11302,7 +11302,7 @@ Cell* prim_trie_is(Cell* args) {
 Cell* prim_trie_has(Cell* args) {
     Cell* t = arg1(args);
     if (!cell_is_trie(t))
-        return cell_error("⊮∋ requires trie", t);
+        return cell_error("trie-has? requires trie", t);
     Cell* key = arg2(args);
     return cell_bool(cell_trie_has(t, key));
 }
@@ -11311,7 +11311,7 @@ Cell* prim_trie_has(Cell* args) {
 Cell* prim_trie_size(Cell* args) {
     Cell* t = arg1(args);
     if (!cell_is_trie(t))
-        return cell_error("⊮# requires trie", t);
+        return cell_error("trie-size requires trie", t);
     return cell_number((double)cell_trie_size(t));
 }
 
@@ -11320,9 +11320,9 @@ Cell* prim_trie_merge(Cell* args) {
     Cell* t1 = arg1(args);
     Cell* t2 = arg2(args);
     if (!cell_is_trie(t1))
-        return cell_error("⊮⊕ first arg must be trie", t1);
+        return cell_error("trie-merge first arg must be trie", t1);
     if (!cell_is_trie(t2))
-        return cell_error("⊮⊕ second arg must be trie", t2);
+        return cell_error("trie-merge second arg must be trie", t2);
     return cell_trie_merge(t1, t2);
 }
 
@@ -11330,7 +11330,7 @@ Cell* prim_trie_merge(Cell* args) {
 Cell* prim_trie_prefix_keys(Cell* args) {
     Cell* t = arg1(args);
     if (!cell_is_trie(t))
-        return cell_error("⊮⊙ requires trie", t);
+        return cell_error("trie-prefix-keys requires trie", t);
     Cell* prefix = arg2(args);
     return cell_trie_prefix_keys(t, prefix);
 }
@@ -11339,7 +11339,7 @@ Cell* prim_trie_prefix_keys(Cell* args) {
 Cell* prim_trie_prefix_count(Cell* args) {
     Cell* t = arg1(args);
     if (!cell_is_trie(t))
-        return cell_error("⊮⊗ requires trie", t);
+        return cell_error("trie-prefix-count requires trie", t);
     Cell* prefix = arg2(args);
     return cell_number((double)cell_trie_prefix_count(t, prefix));
 }
@@ -11348,7 +11348,7 @@ Cell* prim_trie_prefix_count(Cell* args) {
 Cell* prim_trie_longest_prefix(Cell* args) {
     Cell* t = arg1(args);
     if (!cell_is_trie(t))
-        return cell_error("⊮≤ requires trie", t);
+        return cell_error("trie-longest-prefix requires trie", t);
     Cell* query = arg2(args);
     Cell* result = cell_trie_longest_prefix(t, query);
     return result ? result : cell_nil();
@@ -11358,7 +11358,7 @@ Cell* prim_trie_longest_prefix(Cell* args) {
 Cell* prim_trie_entries(Cell* args) {
     Cell* t = arg1(args);
     if (!cell_is_trie(t))
-        return cell_error("⊮* requires trie", t);
+        return cell_error("trie-entries requires trie", t);
     return cell_trie_entries(t);
 }
 
@@ -11366,7 +11366,7 @@ Cell* prim_trie_entries(Cell* args) {
 Cell* prim_trie_keys(Cell* args) {
     Cell* t = arg1(args);
     if (!cell_is_trie(t))
-        return cell_error("⊮⊙* requires trie", t);
+        return cell_error("trie-keys requires trie", t);
     return cell_trie_keys(t);
 }
 
@@ -11374,7 +11374,7 @@ Cell* prim_trie_keys(Cell* args) {
 Cell* prim_trie_vals(Cell* args) {
     Cell* t = arg1(args);
     if (!cell_is_trie(t))
-        return cell_error("⊮⊗* requires trie", t);
+        return cell_error("trie-vals requires trie", t);
     return cell_trie_values(t);
 }
 
@@ -11451,7 +11451,7 @@ Cell* prim_iter_map(Cell* args) {
     Cell* src = arg1(args);
     Cell* fn = arg2(args);
     if (!cell_is_lambda(fn) && fn->type != CELL_BUILTIN)
-        return cell_error("⊣↦ requires function", fn);
+        return cell_error("iter-map requires function", fn);
     return cell_iterator_map(src, fn);
 }
 
@@ -11460,7 +11460,7 @@ Cell* prim_iter_filter(Cell* args) {
     Cell* src = arg1(args);
     Cell* pred = arg2(args);
     if (!cell_is_lambda(pred) && pred->type != CELL_BUILTIN)
-        return cell_error("⊣⊲ requires function", pred);
+        return cell_error("iter-filter requires function", pred);
     return cell_iterator_filter(src, pred);
 }
 
@@ -11469,7 +11469,7 @@ Cell* prim_iter_take(Cell* args) {
     Cell* src = arg1(args);
     Cell* n_cell = arg2(args);
     if (!cell_is_number(n_cell))
-        return cell_error("⊣↑ requires number", n_cell);
+        return cell_error("iter-take requires number", n_cell);
     uint32_t n = (uint32_t)cell_get_number(n_cell);
     return cell_iterator_take(src, n);
 }
@@ -11479,7 +11479,7 @@ Cell* prim_iter_drop(Cell* args) {
     Cell* src = arg1(args);
     Cell* n_cell = arg2(args);
     if (!cell_is_number(n_cell))
-        return cell_error("⊣↓ requires number", n_cell);
+        return cell_error("iter-drop requires number", n_cell);
     uint32_t n = (uint32_t)cell_get_number(n_cell);
     return cell_iterator_drop(src, n);
 }
@@ -11504,7 +11504,7 @@ Cell* prim_iter_reduce(Cell* args) {
     Cell* init = arg2(args);
     Cell* fn = arg3(args);
     if (!cell_is_lambda(fn) && fn->type != CELL_BUILTIN)
-        return cell_error("⊣Σ requires function", fn);
+        return cell_error("iter-reduce requires function", fn);
 
     Cell* it = src;
     bool created = false;
@@ -11582,7 +11582,7 @@ Cell* prim_iter_any(Cell* args) {
     Cell* src = arg1(args);
     Cell* pred = arg2(args);
     if (!cell_is_lambda(pred) && pred->type != CELL_BUILTIN)
-        return cell_error("⊣∃ requires function", pred);
+        return cell_error("iter-any? requires function", pred);
 
     Cell* it = src;
     bool created = false;
@@ -11612,7 +11612,7 @@ Cell* prim_iter_all(Cell* args) {
     Cell* src = arg1(args);
     Cell* pred = arg2(args);
     if (!cell_is_lambda(pred) && pred->type != CELL_BUILTIN)
-        return cell_error("⊣∀ requires function", pred);
+        return cell_error("iter-all? requires function", pred);
 
     Cell* it = src;
     bool created = false;
@@ -11642,7 +11642,7 @@ Cell* prim_iter_find(Cell* args) {
     Cell* src = arg1(args);
     Cell* pred = arg2(args);
     if (!cell_is_lambda(pred) && pred->type != CELL_BUILTIN)
-        return cell_error("⊣⊙ requires function", pred);
+        return cell_error("iter-find requires function", pred);
 
     Cell* it = src;
     bool created = false;
@@ -12700,9 +12700,9 @@ Cell* prim_net_socket(Cell* args) {
     Cell* dom_sym = arg1(args);
     Cell* typ_sym = arg2(args);
     Cell* proto   = arg3(args);
-    if (!cell_is_symbol(dom_sym)) return cell_error("⊸⊕: domain must be symbol", dom_sym);
-    if (!cell_is_symbol(typ_sym)) return cell_error("⊸⊕: type must be symbol", typ_sym);
-    if (!cell_is_number(proto))   return cell_error("⊸⊕: proto must be number", proto);
+    if (!cell_is_symbol(dom_sym)) return cell_error("net-socket: domain must be symbol", dom_sym);
+    if (!cell_is_symbol(typ_sym)) return cell_error("net-socket: type must be symbol", typ_sym);
+    if (!cell_is_number(proto))   return cell_error("net-socket: proto must be number", proto);
 
     const char* dom_s = cell_get_symbol(dom_sym);
     const char* typ_s = cell_get_symbol(typ_sym);
@@ -12711,24 +12711,24 @@ Cell* prim_net_socket(Cell* args) {
     if (strcmp(dom_s, ":inet") == 0 || strcmp(dom_s, ":inet4") == 0) domain = AF_INET;
     else if (strcmp(dom_s, ":inet6") == 0) domain = AF_INET6;
     else if (strcmp(dom_s, ":unix") == 0 || strcmp(dom_s, ":local") == 0) domain = AF_UNIX;
-    else return cell_error("⊸⊕: unknown domain", dom_sym);
+    else return cell_error("net-socket: unknown domain", dom_sym);
 
     int type = SOCK_STREAM;
     if (strcmp(typ_s, ":stream") == 0) type = SOCK_STREAM;
     else if (strcmp(typ_s, ":dgram") == 0) type = SOCK_DGRAM;
-    else return cell_error("⊸⊕: unknown type", typ_sym);
+    else return cell_error("net-socket: unknown type", typ_sym);
 
     int fd = socket(domain, type, (int)cell_get_number(proto));
-    if (fd < 0) return cell_error("⊸⊕: socket failed", cell_number(errno));
+    if (fd < 0) return cell_error("net-socket: socket failed", cell_number(errno));
     return cell_number(fd);
 }
 
 /* ⊸× - close socket */
 Cell* prim_net_close(Cell* args) {
     Cell* fd_cell = arg1(args);
-    if (!cell_is_number(fd_cell)) return cell_error("⊸×: fd must be number", fd_cell);
+    if (!cell_is_number(fd_cell)) return cell_error("net-close: fd must be number", fd_cell);
     int fd = (int)cell_get_number(fd_cell);
-    if (close(fd) < 0) return cell_error("⊸×: close failed", cell_number(errno));
+    if (close(fd) < 0) return cell_error("net-close: close failed", cell_number(errno));
     return cell_bool(true);
 }
 
@@ -12736,8 +12736,8 @@ Cell* prim_net_close(Cell* args) {
 Cell* prim_net_shutdown(Cell* args) {
     Cell* fd_cell = arg1(args);
     Cell* how_sym = arg2(args);
-    if (!cell_is_number(fd_cell)) return cell_error("⊸×→: fd must be number", fd_cell);
-    if (!cell_is_symbol(how_sym)) return cell_error("⊸×→: how must be symbol", how_sym);
+    if (!cell_is_number(fd_cell)) return cell_error("net-shutdown: fd must be number", fd_cell);
+    if (!cell_is_symbol(how_sym)) return cell_error("net-shutdown: how must be symbol", how_sym);
 
     int fd = (int)cell_get_number(fd_cell);
     const char* how_s = cell_get_symbol(how_sym);
@@ -12746,7 +12746,7 @@ Cell* prim_net_shutdown(Cell* args) {
     else if (strcmp(how_s, ":wr") == 0) how = SHUT_WR;
     else if (strcmp(how_s, ":rdwr") == 0) how = SHUT_RDWR;
 
-    if (shutdown(fd, how) < 0) return cell_error("⊸×→: shutdown failed", cell_number(errno));
+    if (shutdown(fd, how) < 0) return cell_error("net-shutdown: shutdown failed", cell_number(errno));
     return cell_bool(true);
 }
 
@@ -12754,15 +12754,15 @@ Cell* prim_net_shutdown(Cell* args) {
 Cell* prim_net_socketpair(Cell* args) {
     Cell* dom_sym = arg1(args);
     Cell* typ_sym = arg2(args);
-    if (!cell_is_symbol(dom_sym)) return cell_error("⊸⊕⊞: domain must be symbol", dom_sym);
-    if (!cell_is_symbol(typ_sym)) return cell_error("⊸⊕⊞: type must be symbol", typ_sym);
+    if (!cell_is_symbol(dom_sym)) return cell_error("net-socketpair: domain must be symbol", dom_sym);
+    if (!cell_is_symbol(typ_sym)) return cell_error("net-socketpair: type must be symbol", typ_sym);
 
     const char* dom_s = cell_get_symbol(dom_sym);
     const char* typ_s = cell_get_symbol(typ_sym);
 
     int domain = AF_UNIX;
     if (strcmp(dom_s, ":unix") == 0 || strcmp(dom_s, ":local") == 0) domain = AF_UNIX;
-    else return cell_error("⊸⊕⊞: socketpair only supports :unix domain", dom_sym);
+    else return cell_error("net-socketpair: socketpair only supports :unix domain", dom_sym);
 
     int type = SOCK_STREAM;
     if (strcmp(typ_s, ":stream") == 0) type = SOCK_STREAM;
@@ -12770,7 +12770,7 @@ Cell* prim_net_socketpair(Cell* args) {
 
     int fds[2];
     if (socketpair(domain, type, 0, fds) < 0)
-        return cell_error("⊸⊕⊞: socketpair failed", cell_number(errno));
+        return cell_error("net-socketpair: socketpair failed", cell_number(errno));
     return cell_cons(cell_number(fds[0]), cell_number(fds[1]));
 }
 
@@ -12790,15 +12790,15 @@ Cell* prim_net_is_socket(Cell* args) {
 Cell* prim_net_addr(Cell* args) {
     Cell* host = arg1(args);
     Cell* port = arg2(args);
-    if (!cell_is_string(host)) return cell_error("⊸⊙: host must be string", host);
-    if (!cell_is_number(port)) return cell_error("⊸⊙: port must be number", port);
+    if (!cell_is_string(host)) return cell_error("net-addr: host must be string", host);
+    if (!cell_is_number(port)) return cell_error("net-addr: port must be number", port);
 
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
     addr.sin_port = htons((uint16_t)cell_get_number(port));
     if (inet_pton(AF_INET, cell_get_string(host), &addr.sin_addr) != 1)
-        return cell_error("⊸⊙: invalid IPv4 address", host);
+        return cell_error("net-addr: invalid IPv4 address", host);
 
     Cell* buf = cell_buffer_new(sizeof(addr));
     memcpy(buf->data.buffer.bytes, &addr, sizeof(addr));
@@ -12810,15 +12810,15 @@ Cell* prim_net_addr(Cell* args) {
 Cell* prim_net_addr6(Cell* args) {
     Cell* host = arg1(args);
     Cell* port = arg2(args);
-    if (!cell_is_string(host)) return cell_error("⊸⊙₆: host must be string", host);
-    if (!cell_is_number(port)) return cell_error("⊸⊙₆: port must be number", port);
+    if (!cell_is_string(host)) return cell_error("net-addr6: host must be string", host);
+    if (!cell_is_number(port)) return cell_error("net-addr6: port must be number", port);
 
     struct sockaddr_in6 addr;
     memset(&addr, 0, sizeof(addr));
     addr.sin6_family = AF_INET6;
     addr.sin6_port = htons((uint16_t)cell_get_number(port));
     if (inet_pton(AF_INET6, cell_get_string(host), &addr.sin6_addr) != 1)
-        return cell_error("⊸⊙₆: invalid IPv6 address", host);
+        return cell_error("net-addr6: invalid IPv6 address", host);
 
     Cell* buf = cell_buffer_new(sizeof(addr));
     memcpy(buf->data.buffer.bytes, &addr, sizeof(addr));
@@ -12829,14 +12829,14 @@ Cell* prim_net_addr6(Cell* args) {
 /* ⊸⊙⊘ - Unix domain address */
 Cell* prim_net_addr_unix(Cell* args) {
     Cell* path = arg1(args);
-    if (!cell_is_string(path)) return cell_error("⊸⊙⊘: path must be string", path);
+    if (!cell_is_string(path)) return cell_error("net-addr-unix: path must be string", path);
 
     struct sockaddr_un addr;
     memset(&addr, 0, sizeof(addr));
     addr.sun_family = AF_UNIX;
     const char* p = cell_get_string(path);
     if (strlen(p) >= sizeof(addr.sun_path))
-        return cell_error("⊸⊙⊘: path too long", path);
+        return cell_error("net-addr-unix: path too long", path);
     strncpy(addr.sun_path, p, sizeof(addr.sun_path) - 1);
 
     size_t len = offsetof(struct sockaddr_un, sun_path) + strlen(addr.sun_path) + 1;
@@ -12852,15 +12852,15 @@ Cell* prim_net_addr_unix(Cell* args) {
 Cell* prim_net_connect(Cell* args) {
     Cell* fd_cell = arg1(args);
     Cell* addr_buf = arg2(args);
-    if (!cell_is_number(fd_cell)) return cell_error("⊸→⊕: fd must be number", fd_cell);
-    if (!cell_is_buffer(addr_buf)) return cell_error("⊸→⊕: addr must be buffer", addr_buf);
+    if (!cell_is_number(fd_cell)) return cell_error("net-connect: fd must be number", fd_cell);
+    if (!cell_is_buffer(addr_buf)) return cell_error("net-connect: addr must be buffer", addr_buf);
 
     int fd = (int)cell_get_number(fd_cell);
     struct sockaddr* sa = (struct sockaddr*)addr_buf->data.buffer.bytes;
     socklen_t len = cell_buffer_size(addr_buf);
 
     if (connect(fd, sa, len) < 0)
-        return cell_error("⊸→⊕: connect failed", cell_number(errno));
+        return cell_error("net-connect: connect failed", cell_number(errno));
     return cell_bool(true);
 }
 
@@ -12868,15 +12868,15 @@ Cell* prim_net_connect(Cell* args) {
 Cell* prim_net_bind(Cell* args) {
     Cell* fd_cell = arg1(args);
     Cell* addr_buf = arg2(args);
-    if (!cell_is_number(fd_cell)) return cell_error("⊸←≔: fd must be number", fd_cell);
-    if (!cell_is_buffer(addr_buf)) return cell_error("⊸←≔: addr must be buffer", addr_buf);
+    if (!cell_is_number(fd_cell)) return cell_error("net-bind-addr: fd must be number", fd_cell);
+    if (!cell_is_buffer(addr_buf)) return cell_error("net-bind-addr: addr must be buffer", addr_buf);
 
     int fd = (int)cell_get_number(fd_cell);
     struct sockaddr* sa = (struct sockaddr*)addr_buf->data.buffer.bytes;
     socklen_t len = cell_buffer_size(addr_buf);
 
     if (bind(fd, sa, len) < 0)
-        return cell_error("⊸←≔: bind failed", cell_number(errno));
+        return cell_error("net-bind-addr: bind failed", cell_number(errno));
     return cell_bool(true);
 }
 
@@ -12884,26 +12884,26 @@ Cell* prim_net_bind(Cell* args) {
 Cell* prim_net_listen(Cell* args) {
     Cell* fd_cell = arg1(args);
     Cell* backlog  = arg2(args);
-    if (!cell_is_number(fd_cell)) return cell_error("⊸←⊕: fd must be number", fd_cell);
-    if (!cell_is_number(backlog))  return cell_error("⊸←⊕: backlog must be number", backlog);
+    if (!cell_is_number(fd_cell)) return cell_error("net-listen: fd must be number", fd_cell);
+    if (!cell_is_number(backlog))  return cell_error("net-listen: backlog must be number", backlog);
 
     int fd = (int)cell_get_number(fd_cell);
     if (listen(fd, (int)cell_get_number(backlog)) < 0)
-        return cell_error("⊸←⊕: listen failed", cell_number(errno));
+        return cell_error("net-listen: listen failed", cell_number(errno));
     return cell_bool(true);
 }
 
 /* ⊸← - accept: fd → ⟨client-fd addr⟩|⚠ */
 Cell* prim_net_accept(Cell* args) {
     Cell* fd_cell = arg1(args);
-    if (!cell_is_number(fd_cell)) return cell_error("⊸←: fd must be number", fd_cell);
+    if (!cell_is_number(fd_cell)) return cell_error("net-accept: fd must be number", fd_cell);
 
     int fd = (int)cell_get_number(fd_cell);
     struct sockaddr_storage sa;
     socklen_t salen = sizeof(sa);
     int client = accept(fd, (struct sockaddr*)&sa, &salen);
     if (client < 0)
-        return cell_error("⊸←: accept failed", cell_number(errno));
+        return cell_error("net-accept: accept failed", cell_number(errno));
 
     Cell* addr = cell_buffer_new(salen);
     memcpy(addr->data.buffer.bytes, &sa, salen);
@@ -12915,7 +12915,7 @@ Cell* prim_net_accept(Cell* args) {
 Cell* prim_net_resolve(Cell* args) {
     Cell* host = arg1(args);
     Cell* svc  = arg2(args);
-    if (!cell_is_string(host)) return cell_error("⊸⊙→: host must be string", host);
+    if (!cell_is_string(host)) return cell_error("net-resolve: host must be string", host);
 
     const char* service = NULL;
     if (cell_is_string(svc)) service = cell_get_string(svc);
@@ -12927,7 +12927,7 @@ Cell* prim_net_resolve(Cell* args) {
 
     int rc = getaddrinfo(cell_get_string(host), service, &hints, &res);
     if (rc != 0)
-        return cell_error("⊸⊙→: resolve failed", cell_string(gai_strerror(rc)));
+        return cell_error("net-resolve: resolve failed", cell_string(gai_strerror(rc)));
 
     Cell* list = cell_nil();
     for (p = res; p; p = p->ai_next) {
@@ -12947,13 +12947,13 @@ Cell* prim_net_send(Cell* args) {
     Cell* fd_cell = arg1(args);
     Cell* buf     = arg2(args);
     Cell* fl      = arg3(args);
-    if (!cell_is_number(fd_cell)) return cell_error("⊸→: fd must be number", fd_cell);
-    if (!cell_is_buffer(buf))     return cell_error("⊸→: buf must be buffer", buf);
-    if (!cell_is_number(fl))      return cell_error("⊸→: flags must be number", fl);
+    if (!cell_is_number(fd_cell)) return cell_error("net-send: fd must be number", fd_cell);
+    if (!cell_is_buffer(buf))     return cell_error("net-send: buf must be buffer", buf);
+    if (!cell_is_number(fl))      return cell_error("net-send: flags must be number", fl);
 
     int fd = (int)cell_get_number(fd_cell);
     ssize_t n = send(fd, buf->data.buffer.bytes, cell_buffer_size(buf), (int)cell_get_number(fl));
-    if (n < 0) return cell_error("⊸→: send failed", cell_number(errno));
+    if (n < 0) return cell_error("net-send: send failed", cell_number(errno));
     return cell_number(n);
 }
 
@@ -12962,9 +12962,9 @@ Cell* prim_net_recv(Cell* args) {
     Cell* fd_cell = arg1(args);
     Cell* maxlen  = arg2(args);
     Cell* fl      = arg3(args);
-    if (!cell_is_number(fd_cell)) return cell_error("⊸←◈: fd must be number", fd_cell);
-    if (!cell_is_number(maxlen))  return cell_error("⊸←◈: maxlen must be number", maxlen);
-    if (!cell_is_number(fl))      return cell_error("⊸←◈: flags must be number", fl);
+    if (!cell_is_number(fd_cell)) return cell_error("net-recv: fd must be number", fd_cell);
+    if (!cell_is_number(maxlen))  return cell_error("net-recv: maxlen must be number", maxlen);
+    if (!cell_is_number(fl))      return cell_error("net-recv: flags must be number", fl);
 
     int fd = (int)cell_get_number(fd_cell);
     uint32_t len = (uint32_t)cell_get_number(maxlen);
@@ -12973,7 +12973,7 @@ Cell* prim_net_recv(Cell* args) {
     ssize_t n = recv(fd, buf->data.buffer.bytes, len, (int)cell_get_number(fl));
     if (n < 0) {
         cell_release(buf);
-        return cell_error("⊸←◈: recv failed", cell_number(errno));
+        return cell_error("net-recv: recv failed", cell_number(errno));
     }
     buf->data.buffer.size = (uint32_t)n;
     return buf;
@@ -12985,17 +12985,17 @@ Cell* prim_net_sendto(Cell* args) {
     Cell* buf     = arg2(args);
     Cell* fl      = arg3(args);
     Cell* addr    = arg4(args);
-    if (!cell_is_number(fd_cell)) return cell_error("⊸→⊙: fd must be number", fd_cell);
-    if (!cell_is_buffer(buf))     return cell_error("⊸→⊙: buf must be buffer", buf);
-    if (!cell_is_number(fl))      return cell_error("⊸→⊙: flags must be number", fl);
-    if (!cell_is_buffer(addr))    return cell_error("⊸→⊙: addr must be buffer", addr);
+    if (!cell_is_number(fd_cell)) return cell_error("net-sendto: fd must be number", fd_cell);
+    if (!cell_is_buffer(buf))     return cell_error("net-sendto: buf must be buffer", buf);
+    if (!cell_is_number(fl))      return cell_error("net-sendto: flags must be number", fl);
+    if (!cell_is_buffer(addr))    return cell_error("net-sendto: addr must be buffer", addr);
 
     int fd = (int)cell_get_number(fd_cell);
     ssize_t n = sendto(fd, buf->data.buffer.bytes, cell_buffer_size(buf),
                        (int)cell_get_number(fl),
                        (struct sockaddr*)addr->data.buffer.bytes,
                        cell_buffer_size(addr));
-    if (n < 0) return cell_error("⊸→⊙: sendto failed", cell_number(errno));
+    if (n < 0) return cell_error("net-sendto: sendto failed", cell_number(errno));
     return cell_number(n);
 }
 
@@ -13004,9 +13004,9 @@ Cell* prim_net_recvfrom(Cell* args) {
     Cell* fd_cell = arg1(args);
     Cell* maxlen  = arg2(args);
     Cell* fl      = arg3(args);
-    if (!cell_is_number(fd_cell)) return cell_error("⊸←⊙: fd must be number", fd_cell);
-    if (!cell_is_number(maxlen))  return cell_error("⊸←⊙: maxlen must be number", maxlen);
-    if (!cell_is_number(fl))      return cell_error("⊸←⊙: flags must be number", fl);
+    if (!cell_is_number(fd_cell)) return cell_error("net-recvfrom: fd must be number", fd_cell);
+    if (!cell_is_number(maxlen))  return cell_error("net-recvfrom: maxlen must be number", maxlen);
+    if (!cell_is_number(fl))      return cell_error("net-recvfrom: flags must be number", fl);
 
     int fd = (int)cell_get_number(fd_cell);
     uint32_t len = (uint32_t)cell_get_number(maxlen);
@@ -13019,7 +13019,7 @@ Cell* prim_net_recvfrom(Cell* args) {
                          (struct sockaddr*)&sa, &salen);
     if (n < 0) {
         cell_release(buf);
-        return cell_error("⊸←⊙: recvfrom failed", cell_number(errno));
+        return cell_error("net-recvfrom: recvfrom failed", cell_number(errno));
     }
     buf->data.buffer.size = (uint32_t)n;
 
@@ -13036,8 +13036,8 @@ Cell* prim_net_setsockopt(Cell* args) {
     Cell* fd_cell = arg1(args);
     Cell* opt_sym = arg2(args);
     Cell* val     = arg3(args);
-    if (!cell_is_number(fd_cell)) return cell_error("⊸≔: fd must be number", fd_cell);
-    if (!cell_is_symbol(opt_sym)) return cell_error("⊸≔: option must be symbol", opt_sym);
+    if (!cell_is_number(fd_cell)) return cell_error("net-setsockopt: fd must be number", fd_cell);
+    if (!cell_is_symbol(opt_sym)) return cell_error("net-setsockopt: option must be symbol", opt_sym);
 
     int fd = (int)cell_get_number(fd_cell);
     const char* opt = cell_get_symbol(opt_sym);
@@ -13063,7 +13063,7 @@ Cell* prim_net_setsockopt(Cell* args) {
         int flags = fcntl(fd, F_GETFL, 0);
         if (intval) flags |= O_NONBLOCK; else flags &= ~O_NONBLOCK;
         if (fcntl(fd, F_SETFL, flags) < 0)
-            return cell_error("⊸≔: fcntl failed", cell_number(errno));
+            return cell_error("net-setsockopt: fcntl failed", cell_number(errno));
         return cell_bool(true);
     }
     else if (strcmp(opt, ":busy-poll") == 0) {
@@ -13080,10 +13080,10 @@ Cell* prim_net_setsockopt(Cell* args) {
         return cell_bool(true);
 #endif
     }
-    else return cell_error("⊸≔: unknown option", opt_sym);
+    else return cell_error("net-setsockopt: unknown option", opt_sym);
 
     if (setsockopt(fd, level, optname, &intval, sizeof(intval)) < 0)
-        return cell_error("⊸≔: setsockopt failed", cell_number(errno));
+        return cell_error("net-setsockopt: setsockopt failed", cell_number(errno));
     return cell_bool(true);
 }
 
@@ -13091,8 +13091,8 @@ Cell* prim_net_setsockopt(Cell* args) {
 Cell* prim_net_getsockopt(Cell* args) {
     Cell* fd_cell = arg1(args);
     Cell* opt_sym = arg2(args);
-    if (!cell_is_number(fd_cell)) return cell_error("⊸≔→: fd must be number", fd_cell);
-    if (!cell_is_symbol(opt_sym)) return cell_error("⊸≔→: option must be symbol", opt_sym);
+    if (!cell_is_number(fd_cell)) return cell_error("net-getsockopt: fd must be number", fd_cell);
+    if (!cell_is_symbol(opt_sym)) return cell_error("net-getsockopt: option must be symbol", opt_sym);
 
     int fd = (int)cell_get_number(fd_cell);
     const char* opt = cell_get_symbol(opt_sym);
@@ -13106,25 +13106,25 @@ Cell* prim_net_getsockopt(Cell* args) {
     else if (strcmp(opt, ":sndbuf") == 0)      optname = SO_SNDBUF;
     else if (strcmp(opt, ":nodelay") == 0)   { level = IPPROTO_TCP; optname = TCP_NODELAY; }
     else if (strcmp(opt, ":error") == 0)       optname = SO_ERROR;
-    else return cell_error("⊸≔→: unknown option", opt_sym);
+    else return cell_error("net-getsockopt: unknown option", opt_sym);
 
     int intval = 0;
     socklen_t len = sizeof(intval);
     if (getsockopt(fd, level, optname, &intval, &len) < 0)
-        return cell_error("⊸≔→: getsockopt failed", cell_number(errno));
+        return cell_error("net-getsockopt: getsockopt failed", cell_number(errno));
     return cell_number(intval);
 }
 
 /* ⊸# - getpeername: fd → addr|⚠ */
 Cell* prim_net_peername(Cell* args) {
     Cell* fd_cell = arg1(args);
-    if (!cell_is_number(fd_cell)) return cell_error("⊸#: fd must be number", fd_cell);
+    if (!cell_is_number(fd_cell)) return cell_error("net-peername: fd must be number", fd_cell);
 
     int fd = (int)cell_get_number(fd_cell);
     struct sockaddr_storage sa;
     socklen_t salen = sizeof(sa);
     if (getpeername(fd, (struct sockaddr*)&sa, &salen) < 0)
-        return cell_error("⊸#: getpeername failed", cell_number(errno));
+        return cell_error("net-peername: getpeername failed", cell_number(errno));
 
     Cell* buf = cell_buffer_new(salen);
     memcpy(buf->data.buffer.bytes, &sa, salen);
@@ -13137,13 +13137,13 @@ Cell* prim_net_peername(Cell* args) {
 /* ⊸⊚⊕ - create ring: sq_entries → ring|⚠ */
 Cell* prim_ring_create(Cell* args) {
     Cell* entries = arg1(args);
-    if (!cell_is_number(entries)) return cell_error("⊸⊚⊕: entries must be number", entries);
+    if (!cell_is_number(entries)) return cell_error("ring-create: entries must be number", entries);
 
     EventRing* ring = calloc(1, sizeof(EventRing));
     int rc = ring_init(ring, (uint32_t)cell_get_number(entries));
     if (rc < 0) {
         free(ring);
-        return cell_error("⊸⊚⊕: ring init failed", cell_number(-rc));
+        return cell_error("ring-create: ring init failed", cell_number(-rc));
     }
     return cell_ffi_ptr(ring, ring_finalizer, "ring");
 }
@@ -13153,7 +13153,7 @@ Cell* prim_ring_destroy(Cell* args) {
     Cell* r = arg1(args);
     if (!cell_is_ffi_ptr(r) || !cell_ffi_ptr_tag(r) ||
         strcmp(cell_ffi_ptr_tag(r), "ring") != 0)
-        return cell_error("⊸⊚×: expected ring", r);
+        return cell_error("ring-destroy: expected ring", r);
     EventRing* ring = (EventRing*)cell_ffi_ptr_get(r);
     ring_destroy(ring);
     /* Mark as destroyed so finalizer doesn't double-free */
@@ -13181,9 +13181,9 @@ Cell* prim_ring_buf_create(Cell* args) {
     Cell* bsize = arg3(args);
     if (!cell_is_ffi_ptr(r) || !cell_ffi_ptr_tag(r) ||
         strcmp(cell_ffi_ptr_tag(r), "ring") != 0)
-        return cell_error("⊸⊚◈⊕: expected ring", r);
-    if (!cell_is_number(count)) return cell_error("⊸⊚◈⊕: count must be number", count);
-    if (!cell_is_number(bsize)) return cell_error("⊸⊚◈⊕: buf_size must be number", bsize);
+        return cell_error("ring-buf-create: expected ring", r);
+    if (!cell_is_number(count)) return cell_error("ring-buf-create: count must be number", count);
+    if (!cell_is_number(bsize)) return cell_error("ring-buf-create: buf_size must be number", bsize);
 
     EventRing* ring = (EventRing*)cell_ffi_ptr_get(r);
     BufferRing* br = calloc(1, sizeof(BufferRing));
@@ -13194,7 +13194,7 @@ Cell* prim_ring_buf_create(Cell* args) {
                            (uint32_t)cell_get_number(bsize));
     if (rc < 0) {
         free(br);
-        return cell_error("⊸⊚◈⊕: buffer pool init failed", cell_number(-rc));
+        return cell_error("ring-buf-create: buffer pool init failed", cell_number(-rc));
     }
     return cell_ffi_ptr(br, bufring_finalizer, "bufring");
 }
@@ -13204,7 +13204,7 @@ Cell* prim_ring_buf_destroy(Cell* args) {
     Cell* b = arg1(args);
     if (!cell_is_ffi_ptr(b) || !cell_ffi_ptr_tag(b) ||
         strcmp(cell_ffi_ptr_tag(b), "bufring") != 0)
-        return cell_error("⊸⊚◈×: expected bufring", b);
+        return cell_error("ring-buf-destroy: expected bufring", b);
     BufferRing* br = (BufferRing*)cell_ffi_ptr_get(b);
     ring_buf_destroy(br);
     b->data.ffi_ptr.finalizer = NULL;
@@ -13219,13 +13219,13 @@ Cell* prim_ring_buf_get(Cell* args) {
     Cell* id = arg2(args);
     if (!cell_is_ffi_ptr(b) || !cell_ffi_ptr_tag(b) ||
         strcmp(cell_ffi_ptr_tag(b), "bufring") != 0)
-        return cell_error("⊸⊚◈→: expected bufring", b);
-    if (!cell_is_number(id)) return cell_error("⊸⊚◈→: id must be number", id);
+        return cell_error("ring-buf-get: expected bufring", b);
+    if (!cell_is_number(id)) return cell_error("ring-buf-get: id must be number", id);
 
     BufferRing* br = (BufferRing*)cell_ffi_ptr_get(b);
     uint16_t bid = (uint16_t)cell_get_number(id);
     uint8_t* ptr = ring_buf_get(br, bid);
-    if (!ptr) return cell_error("⊸⊚◈→: invalid buffer id", id);
+    if (!ptr) return cell_error("ring-buf-get: invalid buffer id", id);
 
     /* Return a buffer cell with a copy of the data */
     Cell* buf = cell_buffer_new(br->buf_size);
@@ -13240,8 +13240,8 @@ Cell* prim_ring_buf_return(Cell* args) {
     Cell* id = arg2(args);
     if (!cell_is_ffi_ptr(b) || !cell_ffi_ptr_tag(b) ||
         strcmp(cell_ffi_ptr_tag(b), "bufring") != 0)
-        return cell_error("⊸⊚◈←: expected bufring", b);
-    if (!cell_is_number(id)) return cell_error("⊸⊚◈←: id must be number", id);
+        return cell_error("ring-buf-return: expected bufring", b);
+    if (!cell_is_number(id)) return cell_error("ring-buf-return: id must be number", id);
 
     BufferRing* br = (BufferRing*)cell_ffi_ptr_get(b);
     ring_buf_return(br, (uint16_t)cell_get_number(id));
@@ -13261,14 +13261,14 @@ Cell* prim_ring_accept(Cell* args) {
     Cell* r  = arg1(args);
     Cell* fd = arg2(args);
     Cell* ud = arg3(args);
-    EventRing* ring = get_ring(r, "⊸⊚←");
-    if (!ring) return cell_error("⊸⊚←: expected ring", r);
-    if (!cell_is_number(fd)) return cell_error("⊸⊚←: fd must be number", fd);
-    if (!cell_is_number(ud)) return cell_error("⊸⊚←: user_data must be number", ud);
+    EventRing* ring = get_ring(r, "ring-accept");
+    if (!ring) return cell_error("ring-accept: expected ring", r);
+    if (!cell_is_number(fd)) return cell_error("ring-accept: fd must be number", fd);
+    if (!cell_is_number(ud)) return cell_error("ring-accept: user_data must be number", ud);
 
     int rc = ring_prep_accept(ring, (int)cell_get_number(fd),
                               (uint32_t)cell_get_number(ud), true);
-    if (rc < 0) return cell_error("⊸⊚←: prep_accept failed", cell_number(-rc));
+    if (rc < 0) return cell_error("ring-accept: prep_accept failed", cell_number(-rc));
     return cell_bool(true);
 }
 
@@ -13278,10 +13278,10 @@ Cell* prim_ring_recv(Cell* args) {
     Cell* fd  = arg2(args);
     Cell* bp  = arg3(args);
     Cell* ud  = arg4(args);
-    EventRing* ring = get_ring(r, "⊸⊚←◈");
-    if (!ring) return cell_error("⊸⊚←◈: expected ring", r);
-    if (!cell_is_number(fd)) return cell_error("⊸⊚←◈: fd must be number", fd);
-    if (!cell_is_number(ud)) return cell_error("⊸⊚←◈: user_data must be number", ud);
+    EventRing* ring = get_ring(r, "ring-recv");
+    if (!ring) return cell_error("ring-recv: expected ring", r);
+    if (!cell_is_number(fd)) return cell_error("ring-recv: fd must be number", fd);
+    if (!cell_is_number(ud)) return cell_error("ring-recv: user_data must be number", ud);
 
     if (cell_is_ffi_ptr(bp) && cell_ffi_ptr_tag(bp) &&
         strcmp(cell_ffi_ptr_tag(bp), "bufring") == 0) {
@@ -13290,14 +13290,14 @@ Cell* prim_ring_recv(Cell* args) {
         int rc = ring_prep_recv_provided(ring, (int)cell_get_number(fd),
                                          br->group_id,
                                          (uint32_t)cell_get_number(ud), true);
-        if (rc < 0) return cell_error("⊸⊚←◈: prep_recv_provided failed", cell_number(-rc));
+        if (rc < 0) return cell_error("ring-recv: prep_recv_provided failed", cell_number(-rc));
     } else {
         /* No buffer pool — use a temp buffer */
         static uint8_t temp_buf[65536];
         int rc = ring_prep_recv(ring, (int)cell_get_number(fd),
                                 temp_buf, sizeof(temp_buf),
                                 (uint32_t)cell_get_number(ud), 0);
-        if (rc < 0) return cell_error("⊸⊚←◈: prep_recv failed", cell_number(-rc));
+        if (rc < 0) return cell_error("ring-recv: prep_recv failed", cell_number(-rc));
     }
     return cell_bool(true);
 }
@@ -13308,16 +13308,16 @@ Cell* prim_ring_send(Cell* args) {
     Cell* fd  = arg2(args);
     Cell* buf = arg3(args);
     Cell* ud  = arg4(args);
-    EventRing* ring = get_ring(r, "⊸⊚→");
-    if (!ring) return cell_error("⊸⊚→: expected ring", r);
-    if (!cell_is_number(fd))  return cell_error("⊸⊚→: fd must be number", fd);
-    if (!cell_is_buffer(buf)) return cell_error("⊸⊚→: buf must be buffer", buf);
-    if (!cell_is_number(ud))  return cell_error("⊸⊚→: user_data must be number", ud);
+    EventRing* ring = get_ring(r, "ring-send");
+    if (!ring) return cell_error("ring-send: expected ring", r);
+    if (!cell_is_number(fd))  return cell_error("ring-send: fd must be number", fd);
+    if (!cell_is_buffer(buf)) return cell_error("ring-send: buf must be buffer", buf);
+    if (!cell_is_number(ud))  return cell_error("ring-send: user_data must be number", ud);
 
     int rc = ring_prep_send(ring, (int)cell_get_number(fd),
                             buf->data.buffer.bytes, cell_buffer_size(buf),
                             (uint32_t)cell_get_number(ud), 0);
-    if (rc < 0) return cell_error("⊸⊚→: prep_send failed", cell_number(-rc));
+    if (rc < 0) return cell_error("ring-send: prep_send failed", cell_number(-rc));
     return cell_bool(true);
 }
 
@@ -13327,16 +13327,16 @@ Cell* prim_ring_send_zc(Cell* args) {
     Cell* fd  = arg2(args);
     Cell* buf = arg3(args);
     Cell* ud  = arg4(args);
-    EventRing* ring = get_ring(r, "⊸⊚→∅");
-    if (!ring) return cell_error("⊸⊚→∅: expected ring", r);
-    if (!cell_is_number(fd))  return cell_error("⊸⊚→∅: fd must be number", fd);
-    if (!cell_is_buffer(buf)) return cell_error("⊸⊚→∅: buf must be buffer", buf);
-    if (!cell_is_number(ud))  return cell_error("⊸⊚→∅: user_data must be number", ud);
+    EventRing* ring = get_ring(r, "ring-send-zc");
+    if (!ring) return cell_error("ring-send-zc: expected ring", r);
+    if (!cell_is_number(fd))  return cell_error("ring-send-zc: fd must be number", fd);
+    if (!cell_is_buffer(buf)) return cell_error("ring-send-zc: buf must be buffer", buf);
+    if (!cell_is_number(ud))  return cell_error("ring-send-zc: user_data must be number", ud);
 
     int rc = ring_prep_send_zc(ring, (int)cell_get_number(fd),
                                buf->data.buffer.bytes, cell_buffer_size(buf),
                                (uint32_t)cell_get_number(ud));
-    if (rc < 0) return cell_error("⊸⊚→∅: prep_send_zc failed", cell_number(-rc));
+    if (rc < 0) return cell_error("ring-send-zc: prep_send_zc failed", cell_number(-rc));
     return cell_bool(true);
 }
 
@@ -13346,17 +13346,17 @@ Cell* prim_ring_connect(Cell* args) {
     Cell* fd   = arg2(args);
     Cell* addr = arg3(args);
     Cell* ud   = arg4(args);
-    EventRing* ring = get_ring(r, "⊸⊚→⊕");
-    if (!ring) return cell_error("⊸⊚→⊕: expected ring", r);
-    if (!cell_is_number(fd))   return cell_error("⊸⊚→⊕: fd must be number", fd);
-    if (!cell_is_buffer(addr)) return cell_error("⊸⊚→⊕: addr must be buffer", addr);
-    if (!cell_is_number(ud))   return cell_error("⊸⊚→⊕: user_data must be number", ud);
+    EventRing* ring = get_ring(r, "ring-connect");
+    if (!ring) return cell_error("ring-connect: expected ring", r);
+    if (!cell_is_number(fd))   return cell_error("ring-connect: fd must be number", fd);
+    if (!cell_is_buffer(addr)) return cell_error("ring-connect: addr must be buffer", addr);
+    if (!cell_is_number(ud))   return cell_error("ring-connect: user_data must be number", ud);
 
     int rc = ring_prep_connect(ring, (int)cell_get_number(fd),
                                (struct sockaddr*)addr->data.buffer.bytes,
                                cell_buffer_size(addr),
                                (uint32_t)cell_get_number(ud));
-    if (rc < 0) return cell_error("⊸⊚→⊕: prep_connect failed", cell_number(-rc));
+    if (rc < 0) return cell_error("ring-connect: prep_connect failed", cell_number(-rc));
     return cell_bool(true);
 }
 
@@ -13365,25 +13365,25 @@ Cell* prim_ring_close(Cell* args) {
     Cell* r  = arg1(args);
     Cell* fd = arg2(args);
     Cell* ud = arg3(args);
-    EventRing* ring = get_ring(r, "⊸⊚→×");
-    if (!ring) return cell_error("⊸⊚→×: expected ring", r);
-    if (!cell_is_number(fd)) return cell_error("⊸⊚→×: fd must be number", fd);
-    if (!cell_is_number(ud)) return cell_error("⊸⊚→×: user_data must be number", ud);
+    EventRing* ring = get_ring(r, "ring-close");
+    if (!ring) return cell_error("ring-close: expected ring", r);
+    if (!cell_is_number(fd)) return cell_error("ring-close: fd must be number", fd);
+    if (!cell_is_number(ud)) return cell_error("ring-close: user_data must be number", ud);
 
     int rc = ring_prep_close(ring, (int)cell_get_number(fd),
                              (uint32_t)cell_get_number(ud));
-    if (rc < 0) return cell_error("⊸⊚→×: prep_close failed", cell_number(-rc));
+    if (rc < 0) return cell_error("ring-close: prep_close failed", cell_number(-rc));
     return cell_bool(true);
 }
 
 /* ⊸⊚! - submit pending: ring → count|⚠ */
 Cell* prim_ring_submit(Cell* args) {
     Cell* r = arg1(args);
-    EventRing* ring = get_ring(r, "⊸⊚!");
-    if (!ring) return cell_error("⊸⊚!: expected ring", r);
+    EventRing* ring = get_ring(r, "ring-submit");
+    if (!ring) return cell_error("ring-submit: expected ring", r);
 
     int rc = ring_submit(ring);
-    if (rc < 0) return cell_error("⊸⊚!: submit failed", cell_number(-rc));
+    if (rc < 0) return cell_error("ring-submit: submit failed", cell_number(-rc));
     return cell_number(rc);
 }
 
@@ -13392,16 +13392,16 @@ Cell* prim_ring_complete(Cell* args) {
     Cell* r   = arg1(args);
     Cell* wm  = arg2(args);
     Cell* tms = arg3(args);
-    EventRing* ring = get_ring(r, "⊸⊚⊲");
-    if (!ring) return cell_error("⊸⊚⊲: expected ring", r);
-    if (!cell_is_number(wm))  return cell_error("⊸⊚⊲: wait_min must be number", wm);
-    if (!cell_is_number(tms)) return cell_error("⊸⊚⊲: timeout_ms must be number", tms);
+    EventRing* ring = get_ring(r, "ring-complete");
+    if (!ring) return cell_error("ring-complete: expected ring", r);
+    if (!cell_is_number(wm))  return cell_error("ring-complete: wait_min must be number", wm);
+    if (!cell_is_number(tms)) return cell_error("ring-complete: timeout_ms must be number", tms);
 
     RingCQE cqes[64];
     int count = ring_complete(ring, cqes, 64,
                               (uint32_t)cell_get_number(wm),
                               (uint32_t)cell_get_number(tms));
-    if (count < 0) return cell_error("⊸⊚⊲: complete failed", cell_number(-count));
+    if (count < 0) return cell_error("ring-complete: complete failed", cell_number(-count));
 
     /* Build list of HashMaps */
     static const char* op_names[] = {
@@ -13553,16 +13553,16 @@ static Cell* rcon_to_cell(RConstraint* c) {
     if (!c) return cell_nil();
     switch (c->kind) {
         case RCON_GT: return cell_cons(cell_symbol(">"), cell_cons(cell_number(c->cmp.operand), cell_nil()));
-        case RCON_GE: return cell_cons(cell_symbol("≥"), cell_cons(cell_number(c->cmp.operand), cell_nil()));
+        case RCON_GE: return cell_cons(cell_symbol(">="), cell_cons(cell_number(c->cmp.operand), cell_nil()));
         case RCON_LT: return cell_cons(cell_symbol("<"), cell_cons(cell_number(c->cmp.operand), cell_nil()));
-        case RCON_LE: return cell_cons(cell_symbol("≤"), cell_cons(cell_number(c->cmp.operand), cell_nil()));
-        case RCON_EQ: return cell_cons(cell_symbol("≡"), cell_cons(cell_number(c->cmp.operand), cell_nil()));
-        case RCON_NE: return cell_cons(cell_symbol("≢"), cell_cons(cell_number(c->cmp.operand), cell_nil()));
-        case RCON_AND: return cell_cons(cell_symbol("∧"), cell_cons(rcon_to_cell(c->binary.l), cell_cons(rcon_to_cell(c->binary.r), cell_nil())));
-        case RCON_OR:  return cell_cons(cell_symbol("∨"), cell_cons(rcon_to_cell(c->binary.l), cell_cons(rcon_to_cell(c->binary.r), cell_nil())));
-        case RCON_NOT: return cell_cons(cell_symbol("¬"), cell_cons(rcon_to_cell(c->unary.inner), cell_nil()));
-        case RCON_MOD_EQ: return cell_cons(cell_symbol("%≡"), cell_cons(cell_number((double)c->mod_eq.divisor), cell_cons(cell_number((double)c->mod_eq.remainder), cell_nil())));
-        case RCON_RANGE: return cell_cons(cell_symbol("∈[]"), cell_cons(cell_number(c->range.lo), cell_cons(cell_number(c->range.hi), cell_nil())));
+        case RCON_LE: return cell_cons(cell_symbol("<="), cell_cons(cell_number(c->cmp.operand), cell_nil()));
+        case RCON_EQ: return cell_cons(cell_symbol("equal?"), cell_cons(cell_number(c->cmp.operand), cell_nil()));
+        case RCON_NE: return cell_cons(cell_symbol("not-equal?"), cell_cons(cell_number(c->cmp.operand), cell_nil()));
+        case RCON_AND: return cell_cons(cell_symbol("and"), cell_cons(rcon_to_cell(c->binary.l), cell_cons(rcon_to_cell(c->binary.r), cell_nil())));
+        case RCON_OR:  return cell_cons(cell_symbol("or"), cell_cons(rcon_to_cell(c->binary.l), cell_cons(rcon_to_cell(c->binary.r), cell_nil())));
+        case RCON_NOT: return cell_cons(cell_symbol("not"), cell_cons(rcon_to_cell(c->unary.inner), cell_nil()));
+        case RCON_MOD_EQ: return cell_cons(cell_symbol("%equal?"), cell_cons(cell_number((double)c->mod_eq.divisor), cell_cons(cell_number((double)c->mod_eq.remainder), cell_nil())));
+        case RCON_RANGE: return cell_cons(cell_symbol("type-decl[]"), cell_cons(cell_number(c->range.lo), cell_cons(cell_number(c->range.hi), cell_nil())));
         case RCON_PRED: { cell_retain(c->pred.lambda); return c->pred.lambda; }
     }
     return cell_nil();
@@ -13753,7 +13753,7 @@ static RConstraint* extract_constraint(Cell* body) {
     Cell* rhs_list = cell_cdr(rest);
 
     /* Check for (∧ L R) */
-    if (strcmp(op_name, "∧") == 0 || strcmp(op_name, "∧") == 0) {
+    if (strcmp(op_name, "and") == 0 || strcmp(op_name, "and") == 0) {
         if (!cell_is_pair(rhs_list)) return NULL;
         Cell* rhs = cell_car(rhs_list);
         RConstraint* left = extract_constraint(lhs);
@@ -13775,7 +13775,7 @@ static RConstraint* extract_constraint(Cell* body) {
     }
 
     /* Check for (∨ L R) */
-    if (strcmp(op_name, "∨") == 0) {
+    if (strcmp(op_name, "or") == 0) {
         if (!cell_is_pair(rhs_list)) return NULL;
         Cell* rhs = cell_car(rhs_list);
         RConstraint* left = extract_constraint(lhs);
@@ -13787,7 +13787,7 @@ static RConstraint* extract_constraint(Cell* body) {
     }
 
     /* Check for (¬ P) */
-    if (strcmp(op_name, "¬") == 0) {
+    if (strcmp(op_name, "not") == 0) {
         RConstraint* inner = extract_constraint(lhs);
         if (inner) return rcon_new_not(inner);
         return NULL;
@@ -13800,7 +13800,7 @@ static RConstraint* extract_constraint(Cell* body) {
     /* Check for modulo pattern: (≡ (% x (⌜ K)) (⌜ V))
      * After De Bruijn: param is bare number, literals are (⌜ N) */
     double rhs_val;
-    if (strcmp(op_name, "≡") == 0 && cell_is_pair(lhs)) {
+    if (strcmp(op_name, "equal?") == 0 && cell_is_pair(lhs)) {
         Cell* mod_op = cell_car(lhs);
         if (cell_is_symbol(mod_op) && strcmp(cell_get_symbol(mod_op), "%") == 0) {
             Cell* mod_rest = cell_cdr(lhs);
@@ -13826,11 +13826,11 @@ static RConstraint* extract_constraint(Cell* body) {
     if (!unwrap_quoted_number(rhs, &rhs_val)) return NULL;
 
     if (strcmp(op_name, ">") == 0)  return rcon_new_cmp(RCON_GT, rhs_val);
-    if (strcmp(op_name, "≥") == 0)  return rcon_new_cmp(RCON_GE, rhs_val);
+    if (strcmp(op_name, ">=") == 0)  return rcon_new_cmp(RCON_GE, rhs_val);
     if (strcmp(op_name, "<") == 0)  return rcon_new_cmp(RCON_LT, rhs_val);
-    if (strcmp(op_name, "≤") == 0)  return rcon_new_cmp(RCON_LE, rhs_val);
-    if (strcmp(op_name, "≡") == 0)  return rcon_new_cmp(RCON_EQ, rhs_val);
-    if (strcmp(op_name, "≢") == 0)  return rcon_new_cmp(RCON_NE, rhs_val);
+    if (strcmp(op_name, "<=") == 0)  return rcon_new_cmp(RCON_LE, rhs_val);
+    if (strcmp(op_name, "equal?") == 0)  return rcon_new_cmp(RCON_EQ, rhs_val);
+    if (strcmp(op_name, "not-equal?") == 0)  return rcon_new_cmp(RCON_NE, rhs_val);
 
     return NULL;
 }
@@ -13932,10 +13932,10 @@ Cell* prim_refine_def(Cell* args) {
     Cell* predicate = arg3(args);
 
     if (!cell_is_symbol(name)) {
-        return cell_error("∈⊡ requires symbol as first argument", name);
+        return cell_error("refine-def requires symbol as first argument", name);
     }
     if (!cell_is_lambda(predicate)) {
-        return cell_error("∈⊡ requires lambda as predicate", predicate);
+        return cell_error("refine-def requires lambda as predicate", predicate);
     }
 
     /* If base_type is a builtin (0-arity type constructor like ℤ, 𝕊), call it */
@@ -13973,12 +13973,12 @@ Cell* prim_refine_check(Cell* args) {
     Cell* name = arg2(args);
 
     if (!cell_is_symbol(name)) {
-        return cell_error("∈⊡? requires symbol as second argument", name);
+        return cell_error("refine-check? requires symbol as second argument", name);
     }
 
     RefinementDef* def = refine_lookup_by_name(name);
     if (!def) {
-        return cell_error("∈⊡? undefined refinement", name);
+        return cell_error("refine-check? undefined refinement", name);
     }
 
     return cell_bool(refine_check_value(def, val));
@@ -13990,12 +13990,12 @@ Cell* prim_refine_assert(Cell* args) {
     Cell* name = arg2(args);
 
     if (!cell_is_symbol(name)) {
-        return cell_error("∈⊡! requires symbol as second argument", name);
+        return cell_error("refine-assert! requires symbol as second argument", name);
     }
 
     RefinementDef* def = refine_lookup_by_name(name);
     if (!def) {
-        return cell_error("∈⊡! undefined refinement", name);
+        return cell_error("refine-assert! undefined refinement", name);
     }
 
     if (refine_check_value(def, val)) {
@@ -14011,12 +14011,12 @@ Cell* prim_refine_base(Cell* args) {
     Cell* name = arg1(args);
 
     if (!cell_is_symbol(name)) {
-        return cell_error("∈⊡⊙ requires symbol", name);
+        return cell_error("refine-base requires symbol", name);
     }
 
     RefinementDef* def = refine_lookup_by_name(name);
     if (!def) {
-        return cell_error("∈⊡⊙ undefined refinement", name);
+        return cell_error("refine-base undefined refinement", name);
     }
 
     cell_retain(def->base_type);
@@ -14028,12 +14028,12 @@ Cell* prim_refine_pred(Cell* args) {
     Cell* name = arg1(args);
 
     if (!cell_is_symbol(name)) {
-        return cell_error("∈⊡→ requires symbol", name);
+        return cell_error("refine-pred requires symbol", name);
     }
 
     RefinementDef* def = refine_lookup_by_name(name);
     if (!def) {
-        return cell_error("∈⊡→ undefined refinement", name);
+        return cell_error("refine-pred undefined refinement", name);
     }
 
     cell_retain(def->lambda);
@@ -14045,12 +14045,12 @@ Cell* prim_refine_constraint(Cell* args) {
     Cell* name = arg1(args);
 
     if (!cell_is_symbol(name)) {
-        return cell_error("∈⊡⊢ requires symbol", name);
+        return cell_error("refine-constraint requires symbol", name);
     }
 
     RefinementDef* def = refine_lookup_by_name(name);
     if (!def) {
-        return cell_error("∈⊡⊢ undefined refinement", name);
+        return cell_error("refine-constraint undefined refinement", name);
     }
 
     if (def->constraint) {
@@ -14077,8 +14077,8 @@ Cell* prim_refine_intersect(Cell* args) {
 
     RefinementDef* d1 = refine_lookup_by_name(name1);
     RefinementDef* d2 = refine_lookup_by_name(name2);
-    if (!d1) return cell_error("∈⊡∧ undefined refinement", name1);
-    if (!d2) return cell_error("∈⊡∧ undefined refinement", name2);
+    if (!d1) return cell_error("refine-intersect undefined refinement", name1);
+    if (!d2) return cell_error("refine-intersect undefined refinement", name2);
 
     static int anon_counter = 0;
     char buf[64];
@@ -14127,8 +14127,8 @@ Cell* prim_refine_union(Cell* args) {
 
     RefinementDef* d1 = refine_lookup_by_name(name1);
     RefinementDef* d2 = refine_lookup_by_name(name2);
-    if (!d1) return cell_error("∈⊡∨ undefined refinement", name1);
-    if (!d2) return cell_error("∈⊡∨ undefined refinement", name2);
+    if (!d1) return cell_error("refine-union undefined refinement", name1);
+    if (!d2) return cell_error("refine-union undefined refinement", name2);
 
     static int anon_counter = 0;
     char buf[64];
@@ -14207,7 +14207,7 @@ Cell* prim_refine_subtype(Cell* args) {
     Cell* type = arg2(args);
 
     if (!cell_is_symbol(name)) {
-        return cell_error("∈⊡⊆ requires symbol as first argument", name);
+        return cell_error("refine-subtype? requires symbol as first argument", name);
     }
 
     /* Auto-resolve 0-arity builtins (ℤ, 𝕊, etc.) */
@@ -14218,7 +14218,7 @@ Cell* prim_refine_subtype(Cell* args) {
 
     RefinementDef* def = refine_lookup_by_name(name);
     if (!def) {
-        return cell_error("∈⊡⊆ undefined refinement", name);
+        return cell_error("refine-subtype? undefined refinement", name);
     }
 
     /* Refined type is subtype of its base type */
@@ -15013,731 +15013,731 @@ static Cell* prim_discovery_category(Cell* args);
  * EVERY primitive MUST have documentation */
 static Primitive primitives[] = {
     /* Core Lambda Calculus */
-    {"⟨⟩", prim_cons, 2, {"Construct pair from two values", "α → β → ⟨α β⟩"}},
-    {"◁", prim_car, 1, {"Get first element of pair (head)", "⟨α β⟩ → α"}},
-    {"▷", prim_cdr, 1, {"Get second element of pair (tail)", "⟨α β⟩ → β"}},
+    {"cons", prim_cons, 2, {"Construct pair from two values", "α -> β -> ⟨α β⟩"}},
+    {"car", prim_car, 1, {"Get first element of pair (head)", "⟨α β⟩ -> α"}},
+    {"cdr", prim_cdr, 1, {"Get second element of pair (tail)", "⟨α β⟩ -> β"}},
 
     /* Metaprogramming */
-    {"⌜", prim_quote, 1, {"Quote expression (prevent evaluation)", "α → α"}},
-    {"⌞", prim_eval, 1, {"Evaluate expression as code", "α → β"}},
-    {"⊡", prim_prim_apply, 2, {"Apply primitive to argument list", "(α → β) → [α] → β"}},
+    {"quote", prim_quote, 1, {"Quote expression (prevent evaluation)", "α -> α"}},
+    {"eval", prim_eval, 1, {"Evaluate expression as code", "α -> β"}},
+    {"apply-primitive", prim_prim_apply, 2, {"Apply primitive to argument list", "(α -> β) -> [α] -> β"}},
 
     /* Pattern Matching - ∇ is now a SPECIAL FORM in eval.c, not a primitive */
 
     /* Comparison & Logic */
-    {"≡", prim_equal, 2, {"Test if two values are equal", "α → α → 𝔹"}},
-    {"≢", prim_not_equal, 2, {"Test if two values are not equal", "α → α → 𝔹"}},
+    {"equal?", prim_equal, 2, {"Test if two values are equal", "α -> α -> Bool"}},
+    {"not-equal?", prim_not_equal, 2, {"Test if two values are not equal", "α -> α -> Bool"}},
     /* ∧ and ∨ are now special forms in eval.c (short-circuit + TCO) */
-    {"¬", prim_not, 1, {"Logical NOT of boolean", "𝔹 → 𝔹"}},
+    {"not", prim_not, 1, {"Logical NOT of boolean", "Bool -> Bool"}},
 
     /* Arithmetic */
-    {"⊕", prim_add, 2, {"Add two numbers", "ℕ → ℕ → ℕ"}},
-    {"⊖", prim_sub, 2, {"Subtract second number from first", "ℕ → ℕ → ℕ"}},
-    {"⊗", prim_mul, 2, {"Multiply two numbers", "ℕ → ℕ → ℕ"}},
-    {"⊘", prim_div, 2, {"Divide first number by second", "ℕ → ℕ → ℕ"}},
-    {"÷", prim_quot, 2, {"Integer division (quotient/floor)", "ℕ → ℕ → ℕ"}},
-    {"%", prim_mod, 2, {"Modulo (remainder after division)", "ℕ → ℕ → ℕ"}},
-    {"<", prim_lt, 2, {"Test if first number less than second", "ℕ → ℕ → 𝔹"}},
-    {">", prim_gt, 2, {"Test if first number greater than second", "ℕ → ℕ → 𝔹"}},
-    {"≤", prim_le, 2, {"Test if first number less than or equal to second", "ℕ → ℕ → 𝔹"}},
-    {"≥", prim_ge, 2, {"Test if first number greater than or equal to second", "ℕ → ℕ → 𝔹"}},
+    {"+", prim_add, 2, {"Add two numbers", "ℕ -> ℕ -> ℕ"}},
+    {"-", prim_sub, 2, {"Subtract second number from first", "ℕ -> ℕ -> ℕ"}},
+    {"*", prim_mul, 2, {"Multiply two numbers", "ℕ -> ℕ -> ℕ"}},
+    {"/", prim_div, 2, {"Divide first number by second", "ℕ -> ℕ -> ℕ"}},
+    {"quotient", prim_quot, 2, {"Integer division (quotient/floor)", "ℕ -> ℕ -> ℕ"}},
+    {"%", prim_mod, 2, {"Modulo (remainder after division)", "ℕ -> ℕ -> ℕ"}},
+    {"<", prim_lt, 2, {"Test if first number less than second", "ℕ -> ℕ -> Bool"}},
+    {">", prim_gt, 2, {"Test if first number greater than second", "ℕ -> ℕ -> Bool"}},
+    {"<=", prim_le, 2, {"Test if first number less than or equal to second", "ℕ -> ℕ -> Bool"}},
+    {">=", prim_ge, 2, {"Test if first number greater than or equal to second", "ℕ -> ℕ -> Bool"}},
 
     /* Math operations */
-    {"√", prim_sqrt, 1, {"Square root", "ℕ → ℕ"}},
-    {"^", prim_pow, 2, {"Power (exponentiation)", "ℕ → ℕ → ℕ"}},
-    {"|", prim_abs, 1, {"Absolute value", "ℕ → ℕ"}},
-    {"⌊⌋", prim_floor, 1, {"Floor (round down to integer)", "ℕ → ℕ"}},
-    {"⌈⌉", prim_ceil, 1, {"Ceiling (round up to integer)", "ℕ → ℕ"}},
-    {"⌊⌉", prim_round, 1, {"Round to nearest integer", "ℕ → ℕ"}},
-    {"min", prim_min, 2, {"Minimum of two numbers", "ℕ → ℕ → ℕ"}},
-    {"max", prim_max, 2, {"Maximum of two numbers", "ℕ → ℕ → ℕ"}},
-    {"sin", prim_sin, 1, {"Sine (radians)", "ℕ → ℕ"}},
-    {"cos", prim_cos, 1, {"Cosine (radians)", "ℕ → ℕ"}},
-    {"tan", prim_tan, 1, {"Tangent (radians)", "ℕ → ℕ"}},
-    {"asin", prim_asin, 1, {"Arcsine (returns radians)", "ℕ → ℕ"}},
-    {"acos", prim_acos, 1, {"Arccosine (returns radians)", "ℕ → ℕ"}},
-    {"atan", prim_atan, 1, {"Arctangent (returns radians)", "ℕ → ℕ"}},
-    {"atan2", prim_atan2, 2, {"Two-argument arctangent (y, x)", "ℕ → ℕ → ℕ"}},
-    {"log", prim_log, 1, {"Natural logarithm", "ℕ → ℕ"}},
-    {"log10", prim_log10, 1, {"Base-10 logarithm", "ℕ → ℕ"}},
-    {"exp", prim_exp, 1, {"Exponential (e^x)", "ℕ → ℕ"}},
-    {"π", prim_pi, 0, {"Pi constant (3.14159...)", "ℕ"}},
+    {"sqrt", prim_sqrt, 1, {"Square root", "ℕ -> ℕ"}},
+    {"^", prim_pow, 2, {"Power (exponentiation)", "ℕ -> ℕ -> ℕ"}},
+    {"abs", prim_abs, 1, {"Absolute value", "ℕ -> ℕ"}},
+    {"floor", prim_floor, 1, {"Floor (round down to integer)", "ℕ -> ℕ"}},
+    {"ceil", prim_ceil, 1, {"Ceiling (round up to integer)", "ℕ -> ℕ"}},
+    {"round", prim_round, 1, {"Round to nearest integer", "ℕ -> ℕ"}},
+    {"min", prim_min, 2, {"Minimum of two numbers", "ℕ -> ℕ -> ℕ"}},
+    {"max", prim_max, 2, {"Maximum of two numbers", "ℕ -> ℕ -> ℕ"}},
+    {"sin", prim_sin, 1, {"Sine (radians)", "ℕ -> ℕ"}},
+    {"cos", prim_cos, 1, {"Cosine (radians)", "ℕ -> ℕ"}},
+    {"tan", prim_tan, 1, {"Tangent (radians)", "ℕ -> ℕ"}},
+    {"asin", prim_asin, 1, {"Arcsine (returns radians)", "ℕ -> ℕ"}},
+    {"acos", prim_acos, 1, {"Arccosine (returns radians)", "ℕ -> ℕ"}},
+    {"atan", prim_atan, 1, {"Arctangent (returns radians)", "ℕ -> ℕ"}},
+    {"atan2", prim_atan2, 2, {"Two-argument arctangent (y, x)", "ℕ -> ℕ -> ℕ"}},
+    {"log", prim_log, 1, {"Natural logarithm", "ℕ -> ℕ"}},
+    {"log10", prim_log10, 1, {"Base-10 logarithm", "ℕ -> ℕ"}},
+    {"exp", prim_exp, 1, {"Exponential (e^x)", "ℕ -> ℕ"}},
+    {"pi", prim_pi, 0, {"Pi constant (3.14159...)", "ℕ"}},
     {"e", prim_e, 0, {"Euler's number constant (2.71828...)", "ℕ"}},
-    {"rand", prim_rand, 0, {"Random number between 0 and 1", "() → ℕ"}},
-    {"rand-int", prim_rand_int, 1, {"Random integer from 0 to n-1", "ℕ → ℕ"}},
+    {"rand", prim_rand, 0, {"Random number between 0 and 1", "() -> ℕ"}},
+    {"rand-int", prim_rand_int, 1, {"Random integer from 0 to n-1", "ℕ -> ℕ"}},
 
     /* Type predicates */
-    {"ℕ?", prim_is_number, 1, {"Test if value is a number", "α → 𝔹"}},
-    {"𝔹?", prim_is_bool, 1, {"Test if value is a boolean", "α → 𝔹"}},
-    {":?", prim_is_symbol, 1, {"Test if value is a symbol", "α → 𝔹"}},
-    {"∅?", prim_is_nil, 1, {"Test if value is nil", "α → 𝔹"}},
-    {"⟨⟩?", prim_is_pair, 1, {"Test if value is a pair", "α → 𝔹"}},
-    {"#?", prim_is_atom, 1, {"Test if value is an atom", "α → 𝔹"}},
+    {"number?", prim_is_number, 1, {"Test if value is a number", "α -> Bool"}},
+    {"boolean?", prim_is_bool, 1, {"Test if value is a boolean", "α -> Bool"}},
+    {"symbol?", prim_is_symbol, 1, {"Test if value is a symbol", "α -> Bool"}},
+    {"null?", prim_is_nil, 1, {"Test if value is nil", "α -> Bool"}},
+    {"pair?", prim_is_pair, 1, {"Test if value is a pair", "α -> Bool"}},
+    {"atom?", prim_is_atom, 1, {"Test if value is an atom", "α -> Bool"}},
 
     /* Type Annotation System */
-    {"ℤ", prim_type_int, 0, {"Integer type constant", "() → Type"}},
-    {"𝔹", prim_type_bool, 0, {"Boolean type constant", "() → Type"}},
-    {"𝕊", prim_type_string, 0, {"String type constant", "() → Type"}},
-    {"⊤", prim_type_any, 0, {"Any type constant (top)", "() → Type"}},
-    {"∅ₜ", prim_type_nil, 0, {"Nil type constant", "() → Type"}},
-    {"→", prim_type_func, -1, {"Function type constructor", "Type → Type → Type"}},
-    {"[]ₜ", prim_type_list, 1, {"List type constructor", "Type → Type"}},
-    {"⟨⟩ₜ", prim_type_pair, 2, {"Pair type constructor", "Type → Type → Type"}},
-    {"∪ₜ", prim_type_union, 2, {"Union type constructor", "Type → Type → Type"}},
-    {"∈⊙", prim_typeof, 1, {"Get runtime type of value", "α → Type"}},
-    {"∈≡", prim_type_equal, 2, {"Test type equality", "Type → Type → 𝔹"}},
-    {"∈⊆", prim_type_subtype, 2, {"Test if first type is subtype of second", "Type → Type → 𝔹"}},
-    {"∈!", prim_type_assert, 2, {"Assert value has type, return value or error", "α → Type → α | ⚠"}},
-    {"∈", prim_type_declare, 2, {"Declare type annotation for symbol", ":symbol → Type → Type"}},
-    {"∈?", prim_type_query, 1, {"Query type annotation for symbol", ":symbol → Type | ∅"}},
-    {"∈◁", prim_type_domain, 1, {"Get domain (input type) of function type", "Type → Type"}},
-    {"∈▷", prim_type_codomain, 1, {"Get codomain (output type) of function type", "Type → Type"}},
-    {"∈⊙ₜ", prim_type_element, 1, {"Get element type of list type", "Type → Type"}},
-    {"∈✓", prim_type_validate, 1, {"Validate binding against declared type", ":symbol → 𝔹 | ⚠"}},
-    {"∈✓*", prim_type_validate_all, 0, {"Validate ALL declared types", "() → 𝔹 | ⚠"}},
-    {"∈⊢", prim_type_check_apply, -1, {"Type-check function application", ":symbol → α... → 𝔹 | ⚠"}},
+    {"Int", prim_type_int, 0, {"Integer type constant", "() -> Type"}},
+    {"Bool", prim_type_bool, 0, {"Boolean type constant", "() -> Type"}},
+    {"String", prim_type_string, 0, {"String type constant", "() -> Type"}},
+    {"Any", prim_type_any, 0, {"Any type constant (top)", "() -> Type"}},
+    {"Nil-type", prim_type_nil, 0, {"Nil type constant", "() -> Type"}},
+    {"->", prim_type_func, -1, {"Function type constructor", "Type -> Type -> Type"}},
+    {"List-type", prim_type_list, 1, {"List type constructor", "Type -> Type"}},
+    {"Pair-type", prim_type_pair, 2, {"Pair type constructor", "Type -> Type -> Type"}},
+    {"Union-type", prim_type_union, 2, {"Union type constructor", "Type -> Type -> Type"}},
+    {"type-of", prim_typeof, 1, {"Get runtime type of value", "α -> Type"}},
+    {"type-equal?", prim_type_equal, 2, {"Test type equality", "Type -> Type -> Bool"}},
+    {"type-subtype?", prim_type_subtype, 2, {"Test if first type is subtype of second", "Type -> Type -> Bool"}},
+    {"type-assert!", prim_type_assert, 2, {"Assert value has type, return value or error", "α -> Type -> α | error"}},
+    {"type-decl", prim_type_declare, 2, {"Declare type annotation for symbol", ":symbol -> Type -> Type"}},
+    {"type-check", prim_type_query, 1, {"Query type annotation for symbol", ":symbol -> Type | nil"}},
+    {"type-domain", prim_type_domain, 1, {"Get domain (input type) of function type", "Type -> Type"}},
+    {"type-codomain", prim_type_codomain, 1, {"Get codomain (output type) of function type", "Type -> Type"}},
+    {"type-element", prim_type_element, 1, {"Get element type of list type", "Type -> Type"}},
+    {"type-validate", prim_type_validate, 1, {"Validate binding against declared type", ":symbol -> Bool | error"}},
+    {"type-validate-all", prim_type_validate_all, 0, {"Validate ALL declared types", "() -> Bool | error"}},
+    {"type-assert", prim_type_check_apply, -1, {"Type-check function application", ":symbol -> α... -> Bool | error"}},
 
     /* Type Inference (Day 85) */
-    {"∈⍜", prim_type_infer, 1, {"Deep type inference on value", "α → Type"}},
-    {"∈⍜⊕", prim_type_prim_sig, 1, {"Get type signature of primitive", ":symbol → Type | ∅"}},
+    {"type-infer", prim_type_infer, 1, {"Deep type inference on value", "α -> Type"}},
+    {"type-prim-sig", prim_type_prim_sig, 1, {"Get type signature of primitive", ":symbol -> Type | nil"}},
 
     /* Debug & Error Handling */
-    {"⚠", prim_error_create, 2, {"Create error value", ":symbol → α → ⚠"}},
-    {"⚠?", prim_is_error, 1, {"Test if value is an error", "α → 𝔹"}},
-    {"⚠⊙", prim_error_type, 1, {"Get error type as symbol", "⚠ → :symbol"}},
-    {"⚠→", prim_error_data, 1, {"Get error data", "⚠ → α"}},
-    {"⚡⊕", prim_error_wrap, -1, {"Wrap error with context, pass through non-errors", "α → :symbol → α | ⚠"}},
-    {"⚠⊸", prim_error_cause, 1, {"Get error cause (next in chain)", "⚠ → ⚠ | ∅"}},
-    {"⚠⊸*", prim_error_root_cause, 1, {"Get root cause (deepest in chain)", "⚠ → ⚠"}},
-    {"⚠⟲", prim_error_trace, 1, {"Get error return trace as list of positions", "⚠ → [ℕ]"}},
-    {"⚠⊙?", prim_error_chain_match, 2, {"Check if error chain contains type", "⚠ → :symbol → 𝔹"}},
-    {"⊢", prim_assert, 2, {"Assert condition is true, error otherwise", "𝔹 → :symbol → 𝔹 | ⚠"}},
-    {"⟲", prim_trace, 1, {"Print value for debugging and return it", "α → α"}},
+    {"error", prim_error_create, 2, {"Create error value", ":symbol -> α -> error"}},
+    {"error?", prim_is_error, 1, {"Test if value is an error", "α -> Bool"}},
+    {"error-type", prim_error_type, 1, {"Get error type as symbol", "error -> :symbol"}},
+    {"error-data", prim_error_data, 1, {"Get error data", "error -> α"}},
+    {"error-wrap", prim_error_wrap, -1, {"Wrap error with context, pass through non-errors", "α -> :symbol -> α | error"}},
+    {"error-cause", prim_error_cause, 1, {"Get error cause (next in chain)", "error -> error | nil"}},
+    {"error-root-cause", prim_error_root_cause, 1, {"Get root cause (deepest in chain)", "error -> error"}},
+    {"error-trace", prim_error_trace, 1, {"Get error return trace as list of positions", "error -> [ℕ]"}},
+    {"error-chain-match?", prim_error_chain_match, 2, {"Check if error chain contains type", "error -> :symbol -> Bool"}},
+    {"assert", prim_assert, 2, {"Assert condition is true, error otherwise", "Bool -> :symbol -> Bool | error"}},
+    {"trace", prim_trace, 1, {"Print value for debugging and return it", "α -> α"}},
 
     /* Self-Introspection */
     /* Note: ⊙ symbol now used for structures (see below) */
-    {"⧉", prim_arity, 1, {"Get arity of lambda", "λ → ℕ"}},
-    {"⊛", prim_source, 1, {"Get source code of lambda", "λ → expression"}},
+    {"arity", prim_arity, 1, {"Get arity of lambda", "lambda -> ℕ"}},
+    {"source", prim_source, 1, {"Get source code of lambda", "lambda -> expression"}},
 
     /* Macro System (Day 70) */
-    {"⊛⊙", prim_gensym, -1, {"Generate unique symbol for macro hygiene", "() → :symbol | ≈ → :symbol"}},
-    {"⧉→", prim_macro_expand, -1, {"Expand macros in expression (debug)", "α → α | α → 𝔹 → α"}},
-    {"⧉?", prim_macro_list, 0, {"List all defined macros", "() → [:symbol]"}},
+    {"gensym", prim_gensym, -1, {"Generate unique symbol for macro hygiene", "() -> :symbol | string -> :symbol"}},
+    {"macro-expand", prim_macro_expand, -1, {"Expand macros in expression (debug)", "α -> α | α -> Bool -> α"}},
+    {"macro-list", prim_macro_list, 0, {"List all defined macros", "() -> [:symbol]"}},
 
     /* Testing */
-    {"≟", prim_deep_equal, 2, {"Deep equality test (recursive)", "α → α → 𝔹"}},
-    {"⊨", prim_test_case, 3, {"Run test case: name, expected, actual", ":symbol → α → α → 𝔹 | ⚠"}},
+    {"deep-equal?", prim_deep_equal, 2, {"Deep equality test (recursive)", "α -> α -> Bool"}},
+    {"test-case", prim_test_case, 3, {"Run test case: name, expected, actual", ":symbol -> α -> α -> Bool | error"}},
 
     /* Test Runner (Day 123) */
-    {"⊨⊕⊙", prim_test_register, -1, {"Register test in global trie registry", ":symbol → λ → [tags...] → 𝔹"}},
-    {"⊨⊕!", prim_test_run_registry, -1, {"Run registered tests (optional prefix + tag filter)", "[:symbol [:symbol]] → ⊞"}},
-    {"⊨⊜", prim_test_results, 0, {"Return accumulated test results list", "() → [⊞]"}},
-    {"⊨⊜∅", prim_test_reset, 0, {"Clear all test state (results + counters)", "() → 𝔹"}},
-    {"⊨⊜#", prim_test_count, 0, {"Return pass/fail/total as list", "() → ⟨ℕ ℕ ℕ⟩"}},
-    {"⊨⊜×", prim_test_exit, 0, {"Exit with test status code (0=pass, 1=fail)", "() → ⊥"}},
+    {"test-register", prim_test_register, -1, {"Register test in global trie registry", ":symbol -> lambda -> [tags...] -> Bool"}},
+    {"test-run-registry", prim_test_run_registry, -1, {"Run registered tests (optional prefix + tag filter)", "[:symbol [:symbol]] -> hashmap"}},
+    {"test-results", prim_test_results, 0, {"Return accumulated test results list", "() -> [hashmap]"}},
+    {"test-reset", prim_test_reset, 0, {"Clear all test state (results + counters)", "() -> Bool"}},
+    {"test-count", prim_test_count, 0, {"Return pass/fail/total as list", "() -> ⟨ℕ ℕ ℕ⟩"}},
+    {"test-exit", prim_test_exit, 0, {"Exit with test status code (0=pass, 1=fail)", "() -> ⊥"}},
 
     /* Property-Based Testing */
-    {"gen-int", prim_gen_int, 2, {"Generate random integer in range [low, high]", "ℕ → ℕ → ℕ"}},
-    {"gen-bool", prim_gen_bool, 0, {"Generate random boolean", "() → 𝔹"}},
-    {"gen-symbol", prim_gen_symbol, 1, {"Generate random symbol from list", "[α] → α"}},
-    {"gen-list", prim_gen_list, 2, {"Generate random list using generator function", "(()→α) → ℕ → [α]"}},
-    {"gen-int-shrink", prim_gen_int_shrink, 2, {"Generate random int with integrated shrink function", "ℕ → ℕ → ⟨ℕ (ℕ→[ℕ])⟩"}},
-    {"gen-list-shrink", prim_gen_list_shrink, 2, {"Generate random list with integrated shrink function", "(()→α) → ℕ → ⟨[α] ([α]→[[α]])⟩"}},
-    {"⊨-prop", prim_test_property, 3, {"Property-based test with shrinking", ":symbol → (α→𝔹) → (()→α) → 𝔹 | ⚠"}},
+    {"gen-int", prim_gen_int, 2, {"Generate random integer in range [low, high]", "ℕ -> ℕ -> ℕ"}},
+    {"gen-bool", prim_gen_bool, 0, {"Generate random boolean", "() -> Bool"}},
+    {"gen-symbol", prim_gen_symbol, 1, {"Generate random symbol from list", "[α] -> α"}},
+    {"gen-list", prim_gen_list, 2, {"Generate random list using generator function", "(()->α) -> ℕ -> [α]"}},
+    {"gen-int-shrink", prim_gen_int_shrink, 2, {"Generate random int with integrated shrink function", "ℕ -> ℕ -> ⟨ℕ (ℕ->[ℕ])⟩"}},
+    {"gen-list-shrink", prim_gen_list_shrink, 2, {"Generate random list with integrated shrink function", "(()->α) -> ℕ -> ⟨[α] ([α]->[[α]])⟩"}},
+    {"test-property", prim_test_property, 3, {"Property-based test with shrinking", ":symbol -> (α->Bool) -> (()->α) -> Bool | error"}},
 
     /* Effects (placeholder) */
     /* Effects: ⟪, ⟪⟫, ↯, ⟪?, ⟪→ are special forms in eval.c */
-    {"⤴", prim_effect_pure, 1, {"Lift pure value (identity)", "α → α"}},
+    {"effect-pure", prim_effect_pure, 1, {"Lift pure value (identity)", "α -> α"}},
 
     /* Actor primitives */
-    {"⟳", prim_spawn, 1, {"Spawn new actor with behavior function", "(λ (self) ...) → ⟳[id]"}},
-    {"→!", prim_send, 2, {"Send message to actor (fire-and-forget)", "⟳ → α → ∅"}},
-    {"←?", prim_receive, 0, {"Receive message (yields if mailbox empty)", "() → α"}},
-    {"⟳!", prim_actor_run, 1, {"Run actor scheduler for N ticks", "ℕ → ℕ"}},
-    {"⟳#", prim_sched_count, -1, {"Get/set scheduler count", "() → ℕ | ℕ → ∅"}},
-    {"⟳#⊙", prim_sched_id, 0, {"Current scheduler ID", "() → ℕ"}},
-    {"⟳#?", prim_sched_stats, 0, {"Per-scheduler statistics", "() → [⟨ℕ ⊞⟩]"}},
-    {"⟳⊞⊛", prim_cpu_count, 0, {"Online CPU count", "() → ℕ"}},
-    {"⟳?", prim_actor_alive, 1, {"Check if actor is alive", "⟳ → 𝔹"}},
-    {"⟳→", prim_actor_result, 1, {"Get finished actor result", "⟳ → α | ⚠"}},
-    {"⟳⚐", prim_actor_wait_flag, 1, {"Get actor wait_flag (testing introspection)", "⟳ → ℕ"}},
-    {"⟳∅", prim_actor_reset, 0, {"Reset all actors (testing)", "() → ∅"}},
+    {"actor-spawn", prim_spawn, 1, {"Spawn new actor with behavior function", "(lambda (self) ...) -> actor-spawn[id]"}},
+    {"actor-send", prim_send, 2, {"Send message to actor (fire-and-forget)", "actor-spawn -> α -> nil"}},
+    {"actor-receive", prim_receive, 0, {"Receive message (yields if mailbox empty)", "() -> α"}},
+    {"actor-run", prim_actor_run, 1, {"Run actor scheduler for N ticks", "ℕ -> ℕ"}},
+    {"sched-count", prim_sched_count, -1, {"Get/set scheduler count", "() -> ℕ | ℕ -> nil"}},
+    {"sched-id", prim_sched_id, 0, {"Current scheduler ID", "() -> ℕ"}},
+    {"sched-stats", prim_sched_stats, 0, {"Per-scheduler statistics", "() -> [⟨ℕ hashmap⟩]"}},
+    {"cpu-count", prim_cpu_count, 0, {"Online CPU count", "() -> ℕ"}},
+    {"actor-alive?", prim_actor_alive, 1, {"Check if actor is alive", "actor-spawn -> Bool"}},
+    {"actor-result", prim_actor_result, 1, {"Get finished actor result", "actor-spawn -> α | error"}},
+    {"actor-wait-flag", prim_actor_wait_flag, 1, {"Get actor wait_flag (testing introspection)", "actor-spawn -> ℕ"}},
+    {"actor-reset", prim_actor_reset, 0, {"Reset all actors (testing)", "() -> nil"}},
 
     /* Supervision primitives */
-    {"⟳⊗", prim_actor_link, 1, {"Link current actor to target (bidirectional)", "⟳ → ∅"}},
-    {"⟳⊘", prim_actor_unlink, 1, {"Unlink current actor from target", "⟳ → ∅"}},
-    {"⟳⊙", prim_actor_monitor, 1, {"Monitor actor (receive :DOWN on death)", "⟳ → ∅"}},
-    {"⟳⊜", prim_actor_trap_exit, 1, {"Enable/disable exit trapping", "𝔹 → ∅"}},
-    {"⟳✕", prim_actor_exit, 2, {"Send exit signal to actor", "⟳ → α → ∅"}},
+    {"actor-link", prim_actor_link, 1, {"Link current actor to target (bidirectional)", "actor-spawn -> nil"}},
+    {"actor-unlink", prim_actor_unlink, 1, {"Unlink current actor from target", "actor-spawn -> nil"}},
+    {"actor-monitor", prim_actor_monitor, 1, {"Monitor actor (receive :DOWN on death)", "actor-spawn -> nil"}},
+    {"actor-trap-exit", prim_actor_trap_exit, 1, {"Enable/disable exit trapping", "Bool -> nil"}},
+    {"actor-exit", prim_actor_exit, 2, {"Send exit signal to actor", "actor-spawn -> α -> nil"}},
 
     /* Supervisor primitives */
-    {"⟳⊛", prim_sup_start, 2, {"Create supervisor with strategy and children", ":strategy → [λ] → ℕ"}},
-    {"⟳⊛?", prim_sup_children, 1, {"Get supervisor children", "ℕ → [⟳]"}},
-    {"⟳⊛!", prim_sup_restart_count, 1, {"Get supervisor restart count", "ℕ → ℕ"}},
-    {"⟳⊛⊕", prim_sup_add_child, 2, {"Add child to supervisor", "ℕ → λ → ℕ"}},
-    {"⟳⊛⊖", prim_sup_remove_child, 2, {"Remove child from supervisor", "ℕ → ⟳ → 𝔹"}},
+    {"sup-start", prim_sup_start, 2, {"Create supervisor with strategy and children", ":strategy -> [lambda] -> ℕ"}},
+    {"sup-children", prim_sup_children, 1, {"Get supervisor children", "ℕ -> [actor-spawn]"}},
+    {"sup-restart-count", prim_sup_restart_count, 1, {"Get supervisor restart count", "ℕ -> ℕ"}},
+    {"sup-add-child", prim_sup_add_child, 2, {"Add child to supervisor", "ℕ -> lambda -> ℕ"}},
+    {"sup-remove-child", prim_sup_remove_child, 2, {"Remove child from supervisor", "ℕ -> actor-spawn -> Bool"}},
 
     /* DynamicSupervisor primitives */
-    {"⟳⊛⊹", prim_dynsup_start, 0, {"Create empty dynamic supervisor", "() → ℕ"}},
-    {"⟳⊛⊹⊕", prim_dynsup_start_child, 3, {"Start child with restart type", "ℕ → λ → :type → ℕ"}},
-    {"⟳⊛⊹⊖", prim_dynsup_terminate_child, 2, {"Terminate child in dynamic supervisor", "ℕ → ⟳ → #t"}},
-    {"⟳⊛⊹?", prim_dynsup_which_children, 1, {"List dynamic supervisor children", "ℕ → [⟨⟳ :type⟩]"}},
-    {"⟳⊛⊹#", prim_dynsup_count, 1, {"Count dynamic supervisor children", "ℕ → ℕ"}},
+    {"dynsup-start", prim_dynsup_start, 0, {"Create empty dynamic supervisor", "() -> ℕ"}},
+    {"dynsup-start-child", prim_dynsup_start_child, 3, {"Start child with restart type", "ℕ -> lambda -> :type -> ℕ"}},
+    {"dynsup-terminate-child", prim_dynsup_terminate_child, 2, {"Terminate child in dynamic supervisor", "ℕ -> actor-spawn -> #t"}},
+    {"dynsup-which-children", prim_dynsup_which_children, 1, {"List dynamic supervisor children", "ℕ -> [⟨actor-spawn :type⟩]"}},
+    {"dynsup-count", prim_dynsup_count, 1, {"Count dynamic supervisor children", "ℕ -> ℕ"}},
 
     /* Process Registry primitives */
-    {"⟳⊜⊕", prim_registry_register, 2, {"Register actor under a name", ":symbol → ⟳ → #t | ⚠"}},
-    {"⟳⊜⊖", prim_registry_unregister, 1, {"Unregister a name", ":symbol → #t | ⚠"}},
-    {"⟳⊜?", prim_registry_whereis, 1, {"Look up actor by name", ":symbol → ⟳ | ∅"}},
-    {"⟳⊜*", prim_registry_list, 0, {"List all registered names", "() → [:symbol]"}},
-    {"⟳⇅", prim_call, 2, {"Synchronous call to actor", "⟳ → α → β"}},
-    {"⟳⇅!", prim_reply, 2, {"Reply to caller", "⟳ → α → ∅"}},
-    {"⟳⏱", prim_timer_send_after, 3, {"Send message after N ticks", "ℕ → ⟳ → α → ℕ"}},
-    {"⟳⏱×", prim_timer_cancel, 1, {"Cancel a pending timer", "ℕ → #t | ⚠"}},
-    {"⟳⏱?", prim_timer_active, 1, {"Check if timer is active", "ℕ → #t | #f"}},
+    {"registry-register", prim_registry_register, 2, {"Register actor under a name", ":symbol -> actor-spawn -> #t | error"}},
+    {"registry-unregister", prim_registry_unregister, 1, {"Unregister a name", ":symbol -> #t | error"}},
+    {"registry-whereis", prim_registry_whereis, 1, {"Look up actor by name", ":symbol -> actor-spawn | nil"}},
+    {"registry-list", prim_registry_list, 0, {"List all registered names", "() -> [:symbol]"}},
+    {"actor-call", prim_call, 2, {"Synchronous call to actor", "actor-spawn -> α -> β"}},
+    {"actor-reply", prim_reply, 2, {"Reply to caller", "actor-spawn -> α -> nil"}},
+    {"timer-send-after", prim_timer_send_after, 3, {"Send message after N ticks", "ℕ -> actor-spawn -> α -> ℕ"}},
+    {"timer-cancel", prim_timer_cancel, 1, {"Cancel a pending timer", "ℕ -> #t | error"}},
+    {"timer-active?", prim_timer_active, 1, {"Check if timer is active", "ℕ -> #t | #f"}},
 
     /* Process Dictionary primitives */
-    {"⟳⊔⊕", prim_proc_dict_put, 2, {"Store key-value in actor dict", "α → β → β | ∅"}},
-    {"⟳⊔?", prim_proc_dict_get, 1, {"Lookup key in actor dict", "α → β | ∅"}},
-    {"⟳⊔⊖", prim_proc_dict_erase, 1, {"Remove key from actor dict", "α → β | ∅"}},
-    {"⟳⊔*", prim_proc_dict_all, 0, {"List all actor dict entries", "() → [⟨α β⟩]"}},
+    {"proc-dict-put", prim_proc_dict_put, 2, {"Store key-value in actor dict", "α -> β -> β | nil"}},
+    {"proc-dict-get", prim_proc_dict_get, 1, {"Lookup key in actor dict", "α -> β | nil"}},
+    {"proc-dict-erase", prim_proc_dict_erase, 1, {"Remove key from actor dict", "α -> β | nil"}},
+    {"proc-dict-all", prim_proc_dict_all, 0, {"List all actor dict entries", "() -> [⟨α β⟩]"}},
 
     /* ETS (Erlang Term Storage) primitives */
-    {"⟳⊞⊕", prim_ets_new, 1, {"Create named ETS table", ":name → :name | ⚠"}},
-    {"⟳⊞⊙", prim_ets_insert, 3, {"Insert key-value into ETS table", ":name → α → β → #t | ⚠"}},
-    {"⟳⊞?", prim_ets_lookup, 2, {"Lookup key in ETS table", ":name → α → β | ∅ | ⚠"}},
-    {"⟳⊞⊖", prim_ets_delete_key, 2, {"Delete key from ETS table", ":name → α → #t | ⚠"}},
-    {"⟳⊞!", prim_ets_delete_table, 1, {"Delete entire ETS table", ":name → #t | ⚠"}},
-    {"⟳⊞#", prim_ets_size, 1, {"Get ETS table entry count", ":name → ℕ | ⚠"}},
-    {"⟳⊞*", prim_ets_all, 1, {"Get all ETS table entries", ":name → [⟨α β⟩] | ⚠"}},
+    {"ets-new", prim_ets_new, 1, {"Create named ETS table", ":name -> :name | error"}},
+    {"ets-insert", prim_ets_insert, 3, {"Insert key-value into ETS table", ":name -> α -> β -> #t | error"}},
+    {"ets-lookup", prim_ets_lookup, 2, {"Lookup key in ETS table", ":name -> α -> β | nil | error"}},
+    {"ets-delete-key", prim_ets_delete_key, 2, {"Delete key from ETS table", ":name -> α -> #t | error"}},
+    {"ets-delete-table", prim_ets_delete_table, 1, {"Delete entire ETS table", ":name -> #t | error"}},
+    {"ets-size", prim_ets_size, 1, {"Get ETS table entry count", ":name -> ℕ | error"}},
+    {"ets-all", prim_ets_all, 1, {"Get all ETS table entries", ":name -> [⟨α β⟩] | error"}},
 
     /* Application primitives */
-    {"⟳⊚⊕", prim_app_start, -1, {"Start application with supervisor", ":name → λ → :name | ⚠"}},
-    {"⟳⊚⊖", prim_app_stop, 1, {"Stop a running application", ":name → #t | ⚠"}},
-    {"⟳⊚?", prim_app_info, 1, {"Get application info", ":name → ⟨:name ℕ⟩ | ∅"}},
-    {"⟳⊚*", prim_app_which, 0, {"List running applications", "() → [:name]"}},
-    {"⟳⊚⊙", prim_app_get_env, 2, {"Get application env key", ":name → α → β | ∅"}},
-    {"⟳⊚←", prim_app_set_env, 3, {"Set application env key", ":name → α → β → #t | ⚠"}},
+    {"app-start", prim_app_start, -1, {"Start application with supervisor", ":name -> lambda -> :name | error"}},
+    {"app-stop", prim_app_stop, 1, {"Stop a running application", ":name -> #t | error"}},
+    {"app-info", prim_app_info, 1, {"Get application info", ":name -> ⟨:name ℕ⟩ | nil"}},
+    {"app-which", prim_app_which, 0, {"List running applications", "() -> [:name]"}},
+    {"app-get-env", prim_app_get_env, 2, {"Get application env key", ":name -> α -> β | nil"}},
+    {"app-set-env", prim_app_set_env, 3, {"Set application env key", ":name -> α -> β -> #t | error"}},
 
     /* Task primitives (async/await) */
-    {"⟳⊳", prim_task_async, 1, {"Spawn task from zero-arg function", "λ → ⟳[id]"}},
-    {"⟳⊲", prim_task_await, 1, {"Await task result (blocking)", "⟳ → α"}},
-    {"⟳⊲?", prim_task_yield, 1, {"Check task result (non-blocking)", "⟳ → α | ∅"}},
+    {"task-async", prim_task_async, 1, {"Spawn task from zero-arg function", "lambda -> actor-spawn[id]"}},
+    {"task-await", prim_task_await, 1, {"Await task result (blocking)", "actor-spawn -> α"}},
+    {"task-yield", prim_task_yield, 1, {"Check task result (non-blocking)", "actor-spawn -> α | nil"}},
 
     /* Agent primitives */
-    {"⟳⊶", prim_agent_start, 1, {"Start agent with initial state", "λ → ℕ"}},
-    {"⟳⊶?", prim_agent_get, 2, {"Get agent state via function", "ℕ → λ → α"}},
-    {"⟳⊶!", prim_agent_update, 2, {"Update agent state via function", "ℕ → λ → #t"}},
-    {"⟳⊶⊕", prim_agent_get_and_update, 2, {"Get and update agent state", "ℕ → λ → α"}},
-    {"⟳⊶×", prim_agent_stop, 1, {"Stop agent, return final state", "ℕ → α"}},
+    {"agent-start", prim_agent_start, 1, {"Start agent with initial state", "lambda -> ℕ"}},
+    {"agent-get", prim_agent_get, 2, {"Get agent state via function", "ℕ -> lambda -> α"}},
+    {"agent-update", prim_agent_update, 2, {"Update agent state via function", "ℕ -> lambda -> #t"}},
+    {"agent-get-and-update", prim_agent_get_and_update, 2, {"Get and update agent state", "ℕ -> lambda -> α"}},
+    {"agent-stop", prim_agent_stop, 1, {"Stop agent, return final state", "ℕ -> α"}},
 
     /* GenStage primitives (producer-consumer pipelines) */
-    {"⟳⊵", prim_stage_new, 3, {"Create GenStage (mode handler state)", ":mode → λ → α → ℕ"}},
-    {"⟳⊵⊕", prim_stage_subscribe, 2, {"Subscribe consumer to producer", "ℕ → ℕ → #t"}},
-    {"⟳⊵→", prim_stage_ask, 2, {"Ask producer for events", "ℕ → ℕ → [α]"}},
-    {"⟳⊵⊙", prim_stage_dispatch, 2, {"Dispatch events to subscribers", "ℕ → [α] → ℕ"}},
-    {"⟳⊵?", prim_stage_info, 1, {"Get stage info (mode state)", "ℕ → ⟨:mode α⟩"}},
-    {"⟳⊵×", prim_stage_stop, 1, {"Stop stage, return final state", "ℕ → α"}},
+    {"stage-new", prim_stage_new, 3, {"Create GenStage (mode handler state)", ":mode -> lambda -> α -> ℕ"}},
+    {"stage-subscribe", prim_stage_subscribe, 2, {"Subscribe consumer to producer", "ℕ -> ℕ -> #t"}},
+    {"stage-ask", prim_stage_ask, 2, {"Ask producer for events", "ℕ -> ℕ -> [α]"}},
+    {"stage-dispatch", prim_stage_dispatch, 2, {"Dispatch events to subscribers", "ℕ -> [α] -> ℕ"}},
+    {"stage-info", prim_stage_info, 1, {"Get stage info (mode state)", "ℕ -> ⟨:mode α⟩"}},
+    {"stage-stop", prim_stage_stop, 1, {"Stop stage, return final state", "ℕ -> α"}},
 
     /* Flow primitives (lazy computation pipelines) */
-    {"⟳⊸", prim_flow_from, 1, {"Create flow from list", "[α] → ℕ"}},
-    {"⟳⊸↦", prim_flow_map, 2, {"Add map step to flow", "ℕ → λ → ℕ"}},
-    {"⟳⊸⊲", prim_flow_filter, 2, {"Add filter step to flow", "ℕ → λ → ℕ"}},
-    {"⟳⊸⊕", prim_flow_reduce, 3, {"Add reduce step to flow", "ℕ → α → λ → ℕ"}},
-    {"⟳⊸⊙", prim_flow_each, 2, {"Add each step to flow", "ℕ → λ → ℕ"}},
-    {"⟳⊸!", prim_flow_run, 1, {"Execute flow pipeline", "ℕ → α"}},
+    {"flow-from", prim_flow_from, 1, {"Create flow from list", "[α] -> ℕ"}},
+    {"flow-map", prim_flow_map, 2, {"Add map step to flow", "ℕ -> lambda -> ℕ"}},
+    {"flow-filter", prim_flow_filter, 2, {"Add filter step to flow", "ℕ -> lambda -> ℕ"}},
+    {"flow-reduce", prim_flow_reduce, 3, {"Add reduce step to flow", "ℕ -> α -> lambda -> ℕ"}},
+    {"flow-each", prim_flow_each, 2, {"Add each step to flow", "ℕ -> lambda -> ℕ"}},
+    {"flow-run", prim_flow_run, 1, {"Execute flow pipeline", "ℕ -> α"}},
 
     /* Flow registry primitives (named flow pipelines) */
-    {"⟳⊸⊜⊕", prim_flow_registry_register, 2, {"Register flow under a name", ":symbol → ℕ → #t | ⚠"}},
-    {"⟳⊸⊜⊖", prim_flow_registry_unregister, 1, {"Unregister a flow name", ":symbol → #t | ⚠"}},
-    {"⟳⊸⊜?", prim_flow_registry_whereis, 1, {"Look up flow by name", ":symbol → ℕ | ∅"}},
-    {"⟳⊸⊜*", prim_flow_registry_list, 0, {"List all registered flow names", "() → [:symbol]"}},
+    {"flow-registry-register", prim_flow_registry_register, 2, {"Register flow under a name", ":symbol -> ℕ -> #t | error"}},
+    {"flow-registry-unregister", prim_flow_registry_unregister, 1, {"Unregister a flow name", ":symbol -> #t | error"}},
+    {"flow-registry-whereis", prim_flow_registry_whereis, 1, {"Look up flow by name", ":symbol -> ℕ | nil"}},
+    {"flow-registry-list", prim_flow_registry_list, 0, {"List all registered flow names", "() -> [:symbol]"}},
 
     /* Channel primitives */
-    {"⟿⊚", prim_chan_create, -1, {"Create channel (optional capacity)", "() → ⟿ | ℕ → ⟿"}},
-    {"⟿→", prim_chan_send, 2, {"Send value to channel (yields if full)", "⟿ → α → ∅"}},
-    {"⟿←", prim_chan_recv, 1, {"Receive from channel (yields if empty)", "⟿ → α"}},
-    {"⟿×", prim_chan_close, 1, {"Close channel", "⟿ → ∅"}},
-    {"⟿∅", prim_chan_reset, 0, {"Reset all channels (testing)", "() → ∅"}},
-    {"⟿⊞",  prim_chan_select,     -1, {"Select from multiple channels (blocking)", "[⟿] → ⟨⟿ α⟩"}},
-    {"⟿⊞?", prim_chan_select_try, -1, {"Try select (non-blocking)", "[⟿] → ⟨⟿ α⟩ | ∅"}},
+    {"chan-create", prim_chan_create, -1, {"Create channel (optional capacity)", "() -> ⟿ | ℕ -> ⟿"}},
+    {"chan-send", prim_chan_send, 2, {"Send value to channel (yields if full)", "⟿ -> α -> nil"}},
+    {"chan-recv", prim_chan_recv, 1, {"Receive from channel (yields if empty)", "⟿ -> α"}},
+    {"chan-close", prim_chan_close, 1, {"Close channel", "⟿ -> nil"}},
+    {"chan-reset", prim_chan_reset, 0, {"Reset all channels (testing)", "() -> nil"}},
+    {"chan-select",  prim_chan_select,     -1, {"Select from multiple channels (blocking)", "[⟿] -> ⟨⟿ α⟩"}},
+    {"chan-select-try", prim_chan_select_try, -1, {"Try select (non-blocking)", "[⟿] -> ⟨⟿ α⟩ | nil"}},
 
     /* Documentation primitives */
-    {"⌂", prim_doc_get, 1, {"Get documentation for symbol", ":symbol → string"}},
-    {"⌂∈", prim_doc_type, 1, {"Get type signature for symbol", ":symbol → string"}},
-    {"⌂≔", prim_doc_deps, 1, {"Get dependencies for symbol", ":symbol → [symbols]"}},
-    {"⌂⊛", prim_doc_source, 1, {"Get source code for symbol", ":symbol → expression"}},
-    {"⌂⊨", prim_doc_tests, 1, {"Auto-generate tests for symbol", ":symbol → [tests]"}},
-    {"⌂⊨!", prim_doc_tests_run, 1, {"Execute auto-generated tests for symbol", ":symbol → (passed failed total)"}},
-    {"⌂⊨⊗", prim_mutation_test, 1, {"Mutation testing - test test suite quality", ":symbol → (killed survived total)"}},
-    {"📖", prim_doc_generate, 1, {"Generate markdown documentation for module", "≈ → ≈"}},
-    {"📖→", prim_doc_export, 2, {"Export documentation to file", "≈ → ≈ → ≈"}},
-    {"📖⊛", prim_doc_index, 0, {"Generate module index with cross-references", "() → ≈ | ≈ → ≈"}},
-    {"⌂⊚", prim_module_info, 1, {"Query module information", "() → [modules] | :symbol → string | string → [symbols]"}},
+    {"doc", prim_doc_get, 1, {"Get documentation for symbol", ":symbol -> string"}},
+    {"doc-type", prim_doc_type, 1, {"Get type signature for symbol", ":symbol -> string"}},
+    {"doc-deps", prim_doc_deps, 1, {"Get dependencies for symbol", ":symbol -> [symbols]"}},
+    {"doc-source", prim_doc_source, 1, {"Get source code for symbol", ":symbol -> expression"}},
+    {"doc-tests", prim_doc_tests, 1, {"Auto-generate tests for symbol", ":symbol -> [tests]"}},
+    {"doc-tests-run", prim_doc_tests_run, 1, {"Execute auto-generated tests for symbol", ":symbol -> (passed failed total)"}},
+    {"mutation-test", prim_mutation_test, 1, {"Mutation testing - test test suite quality", ":symbol -> (killed survived total)"}},
+    {"doc-generate", prim_doc_generate, 1, {"Generate markdown documentation for module", "string -> string"}},
+    {"doc-export", prim_doc_export, 2, {"Export documentation to file", "string -> string -> string"}},
+    {"doc-index", prim_doc_index, 0, {"Generate module index with cross-references", "() -> string | string -> string"}},
+    {"module-info", prim_module_info, 1, {"Query module information", "() -> [modules] | :symbol -> string | string -> [symbols]"}},
 
     /* CFG/DFG Query primitives */
-    {"⌂⟿", prim_query_cfg, 1, {"Get control flow graph for function", ":symbol → CFG"}},
-    {"⌂⇝", prim_query_dfg, 1, {"Get data flow graph for function", ":symbol → DFG"}},
+    {"query-cfg", prim_query_cfg, 1, {"Get control flow graph for function", ":symbol -> CFG"}},
+    {"query-dfg", prim_query_dfg, 1, {"Get data flow graph for function", ":symbol -> DFG"}},
 
     /* Structure primitives - Leaf (⊙) */
-    {"⊙≔", prim_struct_define_leaf, -1, {"Define leaf structure type with field names", ":symbol → [:symbol] → :symbol"}},
-    {"⊙", prim_struct_create, -1, {"Create structure instance with field values", ":symbol → [α] → ⊙"}},
-    {"⊙→", prim_struct_get_field, 2, {"Get field value from structure", "⊙ → :symbol → α"}},
-    {"⊙←", prim_struct_update_field, 3, {"Update field in structure (immutable)", "⊙ → :symbol → α → ⊙"}},
-    {"⊙?", prim_struct_type_check, 2, {"Check if value is structure of given type", "α → :symbol → 𝔹"}},
+    {"struct-define", prim_struct_define_leaf, -1, {"Define leaf structure type with field names", ":symbol -> [:symbol] -> :symbol"}},
+    {"struct-create", prim_struct_create, -1, {"Create structure instance with field values", ":symbol -> [α] -> struct-create"}},
+    {"struct-get", prim_struct_get_field, 2, {"Get field value from structure", "struct-create -> :symbol -> α"}},
+    {"struct-set", prim_struct_update_field, 3, {"Update field in structure (immutable)", "struct-create -> :symbol -> α -> struct-create"}},
+    {"struct?", prim_struct_type_check, 2, {"Check if value is structure of given type", "α -> :symbol -> Bool"}},
 
     /* Structure primitives - Node/ADT (⊚) */
-    {"⊚≔", prim_struct_define_node, -1, {"Define node/ADT type with variants", ":symbol → [[variant]] → :symbol"}},
-    {"⊚", prim_struct_create_node, -1, {"Create node instance with variant", ":symbol → :symbol → [α] → ⊚"}},
-    {"⊚→", prim_struct_get_node, 2, {"Get field value from node", "⊚ → :symbol → α"}},
-    {"⊚?", prim_struct_is_node, 3, {"Check if value is node of given type and variant", "α → :symbol → :symbol → 𝔹"}},
+    {"adt-define", prim_struct_define_node, -1, {"Define node/ADT type with variants", ":symbol -> [[variant]] -> :symbol"}},
+    {"adt-create", prim_struct_create_node, -1, {"Create node instance with variant", ":symbol -> :symbol -> [α] -> adt-create"}},
+    {"adt-get", prim_struct_get_node, 2, {"Get field value from node", "adt-create -> :symbol -> α"}},
+    {"adt?", prim_struct_is_node, 3, {"Check if value is node of given type and variant", "α -> :symbol -> :symbol -> Bool"}},
 
     /* Graph primitives */
-    {"⊝≔", prim_graph_define, -1, {"Define graph type with graph_type and fields", ":symbol → :symbol → [:symbol] → :symbol"}},
-    {"⊝", prim_graph_create, 1, {"Create empty graph instance", ":symbol → ⊝"}},
-    {"⊝⊕", prim_graph_add_node, 2, {"Add node to graph (immutable)", "⊝ → α → ⊝"}},
-    {"⊝⊗", prim_graph_add_edge, 4, {"Add edge to graph (immutable)", "⊝ → α → α → α → ⊝"}},
-    {"⊝→", prim_graph_query, 2, {"Query graph property (:nodes, :edges, :entry, :exit, :metadata)", "⊝ → :symbol → α"}},
-    {"⊝?", prim_graph_is, 2, {"Check if value is graph of given type", "α → :symbol → 𝔹"}},
+    {"graph-define", prim_graph_define, -1, {"Define graph type with graph_type and fields", ":symbol -> :symbol -> [:symbol] -> :symbol"}},
+    {"graph-create", prim_graph_create, 1, {"Create empty graph instance", ":symbol -> graph-create"}},
+    {"graph-add-node", prim_graph_add_node, 2, {"Add node to graph (immutable)", "graph-create -> α -> graph-create"}},
+    {"graph-add-edge", prim_graph_add_edge, 4, {"Add edge to graph (immutable)", "graph-create -> α -> α -> α -> graph-create"}},
+    {"graph-query", prim_graph_query, 2, {"Query graph property (:nodes, :edges, :entry, :exit, :metadata)", "graph-create -> :symbol -> α"}},
+    {"graph?", prim_graph_is, 2, {"Check if value is graph of given type", "α -> :symbol -> Bool"}},
 
     /* Graph algorithm primitives */
-    {"⊝↦", prim_graph_traverse, 4, {"Graph traverse with visitor (BFS or DFS)", "⊝ → :symbol → α → (α → β) → [β]"}},
-    {"⊝⊃", prim_graph_reachable, 3, {"Check if to-node reachable from from-node", "⊝ → α → α → 𝔹"}},
-    {"⊝⊚", prim_graph_successors, 2, {"Get direct successor nodes", "⊝ → α → [α]"}},
-    {"⊝⊙", prim_graph_predecessors, 2, {"Get direct predecessor nodes", "⊝ → α → [α]"}},
-    {"⊝⇝", prim_graph_path, 3, {"Find shortest path between nodes", "⊝ → α → α → [α] | ∅"}},
-    {"⊝∘", prim_graph_cycles, 1, {"Detect cycles in graph", "⊝ → [[α]] | ∅"}},
+    {"graph-traverse", prim_graph_traverse, 4, {"Graph traverse with visitor (BFS or DFS)", "graph-create -> :symbol -> α -> (α -> β) -> [β]"}},
+    {"graph-reachable?", prim_graph_reachable, 3, {"Check if to-node reachable from from-node", "graph-create -> α -> α -> Bool"}},
+    {"graph-successors", prim_graph_successors, 2, {"Get direct successor nodes", "graph-create -> α -> [α]"}},
+    {"graph-predecessors", prim_graph_predecessors, 2, {"Get direct predecessor nodes", "graph-create -> α -> [α]"}},
+    {"graph-path", prim_graph_path, 3, {"Find shortest path between nodes", "graph-create -> α -> α -> [α] | nil"}},
+    {"graph-cycles", prim_graph_cycles, 1, {"Detect cycles in graph", "graph-create -> [[α]] | nil"}},
 
     /* String operations */
-    {"≈", prim_str, 1, {"Convert value to string", "α → ≈"}},
-    {"≈⊕", prim_str_concat, 2, {"Concatenate two strings", "≈ → ≈ → ≈"}},
-    {"≈#", prim_str_length, 1, {"Get string length", "≈ → ℕ"}},
-    {"≈→", prim_str_ref, 2, {"Get character at index", "≈ → ℕ → :symbol"}},
-    {"≈⊂", prim_str_slice, 3, {"Get substring from start to end", "≈ → ℕ → ℕ → ≈"}},
-    {"≈?", prim_is_string, 1, {"Test if value is a string", "α → 𝔹"}},
-    {"≈∅?", prim_str_empty, 1, {"Test if string is empty", "≈ → 𝔹"}},
-    {"≈≡", prim_str_equal, 2, {"Test string equality", "≈ → ≈ → 𝔹"}},
-    {"≈<", prim_str_less, 2, {"Test string ordering", "≈ → ≈ → 𝔹"}},
-    {"≈→#", prim_str_char_code, 2, {"Get character code at index", "≈ → ℕ → ℕ"}},
-    {"#→≈", prim_code_to_char, 1, {"Convert code to single-char string", "ℕ → ≈"}},
-    {"≈→ℕ", prim_str_to_number, 1, {"Convert string to number", "≈ → ℕ|⚠"}},
-    {"≈→:", prim_str_to_symbol, 1, {"Convert string to symbol", "≈ → :sym"}},
-    {"≈↑", prim_str_upcase, 1, {"Convert string to uppercase", "≈ → ≈"}},
-    {"≈↓", prim_str_downcase, 1, {"Convert string to lowercase", "≈ → ≈"}},
+    {"string", prim_str, 1, {"Convert value to string", "α -> string"}},
+    {"string-append", prim_str_concat, 2, {"Concatenate two strings", "string -> string -> string"}},
+    {"string-length", prim_str_length, 1, {"Get string length", "string -> ℕ"}},
+    {"string-ref", prim_str_ref, 2, {"Get character at index", "string -> ℕ -> :symbol"}},
+    {"string-slice", prim_str_slice, 3, {"Get substring from start to end", "string -> ℕ -> ℕ -> string"}},
+    {"string?", prim_is_string, 1, {"Test if value is a string", "α -> Bool"}},
+    {"string-empty?", prim_str_empty, 1, {"Test if string is empty", "string -> Bool"}},
+    {"string-equal?", prim_str_equal, 2, {"Test string equality", "string -> string -> Bool"}},
+    {"string<?", prim_str_less, 2, {"Test string ordering", "string -> string -> Bool"}},
+    {"string-char-code", prim_str_char_code, 2, {"Get character code at index", "string -> ℕ -> ℕ"}},
+    {"code->char", prim_code_to_char, 1, {"Convert code to single-char string", "ℕ -> string"}},
+    {"string->number", prim_str_to_number, 1, {"Convert string to number", "string -> ℕ|error"}},
+    {"string->symbol", prim_str_to_symbol, 1, {"Convert string to symbol", "string -> :sym"}},
+    {"string-upcase", prim_str_upcase, 1, {"Convert string to uppercase", "string -> string"}},
+    {"string-downcase", prim_str_downcase, 1, {"Convert string to lowercase", "string -> string"}},
 
     /* String SDK (Day 121 — SIMD-accelerated) */
     /* Tier 1: Search */
-    {"≈⊳", prim_str_find, 2, {"Find first occurrence of substring", "≈ → ≈ → ℕ|∅"}},
-    {"≈⊲", prim_str_rfind, 2, {"Find last occurrence of substring", "≈ → ≈ → ℕ|∅"}},
-    {"≈∈?", prim_str_contains, 2, {"Test if string contains substring", "≈ → ≈ → 𝔹"}},
-    {"≈⊲?", prim_str_starts_with, 2, {"Test if string starts with prefix", "≈ → ≈ → 𝔹"}},
-    {"≈⊳?", prim_str_ends_with, 2, {"Test if string ends with suffix", "≈ → ≈ → 𝔹"}},
-    {"≈⊳#", prim_str_count, 2, {"Count non-overlapping occurrences", "≈ → ≈ → ℕ"}},
+    {"string-find", prim_str_find, 2, {"Find first occurrence of substring", "string -> string -> ℕ|nil"}},
+    {"string-rfind", prim_str_rfind, 2, {"Find last occurrence of substring", "string -> string -> ℕ|nil"}},
+    {"string-contains?", prim_str_contains, 2, {"Test if string contains substring", "string -> string -> Bool"}},
+    {"string-starts-with?", prim_str_starts_with, 2, {"Test if string starts with prefix", "string -> string -> Bool"}},
+    {"string-ends-with?", prim_str_ends_with, 2, {"Test if string ends with suffix", "string -> string -> Bool"}},
+    {"string-count", prim_str_count, 2, {"Count non-overlapping occurrences", "string -> string -> ℕ"}},
     /* Tier 2: Transform */
-    {"≈⇄", prim_str_reverse, 1, {"Reverse string", "≈ → ≈"}},
-    {"≈⊛", prim_str_repeat, 2, {"Repeat string n times", "≈ → ℕ → ≈"}},
-    {"≈⇔", prim_str_replace, 3, {"Replace all occurrences", "≈ → ≈ → ≈ → ≈"}},
-    {"≈⇔#", prim_str_replacen, 4, {"Replace first n occurrences", "≈ → ≈ → ≈ → ℕ → ≈"}},
+    {"string-reverse", prim_str_reverse, 1, {"Reverse string", "string -> string"}},
+    {"string-repeat", prim_str_repeat, 2, {"Repeat string n times", "string -> ℕ -> string"}},
+    {"string-replace", prim_str_replace, 3, {"Replace all occurrences", "string -> string -> string -> string"}},
+    {"string-replace-n", prim_str_replacen, 4, {"Replace first n occurrences", "string -> string -> string -> ℕ -> string"}},
     /* Tier 3: Trim */
-    {"≈⊏", prim_str_trim_left, 1, {"Trim leading whitespace", "≈ → ≈"}},
-    {"≈⊐", prim_str_trim_right, 1, {"Trim trailing whitespace", "≈ → ≈"}},
-    {"≈⊏⊐", prim_str_trim, 1, {"Trim whitespace both sides", "≈ → ≈"}},
+    {"string-trim-left", prim_str_trim_left, 1, {"Trim leading whitespace", "string -> string"}},
+    {"string-trim-right", prim_str_trim_right, 1, {"Trim trailing whitespace", "string -> string"}},
+    {"string-trim", prim_str_trim, 1, {"Trim whitespace both sides", "string -> string"}},
     /* Tier 4: Split */
-    {"≈÷", prim_str_split, 2, {"Split by delimiter", "≈ → ≈ → [≈]"}},
-    {"≈÷#", prim_str_splitn, 3, {"Split into at most n parts", "≈ → ≈ → ℕ → [≈]"}},
-    {"≈÷⊔", prim_str_fields, 1, {"Split by whitespace runs", "≈ → [≈]"}},
+    {"string-split", prim_str_split, 2, {"Split by delimiter", "string -> string -> [string]"}},
+    {"string-split-n", prim_str_splitn, 3, {"Split into at most n parts", "string -> string -> ℕ -> [string]"}},
+    {"string-fields", prim_str_fields, 1, {"Split by whitespace runs", "string -> [string]"}},
     /* Tier 5: Pad */
-    {"≈⊏⊕", prim_str_pad_left, 3, {"Pad left to width", "≈ → ℕ → ≈ → ≈"}},
-    {"≈⊐⊕", prim_str_pad_right, 3, {"Pad right to width", "≈ → ℕ → ≈ → ≈"}},
+    {"string-pad-left", prim_str_pad_left, 3, {"Pad left to width", "string -> ℕ -> string -> string"}},
+    {"string-pad-right", prim_str_pad_right, 3, {"Pad right to width", "string -> ℕ -> string -> string"}},
     /* Tier 6: Strip */
-    {"≈⊏⊖", prim_str_strip_prefix, 2, {"Strip prefix if present", "≈ → ≈ → ≈"}},
-    {"≈⊐⊖", prim_str_strip_suffix, 2, {"Strip suffix if present", "≈ → ≈ → ≈"}},
+    {"string-strip-prefix", prim_str_strip_prefix, 2, {"Strip prefix if present", "string -> string -> string"}},
+    {"string-strip-suffix", prim_str_strip_suffix, 2, {"Strip suffix if present", "string -> string -> string"}},
 
     /* I/O operations - Console */
-    {"≋", prim_print, 1, {"Print value to stdout with newline", "α → α"}},
-    {"≋≈", prim_print_str, 1, {"Print string to stdout without newline", "≈ → ≈"}},
-    {"≋←", prim_read_line, 0, {"Read line from stdin", "() → ≈"}},
+    {"print", prim_print, 1, {"Print value to stdout with newline", "α -> α"}},
+    {"display", prim_print_str, 1, {"Print string to stdout without newline", "string -> string"}},
+    {"read-line", prim_read_line, 0, {"Read line from stdin", "() -> string"}},
 
     /* I/O operations - Files */
-    {"≋⊳", prim_read_file, 1, {"Read entire file as string", "≈ → ≈"}},
-    {"≋⊲", prim_write_file, 2, {"Write string to file (overwrites)", "≈ → ≈ → ≈"}},
-    {"≋⊕", prim_append_file, 2, {"Append string to file", "≈ → ≈ → ≈"}},
-    {"≋?", prim_file_exists, 1, {"Check if file exists", "≈ → 𝔹"}},
-    {"≋∅?", prim_file_empty, 1, {"Check if file is empty", "≈ → 𝔹"}},
+    {"read-file", prim_read_file, 1, {"Read entire file as string", "string -> string"}},
+    {"write-file", prim_write_file, 2, {"Write string to file (overwrites)", "string -> string -> string"}},
+    {"append-file", prim_append_file, 2, {"Append string to file", "string -> string -> string"}},
+    {"file-exists?", prim_file_exists, 1, {"Check if file exists", "string -> Bool"}},
+    {"file-empty?", prim_file_empty, 1, {"Check if file is empty", "string -> Bool"}},
 
     /* Module System */
-    {"⋘", prim_load, 1, {"Load and evaluate file", "≈ → α"}},
-    {"⋖", prim_module_import, 2, {"Validate symbols exist in module", "≈ → [::symbol] → ::ok | ⚠"}},
-    {"⌂⊚→", prim_module_dependencies, 1, {"Get module dependencies", "≈ → [≈]"}},
+    {"load", prim_load, 1, {"Load and evaluate file", "string -> α"}},
+    {"module-import", prim_module_import, 2, {"Validate symbols exist in module", "string -> [::symbol] -> ::ok | error"}},
+    {"module-dependencies", prim_module_dependencies, 1, {"Get module dependencies", "string -> [string]"}},
 
     /* Module System Enhancements (Day 70) */
-    {"⌂⊚#", prim_module_version, -1, {"Get/set module version", "≈ → ≈ | ≈ → ≈ → :ok"}},
-    {"⌂⊚↑", prim_module_exports, -1, {"Get/set module exports", "≈ → [:symbol] | ≈ → [:symbol] → :ok"}},
-    {"⌂⊚⊛", prim_module_cycles, -1, {"Detect circular dependencies", "() → [[≈]] | ≈ → [[≈]]"}},
-    {"⋘?", prim_module_loaded_p, 1, {"Check if module is loaded", "≈ → 𝔹"}},
-    {"⊞◇", prim_module_define, -1, {"Define module exports (and optional version)", "≈ → [:symbol] → :ok | ≈ → [:symbol] → ≈ → :ok"}},
-    {"⋘⊳", prim_module_import_validated, -1, {"Import with export validation", "≈ → α | ≈ → [:symbol] → α|⚠"}},
+    {"module-version", prim_module_version, -1, {"Get/set module version", "string -> string | string -> string -> :ok"}},
+    {"module-exports", prim_module_exports, -1, {"Get/set module exports", "string -> [:symbol] | string -> [:symbol] -> :ok"}},
+    {"module-cycles", prim_module_cycles, -1, {"Detect circular dependencies", "() -> [[string]] | string -> [[string]]"}},
+    {"module-loaded?", prim_module_loaded_p, 1, {"Check if module is loaded", "string -> Bool"}},
+    {"module-define", prim_module_define, -1, {"Define module exports (and optional version)", "string -> [:symbol] -> :ok | string -> [:symbol] -> string -> :ok"}},
+    {"module-import-validated", prim_module_import_validated, -1, {"Import with export validation", "string -> α | string -> [:symbol] -> α|error"}},
 
     /* Mutable References (Day 107) */
-    {"□", prim_box_create, 1, {"Create mutable box", "α → □α"}},
-    {"□→", prim_box_deref, 1, {"Dereference box", "□α → α"}},
-    {"□←", prim_box_set, 2, {"Set box value, return old", "□α → β → α"}},
-    {"□?", prim_box_is, 1, {"Test if value is box", "α → 𝔹"}},
-    {"□⊕", prim_box_update, 2, {"Update box with function, return old", "□α → (α→β) → α"}},
-    {"□⇌", prim_box_swap, 2, {"Swap two boxes' contents", "□α → □β → 𝔹"}},
+    {"box", prim_box_create, 1, {"Create mutable box", "α -> boxα"}},
+    {"unbox", prim_box_deref, 1, {"Dereference box", "boxα -> α"}},
+    {"box-set!", prim_box_set, 2, {"Set box value, return old", "boxα -> β -> α"}},
+    {"box?", prim_box_is, 1, {"Test if value is box", "α -> Bool"}},
+    {"box-update!", prim_box_update, 2, {"Update box with function, return old", "boxα -> (α->β) -> α"}},
+    {"box-swap!", prim_box_swap, 2, {"Swap two boxes' contents", "boxα -> boxβ -> Bool"}},
 
     /* Weak References (Day 108) */
-    {"◇", prim_weak_create, 1, {"Create weak reference", "α → ◇α"}},
-    {"◇→", prim_weak_deref, 1, {"Dereference weak ref", "◇α → α|∅"}},
-    {"◇?", prim_weak_alive, 1, {"Check weak ref alive", "◇α → 𝔹"}},
-    {"◇⊙", prim_weak_is, 1, {"Test if weak-ref", "α → 𝔹"}},
+    {"weak-ref", prim_weak_create, 1, {"Create weak reference", "α -> weak-refα"}},
+    {"weak-deref", prim_weak_deref, 1, {"Dereference weak ref", "weak-refα -> α|nil"}},
+    {"weak-alive?", prim_weak_alive, 1, {"Check weak ref alive", "weak-refα -> Bool"}},
+    {"weak-ref?", prim_weak_is, 1, {"Test if weak-ref", "α -> Bool"}},
 
     /* HashMap (Day 109) */
-    {"⊞", prim_hashmap_new, -1, {"Create hashmap from pairs", "⟨k v⟩... → ⊞"}},
-    {"⊞→", prim_hashmap_get, 2, {"Get value by key", "⊞ → α → β|∅"}},
-    {"⊞←", prim_hashmap_put, 3, {"Put key-value, return old", "⊞ → α → β → β|∅"}},
-    {"⊞⊖", prim_hashmap_del, 2, {"Delete key, return old", "⊞ → α → β|∅"}},
-    {"⊞?", prim_hashmap_is, 1, {"Test if hashmap", "α → 𝔹"}},
-    {"⊞∋", prim_hashmap_has, 2, {"Check if key exists", "⊞ → α → 𝔹"}},
-    {"⊞#", prim_hashmap_size, 1, {"Get entry count", "⊞ → ℕ"}},
-    {"⊞⊙", prim_hashmap_keys, 1, {"Get list of keys", "⊞ → [α]"}},
-    {"⊞⊗", prim_hashmap_vals, 1, {"Get list of values", "⊞ → [β]"}},
-    {"⊞*", prim_hashmap_entries, 1, {"Get list of ⟨k v⟩ pairs", "⊞ → [⟨α β⟩]"}},
-    {"⊞⊕", prim_hashmap_merge, 2, {"Merge two maps (m2 wins)", "⊞ → ⊞ → ⊞"}},
+    {"hashmap", prim_hashmap_new, -1, {"Create hashmap from pairs", "⟨k v⟩... -> hashmap"}},
+    {"hashmap-get", prim_hashmap_get, 2, {"Get value by key", "hashmap -> α -> β|nil"}},
+    {"hashmap-put", prim_hashmap_put, 3, {"Put key-value, return old", "hashmap -> α -> β -> β|nil"}},
+    {"hashmap-del", prim_hashmap_del, 2, {"Delete key, return old", "hashmap -> α -> β|nil"}},
+    {"hashmap?", prim_hashmap_is, 1, {"Test if hashmap", "α -> Bool"}},
+    {"hashmap-has?", prim_hashmap_has, 2, {"Check if key exists", "hashmap -> α -> Bool"}},
+    {"hashmap-size", prim_hashmap_size, 1, {"Get entry count", "hashmap -> ℕ"}},
+    {"hashmap-keys", prim_hashmap_keys, 1, {"Get list of keys", "hashmap -> [α]"}},
+    {"hashmap-vals", prim_hashmap_vals, 1, {"Get list of values", "hashmap -> [β]"}},
+    {"hashmap-entries", prim_hashmap_entries, 1, {"Get list of ⟨k v⟩ pairs", "hashmap -> [⟨α β⟩]"}},
+    {"hashmap-merge", prim_hashmap_merge, 2, {"Merge two maps (m2 wins)", "hashmap -> hashmap -> hashmap"}},
 
     /* HashSet (Boost-style groups-of-15 + overflow Bloom byte) */
-    {"⊍", prim_set_new, -1, {"Create set from values", "α... → ⊍"}},
-    {"⊍⊕", prim_set_add, 2, {"Add element to set (mutates)", "⊍ → α → 𝔹"}},
-    {"⊍⊖", prim_set_remove, 2, {"Remove element from set", "⊍ → α → 𝔹"}},
-    {"⊍?", prim_set_is, 1, {"Test if value is a set", "α → 𝔹"}},
-    {"⊍∋", prim_set_has, 2, {"Test membership in set", "⊍ → α → 𝔹"}},
-    {"⊍#", prim_set_size, 1, {"Get set size", "⊍ → ℕ"}},
-    {"⊍⊙", prim_set_elements, 1, {"Get all elements as list", "⊍ → [α]"}},
-    {"⊍∪", prim_set_union, 2, {"Union of two sets", "⊍ → ⊍ → ⊍"}},
-    {"⊍∩", prim_set_intersection, 2, {"Intersection of two sets", "⊍ → ⊍ → ⊍"}},
-    {"⊍∖", prim_set_difference, 2, {"Difference of two sets (s1 - s2)", "⊍ → ⊍ → ⊍"}},
-    {"⊍⊆", prim_set_subset, 2, {"Test if s1 is subset of s2", "⊍ → ⊍ → 𝔹"}},
+    {"set", prim_set_new, -1, {"Create set from values", "α... -> set"}},
+    {"set-add", prim_set_add, 2, {"Add element to set (mutates)", "set -> α -> Bool"}},
+    {"set-remove", prim_set_remove, 2, {"Remove element from set", "set -> α -> Bool"}},
+    {"set?", prim_set_is, 1, {"Test if value is a set", "α -> Bool"}},
+    {"set-has?", prim_set_has, 2, {"Test membership in set", "set -> α -> Bool"}},
+    {"set-size", prim_set_size, 1, {"Get set size", "set -> ℕ"}},
+    {"set-elements", prim_set_elements, 1, {"Get all elements as list", "set -> [α]"}},
+    {"set-union", prim_set_union, 2, {"Union of two sets", "set -> set -> set"}},
+    {"set-intersection", prim_set_intersection, 2, {"Intersection of two sets", "set -> set -> set"}},
+    {"set-difference", prim_set_difference, 2, {"Difference of two sets (s1 - s2)", "set -> set -> set"}},
+    {"set-subset?", prim_set_subset, 2, {"Test if s1 is subset of s2", "set -> set -> Bool"}},
 
     /* Deque (DPDK-grade cache-optimized circular buffer) */
-    {"⊟", prim_deque_new, -1, {"Create deque from values", "α... → ⊟"}},
-    {"⊟◁", prim_deque_push_front, 2, {"Push to front (mutates)", "⊟ → α → #t"}},
-    {"⊟▷", prim_deque_push_back, 2, {"Push to back (mutates)", "⊟ → α → #t"}},
-    {"⊟◁⊖", prim_deque_pop_front, 1, {"Pop from front", "⊟ → α|⚠"}},
-    {"⊟▷⊖", prim_deque_pop_back, 1, {"Pop from back", "⊟ → α|⚠"}},
-    {"⊟◁?", prim_deque_peek_front, 1, {"Peek front without removing", "⊟ → α|∅"}},
-    {"⊟▷?", prim_deque_peek_back, 1, {"Peek back without removing", "⊟ → α|∅"}},
-    {"⊟#", prim_deque_size, 1, {"Get deque size", "⊟ → ℕ"}},
-    {"⊟?", prim_deque_is, 1, {"Test if value is deque", "α → 𝔹"}},
-    {"⊟⊙", prim_deque_to_list, 1, {"All elements front-to-back as list", "⊟ → [α]"}},
-    {"⊟∅?", prim_deque_empty, 1, {"Test if deque is empty", "⊟ → 𝔹"}},
+    {"deque", prim_deque_new, -1, {"Create deque from values", "α... -> deque"}},
+    {"deque-push-front", prim_deque_push_front, 2, {"Push to front (mutates)", "deque -> α -> #t"}},
+    {"deque-push-back", prim_deque_push_back, 2, {"Push to back (mutates)", "deque -> α -> #t"}},
+    {"deque-pop-front", prim_deque_pop_front, 1, {"Pop from front", "deque -> α|error"}},
+    {"deque-pop-back", prim_deque_pop_back, 1, {"Pop from back", "deque -> α|error"}},
+    {"deque-peek-front", prim_deque_peek_front, 1, {"Peek front without removing", "deque -> α|nil"}},
+    {"deque-peek-back", prim_deque_peek_back, 1, {"Peek back without removing", "deque -> α|nil"}},
+    {"deque-size", prim_deque_size, 1, {"Get deque size", "deque -> ℕ"}},
+    {"deque?", prim_deque_is, 1, {"Test if value is deque", "α -> Bool"}},
+    {"deque-to-list", prim_deque_to_list, 1, {"All elements front-to-back as list", "deque -> [α]"}},
+    {"deque-empty?", prim_deque_empty, 1, {"Test if deque is empty", "deque -> Bool"}},
 
     /* Buffer (Day 113 — cache-line aligned raw byte buffer) */
-    {"◈", prim_buffer_new, -1, {"Create buffer from byte values", "ℕ... → ◈"}},
-    {"◈←", prim_buffer_get, 2, {"Read byte at index", "◈ → ℕ → ℕ"}},
-    {"◈→", prim_buffer_set, 3, {"Write byte at index (mutates)", "◈ → ℕ → ℕ → #t"}},
-    {"◈⊕", prim_buffer_append, 2, {"Append byte (mutates, grows)", "◈ → ℕ → #t"}},
-    {"◈⊕⊕", prim_buffer_concat, 2, {"Concat two buffers → new", "◈ → ◈ → ◈"}},
-    {"◈#", prim_buffer_size, 1, {"Byte count", "◈ → ℕ"}},
-    {"◈?", prim_buffer_is, 1, {"Test if value is buffer", "α → 𝔹"}},
-    {"◈⊂", prim_buffer_slice, 3, {"Slice [start,end) → new buffer", "◈ → ℕ → ℕ → ◈"}},
-    {"◈⊙", prim_buffer_to_list, 1, {"All bytes as list of numbers", "◈ → [ℕ]"}},
-    {"◈≈", prim_buffer_to_string, 1, {"Interpret as UTF-8 string", "◈ → string"}},
-    {"≈◈", prim_buffer_from_string, 1, {"String to byte buffer", "string → ◈"}},
+    {"bytebuf", prim_buffer_new, -1, {"Create buffer from byte values", "ℕ... -> bytebuf"}},
+    {"bytebuf-get", prim_buffer_get, 2, {"Read byte at index", "bytebuf -> ℕ -> ℕ"}},
+    {"bytebuf-set", prim_buffer_set, 3, {"Write byte at index (mutates)", "bytebuf -> ℕ -> ℕ -> #t"}},
+    {"bytebuf-append", prim_buffer_append, 2, {"Append byte (mutates, grows)", "bytebuf -> ℕ -> #t"}},
+    {"bytebuf-concat", prim_buffer_concat, 2, {"Concat two buffers -> new", "bytebuf -> bytebuf -> bytebuf"}},
+    {"bytebuf-size", prim_buffer_size, 1, {"Byte count", "bytebuf -> ℕ"}},
+    {"bytebuf?", prim_buffer_is, 1, {"Test if value is buffer", "α -> Bool"}},
+    {"bytebuf-slice", prim_buffer_slice, 3, {"Slice [start,end) -> new buffer", "bytebuf -> ℕ -> ℕ -> bytebuf"}},
+    {"bytebuf-to-list", prim_buffer_to_list, 1, {"All bytes as list of numbers", "bytebuf -> [ℕ]"}},
+    {"bytebuf->string", prim_buffer_to_string, 1, {"Interpret as UTF-8 string", "bytebuf -> string"}},
+    {"string->bytebuf", prim_buffer_from_string, 1, {"String to byte buffer", "string -> bytebuf"}},
 
     /* Vector (Day 114 — HFT-grade dynamic array with SBO + 1.5x growth) */
-    {"⟦⟧", prim_vector_new, -1, {"Create vector from values", "α... → ⟦⟧"}},
-    {"⟦→", prim_vector_get, 2, {"Get element at index", "⟦⟧ → ℕ → α"}},
-    {"⟦←", prim_vector_set, 3, {"Set element at index (mutates)", "⟦⟧ → ℕ → α → α"}},
-    {"⟦⊕", prim_vector_push, 2, {"Push element to back (mutates)", "⟦⟧ → α → #t"}},
-    {"⟦⊖", prim_vector_pop, 1, {"Pop element from back", "⟦⟧ → α"}},
-    {"⟦#", prim_vector_size, 1, {"Get vector size", "⟦⟧ → ℕ"}},
-    {"⟦?", prim_vector_is, 1, {"Test if value is vector", "α → 𝔹"}},
-    {"⟦⊙", prim_vector_to_list, 1, {"All elements as cons list", "⟦⟧ → [α]"}},
-    {"⟦∅?", prim_vector_empty, 1, {"Test if vector is empty", "⟦⟧ → 𝔹"}},
-    {"⟦⊞", prim_vector_slice, 3, {"Slice [start,end) → new vector", "⟦⟧ → ℕ → ℕ → ⟦⟧"}},
-    {"⟦↦", prim_vector_map, 2, {"Map function over vector → new", "⟦⟧ → (α → β) → ⟦⟧"}},
+    {"vector", prim_vector_new, -1, {"Create vector from values", "α... -> vector"}},
+    {"vector-ref", prim_vector_get, 2, {"Get element at index", "vector -> ℕ -> α"}},
+    {"vector-set!", prim_vector_set, 3, {"Set element at index (mutates)", "vector -> ℕ -> α -> α"}},
+    {"vector-push!", prim_vector_push, 2, {"Push element to back (mutates)", "vector -> α -> #t"}},
+    {"vector-pop!", prim_vector_pop, 1, {"Pop element from back", "vector -> α"}},
+    {"vector-length", prim_vector_size, 1, {"Get vector size", "vector -> ℕ"}},
+    {"vector?", prim_vector_is, 1, {"Test if value is vector", "α -> Bool"}},
+    {"vector->list", prim_vector_to_list, 1, {"All elements as cons list", "vector -> [α]"}},
+    {"vector-empty?", prim_vector_empty, 1, {"Test if vector is empty", "vector -> Bool"}},
+    {"vector-slice", prim_vector_slice, 3, {"Slice [start,end) -> new vector", "vector -> ℕ -> ℕ -> vector"}},
+    {"vector-map", prim_vector_map, 2, {"Map function over vector -> new", "vector -> (α -> β) -> vector"}},
 
     /* Heap (Day 115 — 4-ary min-heap priority queue) */
-    {"△", prim_heap_new, 0, {"Create empty min-heap", "→ △"}},
-    {"△⊕", prim_heap_push, 3, {"Push value with priority (mutates)", "△ → ℕ → α → #t"}},
-    {"△⊖", prim_heap_pop, 1, {"Pop min element → ⟨priority value⟩", "△ → ⟨ℕ α⟩"}},
-    {"△◁", prim_heap_peek, 1, {"Peek min element → ⟨priority value⟩ or ∅", "△ → ⟨ℕ α⟩"}},
-    {"△#", prim_heap_size, 1, {"Get heap size", "△ → ℕ"}},
-    {"△?", prim_heap_is, 1, {"Test if value is heap", "α → 𝔹"}},
-    {"△∅?", prim_heap_empty, 1, {"Test if heap is empty", "△ → 𝔹"}},
-    {"△⊙", prim_heap_to_list, 1, {"All elements as sorted ⟨k v⟩ list", "△ → [⟨ℕ α⟩]"}},
-    {"△⊕*", prim_heap_merge, 2, {"Merge two heaps → new heap", "△ → △ → △"}},
+    {"heap", prim_heap_new, 0, {"Create empty min-heap", "-> heap"}},
+    {"heap-push!", prim_heap_push, 3, {"Push value with priority (mutates)", "heap -> ℕ -> α -> #t"}},
+    {"heap-pop!", prim_heap_pop, 1, {"Pop min element -> ⟨priority value⟩", "heap -> ⟨ℕ α⟩"}},
+    {"heap-peek", prim_heap_peek, 1, {"Peek min element -> ⟨priority value⟩ or nil", "heap -> ⟨ℕ α⟩"}},
+    {"heap-size", prim_heap_size, 1, {"Get heap size", "heap -> ℕ"}},
+    {"heap?", prim_heap_is, 1, {"Test if value is heap", "α -> Bool"}},
+    {"heap-empty?", prim_heap_empty, 1, {"Test if heap is empty", "heap -> Bool"}},
+    {"heap->list", prim_heap_to_list, 1, {"All elements as sorted ⟨k v⟩ list", "heap -> [⟨ℕ α⟩]"}},
+    {"heap-merge", prim_heap_merge, 2, {"Merge two heaps -> new heap", "heap -> heap -> heap"}},
 
     /* Sorted Map (Day 116 — Algorithmica-grade SIMD B-tree) */
-    {"⋔", prim_sorted_map_new, -1, {"Create sorted map from ⟨k v⟩ pairs", "⟨k v⟩... → ⋔"}},
-    {"⋔→", prim_sorted_map_get, 2, {"Get value by key or ∅", "⋔ → α → β"}},
-    {"⋔←", prim_sorted_map_put, 3, {"Put key-value (mutates)", "⋔ → α → β → ∅"}},
-    {"⋔⊖", prim_sorted_map_del, 2, {"Delete key → old value or ∅", "⋔ → α → β"}},
-    {"⋔?", prim_sorted_map_is, 1, {"Test if value is sorted-map", "α → 𝔹"}},
-    {"⋔∋", prim_sorted_map_has, 2, {"Test if key exists", "⋔ → α → 𝔹"}},
-    {"⋔#", prim_sorted_map_size, 1, {"Get size", "⋔ → ℕ"}},
-    {"⋔⊙", prim_sorted_map_keys, 1, {"All keys in sorted order", "⋔ → [α]"}},
-    {"⋔⊗", prim_sorted_map_vals, 1, {"All values in key-sorted order", "⋔ → [β]"}},
-    {"⋔*", prim_sorted_map_entries, 1, {"All ⟨k v⟩ pairs in sorted order", "⋔ → [⟨α β⟩]"}},
-    {"⋔⊕", prim_sorted_map_merge, 2, {"Merge two sorted maps (m2 wins)", "⋔ → ⋔ → ⋔"}},
-    {"⋔◁", prim_sorted_map_min, 1, {"Min entry → ⟨k v⟩ or ∅", "⋔ → ⟨α β⟩"}},
-    {"⋔▷", prim_sorted_map_max, 1, {"Max entry → ⟨k v⟩ or ∅", "⋔ → ⟨α β⟩"}},
-    {"⋔⊂", prim_sorted_map_range, 3, {"Range [lo,hi] → ⟨k v⟩ list", "⋔ → α → α → [⟨α β⟩]"}},
-    {"⋔≤", prim_sorted_map_floor, 2, {"Greatest key ≤ query → ⟨k v⟩", "⋔ → α → ⟨α β⟩"}},
-    {"⋔≥", prim_sorted_map_ceiling, 2, {"Least key ≥ query → ⟨k v⟩", "⋔ → α → ⟨α β⟩"}},
+    {"sorted-map", prim_sorted_map_new, -1, {"Create sorted map from ⟨k v⟩ pairs", "⟨k v⟩... -> sorted-map"}},
+    {"sorted-map-get", prim_sorted_map_get, 2, {"Get value by key or nil", "sorted-map -> α -> β"}},
+    {"sorted-map-put", prim_sorted_map_put, 3, {"Put key-value (mutates)", "sorted-map -> α -> β -> nil"}},
+    {"sorted-map-del", prim_sorted_map_del, 2, {"Delete key -> old value or nil", "sorted-map -> α -> β"}},
+    {"sorted-map?", prim_sorted_map_is, 1, {"Test if value is sorted-map", "α -> Bool"}},
+    {"sorted-map-has?", prim_sorted_map_has, 2, {"Test if key exists", "sorted-map -> α -> Bool"}},
+    {"sorted-map-size", prim_sorted_map_size, 1, {"Get size", "sorted-map -> ℕ"}},
+    {"sorted-map-keys", prim_sorted_map_keys, 1, {"All keys in sorted order", "sorted-map -> [α]"}},
+    {"sorted-map-vals", prim_sorted_map_vals, 1, {"All values in key-sorted order", "sorted-map -> [β]"}},
+    {"sorted-map-entries", prim_sorted_map_entries, 1, {"All ⟨k v⟩ pairs in sorted order", "sorted-map -> [⟨α β⟩]"}},
+    {"sorted-map-merge", prim_sorted_map_merge, 2, {"Merge two sorted maps (m2 wins)", "sorted-map -> sorted-map -> sorted-map"}},
+    {"sorted-map-min", prim_sorted_map_min, 1, {"Min entry -> ⟨k v⟩ or nil", "sorted-map -> ⟨α β⟩"}},
+    {"sorted-map-max", prim_sorted_map_max, 1, {"Max entry -> ⟨k v⟩ or nil", "sorted-map -> ⟨α β⟩"}},
+    {"sorted-map-range", prim_sorted_map_range, 3, {"Range [lo,hi] -> ⟨k v⟩ list", "sorted-map -> α -> α -> [⟨α β⟩]"}},
+    {"sorted-map-floor", prim_sorted_map_floor, 2, {"Greatest key <= query -> ⟨k v⟩", "sorted-map -> α -> ⟨α β⟩"}},
+    {"sorted-map-ceiling", prim_sorted_map_ceiling, 2, {"Least key >= query -> ⟨k v⟩", "sorted-map -> α -> ⟨α β⟩"}},
 
     /* Trie (Day 117 — ART with SIMD Node16 + path compression) */
-    {"⊮", prim_trie_new, -1, {"Create trie from ⟨k v⟩ pairs", "⟨k v⟩... → ⊮"}},
-    {"⊮→", prim_trie_get, 2, {"Get value by key or ∅", "⊮ → α → β"}},
-    {"⊮←", prim_trie_put, 3, {"Put key-value (mutates)", "⊮ → α → β → #t"}},
-    {"⊮⊖", prim_trie_del, 2, {"Delete key → old value or ∅", "⊮ → α → β"}},
-    {"⊮?", prim_trie_is, 1, {"Test if value is trie", "α → 𝔹"}},
-    {"⊮∋", prim_trie_has, 2, {"Test if key exists", "⊮ → α → 𝔹"}},
-    {"⊮#", prim_trie_size, 1, {"Get size", "⊮ → ℕ"}},
-    {"⊮⊕", prim_trie_merge, 2, {"Merge two tries (t2 wins)", "⊮ → ⊮ → ⊮"}},
-    {"⊮⊙", prim_trie_prefix_keys, 2, {"All keys with prefix", "⊮ → α → [α]"}},
-    {"⊮⊗", prim_trie_prefix_count, 2, {"Count keys with prefix", "⊮ → α → ℕ"}},
-    {"⊮≤", prim_trie_longest_prefix, 2, {"Longest stored prefix of query", "⊮ → α → α"}},
-    {"⊮*", prim_trie_entries, 1, {"All ⟨k v⟩ pairs in lex order", "⊮ → [⟨α β⟩]"}},
-    {"⊮⊙*", prim_trie_keys, 1, {"All keys in lex order", "⊮ → [α]"}},
-    {"⊮⊗*", prim_trie_vals, 1, {"All values in key-sorted order", "⊮ → [β]"}},
+    {"trie", prim_trie_new, -1, {"Create trie from ⟨k v⟩ pairs", "⟨k v⟩... -> trie"}},
+    {"trie-get", prim_trie_get, 2, {"Get value by key or nil", "trie -> α -> β"}},
+    {"trie-put", prim_trie_put, 3, {"Put key-value (mutates)", "trie -> α -> β -> #t"}},
+    {"trie-del", prim_trie_del, 2, {"Delete key -> old value or nil", "trie -> α -> β"}},
+    {"trie?", prim_trie_is, 1, {"Test if value is trie", "α -> Bool"}},
+    {"trie-has?", prim_trie_has, 2, {"Test if key exists", "trie -> α -> Bool"}},
+    {"trie-size", prim_trie_size, 1, {"Get size", "trie -> ℕ"}},
+    {"trie-merge", prim_trie_merge, 2, {"Merge two tries (t2 wins)", "trie -> trie -> trie"}},
+    {"trie-prefix-keys", prim_trie_prefix_keys, 2, {"All keys with prefix", "trie -> α -> [α]"}},
+    {"trie-prefix-count", prim_trie_prefix_count, 2, {"Count keys with prefix", "trie -> α -> ℕ"}},
+    {"trie-longest-prefix", prim_trie_longest_prefix, 2, {"Longest stored prefix of query", "trie -> α -> α"}},
+    {"trie-entries", prim_trie_entries, 1, {"All ⟨k v⟩ pairs in lex order", "trie -> [⟨α β⟩]"}},
+    {"trie-keys", prim_trie_keys, 1, {"All keys in lex order", "trie -> [α]"}},
+    {"trie-vals", prim_trie_vals, 1, {"All values in key-sorted order", "trie -> [β]"}},
 
     /* Iterator (Day 118 — morsel-driven batch iteration) */
-    {"⊣", prim_iter, 1, {"Create iterator from collection", "α → ⊣"}},
-    {"⊣→", prim_iter_next, 1, {"Next element or ∅", "⊣ → α|∅"}},
-    {"⊣?", prim_iter_is, 1, {"Test if value is iterator", "α → 𝔹"}},
-    {"⊣∅?", prim_iter_done, 1, {"Test if iterator exhausted", "⊣ → 𝔹"}},
-    {"⊣⊕", prim_iter_collect, 1, {"Collect remaining to list", "⊣ → [α]"}},
-    {"⊣#", prim_iter_count, 1, {"Count remaining (consumes)", "⊣ → ℕ"}},
-    {"⊣↦", prim_iter_map, 2, {"Lazy map transform", "⊣ → (α→β) → ⊣"}},
-    {"⊣⊲", prim_iter_filter, 2, {"Lazy filter (selection vector)", "⊣ → (α→𝔹) → ⊣"}},
-    {"⊣↑", prim_iter_take, 2, {"Take first n elements", "⊣ → ℕ → ⊣"}},
-    {"⊣↓", prim_iter_drop, 2, {"Drop first n elements", "⊣ → ℕ → ⊣"}},
-    {"⊣⊕⊕", prim_iter_chain, 2, {"Concatenate two iterators", "⊣ → ⊣ → ⊣"}},
-    {"⊣⊗", prim_iter_zip, 2, {"Zip two iterators into pairs", "⊣ → ⊣ → ⊣"}},
-    {"⊣Σ", prim_iter_reduce, 3, {"Fold/reduce with init and fn", "⊣ → α → (α→β→α) → α"}},
-    {"⊣∃", prim_iter_any, 2, {"Any element matches (short-circuit)", "⊣ → (α→𝔹) → 𝔹"}},
-    {"⊣∀", prim_iter_all, 2, {"All elements match (short-circuit)", "⊣ → (α→𝔹) → 𝔹"}},
-    {"⊣⊙", prim_iter_find, 2, {"Find first matching element", "⊣ → (α→𝔹) → α|∅"}},
+    {"iter", prim_iter, 1, {"Create iterator from collection", "α -> iter"}},
+    {"iter-next", prim_iter_next, 1, {"Next element or nil", "iter -> α|nil"}},
+    {"iter?", prim_iter_is, 1, {"Test if value is iterator", "α -> Bool"}},
+    {"iter-done?", prim_iter_done, 1, {"Test if iterator exhausted", "iter -> Bool"}},
+    {"iter-collect", prim_iter_collect, 1, {"Collect remaining to list", "iter -> [α]"}},
+    {"iter-count", prim_iter_count, 1, {"Count remaining (consumes)", "iter -> ℕ"}},
+    {"iter-map", prim_iter_map, 2, {"Lazy map transform", "iter -> (α->β) -> iter"}},
+    {"iter-filter", prim_iter_filter, 2, {"Lazy filter (selection vector)", "iter -> (α->Bool) -> iter"}},
+    {"iter-take", prim_iter_take, 2, {"Take first n elements", "iter -> ℕ -> iter"}},
+    {"iter-drop", prim_iter_drop, 2, {"Drop first n elements", "iter -> ℕ -> iter"}},
+    {"iter-chain", prim_iter_chain, 2, {"Concatenate two iterators", "iter -> iter -> iter"}},
+    {"iter-zip", prim_iter_zip, 2, {"Zip two iterators into pairs", "iter -> iter -> iter"}},
+    {"iter-reduce", prim_iter_reduce, 3, {"Fold/reduce with init and fn", "iter -> α -> (α->β->α) -> α"}},
+    {"iter-any?", prim_iter_any, 2, {"Any element matches (short-circuit)", "iter -> (α->Bool) -> Bool"}},
+    {"iter-all?", prim_iter_all, 2, {"All elements match (short-circuit)", "iter -> (α->Bool) -> Bool"}},
+    {"iter-find", prim_iter_find, 2, {"Find first matching element", "iter -> (α->Bool) -> α|nil"}},
 
     /* §3.2 I/O Ports (SRFI-170) */
-    {"⊞⊳", prim_port_open, 2, {"Open file as port", "≈ → :symbol → ⊞"}},
-    {"⊞⊳#", prim_fd_to_port, 2, {"Wrap fd as port", "ℕ → :symbol → ⊞"}},
-    {"⊞⊳←", prim_port_read_line, 1, {"Read line from port", "⊞ → ≈"}},
-    {"⊞←◈", prim_port_read_bytes, 2, {"Read N bytes from port", "⊞ → ℕ → ◈"}},
-    {"⊞←*", prim_port_read_all, 1, {"Read all remaining from port", "⊞ → ≈"}},
-    {"⊞⊳→", prim_port_write, 2, {"Write string to port", "⊞ → ≈ → ℕ"}},
-    {"⊞→◈", prim_port_write_bytes, 2, {"Write bytes to port", "⊞ → ◈ → ℕ"}},
-    {"⊞×", prim_port_close, 1, {"Close port", "⊞ → 𝔹"}},
-    {"⊞∅?", prim_port_eof, 1, {"Test if port at EOF", "⊞ → 𝔹"}},
-    {"⊞⊳⊙", prim_port_flush, 1, {"Flush port output", "⊞ → 𝔹"}},
-    {"⊞⊳₀", prim_port_stdin, 0, {"Get stdin port", "→ ⊞"}},
-    {"⊞⊲₀", prim_port_stdout, 0, {"Get stdout port", "→ ⊞"}},
-    {"⊞⊲₁", prim_port_stderr, 0, {"Get stderr port", "→ ⊞"}},
+    {"port-open", prim_port_open, 2, {"Open file as port", "string -> :symbol -> hashmap"}},
+    {"fd->port", prim_fd_to_port, 2, {"Wrap fd as port", "ℕ -> :symbol -> hashmap"}},
+    {"port-read-line", prim_port_read_line, 1, {"Read line from port", "hashmap -> string"}},
+    {"port-read-bytes", prim_port_read_bytes, 2, {"Read N bytes from port", "hashmap -> ℕ -> bytebuf"}},
+    {"port-read-all", prim_port_read_all, 1, {"Read all remaining from port", "hashmap -> string"}},
+    {"port-write", prim_port_write, 2, {"Write string to port", "hashmap -> string -> ℕ"}},
+    {"port-write-bytes", prim_port_write_bytes, 2, {"Write bytes to port", "hashmap -> bytebuf -> ℕ"}},
+    {"port-close", prim_port_close, 1, {"Close port", "hashmap -> Bool"}},
+    {"port-eof?", prim_port_eof, 1, {"Test if port at EOF", "hashmap -> Bool"}},
+    {"port-flush", prim_port_flush, 1, {"Flush port output", "hashmap -> Bool"}},
+    {"stdin-port", prim_port_stdin, 0, {"Get stdin port", "-> hashmap"}},
+    {"stdout-port", prim_port_stdout, 0, {"Get stdout port", "-> hashmap"}},
+    {"stderr-port", prim_port_stderr, 0, {"Get stderr port", "-> hashmap"}},
 
     /* §3.3 File System (SRFI-170) */
-    {"≋⊙⊕", prim_mkdir, 2, {"Create directory", "≈ → ℕ → 𝔹"}},
-    {"≋⊙⊘", prim_rmdir, 1, {"Delete directory", "≈ → 𝔹"}},
-    {"≋⇔", prim_rename, 2, {"Rename file", "≈ → ≈ → 𝔹"}},
-    {"≋⊙≔", prim_chmod, 2, {"Set file mode", "≈ → ℕ → 𝔹"}},
-    {"≋⊙⊕≔", prim_chown, 3, {"Set file owner", "≈ → ℕ → ℕ → 𝔹"}},
-    {"≋⏱≔", prim_utimes, 3, {"Set file times", "≈ → ℕ → ℕ → 𝔹"}},
-    {"≋⊂", prim_truncate, 2, {"Truncate file", "≈ → ℕ → 𝔹"}},
-    {"≋⊕⊝", prim_link, 2, {"Create hard link", "≈ → ≈ → 𝔹"}},
-    {"≋⊕→", prim_symlink, 2, {"Create symbolic link", "≈ → ≈ → 𝔹"}},
-    {"≋→", prim_readlink, 1, {"Read symbolic link target", "≈ → ≈"}},
-    {"≋⊙⊕⊞", prim_mkfifo, 2, {"Create FIFO", "≈ → ℕ → 𝔹"}},
-    {"≋⊙", prim_file_info, 1, {"Get file info (stat)", "≈ → ⊚"}},
-    {"≋⊙*", prim_directory_files, 1, {"List directory contents", "≈ → [≈]"}},
-    {"≋⊙⊳", prim_opendir, 1, {"Open directory stream", "≈ → ⊙dir"}},
-    {"≋⊙←", prim_readdir, 1, {"Read next directory entry", "⊙dir → ≈|∅"}},
-    {"≋⊙×", prim_closedir_prim, 1, {"Close directory stream", "⊙dir → 𝔹"}},
-    {"≋⊙⊣", prim_directory_generator, 1, {"Directory generator", "≈ → ⊙dir"}},
-    {"≋⊙⊕→", prim_realpath, 1, {"Resolve real path", "≈ → ≈"}},
-    {"≋⊙#", prim_file_space, 1, {"Get filesystem space info", "≈ → ⊚"}},
-    {"≋⊙⏱", prim_create_temp_file, 1, {"Create temp file", "≈ → ⟨⊞ ≈⟩"}},
-    {"≋⊖", prim_delete_file, 1, {"Delete/unlink file", "≈ → 𝔹"}},
+    {"mkdir", prim_mkdir, 2, {"Create directory", "string -> ℕ -> Bool"}},
+    {"rmdir", prim_rmdir, 1, {"Delete directory", "string -> Bool"}},
+    {"rename-file", prim_rename, 2, {"Rename file", "string -> string -> Bool"}},
+    {"chmod", prim_chmod, 2, {"Set file mode", "string -> ℕ -> Bool"}},
+    {"chown", prim_chown, 3, {"Set file owner", "string -> ℕ -> ℕ -> Bool"}},
+    {"utimes", prim_utimes, 3, {"Set file times", "string -> ℕ -> ℕ -> Bool"}},
+    {"truncate", prim_truncate, 2, {"Truncate file", "string -> ℕ -> Bool"}},
+    {"link", prim_link, 2, {"Create hard link", "string -> string -> Bool"}},
+    {"symlink", prim_symlink, 2, {"Create symbolic link", "string -> string -> Bool"}},
+    {"readlink", prim_readlink, 1, {"Read symbolic link target", "string -> string"}},
+    {"mkfifo", prim_mkfifo, 2, {"Create FIFO", "string -> ℕ -> Bool"}},
+    {"file-info", prim_file_info, 1, {"Get file info (stat)", "string -> adt-create"}},
+    {"directory-files", prim_directory_files, 1, {"List directory contents", "string -> [string]"}},
+    {"opendir", prim_opendir, 1, {"Open directory stream", "string -> struct-createdir"}},
+    {"readdir", prim_readdir, 1, {"Read next directory entry", "struct-createdir -> string|nil"}},
+    {"closedir", prim_closedir_prim, 1, {"Close directory stream", "struct-createdir -> Bool"}},
+    {"directory-generator", prim_directory_generator, 1, {"Directory generator", "string -> struct-createdir"}},
+    {"realpath", prim_realpath, 1, {"Resolve real path", "string -> string"}},
+    {"file-space", prim_file_space, 1, {"Get filesystem space info", "string -> adt-create"}},
+    {"create-temp-file", prim_create_temp_file, 1, {"Create temp file", "string -> ⟨hashmap string⟩"}},
+    {"delete-file", prim_delete_file, 1, {"Delete/unlink file", "string -> Bool"}},
 
     /* §3.5 Process State (SRFI-170) */
-    {"⊙⌂⊙", prim_umask_get, 0, {"Get current umask", "→ ℕ"}},
-    {"⊙⌂⊙≔", prim_umask_set, 1, {"Set umask", "ℕ → ℕ"}},
-    {"⊙⌂⊘", prim_cwd, 0, {"Get current directory", "→ ≈"}},
-    {"⊙⌂⊘≔", prim_chdir, 1, {"Change directory", "≈ → 𝔹"}},
-    {"⊙⌂#", prim_pid, 0, {"Get process ID", "→ ℕ"}},
-    {"⊙⌂△", prim_nice, 1, {"Adjust priority", "ℕ → ℕ"}},
-    {"⊙⌂⊕", prim_uid, 0, {"Get user ID", "→ ℕ"}},
-    {"⊙⌂⊕⊕", prim_gid, 0, {"Get group ID", "→ ℕ"}},
-    {"⊙⌂⊕*", prim_euid, 0, {"Get effective user ID", "→ ℕ"}},
-    {"⊙⌂⊕⊕*", prim_egid, 0, {"Get effective group ID", "→ ℕ"}},
-    {"⊙⌂⊕⊕*⊕", prim_groups, 0, {"Get supplementary group IDs", "→ [ℕ]"}},
+    {"umask", prim_umask_get, 0, {"Get current umask", "-> ℕ"}},
+    {"umask-set!", prim_umask_set, 1, {"Set umask", "ℕ -> ℕ"}},
+    {"cwd", prim_cwd, 0, {"Get current directory", "-> string"}},
+    {"chdir", prim_chdir, 1, {"Change directory", "string -> Bool"}},
+    {"pid", prim_pid, 0, {"Get process ID", "-> ℕ"}},
+    {"nice", prim_nice, 1, {"Adjust priority", "ℕ -> ℕ"}},
+    {"uid", prim_uid, 0, {"Get user ID", "-> ℕ"}},
+    {"gid", prim_gid, 0, {"Get group ID", "-> ℕ"}},
+    {"euid", prim_euid, 0, {"Get effective user ID", "-> ℕ"}},
+    {"egid", prim_egid, 0, {"Get effective group ID", "-> ℕ"}},
+    {"groups", prim_groups, 0, {"Get supplementary group IDs", "-> [ℕ]"}},
 
     /* §3.6 User/Group Database (SRFI-170) */
-    {"⊙⌂⊕⊙", prim_user_info, 1, {"Get user info by uid or name", "ℕ|≈ → ⊚"}},
-    {"⊙⌂⊕⊕⊙", prim_group_info, 1, {"Get group info by gid or name", "ℕ|≈ → ⊚"}},
+    {"user-info", prim_user_info, 1, {"Get user info by uid or name", "ℕ|string -> adt-create"}},
+    {"group-info", prim_group_info, 1, {"Get group info by gid or name", "ℕ|string -> adt-create"}},
 
     /* §3.10 Time (SRFI-170) */
-    {"⊙⏱", prim_posix_time, 0, {"Get POSIX realtime clock", "→ ⊚"}},
-    {"⊙⏱⊕", prim_monotonic_time, 0, {"Get monotonic clock", "→ ⊚"}},
+    {"posix-time", prim_posix_time, 0, {"Get POSIX realtime clock", "-> adt-create"}},
+    {"monotonic-time", prim_monotonic_time, 0, {"Get monotonic clock", "-> adt-create"}},
 
     /* §3.11 Environment Variables (SRFI-170) */
-    {"⊙⌂≋", prim_getenv, 1, {"Get environment variable", "≈ → ≈|∅"}},
-    {"⊙⌂≋≔", prim_setenv, 2, {"Set environment variable", "≈ → ≈ → 𝔹"}},
-    {"⊙⌂≋⊘", prim_unsetenv, 1, {"Unset environment variable", "≈ → 𝔹"}},
+    {"getenv", prim_getenv, 1, {"Get environment variable", "string -> string|nil"}},
+    {"setenv", prim_setenv, 2, {"Set environment variable", "string -> string -> Bool"}},
+    {"unsetenv", prim_unsetenv, 1, {"Unset environment variable", "string -> Bool"}},
 
     /* §3.12 Terminal (SRFI-170) */
-    {"⊞⊙?", prim_is_terminal, 1, {"Test if port is terminal", "⊞ → 𝔹"}},
+    {"terminal?", prim_is_terminal, 1, {"Test if port is terminal", "hashmap -> Bool"}},
 
     /* R7RS System Extras */
-    {"⊙⌂", prim_argv, 0, {"Get command line arguments", "→ [≈]"}},
-    {"⊙⊘", prim_exit_process, 1, {"Exit process", "ℕ → ⊥"}},
-    {"⊙⏱≈", prim_current_second, 0, {"Current second (epoch float)", "→ ℕ"}},
-    {"⊙⏱⊕#", prim_jiffy, 0, {"High-res monotonic counter", "→ ℕ"}},
-    {"⊙⏱⊕≈", prim_jps, 0, {"Jiffies per second", "→ ℕ"}},
+    {"argv", prim_argv, 0, {"Get command line arguments", "-> [string]"}},
+    {"exit", prim_exit_process, 1, {"Exit process", "ℕ -> ⊥"}},
+    {"current-second", prim_current_second, 0, {"Current second (epoch float)", "-> ℕ"}},
+    {"jiffy", prim_jiffy, 0, {"High-res monotonic counter", "-> ℕ"}},
+    {"jiffies-per-second", prim_jps, 0, {"Jiffies per second", "-> ℕ"}},
 
     /* FFI primitives (Day 125 — JIT-compiled stubs) */
-    {"⌁⊳", prim_ffi_dlopen, 1, {"Load shared library", "≈ → ⌁|⚠"}},
-    {"⌁×", prim_ffi_dlclose, 1, {"Close library handle", "⌁ → ∅"}},
-    {"⌁→", prim_ffi_bind, 4, {"Bind C function (JIT stub)", "⌁ → ≈ → [⊙] → ⊙ → λ"}},
-    {"⌁!", prim_ffi_call, -1, {"Call bound FFI function", "λ → α... → β"}},
-    {"⌁?", prim_ffi_is, 1, {"FFI pointer type predicate", "α → 𝔹"}},
-    {"⌁⊙", prim_ffi_type_tag, 1, {"Get FFI pointer type tag", "⌁ → ≈"}},
-    {"⌁⊞", prim_ffi_wrap, 2, {"Wrap address as FFI pointer", "ℕ → ≈ → ⌁"}},
-    {"⌁⊞×", prim_ffi_wrap_fin, 3, {"Wrap address with finalizer", "ℕ → ≈ → λ → ⌁"}},
-    {"⌁∅", prim_ffi_null, 0, {"NULL pointer constant", "→ ⌁"}},
-    {"⌁∅?", prim_ffi_null_p, 1, {"Test if NULL pointer", "⌁ → 𝔹"}},
-    {"⌁#", prim_ffi_addr, 1, {"Get pointer address as number", "⌁ → ℕ"}},
-    {"⌁≈→", prim_ffi_read_cstr, 1, {"Read C string from pointer", "⌁ → ≈"}},
-    {"⌁→≈", prim_ffi_str_to_ptr, 1, {"String to strdup'd pointer", "≈ → ⌁"}},
-    {"⌁◈→", prim_ffi_read_buf, 2, {"Read N bytes from pointer", "⌁ → ℕ → ◈"}},
-    {"⌁→◈", prim_ffi_buf_to_ptr, 1, {"Buffer to malloc'd pointer", "◈ → ⌁"}},
+    {"ffi-dlopen", prim_ffi_dlopen, 1, {"Load shared library", "string -> ⌁|error"}},
+    {"ffi-dlclose", prim_ffi_dlclose, 1, {"Close library handle", "⌁ -> nil"}},
+    {"ffi-bind", prim_ffi_bind, 4, {"Bind C function (JIT stub)", "⌁ -> string -> [struct-create] -> struct-create -> lambda"}},
+    {"ffi-call", prim_ffi_call, -1, {"Call bound FFI function", "lambda -> α... -> β"}},
+    {"ffi-ptr?", prim_ffi_is, 1, {"FFI pointer type predicate", "α -> Bool"}},
+    {"ffi-type-tag", prim_ffi_type_tag, 1, {"Get FFI pointer type tag", "⌁ -> string"}},
+    {"ffi-wrap", prim_ffi_wrap, 2, {"Wrap address as FFI pointer", "ℕ -> string -> ⌁"}},
+    {"ffi-wrap-fin", prim_ffi_wrap_fin, 3, {"Wrap address with finalizer", "ℕ -> string -> lambda -> ⌁"}},
+    {"ffi-null", prim_ffi_null, 0, {"NULL pointer constant", "-> ⌁"}},
+    {"ffi-null?", prim_ffi_null_p, 1, {"Test if NULL pointer", "⌁ -> Bool"}},
+    {"ffi-addr", prim_ffi_addr, 1, {"Get pointer address as number", "⌁ -> ℕ"}},
+    {"ffi-read-cstr", prim_ffi_read_cstr, 1, {"Read C string from pointer", "⌁ -> string"}},
+    {"ffi-str->ptr", prim_ffi_str_to_ptr, 1, {"String to strdup'd pointer", "string -> ⌁"}},
+    {"ffi-read-buf", prim_ffi_read_buf, 2, {"Read N bytes from pointer", "⌁ -> ℕ -> bytebuf"}},
+    {"ffi-buf->ptr", prim_ffi_buf_to_ptr, 1, {"Buffer to malloc'd pointer", "bytebuf -> ⌁"}},
 
     /* Networking primitives (Day 126 — HFT-grade event ring + sockets) */
 
     /* Socket lifecycle (5) */
-    {"⊸⊕", prim_net_socket, 3, {"Create socket", ":sym → :sym → ℕ → ℕ|⚠"}},
-    {"⊸×", prim_net_close, 1, {"Close socket", "ℕ → 𝔹|⚠"}},
-    {"⊸×→", prim_net_shutdown, 2, {"Shutdown socket", "ℕ → :sym → 𝔹|⚠"}},
-    {"⊸⊕⊞", prim_net_socketpair, 2, {"Create connected socket pair", ":sym → :sym → ⟨ℕ ℕ⟩|⚠"}},
-    {"⊸?", prim_net_is_socket, 1, {"Test if fd is a socket", "ℕ → 𝔹"}},
+    {"net-socket", prim_net_socket, 3, {"Create socket", ":sym -> :sym -> ℕ -> ℕ|error"}},
+    {"net-close", prim_net_close, 1, {"Close socket", "ℕ -> Bool|error"}},
+    {"net-shutdown", prim_net_shutdown, 2, {"Shutdown socket", "ℕ -> :sym -> Bool|error"}},
+    {"net-socketpair", prim_net_socketpair, 2, {"Create connected socket pair", ":sym -> :sym -> ⟨ℕ ℕ⟩|error"}},
+    {"net-socket?", prim_net_is_socket, 1, {"Test if fd is a socket", "ℕ -> Bool"}},
 
     /* Address construction (3) */
-    {"⊸⊙", prim_net_addr, 2, {"Construct IPv4 address", "≈ → ℕ → ◈|⚠"}},
-    {"⊸⊙₆", prim_net_addr6, 2, {"Construct IPv6 address", "≈ → ℕ → ◈|⚠"}},
-    {"⊸⊙⊘", prim_net_addr_unix, 1, {"Construct Unix domain address", "≈ → ◈|⚠"}},
+    {"net-addr", prim_net_addr, 2, {"Construct IPv4 address", "string -> ℕ -> bytebuf|error"}},
+    {"net-addr6", prim_net_addr6, 2, {"Construct IPv6 address", "string -> ℕ -> bytebuf|error"}},
+    {"net-addr-unix", prim_net_addr_unix, 1, {"Construct Unix domain address", "string -> bytebuf|error"}},
 
     /* Synchronous client/server (5) */
-    {"⊸→⊕", prim_net_connect, 2, {"Synchronous connect", "ℕ → ◈ → 𝔹|⚠"}},
-    {"⊸←≔", prim_net_bind, 2, {"Bind socket to address", "ℕ → ◈ → 𝔹|⚠"}},
-    {"⊸←⊕", prim_net_listen, 2, {"Listen for connections", "ℕ → ℕ → 𝔹|⚠"}},
-    {"⊸←", prim_net_accept, 1, {"Accept connection", "ℕ → ⟨ℕ ◈⟩|⚠"}},
-    {"⊸⊙→", prim_net_resolve, 2, {"DNS resolve", "≈ → ≈|∅ → [◈]|⚠"}},
+    {"net-connect", prim_net_connect, 2, {"Synchronous connect", "ℕ -> bytebuf -> Bool|error"}},
+    {"net-bind-addr", prim_net_bind, 2, {"Bind socket to address", "ℕ -> bytebuf -> Bool|error"}},
+    {"net-listen", prim_net_listen, 2, {"Listen for connections", "ℕ -> ℕ -> Bool|error"}},
+    {"net-accept", prim_net_accept, 1, {"Accept connection", "ℕ -> ⟨ℕ bytebuf⟩|error"}},
+    {"net-resolve", prim_net_resolve, 2, {"DNS resolve", "string -> string|nil -> [bytebuf]|error"}},
 
     /* Synchronous I/O (4) */
-    {"⊸→", prim_net_send, 3, {"Send data on socket", "ℕ → ◈ → ℕ → ℕ|⚠"}},
-    {"⊸←◈", prim_net_recv, 3, {"Receive data from socket", "ℕ → ℕ → ℕ → ◈|⚠"}},
-    {"⊸→⊙", prim_net_sendto, 4, {"UDP sendto", "ℕ → ◈ → ℕ → ◈ → ℕ|⚠"}},
-    {"⊸←⊙", prim_net_recvfrom, 3, {"UDP recvfrom", "ℕ → ℕ → ℕ → ⟨◈ ◈⟩|⚠"}},
+    {"net-send", prim_net_send, 3, {"Send data on socket", "ℕ -> bytebuf -> ℕ -> ℕ|error"}},
+    {"net-recv", prim_net_recv, 3, {"Receive data from socket", "ℕ -> ℕ -> ℕ -> bytebuf|error"}},
+    {"net-sendto", prim_net_sendto, 4, {"UDP sendto", "ℕ -> bytebuf -> ℕ -> bytebuf -> ℕ|error"}},
+    {"net-recvfrom", prim_net_recvfrom, 3, {"UDP recvfrom", "ℕ -> ℕ -> ℕ -> ⟨bytebuf bytebuf⟩|error"}},
 
     /* Socket options (3) */
-    {"⊸≔", prim_net_setsockopt, 3, {"Set socket option", "ℕ → :sym → α → 𝔹|⚠"}},
-    {"⊸≔→", prim_net_getsockopt, 2, {"Get socket option", "ℕ → :sym → α|⚠"}},
-    {"⊸#", prim_net_peername, 1, {"Get peer address", "ℕ → ◈|⚠"}},
+    {"net-setsockopt", prim_net_setsockopt, 3, {"Set socket option", "ℕ -> :sym -> α -> Bool|error"}},
+    {"net-getsockopt", prim_net_getsockopt, 2, {"Get socket option", "ℕ -> :sym -> α|error"}},
+    {"net-peername", prim_net_peername, 1, {"Get peer address", "ℕ -> bytebuf|error"}},
 
     /* Event ring lifecycle (3) */
-    {"⊸⊚⊕", prim_ring_create, 1, {"Create async I/O ring", "ℕ → ⊸⊚|⚠"}},
-    {"⊸⊚×", prim_ring_destroy, 1, {"Destroy async I/O ring", "⊸⊚ → ∅"}},
-    {"⊸⊚?", prim_ring_is, 1, {"Ring type predicate", "α → 𝔹"}},
+    {"ring-create", prim_ring_create, 1, {"Create async I/O ring", "ℕ -> consumeadt-create|error"}},
+    {"ring-destroy", prim_ring_destroy, 1, {"Destroy async I/O ring", "consumeadt-create -> nil"}},
+    {"ring?", prim_ring_is, 1, {"Ring type predicate", "α -> Bool"}},
 
     /* Buffer pool (4) */
-    {"⊸⊚◈⊕", prim_ring_buf_create, 3, {"Create provided buffer pool", "⊸⊚ → ℕ → ℕ → ⊸◈|⚠"}},
-    {"⊸⊚◈×", prim_ring_buf_destroy, 1, {"Destroy buffer pool", "⊸◈ → ∅"}},
-    {"⊸⊚◈→", prim_ring_buf_get, 2, {"Get buffer by ID", "⊸◈ → ℕ → ◈"}},
-    {"⊸⊚◈←", prim_ring_buf_return, 2, {"Return buffer to pool", "⊸◈ → ℕ → ∅"}},
+    {"ring-buf-create", prim_ring_buf_create, 3, {"Create provided buffer pool", "consumeadt-create -> ℕ -> ℕ -> consumebytebuf|error"}},
+    {"ring-buf-destroy", prim_ring_buf_destroy, 1, {"Destroy buffer pool", "consumebytebuf -> nil"}},
+    {"ring-buf-get", prim_ring_buf_get, 2, {"Get buffer by ID", "consumebytebuf -> ℕ -> bytebuf"}},
+    {"ring-buf-return", prim_ring_buf_return, 2, {"Return buffer to pool", "consumebytebuf -> ℕ -> nil"}},
 
     /* Async ring operations (8) */
-    {"⊸⊚←", prim_ring_accept, 3, {"Ring async accept (multishot)", "⊸⊚ → ℕ → ℕ → 𝔹|⚠"}},
-    {"⊸⊚←◈", prim_ring_recv, 4, {"Ring async recv (provided bufs)", "⊸⊚ → ℕ → ⊸◈ → ℕ → 𝔹|⚠"}},
-    {"⊸⊚→", prim_ring_send, 4, {"Ring async send", "⊸⊚ → ℕ → ◈ → ℕ → 𝔹|⚠"}},
-    {"⊸⊚→∅", prim_ring_send_zc, 4, {"Ring zero-copy send", "⊸⊚ → ℕ → ◈ → ℕ → 𝔹|⚠"}},
-    {"⊸⊚→⊕", prim_ring_connect, 4, {"Ring async connect", "⊸⊚ → ℕ → ◈ → ℕ → 𝔹|⚠"}},
-    {"⊸⊚→×", prim_ring_close, 3, {"Ring async close", "⊸⊚ → ℕ → ℕ → 𝔹|⚠"}},
-    {"⊸⊚!", prim_ring_submit, 1, {"Flush pending submissions", "⊸⊚ → ℕ|⚠"}},
-    {"⊸⊚⊲", prim_ring_complete, 3, {"Harvest completions", "⊸⊚ → ℕ → ℕ → [⊞]|⚠"}},
+    {"ring-accept", prim_ring_accept, 3, {"Ring async accept (multishot)", "consumeadt-create -> ℕ -> ℕ -> Bool|error"}},
+    {"ring-recv", prim_ring_recv, 4, {"Ring async recv (provided bufs)", "consumeadt-create -> ℕ -> consumebytebuf -> ℕ -> Bool|error"}},
+    {"ring-send", prim_ring_send, 4, {"Ring async send", "consumeadt-create -> ℕ -> bytebuf -> ℕ -> Bool|error"}},
+    {"ring-send-zc", prim_ring_send_zc, 4, {"Ring zero-copy send", "consumeadt-create -> ℕ -> bytebuf -> ℕ -> Bool|error"}},
+    {"ring-connect", prim_ring_connect, 4, {"Ring async connect", "consumeadt-create -> ℕ -> bytebuf -> ℕ -> Bool|error"}},
+    {"ring-close", prim_ring_close, 3, {"Ring async close", "consumeadt-create -> ℕ -> ℕ -> Bool|error"}},
+    {"ring-submit", prim_ring_submit, 1, {"Flush pending submissions", "consumeadt-create -> ℕ|error"}},
+    {"ring-complete", prim_ring_complete, 3, {"Harvest completions", "consumeadt-create -> ℕ -> ℕ -> [hashmap]|error"}},
 
     /* Refinement Type primitives (Day 127 — HFT-grade gradual dependent types) */
-    {"∈⊡", prim_refine_def, 3, {"Define refinement type", ":sym → Type → λ → :sym"}},
-    {"∈⊡?", prim_refine_check, 2, {"Check value against refinement", "α → :sym → 𝔹"}},
-    {"∈⊡!", prim_refine_assert, 2, {"Assert value satisfies refinement", "α → :sym → α|⚠"}},
-    {"∈⊡⊙", prim_refine_base, 1, {"Get base type of refinement", ":sym → Type"}},
-    {"∈⊡→", prim_refine_pred, 1, {"Get refinement predicate lambda", ":sym → λ"}},
-    {"∈⊡⊢", prim_refine_constraint, 1, {"Get constraint tree as value", ":sym → ⟨⟩|λ"}},
-    {"∈⊡∧", prim_refine_intersect, 2, {"Intersect two refinements", ":sym → :sym → :sym"}},
-    {"∈⊡∨", prim_refine_union, 2, {"Union two refinements", ":sym → :sym → :sym"}},
-    {"∈⊡∀", prim_refine_list, 0, {"List all refinements", "→ [⟨:sym Type ⟨⟩⟩]"}},
-    {"∈⊡∈", prim_refine_find, 1, {"Find matching refinement for value", "α → :sym|∅"}},
-    {"∈⊡⊆", prim_refine_subtype, 2, {"Refinement subtype check", ":sym → Type → 𝔹"}},
+    {"refine-def", prim_refine_def, 3, {"Define refinement type", ":sym -> Type -> lambda -> :sym"}},
+    {"refine-check?", prim_refine_check, 2, {"Check value against refinement", "α -> :sym -> Bool"}},
+    {"refine-assert!", prim_refine_assert, 2, {"Assert value satisfies refinement", "α -> :sym -> α|error"}},
+    {"refine-base", prim_refine_base, 1, {"Get base type of refinement", ":sym -> Type"}},
+    {"refine-pred", prim_refine_pred, 1, {"Get refinement predicate lambda", ":sym -> lambda"}},
+    {"refine-constraint", prim_refine_constraint, 1, {"Get constraint tree as value", ":sym -> cons|lambda"}},
+    {"refine-intersect", prim_refine_intersect, 2, {"Intersect two refinements", ":sym -> :sym -> :sym"}},
+    {"refine-union", prim_refine_union, 2, {"Union two refinements", ":sym -> :sym -> :sym"}},
+    {"refine-list", prim_refine_list, 0, {"List all refinements", "-> [⟨:sym Type cons⟩]"}},
+    {"refine-find", prim_refine_find, 1, {"Find matching refinement for value", "α -> :sym|nil"}},
+    {"refine-subtype?", prim_refine_subtype, 2, {"Refinement subtype check", ":sym -> Type -> Bool"}},
 
     /* Execution Trace primitives (Day 136 — HFT-grade execution tracing) */
-    {"⟳⊳⊳!", prim_trace_enable, 1, {"Enable/disable execution tracing", "𝔹 → 𝔹"}},
-    {"⟳⊳⊳?", prim_trace_read, -1, {"Read trace events (optionally filtered by kind)", "[:sym] → [⟨⟩]"}},
-    {"⟳⊳⊳∅", prim_trace_clear, 0, {"Clear trace ring buffer", "→ ∅"}},
-    {"⟳⊳⊳#", prim_trace_count, -1, {"Count trace events (optionally filtered by kind)", "[:sym] → ℕ"}},
-    {"⟳⊳⊳⊛", prim_trace_snapshot, -1, {"Flight recorder snapshot (all or last N)", "[ℕ] → [⟨⟩]"}},
-    {"⟳⊳⊳⊗", prim_trace_causal, 1, {"Enable causal tracing on current actor", "𝔹 → 𝔹|⚠"}},
-    {"⟳⊳⊳⊞", prim_trace_capacity, 0, {"Return trace buffer capacity", "→ ℕ"}},
+    {"trace-enable!", prim_trace_enable, 1, {"Enable/disable execution tracing", "Bool -> Bool"}},
+    {"trace-read", prim_trace_read, -1, {"Read trace events (optionally filtered by kind)", "[:sym] -> [cons]"}},
+    {"trace-clear", prim_trace_clear, 0, {"Clear trace ring buffer", "-> nil"}},
+    {"trace-count", prim_trace_count, -1, {"Count trace events (optionally filtered by kind)", "[:sym] -> ℕ"}},
+    {"trace-snapshot", prim_trace_snapshot, -1, {"Flight recorder snapshot (all or last N)", "[ℕ] -> [cons]"}},
+    {"trace-causal", prim_trace_causal, 1, {"Enable causal tracing on current actor", "Bool -> Bool|error"}},
+    {"trace-capacity", prim_trace_capacity, 0, {"Return trace buffer capacity", "-> ℕ"}},
 
     /* Global trace primitives (Day 140 — cross-scheduler aggregation) */
-    {"⟳⊳⊳⊕", prim_trace_global_read, -1, {"Merged trace from ALL schedulers (optional kind filter)", "[:sym] → [⟨⟩]"}},
-    {"⟳⊳⊳⊕#", prim_trace_global_count, -1, {"Count events across ALL schedulers", "[:sym] → ℕ"}},
+    {"trace-global-read", prim_trace_global_read, -1, {"Merged trace from ALL schedulers (optional kind filter)", "[:sym] -> [cons]"}},
+    {"trace-global-count", prim_trace_global_count, -1, {"Count events across ALL schedulers", "[:sym] -> ℕ"}},
 
     /* Trait/Typeclass primitives (FDT-backed ~5ns dispatch) */
-    {"⊧≔", prim_trait_define, -1, {"Define trait with required ops and optional defaults", ":sym → [:sym] → [⟨:sym . λ⟩]? → :sym"}},
-    {"⊧⊕", prim_trait_implement, 3, {"Implement trait for type", ":sym → :sym → [⟨:sym . λ⟩] → 𝔹"}},
-    {"⊧?", prim_trait_check, 2, {"Check if type implements trait", ":sym → :sym → 𝔹"}},
-    {"⊧⊙", prim_trait_ops, 1, {"List required ops for trait", ":sym → [:sym]"}},
-    {"⊧→", prim_trait_dispatch, 3, {"Dispatch trait op for type", ":sym → :sym → :sym → λ|⚠"}},
-    {"⊧→!", prim_trait_dispatch_fast, 3, {"Fused type-of + dispatch (value → :Trait → :op → fn)", "α → :sym → :sym → λ|⚠"}},
-    {"⊧∈", prim_type_of, 1, {"Get runtime type name (FDT array index)", "α → :sym"}},
-    {"⊧⊙?", prim_trait_defaults, 1, {"Get trait default implementations", ":sym → [⟨:sym . λ⟩]|∅"}},
+    {"trait-define", prim_trait_define, -1, {"Define trait with required ops and optional defaults", ":sym -> [:sym] -> [⟨:sym . lambda⟩]? -> :sym"}},
+    {"trait-implement", prim_trait_implement, 3, {"Implement trait for type", ":sym -> :sym -> [⟨:sym . lambda⟩] -> Bool"}},
+    {"trait?", prim_trait_check, 2, {"Check if type implements trait", ":sym -> :sym -> Bool"}},
+    {"trait-ops", prim_trait_ops, 1, {"List required ops for trait", ":sym -> [:sym]"}},
+    {"trait-dispatch", prim_trait_dispatch, 3, {"Dispatch trait op for type", ":sym -> :sym -> :sym -> lambda|error"}},
+    {"trait-dispatch-fast", prim_trait_dispatch_fast, 3, {"Fused type-of + dispatch (value -> :Trait -> :op -> fn)", "α -> :sym -> :sym -> lambda|error"}},
+    {"runtime-type-of", prim_type_of, 1, {"Get runtime type name (FDT array index)", "α -> :sym"}},
+    {"trait-defaults", prim_trait_defaults, 1, {"Get trait default implementations", ":sym -> [⟨:sym . lambda⟩]|nil"}},
 
     /* Bitwise primitives (Step 2) — single CPU instruction hot path */
-    {"⊓", prim_bit_and, 2, {"Bitwise AND", "ℤ → ℤ → ℤ"}},
-    {"⊔", prim_bit_or, 2, {"Bitwise OR", "ℤ → ℤ → ℤ"}},
-    {"⊻", prim_bit_xor, 2, {"Bitwise XOR", "ℤ → ℤ → ℤ"}},
-    {"⊬", prim_bit_not, 1, {"Bitwise NOT", "ℤ → ℤ"}},
-    {"≪", prim_bit_shl, 2, {"Left shift", "ℤ → ℤ → ℤ"}},
-    {"⊓≫", prim_bit_shr, 2, {"Arithmetic right shift", "ℤ → ℤ → ℤ"}},
-    {"⊓≫ᵤ", prim_bit_ushr, 2, {"Logical right shift (zero-fill)", "ℤ → ℤ → ℤ"}},
-    {"⊓#", prim_bit_popcount, 1, {"Population count (number of set bits)", "ℤ → ℤ"}},
-    {"⊓◁", prim_bit_clz, 1, {"Count leading zeros", "ℤ → ℤ"}},
-    {"⊓▷", prim_bit_ctz, 1, {"Count trailing zeros", "ℤ → ℤ"}},
-    {"⊓⟲", prim_bit_rotl, 2, {"Rotate left", "ℤ → ℤ → ℤ"}},
-    {"⊓⟳", prim_bit_rotr, 2, {"Rotate right", "ℤ → ℤ → ℤ"}},
-    {"→ℤ", prim_to_integer, 1, {"Convert to integer (truncate double)", "ℝ|ℤ → ℤ"}},
-    {"→ℝ", prim_to_double, 1, {"Convert to double (widen integer)", "ℤ|ℝ → ℝ"}},
-    {"ℤ?", prim_is_integer, 1, {"Is native integer?", "α → 𝔹"}},
+    {"bit-and", prim_bit_and, 2, {"Bitwise AND", "Int -> Int -> Int"}},
+    {"bit-or", prim_bit_or, 2, {"Bitwise OR", "Int -> Int -> Int"}},
+    {"bit-xor", prim_bit_xor, 2, {"Bitwise XOR", "Int -> Int -> Int"}},
+    {"bit-not", prim_bit_not, 1, {"Bitwise NOT", "Int -> Int"}},
+    {"bit-shl", prim_bit_shl, 2, {"Left shift", "Int -> Int -> Int"}},
+    {"bit-shr", prim_bit_shr, 2, {"Arithmetic right shift", "Int -> Int -> Int"}},
+    {"bit-ushr", prim_bit_ushr, 2, {"Logical right shift (zero-fill)", "Int -> Int -> Int"}},
+    {"bit-popcount", prim_bit_popcount, 1, {"Population count (number of set bits)", "Int -> Int"}},
+    {"bit-clz", prim_bit_clz, 1, {"Count leading zeros", "Int -> Int"}},
+    {"bit-ctz", prim_bit_ctz, 1, {"Count trailing zeros", "Int -> Int"}},
+    {"bit-rotl", prim_bit_rotl, 2, {"Rotate left", "Int -> Int -> Int"}},
+    {"bit-rotr", prim_bit_rotr, 2, {"Rotate right", "Int -> Int -> Int"}},
+    {"->integer", prim_to_integer, 1, {"Convert to integer (truncate double)", "ℝ|Int -> Int"}},
+    {"->double", prim_to_double, 1, {"Convert to double (widen integer)", "Int|ℝ -> ℝ"}},
+    {"integer?", prim_is_integer, 1, {"Is native integer?", "α -> Bool"}},
 
     /* FFI Struct primitives (Step 4) */
-    {"⌁⊙⊜", prim_ffi_struct_define, -1, {"Define struct layout from field specs", "[⟨:name :type⟩ ...] → ⌁[struct-layout]"}},
-    {"⌁⊙→", prim_ffi_struct_read, 3, {"Read struct field", "⌁ → ⌁[layout] → :sym → α"}},
-    {"⌁⊙←", prim_ffi_struct_write, 4, {"Write struct field", "⌁ → ⌁[layout] → :sym → α → ∅"}},
-    {"⌁⊙⊞", prim_ffi_struct_alloc, 1, {"Allocate struct (calloc)", "⌁[layout] → ⌁[struct]"}},
-    {"⌁⊙#", prim_ffi_struct_size, 1, {"Get struct total size", "⌁[layout] → ℤ"}},
-    {"⌁⊙⊳", prim_ffi_struct_to_guage, 2, {"Read whole struct to Guage record", "⌁ → ⌁[layout] → ⊙"}},
-    {"⌁⊙⊲", prim_ffi_struct_from_guage, 2, {"Write Guage record to allocated ptr", "⊙ → ⌁[layout] → ⌁[struct]"}},
+    {"ffi-struct-define", prim_ffi_struct_define, -1, {"Define struct layout from field specs", "[⟨:name :type⟩ ...] -> ⌁[struct-layout]"}},
+    {"ffi-struct-read", prim_ffi_struct_read, 3, {"Read struct field", "⌁ -> ⌁[layout] -> :sym -> α"}},
+    {"ffi-struct-write", prim_ffi_struct_write, 4, {"Write struct field", "⌁ -> ⌁[layout] -> :sym -> α -> nil"}},
+    {"ffi-struct-alloc", prim_ffi_struct_alloc, 1, {"Allocate struct (calloc)", "⌁[layout] -> ⌁[struct]"}},
+    {"ffi-struct-size", prim_ffi_struct_size, 1, {"Get struct total size", "⌁[layout] -> Int"}},
+    {"ffi-struct->guage", prim_ffi_struct_to_guage, 2, {"Read whole struct to Guage record", "⌁ -> ⌁[layout] -> struct-create"}},
+    {"ffi-struct-from-guage", prim_ffi_struct_from_guage, 2, {"Write Guage record to allocated ptr", "struct-create -> ⌁[layout] -> ⌁[struct]"}},
 
     /* FFI Callback primitives (Step 5) */
-    {"⌁⤺", prim_ffi_callback_create, -1, {"Create C-callable callback from lambda", "λ → :ret → [:arg ...] → ⌁[callback]"}},
-    {"⌁⤺×", prim_ffi_callback_free, 1, {"Free callback trampoline", "⌁[callback] → ∅"}},
+    {"ffi-callback-create", prim_ffi_callback_create, -1, {"Create C-callable callback from lambda", "lambda -> :ret -> [:arg ...] -> ⌁[callback]"}},
+    {"ffi-callback-free", prim_ffi_callback_free, 1, {"Free callback trampoline", "⌁[callback] -> nil"}},
 
     /* Signal primitives (Step 6) */
-    {"⚡⟳", prim_signal_register, 2, {"Register actor for POSIX signal", ":sym → ⟳ → 𝔹"}},
-    {"⚡×", prim_signal_unregister, 1, {"Unregister signal handler", ":sym → 𝔹"}},
-    {"⚡?", prim_signal_list, 0, {"List registered signal handlers", "→ [⟨:sym ⟳⟩]"}},
+    {"signal-register", prim_signal_register, 2, {"Register actor for POSIX signal", ":sym -> actor-spawn -> Bool"}},
+    {"signal-unregister", prim_signal_unregister, 1, {"Unregister signal handler", ":sym -> Bool"}},
+    {"try", prim_signal_list, 0, {"List registered signal handlers", "-> [⟨:sym actor-spawn⟩]"}},
 
     /* Discovery primitives */
-    {"⌂*", prim_discovery_all, 0, {"List all primitives as ((name cat desc type) ...)", "→ [⟨≈ ≈ ≈ ≈⟩]"}},
-    {"⌂⊳", prim_discovery_search, 1, {"Search primitives by keyword substring", "≈ → [⟨≈ ≈ ≈ ≈⟩]"}},
-    {"⌂⊳⊜", prim_discovery_category, 1, {"Filter primitives by category", "≈ → [⟨≈ ≈ ≈ ≈⟩]"}},
+    {"discovery-all", prim_discovery_all, 0, {"List all primitives as ((name cat desc type) ...)", "-> [⟨string string string string⟩]"}},
+    {"discovery-search", prim_discovery_search, 1, {"Search primitives by keyword substring", "string -> [⟨string string string string⟩]"}},
+    {"discovery-category", prim_discovery_category, 1, {"Filter primitives by category", "string -> [⟨string string string string⟩]"}},
 
     {NULL, NULL, 0, {NULL, NULL, NULL}}
 };
@@ -15831,7 +15831,7 @@ static Cell* prim_discovery_search(Cell* args) {
     const char* kw = NULL;
     if (cell_is_symbol(kw_cell))      { kw = cell_get_symbol(kw_cell); if (kw && kw[0] == ':') kw++; }
     else if (cell_is_string(kw_cell)) kw = cell_get_string(kw_cell);
-    else return cell_error(":type-error", cell_string("⌂⊳ expects symbol or string"));
+    else return cell_error(":type-error", cell_string("discovery-search expects symbol or string"));
     if (!kw || !*kw) return cell_nil();
 
     Cell* result = cell_nil();
@@ -15859,7 +15859,7 @@ static Cell* prim_discovery_category(Cell* args) {
     const char* cat = NULL;
     if (cell_is_symbol(cat_cell))      { cat = cell_get_symbol(cat_cell); if (cat && cat[0] == ':') cat++; }
     else if (cell_is_string(cat_cell)) cat = cell_get_string(cat_cell);
-    else return cell_error(":type-error", cell_string("⌂⊳⊜ expects symbol or string"));
+    else return cell_error(":type-error", cell_string("discovery-category expects symbol or string"));
     if (!cat || !*cat) return cell_nil();
 
     Cell* result = cell_nil();

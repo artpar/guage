@@ -429,15 +429,15 @@ static void handle_help_command(EvalContext* ctx, const char* cmd) {
         printf("║    :modules           List loaded modules                 ║\n");
         printf("║                                                           ║\n");
         printf("║  Special Forms:                                           ║\n");
-        printf("║    λ, ≔, ?, ∇         Core language constructs           ║\n");
+        printf("║    lambda, define, ?, match         Core language constructs           ║\n");
         printf("║                                                           ║\n");
         printf("║  Programmatic Discovery:                                  ║\n");
-        printf("║    (⌂*)               List all primitives as data        ║\n");
-        printf("║    (⌂⊳ :keyword)      Search by keyword                 ║\n");
-        printf("║    (⌂⊳⊜ :category)    Filter by category                ║\n");
+        printf("║    (discovery-all)               List all primitives as data        ║\n");
+        printf("║    (discovery-search :keyword)      Search by keyword                 ║\n");
+        printf("║    (discovery-category :category)    Filter by category                ║\n");
         printf("║                                                           ║\n");
         printf("║  Example Usage:                                           ║\n");
-        printf("║    :help ⊕            Show documentation for addition    ║\n");
+        printf("║    :help +            Show documentation for addition    ║\n");
         printf("║    :search hash       Find hashmap/set primitives        ║\n");
         printf("╚═══════════════════════════════════════════════════════════╝\n\n");
         return;
@@ -565,7 +565,7 @@ static void handle_search_command(const char* term) {
         }
         if (match) {
             printf("│  %-8s [%-16s] %s\n", p->name,
-                   p->doc.category ? p->doc.category : "?",
+                   p->doc.category ? p->doc.category : "if",
                    p->doc.description);
             found++;
         }
@@ -628,37 +628,37 @@ static void completion_callback(const char *buf, linenoiseCompletions *lc) {
     /* Complete common primitive names and special forms */
     const char *symbols[] = {
         /* Special forms */
-        "λ", "≔", "?", "∇", "⌜", "⌞",
+        "lambda", "define", "if", "match", "quote", "eval",
         /* Constants */
-        "#t", "#f", "∅",
+        "#t", "#f", "nil",
         /* Core */
-        "⟨⟩", "◁", "▷",
+        "cons", "car", "cdr",
         /* Arithmetic */
-        "⊕", "⊖", "⊗", "⊘", "÷", "%", "<", ">", "≤", "≥",
+        "+", "-", "*", "/", "quotient", "%", "<", ">", "<=", ">=",
         /* Logic */
-        "≡", "≢", "∧", "∨", "¬",
+        "equal?", "not-equal?", "and", "or", "not",
         /* Type predicates */
-        "ℕ?", "𝔹?", ":?", "∅?", "⟨⟩?", "#?", "≈?", "⚠?",
+        "number?", "boolean?", "symbol?", "null?", "pair?", "atom?", "string?", "error?",
         /* Debug */
-        "⚠", "⊢", "⟲", "⧉", "⊛", "≟", "⊨",
+        "error", "assert", "trace", "arity", "source", "deep-equal?", "test-case",
         /* I/O */
-        "≋", "≋≈", "≋←", "≋⊳", "≋⊲", "≋⊕", "≋?", "≋∅?",
+        "print", "display", "read-line", "read-file", "write-file", "append-file", "file-exists?", "file-empty?",
         /* Modules */
-        "⋘", "⋖", "⌂⊚", "⌂⊚→",
+        "load", "module-import", "module-info", "module-dependencies",
         /* Strings */
-        "≈", "≈#", "≈⊙", "≈⊕", "≈⊂", "≈≡", "≈<", "≈>", "≈→",
+        "string", "string-length", "stringstruct-create", "string-append", "string-slice", "string-equal?", "string<?", "string>", "string-ref",
         /* Structures */
-        "⊙≔", "⊙", "⊙→", "⊙←", "⊙?",
-        "⊚≔", "⊚", "⊚→", "⊚?",
-        "⊝≔", "⊝", "⊝⊕", "⊝⊗", "⊝→", "⊝?",
+        "struct-define", "struct-create", "struct-get", "struct-set", "struct?",
+        "adt-define", "adt-create", "adt-get", "adt?",
+        "graph-define", "graph-create", "graph-add-node", "graph-add-edge", "graph-query", "graph?",
         /* Math */
-        "√", "^", "|", "⌊⌋", "⌈⌉", "⌊⌉", "min", "max",
+        "sqrt", "^", "abs", "floor", "ceil", "round", "min", "max",
         "sin", "cos", "tan", "asin", "acos", "atan", "atan2",
-        "log", "log10", "exp", "π", "e", "rand", "rand-int",
+        "log", "log10", "exp", "pi", "e", "rand", "rand-int",
         /* CFG/DFG */
-        "⌂⇝", "⌂⇝⊳",
+        "query-dfg", "query-dfggeneric-param",
         /* Auto-doc */
-        "⌂", "⌂∈", "⌂≔", "⌂⊛", "⌂⊨",
+        "doc", "doc-type", "doc-deps", "doc-source", "doc-tests",
         NULL
     };
 
@@ -708,7 +708,7 @@ static TestRunResult run_test_core(const char* filename, char* buffer, size_t le
     module_registry_add("<test>");
     eval_define(ctx, "#t", cell_bool(true));
     eval_define(ctx, "#f", cell_bool(false));
-    eval_define(ctx, "∅", cell_nil());
+    eval_define(ctx, "nil", cell_nil());
 
     /* Track alloc stats for leak detection */
     uint64_t alloc_start = cell_get_alloc_count();
@@ -978,7 +978,7 @@ void repl(void) {
     /* Define symbolic constants only */
     eval_define(ctx, "#t", cell_bool(true));
     eval_define(ctx, "#f", cell_bool(false));
-    eval_define(ctx, "∅", cell_nil());
+    eval_define(ctx, "nil", cell_nil());
 
     printf("Ready.\n\n");
 

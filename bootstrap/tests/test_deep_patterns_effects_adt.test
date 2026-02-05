@@ -4,152 +4,152 @@
 
 ;;; --- ADT definitions ---
 
-(⊚≔ :Result (⌜ (:Ok :value)) (⌜ (:Err :error)))
+(adt-define :Result (quote (:Ok :value)) (quote (:Err :error)))
 
 ;;; --- Pattern match on ADT variant inside effect handler ---
 
-(⟪ :Provider :fetch)
+(effect-def :Provider :fetch)
 
-(⊨ :adt-in-handler :got-ok
-  (⟪⟫
-    (∇ (↯ :Provider :fetch :data) (⌜ (
-      ((⊚ :Result :Ok v) :got-ok)
-      ((⊚ :Result :Err e) :got-err))))
+(test-case :adt-in-handler :got-ok
+  (handle
+    (match (perform :Provider :fetch :data) (quote (
+      ((adt-create :Result :Ok v) :got-ok)
+      ((adt-create :Result :Err e) :got-err))))
     (:Provider
-      (:fetch (λ (key) (⊚ :Result :Ok #42))))))
+      (:fetch (lambda (key) (adt-create :Result :Ok #42))))))
 
 ;;; --- Effect handler returns ADT, pattern match outside ---
 
-(≔ handler-res (⟪⟫ (↯ :Provider :fetch :data)
+(define handler-res (handle (perform :Provider :fetch :data)
   (:Provider
-    (:fetch (λ (key) (⊚ :Result :Ok #99))))))
+    (:fetch (lambda (key) (adt-create :Result :Ok #99))))))
 
-(⊨ :adt-from-handler #99
-  (∇ handler-res (⌜ (
-    ((⊚ :Result :Ok v) v)
-    ((⊚ :Result :Err e) #0)))))
+(test-case :adt-from-handler #99
+  (match handler-res (quote (
+    ((adt-create :Result :Ok v) v)
+    ((adt-create :Result :Err e) #0)))))
 
 ;;; --- Guard depends on constant threshold ---
 
-(⊨ :guard-threshold :high
-  (⟪⟫
-    (∇ (⊚ :Result :Ok (↯ :Provider :fetch :temp)) (⌜ (
-      (((⊚ :Result :Ok v) | (> v #50)) :high)
-      ((⊚ :Result :Ok v) :low)
-      ((⊚ :Result :Err e) :error))))
+(test-case :guard-threshold :high
+  (handle
+    (match (adt-create :Result :Ok (perform :Provider :fetch :temp)) (quote (
+      (((adt-create :Result :Ok v) | (> v #50)) :high)
+      ((adt-create :Result :Ok v) :low)
+      ((adt-create :Result :Err e) :error))))
     (:Provider
-      (:fetch (λ (key) #75)))))
+      (:fetch (lambda (key) #75)))))
 
 ;;; --- Resumable effect result matched by pattern with guard ---
 
-(⟪ :State :get :put)
+(effect-def :State :get :put)
 
-(⊨ :resumable-guard :big
-  (⟪↺⟫
-    (∇ (↯ :State :get) (⌜ (
+(test-case :resumable-guard :big
+  (handle-resume
+    (match (perform :State :get) (quote (
       ((n | (> n #50)) :big)
       (n :small))))
     (:State
-      (:get (λ (k) (k #100)))
-      (:put (λ (k v) (k ∅))))))
+      (:get (lambda (k) (k #100)))
+      (:put (lambda (k v) (k nil))))))
 
 ;;; --- ADT construction inside resumable handler, destructured outside ---
 
-(⊨ :adt-from-resumable #t
-  (⊚? (⟪↺⟫ (⊚ :Result :Ok (↯ :State :get))
+(test-case :adt-from-resumable #t
+  (adt? (handle-resume (adt-create :Result :Ok (perform :State :get))
     (:State
-      (:get (λ (k) (k #77)))
-      (:put (λ (k v) (k ∅)))))
+      (:get (lambda (k) (k #77)))
+      (:put (lambda (k v) (k nil)))))
   :Result :Ok))
 
-(⊨ :adt-from-resumable-val #77
-  (⊚→ (⟪↺⟫ (⊚ :Result :Ok (↯ :State :get))
+(test-case :adt-from-resumable-val #77
+  (adt-get (handle-resume (adt-create :Result :Ok (perform :State :get))
     (:State
-      (:get (λ (k) (k #77)))
-      (:put (λ (k v) (k ∅)))))
+      (:get (lambda (k) (k #77)))
+      (:put (lambda (k v) (k nil)))))
   :value))
 
 ;;; --- View pattern with classify function on effect-returned value ---
 
-(≔ classify (λ (n)
-  (? (> n #100) :hot
-     (? (> n #50) :warm
+(define classify (lambda (n)
+  (if (> n #100) :hot
+     (if (> n #50) :warm
         :cold))))
 
-(⊨ :view-pattern-effect :warm
-  (⟪⟫
-    (∇ (↯ :Provider :fetch :temp) (⌜ (
-      ((→ classify :hot) :hot)
-      ((→ classify :warm) :warm)
+(test-case :view-pattern-effect :warm
+  (handle
+    (match (perform :Provider :fetch :temp) (quote (
+      ((-> classify :hot) :hot)
+      ((-> classify :warm) :warm)
       (_ :other))))
     (:Provider
-      (:fetch (λ (key) #75)))))
+      (:fetch (lambda (key) #75)))))
 
 ;;; --- Nested pattern match + effect perform in one branch ---
 
-(⊨ :nested-match-effect :inner-ok
-  (⟪⟫
-    (∇ (↯ :Provider :fetch :outer) (⌜ (
-      ((⊚ :Result :Ok v)
-        (∇ (⊚ :Result :Ok (⊕ v #10)) (⌜ (
-          ((⊚ :Result :Ok w) :inner-ok)
+(test-case :nested-match-effect :inner-ok
+  (handle
+    (match (perform :Provider :fetch :outer) (quote (
+      ((adt-create :Result :Ok v)
+        (match (adt-create :Result :Ok (+ v #10)) (quote (
+          ((adt-create :Result :Ok w) :inner-ok)
           (_ :inner-other)))))
       (_ :outer-fail))))
     (:Provider
-      (:fetch (λ (key) (⊚ :Result :Ok #5))))))
+      (:fetch (lambda (key) (adt-create :Result :Ok #5))))))
 
 ;;; --- As-pattern captures full ADT while destructuring fields ---
 
-(⊨ :as-pattern-adt #t
-  (∇ (⊚ :Result :Ok #42) (⌜ (
-    ((whole @ (⊚ :Result :Ok v)) (∧ (⊚? whole :Result :Ok) (≡ v #42)))))))
+(test-case :as-pattern-adt #t
+  (match (adt-create :Result :Ok #42) (quote (
+    ((whole @ (adt-create :Result :Ok v)) (and (adt? whole :Result :Ok) (equal? v #42)))))))
 
 ;;; --- Guard on ADT field value ---
 
-(⊨ :guard-adt-field :large-ok
-  (∇ (⊚ :Result :Ok #150) (⌜ (
-    (((⊚ :Result :Ok v) | (> v #100)) :large-ok)
-    ((⊚ :Result :Ok v) :small-ok)
-    ((⊚ :Result :Err e) :error)))))
+(test-case :guard-adt-field :large-ok
+  (match (adt-create :Result :Ok #150) (quote (
+    (((adt-create :Result :Ok v) | (> v #100)) :large-ok)
+    ((adt-create :Result :Ok v) :small-ok)
+    ((adt-create :Result :Err e) :error)))))
 
 ;;; --- Recursive AST evaluator using ADT + pattern matching + error handling ---
 
-(⊚≔ :Expr
-  (⌜ (:Num :val))
-  (⌜ (:Add :left :right))
-  (⌜ (:Div :numer :denom)))
+(adt-define :Expr
+  (quote (:Num :val))
+  (quote (:Add :left :right))
+  (quote (:Div :numer :denom)))
 
-(≔ eval-expr (λ (e)
-  (? (⊚? e :Expr :Num)
-     (⊚→ e :val)
-     (? (⊚? e :Expr :Add)
-        (⊕ (eval-expr (⊚→ e :left)) (eval-expr (⊚→ e :right)))
-        (? (⊚? e :Expr :Div)
-           (⪢
-             (≔ d (eval-expr (⊚→ e :denom)))
-             (? (≡ d #0)
-                (⚠ :div-by-zero ∅)
-                (⊘ (eval-expr (⊚→ e :numer)) d)))
-           (⚠ :unknown-expr e))))))
+(define eval-expr (lambda (e)
+  (if (adt? e :Expr :Num)
+     (adt-get e :val)
+     (if (adt? e :Expr :Add)
+        (+ (eval-expr (adt-get e :left)) (eval-expr (adt-get e :right)))
+        (if (adt? e :Expr :Div)
+           (begin
+             (define d (eval-expr (adt-get e :denom)))
+             (if (equal? d #0)
+                (error :div-by-zero nil)
+                (/ (eval-expr (adt-get e :numer)) d)))
+           (error :unknown-expr e))))))
 
-(⊨ :eval-num #5 (eval-expr (⊚ :Expr :Num #5)))
+(test-case :eval-num #5 (eval-expr (adt-create :Expr :Num #5)))
 
-(⊨ :eval-add #8
-  (eval-expr (⊚ :Expr :Add (⊚ :Expr :Num #3) (⊚ :Expr :Num #5))))
+(test-case :eval-add #8
+  (eval-expr (adt-create :Expr :Add (adt-create :Expr :Num #3) (adt-create :Expr :Num #5))))
 
-(⊨ :eval-div #4
-  (eval-expr (⊚ :Expr :Div (⊚ :Expr :Num #20) (⊚ :Expr :Num #5))))
+(test-case :eval-div #4
+  (eval-expr (adt-create :Expr :Div (adt-create :Expr :Num #20) (adt-create :Expr :Num #5))))
 
-(⊨ :eval-div-zero #t
-  (⚠? (eval-expr (⊚ :Expr :Div (⊚ :Expr :Num #10) (⊚ :Expr :Num #0)))))
+(test-case :eval-div-zero #t
+  (error? (eval-expr (adt-create :Expr :Div (adt-create :Expr :Num #10) (adt-create :Expr :Num #0)))))
 
 ;;; --- Evaluator wrapped in effect handler ---
 
-(⊨ :eval-in-handler #8
-  (⟪⟫ (eval-expr (⊚ :Expr :Add
-    (⊚ :Expr :Num (↯ :Provider :fetch :x))
-    (⊚ :Expr :Num (↯ :Provider :fetch :y))))
+(test-case :eval-in-handler #8
+  (handle (eval-expr (adt-create :Expr :Add
+    (adt-create :Expr :Num (perform :Provider :fetch :x))
+    (adt-create :Expr :Num (perform :Provider :fetch :y))))
     (:Provider
-      (:fetch (λ (key)
-        (? (≡ key :x) #3
-           (? (≡ key :y) #5 #0)))))))
+      (:fetch (lambda (key)
+        (if (equal? key :x) #3
+           (if (equal? key :y) #5 #0)))))))

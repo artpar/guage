@@ -3,55 +3,55 @@
 ; ============ Helper Functions ============
 
 ; Flatten nested list into single list
-(≔ flatten (λ (lst)
-  (? (∅? lst)
-     ∅
-     (? (⟨⟩? (◁ lst))
-        (append (flatten (◁ lst)) (flatten (▷ lst)))
-        (⟨⟩ (◁ lst) (flatten (▷ lst)))))))
+(define flatten (lambda (lst)
+  (if (null? lst)
+     nil
+     (if (pair? (car lst))
+        (append (flatten (car lst)) (flatten (cdr lst)))
+        (cons (car lst) (flatten (cdr lst)))))))
 
 ; Append two lists
-(≔ append (λ (l1 l2)
-  (? (∅? l1)
+(define append (lambda (l1 l2)
+  (if (null? l1)
      l2
-     (⟨⟩ (◁ l1) (append (▷ l1) l2)))))
+     (cons (car l1) (append (cdr l1) l2)))))
 
 ; Count elements in list
-(≔ length (λ (lst)
-  (? (∅? lst)
+(define length (lambda (lst)
+  (if (null? lst)
      #0
-     (⊕ #1 (length (▷ lst))))))
+     (+ #1 (length (cdr lst))))))
 
-; Execute a single test (test is: (⊨ :name expected actual))
+; Execute a single test (test is: (test-case :name expected actual))
 ; Returns: ⟨:pass name⟩ or ⟨:fail name expected actual⟩
-(≔ execute-test (λ (test)
-  (? (∅? test)
+(define execute-test (lambda (test)
+  (if (null? test)
      ⟨:error :empty-test⟩
-     (≔ name (◁ (▷ test)))
-     (≔ expected (◁ (▷ (▷ test))))
-     (≔ actual (◁ (▷ (▷ (▷ test)))))
-     (? (≟ expected actual)
+     (define name (car (cdr test)))
+     (define expected (car (cdr (cdr test))))
+     (define actual (car (cdr (cdr (cdr test)))))
+     (if (deep-equal? expected actual)
         ⟨:pass name⟩
         ⟨:fail name expected actual⟩))))
 
 ; Count test results by status
-(≔ count-status (λ (results status)
-  (? (∅? results)
+(define count-status (lambda (results status)
+  (if (null? results)
      #0
-     (? (≡ (◁ (◁ results)) status)
-        (⊕ #1 (count-status (▷ results) status))
-        (count-status (▷ results) status)))))
+     (if (equal? (car (car results)) status)
+        (+ #1 (count-status (cdr results) status))
+        (count-status (cdr results) status)))))
 
 ; ============ Tests ============
 
 ; Test helpers
-(⊨ :flatten-nil ∅ (flatten ∅))
-(⊨ :flatten-flat #1 (◁ (flatten (⟨⟩ #1 (⟨⟩ #2 ∅)))))
-(⊨ :append-empty (⟨⟩ #1 ∅) (append (⟨⟩ #1 ∅) ∅))
-(⊨ :length-0 #0 (length ∅))
-(⊨ :length-3 #3 (length (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅)))))
-(⊨ :count-empty #0 (count-status ∅ :pass))
+(test-case :flatten-nil nil (flatten nil))
+(test-case :flatten-flat #1 (car (flatten (cons #1 (cons #2 nil)))))
+(test-case :append-empty (cons #1 nil) (append (cons #1 nil) nil))
+(test-case :length-0 #0 (length nil))
+(test-case :length-3 #3 (length (cons #1 (cons #2 (cons #3 nil)))))
+(test-case :count-empty #0 (count-status nil :pass))
 
 ; Test auto-generation produces data
-(⊨ :gen-add #t (⟨⟩? (⌂⊨ (⌜ ⊕))))
-(⊨ :gen-eq #t (⟨⟩? (⌂⊨ (⌜ ≡))))
+(test-case :gen-add #t (pair? (doc-tests (quote +))))
+(test-case :gen-eq #t (pair? (doc-tests (quote equal?))))

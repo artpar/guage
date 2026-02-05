@@ -1,50 +1,50 @@
 ; Data Flow Graph Tests
 
 ; Define factorial (with recursion)
-(≔ ! (λ (n)
-  (? (≡ n #0)
+(define ! (lambda (n)
+  (if (equal? n #0)
      #1
-     (⊗ n (! (⊖ n #1))))))
+     (* n (! (- n #1))))))
 
 ; Test 1: DFG is a graph
-(⊝? (⌂⇝ (⌜ !)) (⌜ :DFG))
+(graph? (query-dfg (quote !)) (quote :DFG))
 
 ; Test 2: DFG has nodes (operations)
-(⟨⟩? (⊝→ (⌂⇝ (⌜ !)) (⌜ :nodes)))
+(pair? (graph-query (query-dfg (quote !)) (quote :nodes)))
 
 ; Test 3: DFG has edges (data dependencies)
-(⟨⟩? (⊝→ (⌂⇝ (⌜ !)) (⌜ :edges)))
+(pair? (graph-query (query-dfg (quote !)) (quote :edges)))
 
 ; Test 4: DFG has entry points (parameters)
-(⟨⟩? (⊝→ (⌂⇝ (⌜ !)) (⌜ :entry)))
+(pair? (graph-query (query-dfg (quote !)) (quote :entry)))
 
 ; Test 5: DFG has exit points (return values)
-(⟨⟩? (⊝→ (⌂⇝ (⌜ !)) (⌜ :exit)))
+(pair? (graph-query (query-dfg (quote !)) (quote :exit)))
 
 ; Simple function: add two numbers
-(≔ add (λ (a b) (⊕ a b)))
+(define add (lambda (a b) (+ a b)))
 
 ; Test 6: Simple function DFG is a graph
-(⊝? (⌂⇝ (⌜ add)) (⌜ :DFG))
+(graph? (query-dfg (quote add)) (quote :DFG))
 
 ; Test 7: Simple function has nodes
-(⟨⟩? (⊝→ (⌂⇝ (⌜ add)) (⌜ :nodes)))
+(pair? (graph-query (query-dfg (quote add)) (quote :nodes)))
 
 ; Conditional function: max of two numbers
-(≔ max (λ (a b) (? (> a b) a b)))
+(define max (lambda (a b) (if (> a b) a b)))
 
 ; Test 8: Conditional function DFG is a graph
-(⊝? (⌂⇝ (⌜ max)) (⌜ :DFG))
+(graph? (query-dfg (quote max)) (quote :DFG))
 
 ; Test 9: Conditional function has nodes (operation nodes)
-(⟨⟩? (⊝→ (⌂⇝ (⌜ max)) (⌜ :nodes)))
+(pair? (graph-query (query-dfg (quote max)) (quote :nodes)))
 
 ; Test 10: Conditional function has edges (data dependencies)
-(⟨⟩? (⊝→ (⌂⇝ (⌜ max)) (⌜ :edges)))
+(pair? (graph-query (query-dfg (quote max)) (quote :edges)))
 
 ; Test 11: Nested operations
-(≔ complex (λ (x y) (⊕ (⊗ x #2) (⊘ y #3))))
-(⊝? (⌂⇝ (⌜ complex)) (⌜ :DFG))
+(define complex (lambda (x y) (+ (* x #2) (/ y #3))))
+(graph? (query-dfg (quote complex)) (quote :DFG))
 
 ; Test 12: Multiple parameters tracked
-(⟨⟩? (⊝→ (⌂⇝ (⌜ complex)) (⌜ :entry)))
+(pair? (graph-query (query-dfg (quote complex)) (quote :entry)))

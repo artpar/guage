@@ -1,184 +1,184 @@
 ; Test: Delimited Continuations (shift/reset) and Fiber Correctness
 ; Day 88 - Fiber-based delimited continuations
 ;
-; ⟪⊸⟫ (reset) installs a delimiter, evaluates body in a fiber.
-; ⊸ (shift) captures the current continuation as a one-shot k.
-; The resumable effect system (⟪↺⟫) now uses fibers (O(n) vs O(n²)).
+; handle-linear (reset) installs a delimiter, evaluates body in a fiber.
+; consume (shift) captures the current continuation as a one-shot k.
+; The resumable effect system (handle-resume) now uses fibers (O(n) vs O(n²)).
 
 ; Load iteration macros for ⊎ (begin/sequencing)
-(⋘ "bootstrap/stdlib/macros_iteration.scm")
+(load "bootstrap/stdlib/macros_iteration.scm")
 
 ; ============ Basic Reset (No Shift) ============
 
 ; Reset with no shift — body value passes through
-(⊨ (⌜ :reset-passthrough)
+(test-case (quote :reset-passthrough)
   #42
-  (⟪⊸⟫ #42))
+  (handle-linear #42))
 
 ; Reset with expression body
-(⊨ (⌜ :reset-expr)
+(test-case (quote :reset-expr)
   #10
-  (⟪⊸⟫ (⊕ #3 #7)))
+  (handle-linear (+ #3 #7)))
 
 ; ============ Shift with Resume ============
 
 ; Shift captures k, calls k with value
-(⊨ (⌜ :shift-resume)
+(test-case (quote :shift-resume)
   #12
-  (⟪⊸⟫ (⊕ (⊸ (λ (k) (k #10))) #2)))
+  (handle-linear (+ (consume (lambda (k) (k #10))) #2)))
 
-; k(10) resumes body at shift point → body = (⊕ 10 2) = 12
+; k(10) resumes body at shift point -> body = (+ 10 2) = 12
 
 ; ============ Shift Abort ============
 
 ; Handler doesn't call k — aborts body
-(⊨ (⌜ :shift-abort)
+(test-case (quote :shift-abort)
   #999
-  (⟪⊸⟫ (⊕ (⊸ (λ (k) #999)) #2)))
+  (handle-linear (+ (consume (lambda (k) #999)) #2)))
 
 ; ============ Shift Post-Process ============
 
 ; Handler calls k, then post-processes
-(⊨ (⌜ :shift-post-process)
+(test-case (quote :shift-post-process)
   #84
-  (⟪⊸⟫ (⊸ (λ (k) (⊗ (k #42) #2)))))
+  (handle-linear (consume (lambda (k) (* (k #42) #2)))))
 
-; k(42) → body returns 42 at shift point, handler does 42*2 = 84
+; k(42) -> body returns 42 at shift point, handler does 42*2 = 84
 
 ; ============ Shift with Arithmetic ============
 
-(⊨ (⌜ :shift-add-context)
+(test-case (quote :shift-add-context)
   #52
-  (⟪⊸⟫ (⊕ (⊸ (λ (k) (k #10))) #42)))
+  (handle-linear (+ (consume (lambda (k) (k #10))) #42)))
 
 ; ============ Multiple Shifts in Sequence ============
 
-(⊨ (⌜ :two-shifts)
+(test-case (quote :two-shifts)
   #30
-  (⟪⊸⟫ (⊕ (⊸ (λ (k) (k #10)))
-            (⊸ (λ (k) (k #20))))))
+  (handle-linear (+ (consume (lambda (k) (k #10)))
+            (consume (lambda (k) (k #20))))))
 
 ; ============ Nested Resets ============
 
-(⊨ (⌜ :nested-reset)
+(test-case (quote :nested-reset)
   #42
-  (⟪⊸⟫ (⟪⊸⟫ #42)))
+  (handle-linear (handle-linear #42)))
 
-(⊨ (⌜ :nested-reset-shift)
+(test-case (quote :nested-reset-shift)
   #10
-  (⟪⊸⟫ (⊕ (⟪⊸⟫ (⊸ (λ (k) (k #3)))) #7)))
+  (handle-linear (+ (handle-linear (consume (lambda (k) (k #3)))) #7)))
 
-; Inner reset: shift captures inner k, k(3) → 3. Outer: 3 + 7 = 10
+; Inner reset: shift captures inner k, k(3) -> 3. Outer: 3 + 7 = 10
 
 ; ============ One-Shot Enforcement ============
 
 ; Calling k twice should return error on second call
-(⊨ (⌜ :one-shot-error)
+(test-case (quote :one-shot-error)
   #t
-  (⚠? (⟪⊸⟫ (⊸ (λ (k) (⊎ (k #1) (k #2)))))))
+  (error? (handle-linear (consume (lambda (k) (⊎ (k #1) (k #2)))))))
 
 ; ============ Fiber-backed Resumable Effects (Same Tests as Day 87) ============
 
 ; Verify the fiber rewrite produces identical results to replay-based
 
-(⟪ :State :get :put)
-(⟪ :Ask :prompt)
-(⟪ :Yield :value)
-(⟪ :Choice :choose)
-(⟪ :Math :compute)
+(effect-def :State :get :put)
+(effect-def :Ask :prompt)
+(effect-def :Yield :value)
+(effect-def :Choice :choose)
+(effect-def :Math :compute)
 
 ; Basic resume
-(⊨ (⌜ :fiber-basic-resume)
+(test-case (quote :fiber-basic-resume)
   #42
-  (⟪↺⟫ (↯ :State :get)
+  (handle-resume (perform :State :get)
     (:State
-      (:get (λ (k) (k #42)))
-      (:put (λ (k v) (k ∅))))))
+      (:get (lambda (k) (k #42)))
+      (:put (lambda (k v) (k nil))))))
 
 ; Resume in expression
-(⊨ (⌜ :fiber-resume-in-expr)
+(test-case (quote :fiber-resume-in-expr)
   #43
-  (⟪↺⟫ (⊕ (↯ :State :get) #1)
+  (handle-resume (+ (perform :State :get) #1)
     (:State
-      (:get (λ (k) (k #42)))
-      (:put (λ (k v) (k ∅))))))
+      (:get (lambda (k) (k #42)))
+      (:put (lambda (k v) (k nil))))))
 
 ; Abort (handler doesn't call k)
-(⊨ (⌜ :fiber-abort)
+(test-case (quote :fiber-abort)
   :aborted
-  (⟪↺⟫ (⊕ (↯ :State :get) #1)
+  (handle-resume (+ (perform :State :get) #1)
     (:State
-      (:get (λ (k) :aborted))
-      (:put (λ (k v) :aborted)))))
+      (:get (lambda (k) :aborted))
+      (:put (lambda (k v) :aborted)))))
 
 ; Transform result
-(⊨ (⌜ :fiber-transform)
+(test-case (quote :fiber-transform)
   #84
-  (⟪↺⟫ (↯ :State :get)
+  (handle-resume (perform :State :get)
     (:State
-      (:get (λ (k) (⊗ (k #42) #2)))
-      (:put (λ (k v) (k ∅))))))
+      (:get (lambda (k) (* (k #42) #2)))
+      (:put (lambda (k v) (k nil))))))
 
 ; Two performs (O(n) with fibers, was O(n²) with replay)
-(⊨ (⌜ :fiber-two-performs)
+(test-case (quote :fiber-two-performs)
   #52
-  (⟪↺⟫ (⊕ (↯ :Ask :prompt "x") (↯ :Ask :prompt "y"))
+  (handle-resume (+ (perform :Ask :prompt "x") (perform :Ask :prompt "y"))
     (:Ask
-      (:prompt (λ (k msg)
-        (k (? (≡ msg "x") #10 #42)))))))
+      (:prompt (lambda (k msg)
+        (k (if (equal? msg "x") #10 #42)))))))
 
 ; Three performs
-(⊨ (⌜ :fiber-three-performs)
+(test-case (quote :fiber-three-performs)
   #6
-  (⟪↺⟫ (⊕ (↯ :Ask :prompt "a")
-           (⊕ (↯ :Ask :prompt "b")
-               (↯ :Ask :prompt "c")))
+  (handle-resume (+ (perform :Ask :prompt "a")
+           (+ (perform :Ask :prompt "b")
+               (perform :Ask :prompt "c")))
     (:Ask
-      (:prompt (λ (k msg)
-        (k (? (≡ msg "a") #1
-              (? (≡ msg "b") #2 #3))))))))
+      (:prompt (lambda (k msg)
+        (k (if (equal? msg "a") #1
+              (if (equal? msg "b") #2 #3))))))))
 
 ; Yield/collect pattern
-(⊨ (⌜ :fiber-yield-collect)
-  (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅)))
-  (⟪↺⟫ (⊎ (↯ :Yield :value #1)
-            (↯ :Yield :value #2)
-            (↯ :Yield :value #3)
-            ∅)
+(test-case (quote :fiber-yield-collect)
+  (cons #1 (cons #2 (cons #3 nil)))
+  (handle-resume (⊎ (perform :Yield :value #1)
+            (perform :Yield :value #2)
+            (perform :Yield :value #3)
+            nil)
     (:Yield
-      (:value (λ (k v) (⟨⟩ v (k ∅)))))))
+      (:value (lambda (k v) (cons v (k nil)))))))
 
 ; Choice effect
-(⊨ (⌜ :fiber-choice)
+(test-case (quote :fiber-choice)
   #10
-  (⟪↺⟫ (↯ :Choice :choose #10 #20)
+  (handle-resume (perform :Choice :choose #10 #20)
     (:Choice
-      (:choose (λ (k a b) (k a))))))
+      (:choose (lambda (k a b) (k a))))))
 
 ; Sequential 10+ performs (verify O(n) behavior)
-(⊨ (⌜ :ten-performs)
+(test-case (quote :ten-performs)
   #55
-  (⟪↺⟫ (⊕ (↯ :Ask :prompt "1")
-       (⊕ (↯ :Ask :prompt "2")
-       (⊕ (↯ :Ask :prompt "3")
-       (⊕ (↯ :Ask :prompt "4")
-       (⊕ (↯ :Ask :prompt "5")
-       (⊕ (↯ :Ask :prompt "6")
-       (⊕ (↯ :Ask :prompt "7")
-       (⊕ (↯ :Ask :prompt "8")
-       (⊕ (↯ :Ask :prompt "9")
-          (↯ :Ask :prompt "10"))))))))))
+  (handle-resume (+ (perform :Ask :prompt "1")
+       (+ (perform :Ask :prompt "2")
+       (+ (perform :Ask :prompt "3")
+       (+ (perform :Ask :prompt "4")
+       (+ (perform :Ask :prompt "5")
+       (+ (perform :Ask :prompt "6")
+       (+ (perform :Ask :prompt "7")
+       (+ (perform :Ask :prompt "8")
+       (+ (perform :Ask :prompt "9")
+          (perform :Ask :prompt "10"))))))))))
     (:Ask
-      (:prompt (λ (k msg)
-        (k (? (≡ msg "1") #1
-              (? (≡ msg "2") #2
-              (? (≡ msg "3") #3
-              (? (≡ msg "4") #4
-              (? (≡ msg "5") #5
-              (? (≡ msg "6") #6
-              (? (≡ msg "7") #7
-              (? (≡ msg "8") #8
-              (? (≡ msg "9") #9 #10)))))))))))))))
+      (:prompt (lambda (k msg)
+        (k (if (equal? msg "1") #1
+              (if (equal? msg "2") #2
+              (if (equal? msg "3") #3
+              (if (equal? msg "4") #4
+              (if (equal? msg "5") #5
+              (if (equal? msg "6") #6
+              (if (equal? msg "7") #7
+              (if (equal? msg "8") #8
+              (if (equal? msg "9") #9 #10)))))))))))))))
 
 ; ============ Summary ============
 ; Total: 21 tests

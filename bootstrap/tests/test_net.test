@@ -4,184 +4,184 @@
 ; ===== Address Construction =====
 
 ; IPv4 loopback
-(≔ lo4 (⊸⊙ "127.0.0.1" #8080))
-(⊢ (◈? lo4) :addr-ipv4-is-buffer)
+(define lo4 (net-addr "127.0.0.1" #8080))
+(assert (bytebuf? lo4) :addr-ipv4-is-buffer)
 
 ; IPv6 loopback
-(≔ lo6 (⊸⊙₆ "::1" #8081))
-(⊢ (◈? lo6) :addr-ipv6-is-buffer)
+(define lo6 (net-addr6 "::1" #8081))
+(assert (bytebuf? lo6) :addr-ipv6-is-buffer)
 
 ; Unix domain
-(≔ uaddr (⊸⊙⊘ "/tmp/guage-test.sock"))
-(⊢ (◈? uaddr) :addr-unix-is-buffer)
+(define uaddr (net-addr-unix "/tmp/guage-test.sock"))
+(assert (bytebuf? uaddr) :addr-unix-is-buffer)
 
-; Bad IPv4 → error
-(⊢ (⚠? (⊸⊙ "not-an-ip" #80)) :addr-bad-ipv4)
+; Bad IPv4 -> error
+(assert (error? (net-addr "not-an-ip" #80)) :addr-bad-ipv4)
 
-; Bad IPv6 → error
-(⊢ (⚠? (⊸⊙₆ "not-ipv6" #80)) :addr-bad-ipv6)
+; Bad IPv6 -> error
+(assert (error? (net-addr6 "not-ipv6" #80)) :addr-bad-ipv6)
 
 ; ===== Socket Lifecycle =====
 
 ; Create TCP socket
-(≔ s1 (⊸⊕ :inet :stream #0))
-(⊢ (⊸? s1) :socket-is-socket)
+(define s1 (net-socket :inet :stream #0))
+(assert (net-socket? s1) :socket-is-socket)
 
 ; Close socket
-(⊢ (⊸× s1) :socket-close)
+(assert (net-close s1) :socket-close)
 
-; Double close → error
-(⊢ (⚠? (⊸× s1)) :socket-double-close)
+; Double close -> error
+(assert (error? (net-close s1)) :socket-double-close)
 
 ; Socket predicate on non-socket
-(⊢ (¬ (⊸? #42)) :not-socket-number)
+(assert (not (net-socket? #42)) :not-socket-number)
 
 ; ===== Socketpair Echo =====
 
 ; Create connected pair
-(≔ pair (⊸⊕⊞ :unix :stream))
-(≔ sa (◁ pair))
-(≔ sb (▷ pair))
-(⊢ (⊸? sa) :pair-a-is-socket)
-(⊢ (⊸? sb) :pair-b-is-socket)
+(define pair (net-socketpair :unix :stream))
+(define sa (car pair))
+(define sb (cdr pair))
+(assert (net-socket? sa) :pair-a-is-socket)
+(assert (net-socket? sb) :pair-b-is-socket)
 
 ; Send "hello" through pair
-(≔ hello (≈◈ "hello"))
-(≔ sent (⊸→ sa hello #0))
-(⊨ (⌜ :pair-sent-bytes) #5 sent)
+(define hello (string->bytebuf "hello"))
+(define sent (net-send sa hello #0))
+(test-case (quote :pair-sent-bytes) #5 sent)
 
 ; Receive on other end
-(≔ got (⊸←◈ sb #1024 #0))
-(⊢ (◈? got) :pair-recv-is-buffer)
-(⊨ (⌜ :pair-recv-size) #5 (◈# got))
+(define got (net-recv sb #1024 #0))
+(assert (bytebuf? got) :pair-recv-is-buffer)
+(test-case (quote :pair-recv-size) #5 (bytebuf-size got))
 
 ; Bidirectional: send back
-(≔ reply (≈◈ "world"))
-(⊸→ sb reply #0)
-(≔ got2 (⊸←◈ sa #1024 #0))
-(⊨ (⌜ :pair-echo-size) #5 (◈# got2))
+(define reply (string->bytebuf "world"))
+(net-send sb reply #0)
+(define got2 (net-recv sa #1024 #0))
+(test-case (quote :pair-echo-size) #5 (bytebuf-size got2))
 
 ; Cleanup pair
-(⊸× sa)
-(⊸× sb)
+(net-close sa)
+(net-close sb)
 
 ; ===== Socket Options =====
 
-(≔ s2 (⊸⊕ :inet :stream #0))
+(define s2 (net-socket :inet :stream #0))
 
 ; Set SO_REUSEADDR
-(⊢ (⊸≔ s2 :reuse-addr #1) :setsockopt-reuseaddr)
+(assert (net-setsockopt s2 :reuse-addr #1) :setsockopt-reuseaddr)
 
 ; Get SO_REUSEADDR back (value is non-zero when set; exact value is platform-dependent)
-(⊢ (< #0 (⊸≔→ s2 :reuse-addr)) :getsockopt-reuseaddr)
+(assert (< #0 (net-getsockopt s2 :reuse-addr)) :getsockopt-reuseaddr)
 
 ; Set nonblock
-(⊢ (⊸≔ s2 :nonblock #1) :setsockopt-nonblock)
+(assert (net-setsockopt s2 :nonblock #1) :setsockopt-nonblock)
 
 ; Cleanup
-(⊸× s2)
+(net-close s2)
 
 ; ===== Ring Lifecycle =====
 
 ; Create ring
-(≔ ring (⊸⊚⊕ #64))
-(⊢ (⊸⊚? ring) :ring-is-ring)
-(⊢ (¬ (⊸⊚? #42)) :ring-pred-number)
+(define ring (ring-create #64))
+(assert (ring? ring) :ring-is-ring)
+(assert (not (ring? #42)) :ring-pred-number)
 
 ; ===== Buffer Pool =====
 
 ; Create buffer pool
-(≔ pool (⊸⊚◈⊕ ring #16 #4096))
-(⊢ (¬ (⚠? pool)) :bufpool-created)
+(define pool (ring-buf-create ring #16 #4096))
+(assert (not (error? pool)) :bufpool-created)
 
 ; Get buffer 0 — returns buffer cell
-(≔ b0 (⊸⊚◈→ pool #0))
-(⊢ (◈? b0) :bufpool-get-is-buffer)
+(define b0 (ring-buf-get pool #0))
+(assert (bytebuf? b0) :bufpool-get-is-buffer)
 
 ; Return buffer
-(⊸⊚◈← pool #0)
+(ring-buf-return pool #0)
 
 ; ===== Ring Async: Socketpair Send/Recv =====
 
 ; Create pair for async test
-(≔ ap (⊸⊕⊞ :unix :stream))
-(≔ afd1 (◁ ap))
-(≔ afd2 (▷ ap))
+(define ap (net-socketpair :unix :stream))
+(define afd1 (car ap))
+(define afd2 (cdr ap))
 
 ; Set nonblock for ring ops
-(⊸≔ afd1 :nonblock #1)
-(⊸≔ afd2 :nonblock #1)
+(net-setsockopt afd1 :nonblock #1)
+(net-setsockopt afd2 :nonblock #1)
 
 ; Prep async send on fd1
-(≔ msg (≈◈ "ring-test"))
-(⊸⊚→ ring afd1 msg #100)
+(define msg (string->bytebuf "ring-test"))
+(ring-send ring afd1 msg #100)
 
 ; Submit
-(≔ sub-count (⊸⊚! ring))
-(⊢ (¬ (⚠? sub-count)) :ring-submit-ok)
+(define sub-count (ring-submit ring))
+(assert (not (error? sub-count)) :ring-submit-ok)
 
 ; Prep async recv on fd2 (without buffer pool - uses temp buf)
-(⊸⊚←◈ ring afd2 #0 #200)
-(⊸⊚! ring)
+(ring-recv ring afd2 #0 #200)
+(ring-submit ring)
 
 ; Harvest completions (wait for at least 1, 500ms timeout)
-(≔ cqes (⊸⊚⊲ ring #1 #500))
-(⊢ (¬ (⚠? cqes)) :ring-complete-ok)
-(⊢ (¬ (∅? cqes)) :ring-got-completions)
+(define cqes (ring-complete ring #1 #500))
+(assert (not (error? cqes)) :ring-complete-ok)
+(assert (not (null? cqes)) :ring-got-completions)
 
 ; Check first completion is send or recv
-(≔ cqe1 (◁ cqes))
-(⊢ (⊞? cqe1) :cqe-is-hashmap)
-(⊢ (¬ (⚠? (⊞→ cqe1 :result))) :cqe-has-result)
-(⊢ (¬ (⚠? (⊞→ cqe1 :user-data))) :cqe-has-userdata)
-(⊢ (¬ (⚠? (⊞→ cqe1 :op))) :cqe-has-op)
+(define cqe1 (car cqes))
+(assert (hashmap? cqe1) :cqe-is-hashmap)
+(assert (not (error? (hashmap-get cqe1 :result))) :cqe-has-result)
+(assert (not (error? (hashmap-get cqe1 :user-data))) :cqe-has-userdata)
+(assert (not (error? (hashmap-get cqe1 :op))) :cqe-has-op)
 
 ; Cleanup async pair
-(⊸× afd1)
-(⊸× afd2)
+(net-close afd1)
+(net-close afd2)
 
 ; ===== UDP Loopback =====
 
 ; Create UDP socket pair
-(≔ udp1 (⊸⊕ :inet :dgram #0))
-(≔ udp2 (⊸⊕ :inet :dgram #0))
+(define udp1 (net-socket :inet :dgram #0))
+(define udp2 (net-socket :inet :dgram #0))
 
 ; Bind udp2 to a port (0 = ephemeral)
-(≔ bind-addr (⊸⊙ "127.0.0.1" #0))
-(⊸←≔ udp2 bind-addr)
+(define bind-addr (net-addr "127.0.0.1" #0))
+(net-bind-addr udp2 bind-addr)
 
 ; Get bound address info (we can't easily query the port,
 ; so we test the basic bind succeeded)
-(⊢ (¬ (⚠? udp1)) :udp-socket1)
-(⊢ (¬ (⚠? udp2)) :udp-socket2)
+(assert (not (error? udp1)) :udp-socket1)
+(assert (not (error? udp2)) :udp-socket2)
 
 ; Cleanup
-(⊸× udp1)
-(⊸× udp2)
+(net-close udp1)
+(net-close udp2)
 
 ; ===== Destroy Ring =====
 
 ; Destroy buffer pool first
-(⊸⊚◈× pool)
+(ring-buf-destroy pool)
 
 ; Destroy ring
-(⊸⊚× ring)
+(ring-destroy ring)
 
 ; ===== DNS Resolve =====
 
 ; Resolve localhost
-(≔ addrs (⊸⊙→ "localhost" ∅))
-(⊢ (¬ (⚠? addrs)) :resolve-localhost)
-(⊢ (¬ (∅? addrs)) :resolve-got-results)
+(define addrs (net-resolve "localhost" nil))
+(assert (not (error? addrs)) :resolve-localhost)
+(assert (not (null? addrs)) :resolve-got-results)
 
 ; ===== Error Cases =====
 
 ; Bad fd for send
-(⊢ (⚠? (⊸→ #-1 (≈◈ "x") #0)) :bad-fd-send)
+(assert (error? (net-send #-1 (string->bytebuf "x") #0)) :bad-fd-send)
 
 ; Bad fd for recv
-(⊢ (⚠? (⊸←◈ #-1 #100 #0)) :bad-fd-recv)
+(assert (error? (net-recv #-1 #100 #0)) :bad-fd-recv)
 
 ; Socket type errors
-(⊢ (⚠? (⊸⊕ :bogus :stream #0)) :bad-domain)
-(⊢ (⚠? (⊸⊕ :inet :bogus #0)) :bad-type)
+(assert (error? (net-socket :bogus :stream #0)) :bad-domain)
+(assert (error? (net-socket :inet :bogus #0)) :bad-type)

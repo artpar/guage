@@ -8,7 +8,7 @@
 /* Build test case: (⊨ :test-name expected actual) */
 Cell* testgen_build_test(const char* test_name, Cell* expected, Cell* actual) {
     Cell* name_sym = cell_symbol(test_name);
-    Cell* test = cell_cons(cell_symbol("⊨"),
+    Cell* test = cell_cons(cell_symbol("test-case"),
                  cell_cons(name_sym,
                  cell_cons(expected,
                  cell_cons(actual, cell_nil()))));
@@ -38,19 +38,19 @@ Cell* testgen_binary_arithmetic(const char* name) {
 
     /* Test 1: Normal case - returns number */
     Cell* args1 = cell_cons(cell_number(5), cell_cons(cell_number(3), cell_nil()));
-    Cell* test1 = testgen_build_type_test(name, "normal", "ℕ?", args1);
+    Cell* test1 = testgen_build_type_test(name, "normal", "number?", args1);
     tests = cell_cons(test1, tests);
 
     /* Test 2: Zero operand */
     Cell* args2 = cell_cons(cell_number(0), cell_cons(cell_number(5), cell_nil()));
-    Cell* test2 = testgen_build_type_test(name, "zero", "ℕ?", args2);
+    Cell* test2 = testgen_build_type_test(name, "zero", "number?", args2);
     tests = cell_cons(test2, tests);
 
     /* Test 3: Identity/Special case */
-    if (strcmp(name, "⊕") == 0 || strcmp(name, "⊖") == 0) {
+    if (strcmp(name, "+") == 0 || strcmp(name, "-") == 0) {
         /* 0 + x = x, x - 0 = x */
         Cell* args3 = cell_cons(cell_number(0), cell_cons(cell_number(0), cell_nil()));
-        Cell* test3 = testgen_build_type_test(name, "identity", "ℕ?", args3);
+        Cell* test3 = testgen_build_type_test(name, "identity", "number?", args3);
         tests = cell_cons(test3, tests);
     }
 
@@ -63,17 +63,17 @@ Cell* testgen_comparison(const char* name) {
 
     /* Test 1: Returns boolean */
     Cell* args1 = cell_cons(cell_number(5), cell_cons(cell_number(3), cell_nil()));
-    Cell* test1 = testgen_build_type_test(name, "returns-bool", "𝔹?", args1);
+    Cell* test1 = testgen_build_type_test(name, "returns-bool", "boolean?", args1);
     tests = cell_cons(test1, tests);
 
     /* Test 2: Equal values */
     Cell* args2 = cell_cons(cell_number(5), cell_cons(cell_number(5), cell_nil()));
-    Cell* test2 = testgen_build_type_test(name, "equal-values", "𝔹?", args2);
+    Cell* test2 = testgen_build_type_test(name, "equal-values", "boolean?", args2);
     tests = cell_cons(test2, tests);
 
     /* Test 3: Zero comparison */
     Cell* args3 = cell_cons(cell_number(0), cell_cons(cell_number(5), cell_nil()));
-    Cell* test3 = testgen_build_type_test(name, "with-zero", "𝔹?", args3);
+    Cell* test3 = testgen_build_type_test(name, "with-zero", "boolean?", args3);
     tests = cell_cons(test3, tests);
 
     return tests;
@@ -83,27 +83,27 @@ Cell* testgen_comparison(const char* name) {
 Cell* testgen_logical(const char* name) {
     Cell* tests = cell_nil();
 
-    if (strcmp(name, "¬") == 0) {
+    if (strcmp(name, "not") == 0) {
         /* Unary: not */
         Cell* args1 = cell_cons(cell_bool(true), cell_nil());
-        Cell* test1 = testgen_build_type_test(name, "true", "𝔹?", args1);
+        Cell* test1 = testgen_build_type_test(name, "true", "boolean?", args1);
         tests = cell_cons(test1, tests);
 
         Cell* args2 = cell_cons(cell_bool(false), cell_nil());
-        Cell* test2 = testgen_build_type_test(name, "false", "𝔹?", args2);
+        Cell* test2 = testgen_build_type_test(name, "false", "boolean?", args2);
         tests = cell_cons(test2, tests);
     } else {
         /* Binary: and, or */
         Cell* args1 = cell_cons(cell_bool(true), cell_cons(cell_bool(true), cell_nil()));
-        Cell* test1 = testgen_build_type_test(name, "both-true", "𝔹?", args1);
+        Cell* test1 = testgen_build_type_test(name, "both-true", "boolean?", args1);
         tests = cell_cons(test1, tests);
 
         Cell* args2 = cell_cons(cell_bool(false), cell_cons(cell_bool(false), cell_nil()));
-        Cell* test2 = testgen_build_type_test(name, "both-false", "𝔹?", args2);
+        Cell* test2 = testgen_build_type_test(name, "both-false", "boolean?", args2);
         tests = cell_cons(test2, tests);
 
         Cell* args3 = cell_cons(cell_bool(true), cell_cons(cell_bool(false), cell_nil()));
-        Cell* test3 = testgen_build_type_test(name, "mixed", "𝔹?", args3);
+        Cell* test3 = testgen_build_type_test(name, "mixed", "boolean?", args3);
         tests = cell_cons(test3, tests);
     }
 
@@ -128,7 +128,7 @@ Cell* testgen_predicate(const char* name) {
         char suffix[64];
         snprintf(suffix, sizeof(suffix), "case-%d", i);
         Cell* args = cell_cons(test_values[i], cell_nil());
-        Cell* test = testgen_build_type_test(name, suffix, "𝔹?", args);
+        Cell* test = testgen_build_type_test(name, suffix, "boolean?", args);
         tests = cell_cons(test, tests);
     }
 
@@ -141,18 +141,18 @@ Cell* testgen_pair_construct(const char* name) {
 
     /* Test 1: Creates pair */
     Cell* args1 = cell_cons(cell_number(1), cell_cons(cell_number(2), cell_nil()));
-    Cell* test1 = testgen_build_type_test(name, "creates-pair", "⟨⟩?", args1);
+    Cell* test1 = testgen_build_type_test(name, "creates-pair", "pair?", args1);
     tests = cell_cons(test1, tests);
 
     /* Test 2: With different types */
     Cell* args2 = cell_cons(cell_symbol(":x"), cell_cons(cell_number(42), cell_nil()));
-    Cell* test2 = testgen_build_type_test(name, "mixed-types", "⟨⟩?", args2);
+    Cell* test2 = testgen_build_type_test(name, "mixed-types", "pair?", args2);
     tests = cell_cons(test2, tests);
 
     /* Test 3: Nested pairs */
     Cell* inner = cell_cons(cell_number(3), cell_number(4));
     Cell* args3 = cell_cons(cell_number(1), cell_cons(inner, cell_nil()));
-    Cell* test3 = testgen_build_type_test(name, "nested", "⟨⟩?", args3);
+    Cell* test3 = testgen_build_type_test(name, "nested", "pair?", args3);
     tests = cell_cons(test3, tests);
 
     return tests;
@@ -170,7 +170,7 @@ Cell* testgen_pair_access(const char* name, bool is_car) {
     Cell* args = cell_cons(test_pair, cell_nil());
 
     /* Check it returns a number (from our test pair) */
-    Cell* test = testgen_build_type_test(name, suffix, "ℕ?", args);
+    Cell* test = testgen_build_type_test(name, suffix, "number?", args);
     tests = cell_cons(test, tests);
 
     return tests;
@@ -187,21 +187,21 @@ Cell* testgen_pattern_match(const char* name) {
     snprintf(test1_name, sizeof(test1_name), ":test-%s-wildcard", name);
 
     /* Build: (⌜ _) */
-    Cell* wildcard = cell_cons(cell_symbol("⌜"),
+    Cell* wildcard = cell_cons(cell_symbol("quote"),
                      cell_cons(cell_symbol("_"), cell_nil()));
 
     /* Build: (⟨⟩ :ok ∅) */
-    Cell* result1 = cell_cons(cell_symbol("⟨⟩"),
+    Cell* result1 = cell_cons(cell_symbol("cons"),
                     cell_cons(cell_symbol(":ok"),
                     cell_cons(cell_nil(), cell_nil())));
 
     /* Build: (⟨⟩ (⌜ _) (⟨⟩ :ok ∅)) */
-    Cell* clause1 = cell_cons(cell_symbol("⟨⟩"),
+    Cell* clause1 = cell_cons(cell_symbol("cons"),
                     cell_cons(wildcard,
                     cell_cons(result1, cell_nil())));
 
     /* Build: (⟨⟩ clause1 ∅) */
-    Cell* clauses1 = cell_cons(cell_symbol("⟨⟩"),
+    Cell* clauses1 = cell_cons(cell_symbol("cons"),
                      cell_cons(clause1,
                      cell_cons(cell_nil(), cell_nil())));
 
@@ -211,7 +211,7 @@ Cell* testgen_pattern_match(const char* name) {
                         cell_cons(clauses1, cell_nil())));
 
     /* Build: (≡ (∇ ...) :ok) */
-    Cell* check1 = cell_cons(cell_symbol("≡"),
+    Cell* check1 = cell_cons(cell_symbol("equal?"),
                    cell_cons(match_call1,
                    cell_cons(cell_symbol(":ok"), cell_nil())));
 
@@ -225,20 +225,20 @@ Cell* testgen_pattern_match(const char* name) {
     snprintf(test2_name, sizeof(test2_name), ":test-%s-literal", name);
 
     /* Build: (⌜ #42) */
-    Cell* lit_pattern = cell_cons(cell_symbol("⌜"),
+    Cell* lit_pattern = cell_cons(cell_symbol("quote"),
                         cell_cons(cell_number(42), cell_nil()));
 
     /* Build: (⟨⟩ :matched ∅) */
-    Cell* result2 = cell_cons(cell_symbol("⟨⟩"),
+    Cell* result2 = cell_cons(cell_symbol("cons"),
                     cell_cons(cell_symbol(":matched"),
                     cell_cons(cell_nil(), cell_nil())));
 
     /* Build clause and clauses */
-    Cell* clause2 = cell_cons(cell_symbol("⟨⟩"),
+    Cell* clause2 = cell_cons(cell_symbol("cons"),
                     cell_cons(lit_pattern,
                     cell_cons(result2, cell_nil())));
 
-    Cell* clauses2 = cell_cons(cell_symbol("⟨⟩"),
+    Cell* clauses2 = cell_cons(cell_symbol("cons"),
                      cell_cons(clause2,
                      cell_cons(cell_nil(), cell_nil())));
 
@@ -248,7 +248,7 @@ Cell* testgen_pattern_match(const char* name) {
                         cell_cons(clauses2, cell_nil())));
 
     /* Build check */
-    Cell* check2 = cell_cons(cell_symbol("≡"),
+    Cell* check2 = cell_cons(cell_symbol("equal?"),
                    cell_cons(match_call2,
                    cell_cons(cell_symbol(":matched"), cell_nil())));
 
@@ -260,18 +260,18 @@ Cell* testgen_pattern_match(const char* name) {
     snprintf(test3_name, sizeof(test3_name), ":test-%s-no-match", name);
 
     /* Build: (⌜ #99) pattern that won't match #42 */
-    Cell* no_match_pattern = cell_cons(cell_symbol("⌜"),
+    Cell* no_match_pattern = cell_cons(cell_symbol("quote"),
                              cell_cons(cell_number(99), cell_nil()));
 
-    Cell* result3 = cell_cons(cell_symbol("⟨⟩"),
+    Cell* result3 = cell_cons(cell_symbol("cons"),
                     cell_cons(cell_symbol(":no"),
                     cell_cons(cell_nil(), cell_nil())));
 
-    Cell* clause3 = cell_cons(cell_symbol("⟨⟩"),
+    Cell* clause3 = cell_cons(cell_symbol("cons"),
                     cell_cons(no_match_pattern,
                     cell_cons(result3, cell_nil())));
 
-    Cell* clauses3 = cell_cons(cell_symbol("⟨⟩"),
+    Cell* clauses3 = cell_cons(cell_symbol("cons"),
                      cell_cons(clause3,
                      cell_cons(cell_nil(), cell_nil())));
 
@@ -280,7 +280,7 @@ Cell* testgen_pattern_match(const char* name) {
                         cell_cons(clauses3, cell_nil())));
 
     /* Check that it produces an error */
-    Cell* check3 = cell_cons(cell_symbol("⚠?"),
+    Cell* check3 = cell_cons(cell_symbol("error?"),
                    cell_cons(match_call3, cell_nil()));
 
     Cell* test3 = testgen_build_test(test3_name, cell_bool(true), check3);
@@ -298,13 +298,13 @@ Cell* testgen_quote(const char* name) {
     snprintf(test_name, sizeof(test_name), ":test-%s-prevents-eval", name);
 
     /* Build: (⌜ (⊕ 1 2)) */
-    Cell* expr = cell_cons(cell_symbol("⊕"),
+    Cell* expr = cell_cons(cell_symbol("+"),
                  cell_cons(cell_number(1),
                  cell_cons(cell_number(2), cell_nil())));
     Cell* args = cell_cons(expr, cell_nil());
 
     /* Result should be a pair (the quoted expression) */
-    Cell* test = testgen_build_type_test(name, "prevents-eval", "⟨⟩?", args);
+    Cell* test = testgen_build_type_test(name, "prevents-eval", "pair?", args);
     tests = cell_cons(test, tests);
 
     return tests;
@@ -319,16 +319,16 @@ Cell* testgen_eval(const char* name) {
     snprintf(test_name, sizeof(test_name), ":test-%s-evaluates", name);
 
     /* Build: (⌞ (⌜ (⊕ 1 2))) should return #3 */
-    Cell* inner = cell_cons(cell_symbol("⊕"),
+    Cell* inner = cell_cons(cell_symbol("+"),
                   cell_cons(cell_number(1),
                   cell_cons(cell_number(2), cell_nil())));
-    Cell* quoted = cell_cons(cell_symbol("⌜"),
+    Cell* quoted = cell_cons(cell_symbol("quote"),
                    cell_cons(inner, cell_nil()));
     Cell* eval_call = cell_cons(cell_symbol(name),
                       cell_cons(quoted, cell_nil()));
 
     /* Check result is a number */
-    Cell* check = cell_cons(cell_symbol("ℕ?"),
+    Cell* check = cell_cons(cell_symbol("number?"),
                   cell_cons(eval_call, cell_nil()));
 
     Cell* test = testgen_build_test(test_name, cell_bool(true), check);
@@ -344,7 +344,7 @@ Cell* testgen_error_create(const char* name) {
     /* Test: Creates error */
     Cell* args = cell_cons(cell_symbol(":test-error"),
                  cell_cons(cell_number(42), cell_nil()));
-    Cell* test = testgen_build_type_test(name, "creates-error", "⚠?", args);
+    Cell* test = testgen_build_type_test(name, "creates-error", "error?", args);
     tests = cell_cons(test, tests);
 
     return tests;
@@ -368,8 +368,8 @@ Cell* testgen_polymorphic(const char* name, TypeExpr* type) {
 
     /* Use (⟨⟩? result) as generic "returns something" test */
     /* Actually, better to just check not error */
-    Cell* check = cell_cons(cell_symbol("¬"),
-                  cell_cons(cell_cons(cell_symbol("⚠?"),
+    Cell* check = cell_cons(cell_symbol("not"),
+                  cell_cons(cell_cons(cell_symbol("error?"),
                   cell_cons(prim_call, cell_nil())), cell_nil()));
 
     Cell* test = testgen_build_test(test_name, cell_bool(true), check);
@@ -442,7 +442,7 @@ Cell* testgen_for_primitive(const char* prim_name, TypeExpr* type) {
         type->data.func.to && type->data.func.to->kind == TYPE_FUNC) {
         TypeExpr* ret = type->data.func.to->data.func.to;
         if (ret && ret->kind == TYPE_PAIR) {
-            if (strcmp(prim_name, "⟨⟩") == 0) {
+            if (strcmp(prim_name, "cons") == 0) {
                 return testgen_pair_construct(prim_name);
             }
         }
@@ -451,17 +451,17 @@ Cell* testgen_for_primitive(const char* prim_name, TypeExpr* type) {
     /* Pair access: ⟨α β⟩ → α or ⟨α β⟩ → β */
     if (type->kind == TYPE_FUNC &&
         type->data.func.from && type->data.func.from->kind == TYPE_PAIR) {
-        bool is_car = (strcmp(prim_name, "◁") == 0);
+        bool is_car = (strcmp(prim_name, "car") == 0);
         return testgen_pair_access(prim_name, is_car);
     }
 
     /* Quote: α → α */
-    if (strcmp(prim_name, "⌜") == 0) {
+    if (strcmp(prim_name, "quote") == 0) {
         return testgen_quote(prim_name);
     }
 
     /* Eval: α → β */
-    if (strcmp(prim_name, "⌞") == 0) {
+    if (strcmp(prim_name, "eval") == 0) {
         return testgen_eval(prim_name);
     }
 

@@ -4,178 +4,178 @@
 ; Tests set operations and data flow analysis functions
 
 ; Load the data flow module
-(⋘ "bootstrap/stdlib/dataflow.scm")
+(load "bootstrap/stdlib/dataflow.scm")
 
 ; ═══════════════════════════════════════════════════════════════
 ; Section 1: Set Operations
 ; ═══════════════════════════════════════════════════════════════
 
 ; Test sets
-(≔ set-a (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅))))
-(≔ set-b (⟨⟩ #2 (⟨⟩ #3 (⟨⟩ #4 ∅))))
-(≔ set-c (⟨⟩ #5 (⟨⟩ #6 ∅)))
-(≔ empty-set ∅)
+(define set-a (cons #1 (cons #2 (cons #3 nil))))
+(define set-b (cons #2 (cons #3 (cons #4 nil))))
+(define set-c (cons #5 (cons #6 nil)))
+(define empty-set nil)
 
 ; --- Set Union ---
 
 ; Empty ∪ empty = empty
-(⊨ :union-empty-empty #t (∅? ((∪∪ empty-set) empty-set)))
+(test-case :union-empty-empty #t (null? ((∪∪ empty-set) empty-set)))
 
 ; Set ∪ empty = set
-(⊨ :union-set-empty #3 (# ((∪∪ empty-set) set-a)))
+(test-case :union-set-empty #3 (# ((∪∪ empty-set) set-a)))
 
 ; {1,2,3} ∪ {2,3,4} = {1,2,3,4}
-(⊨ :union-overlap #4 (# ((∪∪ set-b) set-a)))
+(test-case :union-overlap #4 (# ((∪∪ set-b) set-a)))
 
 ; {1,2,3} ∪ {5,6} = {1,2,3,5,6}
-(⊨ :union-disjoint #5 (# ((∪∪ set-c) set-a)))
+(test-case :union-disjoint #5 (# ((∪∪ set-c) set-a)))
 
 ; Union contains all elements from both
-(⊨ :union-has-1 #t ((∋ #1) ((∪∪ set-b) set-a)))
-(⊨ :union-has-4 #t ((∋ #4) ((∪∪ set-b) set-a)))
+(test-case :union-has-1 #t ((∋ #1) ((∪∪ set-b) set-a)))
+(test-case :union-has-4 #t ((∋ #4) ((∪∪ set-b) set-a)))
 
 ; --- Set Intersection ---
 
 ; Empty ∩ anything = empty
-(⊨ :intersect-empty #t (∅? ((∩ set-a) empty-set)))
+(test-case :intersect-empty #t (null? ((∩ set-a) empty-set)))
 
 ; {1,2,3} ∩ {2,3,4} = {2,3}
-(⊨ :intersect-overlap #2 (# ((∩ set-b) set-a)))
-(⊨ :intersect-has-2 #t ((∋ #2) ((∩ set-b) set-a)))
-(⊨ :intersect-has-3 #t ((∋ #3) ((∩ set-b) set-a)))
-(⊨ :intersect-no-1 #f ((∋ #1) ((∩ set-b) set-a)))
-(⊨ :intersect-no-4 #f ((∋ #4) ((∩ set-b) set-a)))
+(test-case :intersect-overlap #2 (# ((∩ set-b) set-a)))
+(test-case :intersect-has-2 #t ((∋ #2) ((∩ set-b) set-a)))
+(test-case :intersect-has-3 #t ((∋ #3) ((∩ set-b) set-a)))
+(test-case :intersect-no-1 #f ((∋ #1) ((∩ set-b) set-a)))
+(test-case :intersect-no-4 #f ((∋ #4) ((∩ set-b) set-a)))
 
 ; Disjoint sets have empty intersection
-(⊨ :intersect-disjoint #t (∅? ((∩ set-c) set-a)))
+(test-case :intersect-disjoint #t (null? ((∩ set-c) set-a)))
 
 ; --- Set Difference ---
 
 ; Empty - anything = empty
-(⊨ :diff-empty #t (∅? ((∖ set-a) empty-set)))
+(test-case :diff-empty #t (null? ((∖ set-a) empty-set)))
 
 ; Anything - empty = anything
-(⊨ :diff-from-empty #3 (# ((∖ empty-set) set-a)))
+(test-case :diff-from-empty #3 (# ((∖ empty-set) set-a)))
 
 ; {1,2,3} - {2,3,4} = {1}
-(⊨ :diff-overlap #1 (# ((∖ set-b) set-a)))
-(⊨ :diff-has-1 #t ((∋ #1) ((∖ set-b) set-a)))
-(⊨ :diff-no-2 #f ((∋ #2) ((∖ set-b) set-a)))
+(test-case :diff-overlap #1 (# ((∖ set-b) set-a)))
+(test-case :diff-has-1 #t ((∋ #1) ((∖ set-b) set-a)))
+(test-case :diff-no-2 #f ((∋ #2) ((∖ set-b) set-a)))
 
 ; Disjoint sets: A - C = A
-(⊨ :diff-disjoint #3 (# ((∖ set-c) set-a)))
+(test-case :diff-disjoint #3 (# ((∖ set-c) set-a)))
 
 ; --- Subset ---
 
 ; Empty is subset of everything
-(⊨ :subset-empty #t ((⊆ set-a) empty-set))
+(test-case :subset-empty #t ((⊆ set-a) empty-set))
 
 ; Set is subset of itself
-(⊨ :subset-self #t ((⊆ set-a) set-a))
+(test-case :subset-self #t ((⊆ set-a) set-a))
 
 ; {2,3} subset of {1,2,3}
-(≔ set-23 (⟨⟩ #2 (⟨⟩ #3 ∅)))
-(⊨ :subset-yes #t ((⊆ set-a) set-23))
+(define set-23 (cons #2 (cons #3 nil)))
+(test-case :subset-yes #t ((⊆ set-a) set-23))
 
 ; {1,2,3} not subset of {2,3}
-(⊨ :subset-no #f ((⊆ set-23) set-a))
+(test-case :subset-no #f ((⊆ set-23) set-a))
 
 ; --- Set Equality ---
 
 ; Empty equals empty
-(⊨ :equal-empty #t ((≡∪ empty-set) empty-set))
+(test-case :equal-empty #t ((≡∪ empty-set) empty-set))
 
 ; Set equals itself
-(⊨ :equal-self #t ((≡∪ set-a) set-a))
+(test-case :equal-self #t ((≡∪ set-a) set-a))
 
 ; Same elements in different order are equal
-(≔ set-a-rev (⟨⟩ #3 (⟨⟩ #2 (⟨⟩ #1 ∅))))
-(⊨ :equal-order #t ((≡∪ set-a-rev) set-a))
+(define set-a-rev (cons #3 (cons #2 (cons #1 nil))))
+(test-case :equal-order #t ((≡∪ set-a-rev) set-a))
 
 ; Different sets are not equal
-(⊨ :equal-no #f ((≡∪ set-b) set-a))
+(test-case :equal-no #f ((≡∪ set-b) set-a))
 
 ; ═══════════════════════════════════════════════════════════════
 ; Section 2: Transfer Functions
 ; ═══════════════════════════════════════════════════════════════
 
 ; Reaching definitions transfer: out = gen ∪ (in - kill)
-(≔ gen1 (⟨⟩ :d1 ∅))
-(≔ kill1 (⟨⟩ :d2 ∅))
-(≔ in1 (⟨⟩ :d2 (⟨⟩ :d3 ∅)))
+(define gen1 (cons :d1 nil))
+(define kill1 (cons :d2 nil))
+(define in1 (cons :d2 (cons :d3 nil)))
 
 ; gen={d1}, kill={d2}, in={d2,d3}
 ; out = {d1} ∪ ({d2,d3} - {d2}) = {d1} ∪ {d3} = {d1,d3}
-(⊨ :transfer-reach-size #2 (# (((⇝⊃-transfer gen1) kill1) in1)))
-(⊨ :transfer-reach-d1 #t ((∋ :d1) (((⇝⊃-transfer gen1) kill1) in1)))
-(⊨ :transfer-reach-d3 #t ((∋ :d3) (((⇝⊃-transfer gen1) kill1) in1)))
-(⊨ :transfer-reach-no-d2 #f ((∋ :d2) (((⇝⊃-transfer gen1) kill1) in1)))
+(test-case :transfer-reach-size #2 (# (((⇝⊃-transfer gen1) kill1) in1)))
+(test-case :transfer-reach-d1 #t ((∋ :d1) (((⇝⊃-transfer gen1) kill1) in1)))
+(test-case :transfer-reach-d3 #t ((∋ :d3) (((⇝⊃-transfer gen1) kill1) in1)))
+(test-case :transfer-reach-no-d2 #f ((∋ :d2) (((⇝⊃-transfer gen1) kill1) in1)))
 
 ; Live variables transfer: in = use ∪ (out - def)
-(≔ use1 (⟨⟩ :x ∅))
-(≔ def1 (⟨⟩ :y ∅))
-(≔ out1 (⟨⟩ :y (⟨⟩ :z ∅)))
+(define use1 (cons :x nil))
+(define def1 (cons :y nil))
+(define out1 (cons :y (cons :z nil)))
 
 ; use={x}, def={y}, out={y,z}
 ; in = {x} ∪ ({y,z} - {y}) = {x} ∪ {z} = {x,z}
-(⊨ :transfer-live-size #2 (# (((⇝←-transfer use1) def1) out1)))
-(⊨ :transfer-live-x #t ((∋ :x) (((⇝←-transfer use1) def1) out1)))
-(⊨ :transfer-live-z #t ((∋ :z) (((⇝←-transfer use1) def1) out1)))
-(⊨ :transfer-live-no-y #f ((∋ :y) (((⇝←-transfer use1) def1) out1)))
+(test-case :transfer-live-size #2 (# (((⇝←-transfer use1) def1) out1)))
+(test-case :transfer-live-x #t ((∋ :x) (((⇝←-transfer use1) def1) out1)))
+(test-case :transfer-live-z #t ((∋ :z) (((⇝←-transfer use1) def1) out1)))
+(test-case :transfer-live-no-y #f ((∋ :y) (((⇝←-transfer use1) def1) out1)))
 
 ; ═══════════════════════════════════════════════════════════════
 ; Section 3: Fixed Point Iteration
 ; ═══════════════════════════════════════════════════════════════
 
 ; Identity function reaches fixed point immediately
-(⊨ :fixpoint-identity #t ((≡∪ (⟨⟩ #1 ∅)) ((⊛⊛ (λ (x) x)) (⟨⟩ #1 ∅))))
+(test-case :fixpoint-identity #t ((≡∪ (cons #1 nil)) ((⊛⊛ (lambda (x) x)) (cons #1 nil))))
 
 ; Function that adds element until size 3 reaches fixed point
-(≔ grow-to-3 (λ (s)
-  (? (≥ (# s) #3)
+(define grow-to-3 (lambda (s)
+  (if (>= (# s) #3)
      s
-     ((∪∪ (⟨⟩ (# s) ∅)) s))))
+     ((∪∪ (cons (# s) nil)) s))))
 
-(⊨ :fixpoint-grow #3 (# ((⊛⊛ grow-to-3) ∅)))
+(test-case :fixpoint-grow #3 (# ((⊛⊛ grow-to-3) nil)))
 
 ; ═══════════════════════════════════════════════════════════════
 ; Section 4: Solution Lookup
 ; ═══════════════════════════════════════════════════════════════
 
 ; Test solution structure: ((node-id (in (out nil))) ...)
-(≔ test-solution
-  (⟨⟩ (⟨⟩ :A (⟨⟩ (⟨⟩ :x ∅) (⟨⟩ (⟨⟩ :y ∅) ∅)))
-      (⟨⟩ (⟨⟩ :B (⟨⟩ (⟨⟩ :z ∅) (⟨⟩ (⟨⟩ :w ∅) ∅)))
-          ∅)))
+(define test-solution
+  (cons (cons :A (cons (cons :x nil) (cons (cons :y nil) nil)))
+      (cons (cons :B (cons (cons :z nil) (cons (cons :w nil) nil)))
+          nil)))
 
 ; Get out set for node A
-(⊨ :get-out-A #t ((∋ :y) ((⇝⊃-get-out :A) test-solution)))
+(test-case :get-out-A #t ((∋ :y) ((⇝⊃-get-out :A) test-solution)))
 
 ; Get out set for node B
-(⊨ :get-out-B #t ((∋ :w) ((⇝⊃-get-out :B) test-solution)))
+(test-case :get-out-B #t ((∋ :w) ((⇝⊃-get-out :B) test-solution)))
 
 ; Get in set for node A
-(⊨ :get-in-A #t ((∋ :x) ((⇝←-get-in :A) test-solution)))
+(test-case :get-in-A #t ((∋ :x) ((⇝←-get-in :A) test-solution)))
 
 ; Missing node returns empty
-(⊨ :get-missing #t (∅? ((⇝⊃-get-out :C) test-solution)))
+(test-case :get-missing #t (null? ((⇝⊃-get-out :C) test-solution)))
 
 ; ═══════════════════════════════════════════════════════════════
 ; Section 5: Meet Operations
 ; ═══════════════════════════════════════════════════════════════
 
 ; Reaching defs meet: union of predecessor outputs
-(⊨ :meet-reach-single #t ((∋ :y) ((⇝⊃-meet (⟨⟩ :A ∅)) test-solution)))
+(test-case :meet-reach-single #t ((∋ :y) ((⇝⊃-meet (cons :A nil)) test-solution)))
 
-(⊨ :meet-reach-multi #2 (# ((⇝⊃-meet (⟨⟩ :A (⟨⟩ :B ∅))) test-solution)))
+(test-case :meet-reach-multi #2 (# ((⇝⊃-meet (cons :A (cons :B nil))) test-solution)))
 
 ; Live vars meet: union of successor inputs
-(⊨ :meet-live-single #t ((∋ :x) ((⇝←-meet (⟨⟩ :A ∅)) test-solution)))
+(test-case :meet-live-single #t ((∋ :x) ((⇝←-meet (cons :A nil)) test-solution)))
 
 ; Available exprs meet: intersection
-(⊨ :meet-avail-empty #t (∅? ((⇝∪-meet ∅) test-solution)))
+(test-case :meet-avail-empty #t (null? ((⇝∪-meet nil) test-solution)))
 
 ; ═══════════════════════════════════════════════════════════════
 ; Summary
 ; ═══════════════════════════════════════════════════════════════
-(≋ "✓ 42 data flow analysis tests complete")
+(print "✓ 42 data flow analysis tests complete")

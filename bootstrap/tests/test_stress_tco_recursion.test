@@ -1,99 +1,99 @@
 ;;; Stress: TCO / Recursion
 ;;; Tier 1 — Single-feature stress test for tail-call optimization
 
-;;; --- 1. sum-acc with N=1,000,000 → verify result 500000500000 ---
+;;; --- 1. sum-acc with N=1,000,000 -> verify result 500000500000 ---
 
-(≔ sum-acc (λ (n acc)
-  (? (≡ n #0) acc
-     (sum-acc (⊖ n #1) (⊕ acc n)))))
+(define sum-acc (lambda (n acc)
+  (if (equal? n #0) acc
+     (sum-acc (- n #1) (+ acc n)))))
 
-(⊨ :tco-sum-million #500000500000 (sum-acc #1000000 #0))
+(test-case :tco-sum-million #500000500000 (sum-acc #1000000 #0))
 
 ;;; --- 2. Mutual recursion even?/odd? with N=500,000 ---
 
-(≔ stress-even? (λ (n)
-  (? (≡ n #0) #t (stress-odd? (⊖ n #1)))))
+(define stress-even? (lambda (n)
+  (if (equal? n #0) #t (stress-odd? (- n #1)))))
 
-(≔ stress-odd? (λ (n)
-  (? (≡ n #0) #f (stress-even? (⊖ n #1)))))
+(define stress-odd? (lambda (n)
+  (if (equal? n #0) #f (stress-even? (- n #1)))))
 
-(⊨ :tco-mutual-even #t (stress-even? #500000))
-(⊨ :tco-mutual-odd #f (stress-odd? #500000))
+(test-case :tco-mutual-even #t (stress-even? #500000))
+(test-case :tco-mutual-odd #f (stress-odd? #500000))
 
 ;;; --- 3. Fibonacci via TCO accumulator N=100,000 ---
 
-(≔ fib-acc (λ (n a b)
-  (? (≡ n #0) a
-     (fib-acc (⊖ n #1) b (⊕ a b)))))
+(define fib-acc (lambda (n a b)
+  (if (equal? n #0) a
+     (fib-acc (- n #1) b (+ a b)))))
 
 ;; We can't verify the exact huge number, but verify it completes and is > 0
-(≔ fib-result (fib-acc #100000 #0 #1))
-(⊨ :tco-fib-completes #t (> fib-result #0))
+(define fib-result (fib-acc #100000 #0 #1))
+(test-case :tco-fib-completes #t (> fib-result #0))
 
 ;;; --- 4. Countdown from 2,000,000 to 0 (pure TCO, zero alloc beyond counter) ---
 
-(≔ countdown (λ (n)
-  (? (≡ n #0) :done
-     (countdown (⊖ n #1)))))
+(define countdown (lambda (n)
+  (if (equal? n #0) :done
+     (countdown (- n #1)))))
 
-(⊨ :tco-countdown :done (countdown #2000000))
+(test-case :tco-countdown :done (countdown #2000000))
 
 ;;; --- 5. Nested tail calls A→B→C→A in tail position, 100,000 cycles ---
 
-(≔ chain-a (λ (n)
-  (? (≡ n #0) :done-chain
-     (chain-b (⊖ n #1)))))
+(define chain-a (lambda (n)
+  (if (equal? n #0) :done-chain
+     (chain-b (- n #1)))))
 
-(≔ chain-b (λ (n)
+(define chain-b (lambda (n)
   (chain-c n)))
 
-(≔ chain-c (λ (n)
+(define chain-c (lambda (n)
   (chain-a n)))
 
-(⊨ :tco-chain-100k :done-chain (chain-a #100000))
+(test-case :tco-chain-100k :done-chain (chain-a #100000))
 
 ;;; --- 6. Non-tail recursion depth probe: find max safe depth ---
 ;;; We test that depth 5000 works (non-TCO, actual stack usage)
 
-(≔ non-tail-sum (λ (n)
-  (? (≡ n #0) #0
-     (⊕ n (non-tail-sum (⊖ n #1))))))
+(define non-tail-sum (lambda (n)
+  (if (equal? n #0) #0
+     (+ n (non-tail-sum (- n #1))))))
 
-(⊨ :non-tail-5000 #12502500 (non-tail-sum #5000))
+(test-case :non-tail-5000 #12502500 (non-tail-sum #5000))
 
 ;;; --- 7. apply-n-times identity function 1,000,000 times ---
 
-(≔ apply-n-times (λ (f n x)
-  (? (≡ n #0) x
-     (apply-n-times f (⊖ n #1) (f x)))))
+(define apply-n-times (lambda (f n x)
+  (if (equal? n #0) x
+     (apply-n-times f (- n #1) (f x)))))
 
-(≔ identity (λ (x) x))
+(define identity (lambda (x) x))
 
-(⊨ :tco-apply-million #42 (apply-n-times identity #1000000 #42))
+(test-case :tco-apply-million #42 (apply-n-times identity #1000000 #42))
 
 ;;; --- 8. TCO with accumulator building: product of 1..20 ---
 
-(≔ product-acc (λ (n acc)
-  (? (≡ n #0) acc
-     (product-acc (⊖ n #1) (⊗ acc n)))))
+(define product-acc (lambda (n acc)
+  (if (equal? n #0) acc
+     (product-acc (- n #1) (* acc n)))))
 
-(⊨ :tco-product-20 #2432902008176640000 (product-acc #20 #1))
+(test-case :tco-product-20 #2432902008176640000 (product-acc #20 #1))
 
 ;;; --- 9. Ackermann-like bounded: deeply nested calls ---
 ;;; A(2, n) = 2n+3, test with large n via TCO helper
 
-(≔ ack2 (λ (n acc)
-  (? (≡ n #0) (⊕ acc #3)
-     (ack2 (⊖ n #1) (⊕ acc #2)))))
+(define ack2 (lambda (n acc)
+  (if (equal? n #0) (+ acc #3)
+     (ack2 (- n #1) (+ acc #2)))))
 
-(⊨ :tco-ack2-50000 #100003 (ack2 #50000 #0))
+(test-case :tco-ack2-50000 #100003 (ack2 #50000 #0))
 
 ;;; --- 10. Rapid alternating: inc/dec cycle 500,000 times, net zero ---
 
-(≔ alt-loop (λ (n acc)
-  (? (≡ n #0) acc
-     (? (≡ (% n #2) #0)
-        (alt-loop (⊖ n #1) (⊕ acc #1))
-        (alt-loop (⊖ n #1) (⊖ acc #1))))))
+(define alt-loop (lambda (n acc)
+  (if (equal? n #0) acc
+     (if (equal? (% n #2) #0)
+        (alt-loop (- n #1) (+ acc #1))
+        (alt-loop (- n #1) (- acc #1))))))
 
-(⊨ :tco-alternating #0 (alt-loop #500000 #0))
+(test-case :tco-alternating #0 (alt-loop #500000 #0))

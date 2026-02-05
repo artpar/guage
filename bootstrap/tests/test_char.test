@@ -2,58 +2,58 @@
 ; Day 119
 
 ; 1. char-code-basic — get code of 'A'
-(⊨ (⌜ :char-code-basic) #65 (≈→# "A" #0))
+(test-case (quote :char-code-basic) #65 (string-char-code "A" #0))
 
 ; 2. char-code-lowercase — get code of 'a'
-(⊨ (⌜ :char-code-lowercase) #97 (≈→# "a" #0))
+(test-case (quote :char-code-lowercase) #97 (string-char-code "a" #0))
 
 ; 3. char-code-digit — get code of '0'
-(⊨ (⌜ :char-code-digit) #48 (≈→# "0" #0))
+(test-case (quote :char-code-digit) #48 (string-char-code "0" #0))
 
 ; 4. char-code-space — get code of space
-(⊨ (⌜ :char-code-space) #32 (≈→# " " #0))
+(test-case (quote :char-code-space) #32 (string-char-code " " #0))
 
-; 5. char-code-index — get code at position 4 of "Hello" → 'o' = 111
-(⊨ (⌜ :char-code-index) #111 (≈→# "Hello" #4))
+; 5. char-code-index — get code at position 4 of "Hello" -> 'o' = 111
+(test-case (quote :char-code-index) #111 (string-char-code "Hello" #4))
 
 ; 6. char-code-bounds — out of bounds returns error
-(⊨ (⌜ :char-code-bounds) #t (⚠? (≈→# "x" #5)))
+(test-case (quote :char-code-bounds) #t (error? (string-char-code "x" #5)))
 
-; 7. code-to-char-basic — code 65 → "A"
-(⊨ (⌜ :code-to-char-basic) "A" (#→≈ #65))
+; 7. code-to-char-basic — code 65 -> "A"
+(test-case (quote :code-to-char-basic) "A" (code->char #65))
 
-; 8. code-to-char-digit — code 48 → "0"
-(⊨ (⌜ :code-to-char-digit) "0" (#→≈ #48))
+; 8. code-to-char-digit — code 48 -> "0"
+(test-case (quote :code-to-char-digit) "0" (code->char #48))
 
-; 9. code-to-char-space — code 32 → " "
-(⊨ (⌜ :code-to-char-space) " " (#→≈ #32))
+; 9. code-to-char-space — code 32 -> " "
+(test-case (quote :code-to-char-space) " " (code->char #32))
 
 ; 10. code-to-char-invalid — negative code returns error
-(⊨ (⌜ :code-to-char-invalid) #t (⚠? (#→≈ #-1)))
+(test-case (quote :code-to-char-invalid) #t (error? (code->char #-1)))
 
 ; 11. code-to-char-too-high — code > 127 returns error
-(⊨ (⌜ :code-to-char-too-high) #t (⚠? (#→≈ #200)))
+(test-case (quote :code-to-char-too-high) #t (error? (code->char #200)))
 
 ; 12. upcase-basic — lowercase to uppercase
-(⊨ (⌜ :upcase-basic) "HELLO" (≈↑ "hello"))
+(test-case (quote :upcase-basic) "HELLO" (string-upcase "hello"))
 
 ; 13. upcase-mixed — mixed case + spaces
-(⊨ (⌜ :upcase-mixed) "HELLO WORLD" (≈↑ "Hello World"))
+(test-case (quote :upcase-mixed) "HELLO WORLD" (string-upcase "Hello World"))
 
 ; 14. upcase-numbers — numbers unchanged
-(⊨ (⌜ :upcase-numbers) "ABC123" (≈↑ "abc123"))
+(test-case (quote :upcase-numbers) "ABC123" (string-upcase "abc123"))
 
 ; 15. upcase-empty — empty string
-(⊨ (⌜ :upcase-empty) "" (≈↑ ""))
+(test-case (quote :upcase-empty) "" (string-upcase ""))
 
 ; 16. downcase-basic — uppercase to lowercase
-(⊨ (⌜ :downcase-basic) "hello" (≈↓ "HELLO"))
+(test-case (quote :downcase-basic) "hello" (string-downcase "HELLO"))
 
 ; 17. downcase-mixed — mixed case + spaces
-(⊨ (⌜ :downcase-mixed) "hello world" (≈↓ "Hello World"))
+(test-case (quote :downcase-mixed) "hello world" (string-downcase "Hello World"))
 
 ; 18. roundtrip — upcase then downcase
-(⊨ (⌜ :roundtrip) "test" (≈↓ (≈↑ "Test")))
+(test-case (quote :roundtrip) "test" (string-downcase (string-upcase "Test")))
 
 ; 19. char-code-roundtrip — code→char→code
-(⊨ (⌜ :char-code-roundtrip) #65 (≈→# (#→≈ #65) #0))
+(test-case (quote :char-code-roundtrip) #65 (string-char-code (code->char #65) #0))

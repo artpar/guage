@@ -11,129 +11,129 @@
 ; ═══════════════════════════════════════════════════════════════
 
 ; Test 1: Variadic add using rest splice
-(⧉⊜ sum
+(macro-rules sum
   (() #0)
   (($x) $x)
-  (($x $rest ...) (⊕ $x (sum $rest ...))))
+  (($x $rest ...) (+ $x (sum $rest ...))))
 
-(⊨ :sum-empty #0 (sum))
-(⊨ :sum-one #5 (sum #5))
-(⊨ :sum-two #7 (sum #3 #4))
-(⊨ :sum-three #10 (sum #2 #3 #5))
-(⊨ :sum-five #15 (sum #1 #2 #3 #4 #5))
-(⊨ :sum-ten #55 (sum #1 #2 #3 #4 #5 #6 #7 #8 #9 #10))
+(test-case :sum-empty #0 (sum))
+(test-case :sum-one #5 (sum #5))
+(test-case :sum-two #7 (sum #3 #4))
+(test-case :sum-three #10 (sum #2 #3 #5))
+(test-case :sum-five #15 (sum #1 #2 #3 #4 #5))
+(test-case :sum-ten #55 (sum #1 #2 #3 #4 #5 #6 #7 #8 #9 #10))
 
 ; ═══════════════════════════════════════════════════════════════
 ; Section 2: Variadic List Builder
 ; ═══════════════════════════════════════════════════════════════
 
 ; Test 2: Build list recursively
-(⧉⊜ my-list
-  (() ∅)
-  (($first $rest ...) (⟨⟩ $first (my-list $rest ...))))
+(macro-rules my-list
+  (() nil)
+  (($first $rest ...) (cons $first (my-list $rest ...))))
 
-(⊨ :mylist-empty ∅ (my-list))
-(⊨ :mylist-one (⟨⟩ #1 ∅) (my-list #1))
-(⊨ :mylist-three-head #1 (◁ (my-list #1 #2 #3)))
-(⊨ :mylist-three-second #2 (◁ (▷ (my-list #1 #2 #3))))
-(⊨ :mylist-three-third #3 (◁ (▷ (▷ (my-list #1 #2 #3)))))
+(test-case :mylist-empty nil (my-list))
+(test-case :mylist-one (cons #1 nil) (my-list #1))
+(test-case :mylist-three-head #1 (car (my-list #1 #2 #3)))
+(test-case :mylist-three-second #2 (car (cdr (my-list #1 #2 #3))))
+(test-case :mylist-three-third #3 (car (cdr (cdr (my-list #1 #2 #3)))))
 
 ; ═══════════════════════════════════════════════════════════════
 ; Section 3: Variadic and*/or* with Short-Circuit
 ; ═══════════════════════════════════════════════════════════════
 
 ; NOTE: In Guage, only #t is truthy. Numbers are NOT truthy.
-; So (? #1 :yes :no) returns :no
+; So (if #1 :yes :no) returns :no
 
 ; Test 3: Variadic and - short circuit (uses #t/#f explicitly)
-(⧉⊜ all
+(macro-rules all
   (() #t)
   (($x) $x)
-  (($x $rest ...) (? $x (all $rest ...) #f)))
+  (($x $rest ...) (if $x (all $rest ...) #f)))
 
-(⊨ :all-empty #t (all))
-(⊨ :all-one-true #t (all #t))
-(⊨ :all-one-false #f (all #f))
-(⊨ :all-two-true #t (all #t #t))
-(⊨ :all-short-circuit #f (all #t #f #t))
-(⊨ :all-five #t (all #t #t #t #t #t))
-(⊨ :all-many #t (all #t #t #t #t #t #t #t #t #t #t))
+(test-case :all-empty #t (all))
+(test-case :all-one-true #t (all #t))
+(test-case :all-one-false #f (all #f))
+(test-case :all-two-true #t (all #t #t))
+(test-case :all-short-circuit #f (all #t #f #t))
+(test-case :all-five #t (all #t #t #t #t #t))
+(test-case :all-many #t (all #t #t #t #t #t #t #t #t #t #t))
 
 ; Test 4: Variadic or - short circuit
-(⧉⊜ any
+(macro-rules any
   (() #f)
   (($x) $x)
-  (($x $rest ...) (? $x #t (any $rest ...))))
+  (($x $rest ...) (if $x #t (any $rest ...))))
 
-(⊨ :any-empty #f (any))
-(⊨ :any-one-true #t (any #t))
-(⊨ :any-one-false #f (any #f))
-(⊨ :any-find-first #t (any #t #f #f))
-(⊨ :any-skip-false #t (any #f #t #f))
-(⊨ :any-all-false #f (any #f #f #f))
-(⊨ :any-many-false #t (any #f #f #f #f #f #f #f #f #f #t))
+(test-case :any-empty #f (any))
+(test-case :any-one-true #t (any #t))
+(test-case :any-one-false #f (any #f))
+(test-case :any-find-first #t (any #t #f #f))
+(test-case :any-skip-false #t (any #f #t #f))
+(test-case :any-all-false #f (any #f #f #f))
+(test-case :any-many-false #t (any #f #f #f #f #f #f #f #f #f #t))
 
 ; ═══════════════════════════════════════════════════════════════
 ; Section 4: Variadic Product
 ; ═══════════════════════════════════════════════════════════════
 
 ; Test 5: Variadic multiply
-(⧉⊜ product
+(macro-rules product
   (() #1)
   (($x) $x)
-  (($x $rest ...) (⊗ $x (product $rest ...))))
+  (($x $rest ...) (* $x (product $rest ...))))
 
-(⊨ :product-empty #1 (product))
-(⊨ :product-one #5 (product #5))
-(⊨ :product-two #12 (product #3 #4))
-(⊨ :product-five #120 (product #1 #2 #3 #4 #5))
+(test-case :product-empty #1 (product))
+(test-case :product-one #5 (product #5))
+(test-case :product-two #12 (product #3 #4))
+(test-case :product-five #120 (product #1 #2 #3 #4 #5))
 
 ; ═══════════════════════════════════════════════════════════════
 ; Section 5: First + Rest Pattern with Fixed Args
 ; ═══════════════════════════════════════════════════════════════
 
 ; Test 6: Two fixed args plus rest
-(⧉⊜ sum-from
-  (($start $step $rest ...) (⊕ $start (⊕ $step (sum $rest ...)))))
+(macro-rules sum-from
+  (($start $step $rest ...) (+ $start (+ $step (sum $rest ...)))))
 
-(⊨ :sum-from-three #10 (sum-from #1 #2 #3 #4))
-(⊨ :sum-from-base #3 (sum-from #1 #2))
+(test-case :sum-from-three #10 (sum-from #1 #2 #3 #4))
+(test-case :sum-from-base #3 (sum-from #1 #2))
 
 ; ═══════════════════════════════════════════════════════════════
 ; Section 6: Keyword Dispatch with Rest
 ; ═══════════════════════════════════════════════════════════════
 
 ; Test 7: Different operations based on keyword
-(⧉⊜ calc
+(macro-rules calc
   ((:sum $rest ...) (sum $rest ...))
   ((:product $rest ...) (product $rest ...))
   ((:count $rest ...) (count-args $rest ...)))
 
 ; Helper for count
-(⧉⊜ count-args
+(macro-rules count-args
   (() #0)
-  (($x $rest ...) (⊕ #1 (count-args $rest ...))))
+  (($x $rest ...) (+ #1 (count-args $rest ...))))
 
-(⊨ :calc-sum #10 (calc :sum #1 #2 #3 #4))
-(⊨ :calc-product #24 (calc :product #1 #2 #3 #4))
-(⊨ :calc-count #5 (calc :count :a :b :c :d :e))
+(test-case :calc-sum #10 (calc :sum #1 #2 #3 #4))
+(test-case :calc-product #24 (calc :product #1 #2 #3 #4))
+(test-case :calc-count #5 (calc :count :a :b :c :d :e))
 
 ; ═══════════════════════════════════════════════════════════════
 ; Section 7: Unlimited Arity cond
 ; ═══════════════════════════════════════════════════════════════
 
 ; Test 8: Variadic cond using rest
-(⧉⊜ cond*
-  (() ∅)
-  ((($c $r)) (? $c $r ∅))
-  ((($c $r) $rest ...) (? $c $r (cond* $rest ...))))
+(macro-rules cond*
+  (() nil)
+  ((($c $r)) (if $c $r nil))
+  ((($c $r) $rest ...) (if $c $r (cond* $rest ...))))
 
-(⊨ :cond-one-true :yes (cond* (#t :yes)))
-(⊨ :cond-one-false ∅ (cond* (#f :no)))
-(⊨ :cond-two-first :first (cond* (#t :first) (#t :second)))
-(⊨ :cond-two-second :second (cond* (#f :first) (#t :second)))
-(⊨ :cond-three :third (cond* (#f :a) (#f :b) (#t :third)))
-(⊨ :cond-ten :ten (cond*
+(test-case :cond-one-true :yes (cond* (#t :yes)))
+(test-case :cond-one-false nil (cond* (#f :no)))
+(test-case :cond-two-first :first (cond* (#t :first) (#t :second)))
+(test-case :cond-two-second :second (cond* (#f :first) (#t :second)))
+(test-case :cond-three :third (cond* (#f :a) (#f :b) (#t :third)))
+(test-case :cond-ten :ten (cond*
   (#f :1) (#f :2) (#f :3) (#f :4) (#f :5)
   (#f :6) (#f :7) (#f :8) (#f :9) (#t :ten)))
 
@@ -142,53 +142,53 @@
 ; ═══════════════════════════════════════════════════════════════
 
 ; Test 9: Variadic max
-(⧉⊜ max*
+(macro-rules max*
   (($x) $x)
-  (($x $y $rest ...) (max* (? (> $x $y) $x $y) $rest ...)))
+  (($x $y $rest ...) (max* (if (> $x $y) $x $y) $rest ...)))
 
-(⊨ :max-one #42 (max* #42))
-(⊨ :max-two #10 (max* #5 #10))
-(⊨ :max-three #30 (max* #10 #30 #20))
-(⊨ :max-five #100 (max* #1 #100 #50 #75 #25))
+(test-case :max-one #42 (max* #42))
+(test-case :max-two #10 (max* #5 #10))
+(test-case :max-three #30 (max* #10 #30 #20))
+(test-case :max-five #100 (max* #1 #100 #50 #75 #25))
 
 ; Test 10: Variadic min
-(⧉⊜ min*
+(macro-rules min*
   (($x) $x)
-  (($x $y $rest ...) (min* (? (< $x $y) $x $y) $rest ...)))
+  (($x $y $rest ...) (min* (if (< $x $y) $x $y) $rest ...)))
 
-(⊨ :min-one #42 (min* #42))
-(⊨ :min-two #5 (min* #5 #10))
-(⊨ :min-three #10 (min* #10 #30 #20))
-(⊨ :min-five #1 (min* #1 #100 #50 #75 #25))
+(test-case :min-one #42 (min* #42))
+(test-case :min-two #5 (min* #5 #10))
+(test-case :min-three #10 (min* #10 #30 #20))
+(test-case :min-five #1 (min* #1 #100 #50 #75 #25))
 
 ; ═══════════════════════════════════════════════════════════════
 ; Section 9: Rest Pattern with Empty Capture
 ; ═══════════════════════════════════════════════════════════════
 
 ; Test 11: Handle empty rest gracefully
-(⧉⊜ maybe-sum
+(macro-rules maybe-sum
   (() :no-args)
-  (($x) (⟨⟩ :one $x))
-  (($x $y $rest ...) (⟨⟩ :many (sum $x $y $rest ...))))
+  (($x) (cons :one $x))
+  (($x $y $rest ...) (cons :many (sum $x $y $rest ...))))
 
-(⊨ :maybe-empty :no-args (maybe-sum))
-(⊨ :maybe-one-tag :one (◁ (maybe-sum #5)))
-(⊨ :maybe-one-val #5 (▷ (maybe-sum #5)))          ; cdr is the value directly (dotted pair)
-(⊨ :maybe-many-tag :many (◁ (maybe-sum #1 #2 #3)))
-(⊨ :maybe-many-sum #6 (▷ (maybe-sum #1 #2 #3)))   ; cdr is the sum result
+(test-case :maybe-empty :no-args (maybe-sum))
+(test-case :maybe-one-tag :one (car (maybe-sum #5)))
+(test-case :maybe-one-val #5 (cdr (maybe-sum #5)))          ; cdr is the value directly (dotted pair)
+(test-case :maybe-many-tag :many (car (maybe-sum #1 #2 #3)))
+(test-case :maybe-many-sum #6 (cdr (maybe-sum #1 #2 #3)))   ; cdr is the sum result
 
 ; ═══════════════════════════════════════════════════════════════
 ; Section 10: Deeply Nested Rest Patterns
 ; ═══════════════════════════════════════════════════════════════
 
 ; Test 12: Nested call with rest splice
-(⧉⊜ wrap-sum
-  (($rest ...) (⟨⟩ :result (sum $rest ...))))
+(macro-rules wrap-sum
+  (($rest ...) (cons :result (sum $rest ...))))
 
-(⊨ :wrap-empty (⟨⟩ :result #0) (wrap-sum))
-(⊨ :wrap-three (⟨⟩ :result #6) (wrap-sum #1 #2 #3))
+(test-case :wrap-empty (cons :result #0) (wrap-sum))
+(test-case :wrap-three (cons :result #6) (wrap-sum #1 #2 #3))
 
 ; ═══════════════════════════════════════════════════════════════
 ; Summary
 ; ═══════════════════════════════════════════════════════════════
-(≋ "✓ 51 Rest pattern syntax tests complete")
+(print "✓ 51 Rest pattern syntax tests complete")

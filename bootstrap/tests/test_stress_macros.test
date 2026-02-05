@@ -3,96 +3,96 @@
 
 ;;; --- Define utility macros ---
 
-(⧉ twice (expr) (⌞̃ (⊕ (~ expr) (~ expr))))
-(⧉ when (c b) (⌞̃ (? (~ c) (~ b) ∅)))
-(⧉ unless (c b) (⌞̃ (? (~ c) ∅ (~ b))))
-(⧉ safe-div (x y) (⌞̃ (? (≡ (~ y) #0) (⚠ :div-by-zero ∅) (⊘ (~ x) (~ y)))))
-(⧉ let1 (var val body) (⌞̃ ((λ ((~ var)) (~ body)) (~ val))))
+(macro twice (expr) (quasiquote-tilde (+ (~ expr) (~ expr))))
+(macro when (c b) (quasiquote-tilde (if (~ c) (~ b) nil)))
+(macro unless (c b) (quasiquote-tilde (if (~ c) nil (~ b))))
+(macro safe-div (x y) (quasiquote-tilde (if (equal? (~ y) #0) (error :div-by-zero nil) (/ (~ x) (~ y)))))
+(macro let1 (var val body) (quasiquote-tilde ((lambda ((~ var)) (~ body)) (~ val))))
 
 ;;; --- 1. `twice` nested 10 deep: result should be 1024 (2^10) ---
 
-(⊨ :macro-twice-10
+(test-case :macro-twice-10
   #1024
   (twice (twice (twice (twice (twice (twice (twice (twice (twice (twice #1)))))))))))
 
 ;;; --- 2. Macro generating 50-element computation ---
 
-(⧉ add8 (a b c d e f g h) (⌞̃ (⊕ (~ a) (⊕ (~ b) (⊕ (~ c) (⊕ (~ d) (⊕ (~ e) (⊕ (~ f) (⊕ (~ g) (~ h))))))))))
+(macro add8 (a b c d e f g h) (quasiquote-tilde (+ (~ a) (+ (~ b) (+ (~ c) (+ (~ d) (+ (~ e) (+ (~ f) (+ (~ g) (~ h))))))))))
 
-(≔ macro-50-loop (λ (i acc)
-  (? (≡ i #0) acc
-     (macro-50-loop (⊖ i #1) (⊕ acc (add8 #1 #2 #3 #4 #5 #6 #7 #8))))))
+(define macro-50-loop (lambda (i acc)
+  (if (equal? i #0) acc
+     (macro-50-loop (- i #1) (+ acc (add8 #1 #2 #3 #4 #5 #6 #7 #8))))))
 
 ;; 36 * 1000 = 36000
-(⊨ :macro-8param-1k #36000 (macro-50-loop #1000 #0))
+(test-case :macro-8param-1k #36000 (macro-50-loop #1000 #0))
 
 ;;; --- 3. `when`/`unless` called 10,000 times in sequenced block ---
 
-(≔ when-count-box (□ #0))
+(define when-count-box (box #0))
 
-(≔ when-loop (λ (i)
-  (? (≡ i #0) (□→ when-count-box)
-     (⪢
-       (when #t (□← when-count-box (⊕ (□→ when-count-box) #1)))
-       (unless #t (□← when-count-box (⊕ (□→ when-count-box) #100)))
-       (when-loop (⊖ i #1))))))
+(define when-loop (lambda (i)
+  (if (equal? i #0) (unbox when-count-box)
+     (begin
+       (when #t (box-set! when-count-box (+ (unbox when-count-box) #1)))
+       (unless #t (box-set! when-count-box (+ (unbox when-count-box) #100)))
+       (when-loop (- i #1))))))
 
-(⊨ :macro-when-10k #10000 (when-loop #10000))
+(test-case :macro-when-10k #10000 (when-loop #10000))
 
 ;;; --- 4. 3-level macro indirection ---
 
-(⧉ level-c (x) (⌞̃ (⊗ (~ x) #3)))
-(⧉ level-b (x) (⌞̃ (level-c (⊕ (~ x) #1))))
-(⧉ level-a (x) (⌞̃ (level-b (⊗ (~ x) #2))))
+(macro level-c (x) (quasiquote-tilde (* (~ x) #3)))
+(macro level-b (x) (quasiquote-tilde (level-c (+ (~ x) #1))))
+(macro level-a (x) (quasiquote-tilde (level-b (* (~ x) #2))))
 
 ;; level-a(5) = level-b(10) = level-c(11) = 33
-(⊨ :macro-3-level #33 (level-a #5))
+(test-case :macro-3-level #33 (level-a #5))
 
 ;; Loop it 5000 times
-(≔ level-loop (λ (i acc)
-  (? (≡ i #0) acc
-     (level-loop (⊖ i #1) (⊕ acc (level-a #1))))))
+(define level-loop (lambda (i acc)
+  (if (equal? i #0) acc
+     (level-loop (- i #1) (+ acc (level-a #1))))))
 
 ;; level-a(1) = level-b(2) = level-c(3) = 9; 9 * 5000 = 45000
-(⊨ :macro-3-level-5k #45000 (level-loop #5000 #0))
+(test-case :macro-3-level-5k #45000 (level-loop #5000 #0))
 
 ;;; --- 5. let1-style macro 50-deep nested chain ---
 
-(⊨ :macro-let1-nested #50
+(test-case :macro-let1-nested #50
   (let1 a #1
-    (let1 b (⊕ a #1)
-      (let1 c (⊕ b #1)
-        (let1 d (⊕ c #1)
-          (let1 e (⊕ d #1)
-            (let1 f (⊕ e #1)
-              (let1 g (⊕ f #1)
-                (let1 h (⊕ g #1)
-                  (let1 i (⊕ h #1)
-                    (let1 j (⊕ i #1)
-                      (⊗ j #5))))))))))))
+    (let1 b (+ a #1)
+      (let1 c (+ b #1)
+        (let1 d (+ c #1)
+          (let1 e (+ d #1)
+            (let1 f (+ e #1)
+              (let1 g (+ f #1)
+                (let1 h (+ g #1)
+                  (let1 i (+ h #1)
+                    (let1 j (+ i #1)
+                      (* j #5))))))))))))
 
 ;;; --- 6. safe-div stress: 10,000 divisions, count errors ---
 
-(≔ div-error-box (□ #0))
+(define div-error-box (box #0))
 
-(≔ div-loop (λ (i)
-  (? (≡ i #0) (□→ div-error-box)
-     (? (≡ (% i #3) #0)
-        (⪢ (□← div-error-box (⊕ (□→ div-error-box) #1))
-            (div-loop (⊖ i #1)))
-        (div-loop (⊖ i #1))))))
+(define div-loop (lambda (i)
+  (if (equal? i #0) (unbox div-error-box)
+     (if (equal? (% i #3) #0)
+        (begin (box-set! div-error-box (+ (unbox div-error-box) #1))
+            (div-loop (- i #1)))
+        (div-loop (- i #1))))))
 
-(≔ error-count (div-loop #10000))
+(define error-count (div-loop #10000))
 
 ;; Every 3rd iteration (i%3==0) is div-by-zero: 3333 errors (3,6,9,...9999)
-(⊨ :macro-safe-div-errors #3333 error-count)
+(test-case :macro-safe-div-errors #3333 error-count)
 
 ;;; --- 7. Macro-generated recursive function called 5,000 times ---
 
-(⧉ defloop (name body) (⌞̃ (≔ (~ name) (λ (n acc)
-  (? (≡ n #0) acc
-     ((~ name) (⊖ n #1) (~ body)))))))
+(macro defloop (name body) (quasiquote-tilde (define (~ name) (lambda (n acc)
+  (if (equal? n #0) acc
+     ((~ name) (- n #1) (~ body)))))))
 
-(defloop stress-add (⊕ acc n))
+(defloop stress-add (+ acc n))
 
-(⊨ :macro-gen-recursive #12502500 (stress-add #5000 #0))
+(test-case :macro-gen-recursive #12502500 (stress-add #5000 #0))

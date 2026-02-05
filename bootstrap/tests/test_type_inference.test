@@ -1,416 +1,416 @@
 #!/usr/bin/env guage
 ; Test suite for type inference (Day 85)
-; Deep type inference: ∈⍜ (infer value type), ∈⍜⊕ (primitive signatures)
+; Deep type inference: type-infer (infer value type), type-prim-sig (primitive signatures)
 
-(≋ "Testing Type Inference System...")
+(print "Testing Type Inference System...")
 
 ; ============================================================================
-; Part 1: ∈⍜ (Deep Value Type Inference)
+; Part 1: type-infer (Deep Value Type Inference)
 ; ============================================================================
 
-(≋ "\nTesting ∈⍜ (deep value type inference)...")
+(print "\nTesting type-infer (deep value type inference)...")
 
-; --- Basic types (same as ∈⊙ but always returns type structs) ---
+; --- Basic types (same as type-of but always returns type structs) ---
 
-(⊨ :infer-int
+(test-case :infer-int
    #t
-   (∈≡ (∈⍜ #42) (ℤ)))
+   (type-equal? (type-infer #42) (Int)))
 
-(⊨ :infer-bool-true
+(test-case :infer-bool-true
    #t
-   (∈≡ (∈⍜ #t) (𝔹)))
+   (type-equal? (type-infer #t) (Bool)))
 
-(⊨ :infer-bool-false
+(test-case :infer-bool-false
    #t
-   (∈≡ (∈⍜ #f) (𝔹)))
+   (type-equal? (type-infer #f) (Bool)))
 
-(⊨ :infer-string
+(test-case :infer-string
    #t
-   (∈≡ (∈⍜ "hello") (𝕊)))
+   (type-equal? (type-infer "hello") (String)))
 
-(⊨ :infer-nil
+(test-case :infer-nil
    #t
-   (∈≡ (∈⍜ ∅) (∅ₜ)))
+   (type-equal? (type-infer nil) (Nil-type)))
 
-; --- Pair types (DEEP - unlike ∈⊙ which returns :pair) ---
+; --- Pair types (DEEP - unlike type-of which returns :pair) ---
 
-(⊨ :infer-pair-int-int
+(test-case :infer-pair-int-int
    #t
-   (∈≡ (∈⍜ (⟨⟩ #1 #2)) (⟨⟩ₜ (ℤ) (ℤ))))
+   (type-equal? (type-infer (cons #1 #2)) (Pair-type (Int) (Int))))
 
-(⊨ :infer-pair-string-bool
+(test-case :infer-pair-string-bool
    #t
-   (∈≡ (∈⍜ (⟨⟩ "hi" #t)) (⟨⟩ₜ (𝕊) (𝔹))))
+   (type-equal? (type-infer (cons "hi" #t)) (Pair-type (String) (Bool))))
 
-(⊨ :infer-pair-int-string
+(test-case :infer-pair-int-string
    #t
-   (∈≡ (∈⍜ (⟨⟩ #1 "abc")) (⟨⟩ₜ (ℤ) (𝕊))))
+   (type-equal? (type-infer (cons #1 "abc")) (Pair-type (Int) (String))))
 
-(⊨ :infer-pair-nested
+(test-case :infer-pair-nested
    #t
-   (∈≡ (∈⍜ (⟨⟩ #1 (⟨⟩ #2 #3)))
-        (⟨⟩ₜ (ℤ) (⟨⟩ₜ (ℤ) (ℤ)))))
+   (type-equal? (type-infer (cons #1 (cons #2 #3)))
+        (Pair-type (Int) (Pair-type (Int) (Int)))))
 
 ; --- List types (detect proper lists: nil-terminated pair chains) ---
 
-(⊨ :infer-list-empty
+(test-case :infer-list-empty
    #t
-   (∈≡ (∈⍜ ∅) (∅ₜ)))
+   (type-equal? (type-infer nil) (Nil-type)))
 
-; Single-element list: (⟨⟩ #1 ∅)
-(⊨ :infer-list-single-int
+; Single-element list: (cons #1 nil)
+(test-case :infer-list-single-int
    #t
-   (∈≡ (∈⍜ (⟨⟩ #1 ∅)) ([]ₜ (ℤ))))
+   (type-equal? (type-infer (cons #1 nil)) (List-type (Int))))
 
-; Multi-element list: (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅)))
-(⊨ :infer-list-multi-int
+; Multi-element list: (cons #1 (cons #2 (cons #3 nil)))
+(test-case :infer-list-multi-int
    #t
-   (∈≡ (∈⍜ (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅)))) ([]ₜ (ℤ))))
+   (type-equal? (type-infer (cons #1 (cons #2 (cons #3 nil)))) (List-type (Int))))
 
 ; String list
-(⊨ :infer-list-strings
+(test-case :infer-list-strings
    #t
-   (∈≡ (∈⍜ (⟨⟩ "a" (⟨⟩ "b" ∅))) ([]ₜ (𝕊))))
+   (type-equal? (type-infer (cons "a" (cons "b" nil))) (List-type (String))))
 
 ; Bool list
-(⊨ :infer-list-bools
+(test-case :infer-list-bools
    #t
-   (∈≡ (∈⍜ (⟨⟩ #t (⟨⟩ #f ∅))) ([]ₜ (𝔹))))
+   (type-equal? (type-infer (cons #t (cons #f nil))) (List-type (Bool))))
 
-; Mixed-type list → union element type
-(⊨ :infer-list-mixed
+; Mixed-type list -> union element type
+(test-case :infer-list-mixed
    #t
-   (∈≡ (∈⍜ (⟨⟩ #1 (⟨⟩ "hi" ∅))) ([]ₜ (∪ₜ (ℤ) (𝕊)))))
+   (type-equal? (type-infer (cons #1 (cons "hi" nil))) (List-type (Union-type (Int) (String)))))
 
 ; Nested list: list of lists
-(⊨ :infer-list-of-lists
+(test-case :infer-list-of-lists
    #t
-   (∈≡ (∈⍜ (⟨⟩ (⟨⟩ #1 ∅) (⟨⟩ (⟨⟩ #2 ∅) ∅)))
-        ([]ₜ ([]ₜ (ℤ)))))
+   (type-equal? (type-infer (cons (cons #1 nil) (cons (cons #2 nil) nil)))
+        (List-type (List-type (Int)))))
 
 ; Improper pair (cdr is NOT nil or pair) stays as pair type
-(⊨ :infer-improper-pair
+(test-case :infer-improper-pair
    #t
-   (∈≡ (∈⍜ (⟨⟩ #1 #2)) (⟨⟩ₜ (ℤ) (ℤ))))
+   (type-equal? (type-infer (cons #1 #2)) (Pair-type (Int) (Int))))
 
 ; --- Function types ---
 
-; Lambda with declared type → use declaration
-(≔ inf-add (λ (x y) (⊕ x y)))
-(∈ inf-add (→ (ℤ) (ℤ) (ℤ)))
+; Lambda with declared type -> use declaration
+(define inf-add (lambda (x y) (+ x y)))
+(type-decl inf-add (-> (Int) (Int) (Int)))
 
-(⊨ :infer-func-declared
+(test-case :infer-func-declared
    #t
-   (∈≡ (∈⍜ inf-add) (→ (ℤ) (ℤ) (ℤ))))
+   (type-equal? (type-infer inf-add) (-> (Int) (Int) (Int))))
 
-; Lambda without declared type → generic function type
-(≔ inf-id (λ (x) x))
+; Lambda without declared type -> generic function type
+(define inf-id (lambda (x) x))
 
-(⊨ :infer-func-undeclared
+(test-case :infer-func-undeclared
    #t
-   (∈≡ (∈⍜ inf-id) (→ (⊤) (⊤))))
+   (type-equal? (type-infer inf-id) (-> (Any) (Any))))
 
 ; Multi-arg lambda without declaration
-(≔ inf-pair-fn (λ (x y) (⟨⟩ x y)))
+(define inf-pair-fn (lambda (x y) (cons x y)))
 
-(⊨ :infer-func-multi-undeclared
+(test-case :infer-func-multi-undeclared
    #t
-   (∈≡ (∈⍜ inf-pair-fn) (→ (⊤) (⊤) (⊤))))
+   (type-equal? (type-infer inf-pair-fn) (-> (Any) (Any) (Any))))
 
 ; --- Symbol type ---
 
-(⊨ :infer-symbol
+(test-case :infer-symbol
    #t
-   (∈≡ (∈⍜ :hello) (∈⍜ :world)))
+   (type-equal? (type-infer :hello) (type-infer :world)))
 
 ; --- Error type ---
 
-(⊨ :infer-error
+(test-case :infer-error
    #t
-   (∈≡ (∈⍜ (⚠ :oops #0)) (∈⍜ (⚠ :other #1))))
+   (type-equal? (type-infer (error :oops #0)) (type-infer (error :other #1))))
 
 ; --- Struct type (user-defined structures) ---
 
-(⊙≔ :inf-point :x :y)
-(≔ p1 (⊙ :inf-point #3 #4))
+(struct-define :inf-point :x :y)
+(define p1 (struct-create :inf-point #3 #4))
 
 ; Struct inference returns type struct with the struct's tag
-(⊨ :infer-struct
+(test-case :infer-struct
    #t
-   (∈≡ (∈⍜ p1) (∈⍜ (⊙ :inf-point #7 #8))))
+   (type-equal? (type-infer p1) (type-infer (struct-create :inf-point #7 #8))))
 
 ; ============================================================================
-; Part 2: ∈⍜ for named bindings (uses annotation registry)
+; Part 2: type-infer for named bindings (uses annotation registry)
 ; ============================================================================
 
-(≋ "\nTesting ∈⍜ for named bindings...")
+(print "\nTesting type-infer for named bindings...")
 
 ; Annotated binding - use annotation
-(≔ typed-x #42)
-(∈ typed-x (ℤ))
+(define typed-x #42)
+(type-decl typed-x (Int))
 
-(⊨ :infer-named-annotated
+(test-case :infer-named-annotated
    #t
-   (∈≡ (∈⍜ typed-x) (ℤ)))
+   (type-equal? (type-infer typed-x) (Int)))
 
 ; Annotated function
-(≔ typed-inc (λ (n) (⊕ n #1)))
-(∈ typed-inc (→ (ℤ) (ℤ)))
+(define typed-inc (lambda (n) (+ n #1)))
+(type-decl typed-inc (-> (Int) (Int)))
 
-(⊨ :infer-named-func-annotated
+(test-case :infer-named-func-annotated
    #t
-   (∈≡ (∈⍜ typed-inc) (→ (ℤ) (ℤ))))
+   (type-equal? (type-infer typed-inc) (-> (Int) (Int))))
 
 ; Unannotated binding - infer from value
-(≔ untyped-y "hello")
+(define untyped-y "hello")
 
-(⊨ :infer-named-unannotated
+(test-case :infer-named-unannotated
    #t
-   (∈≡ (∈⍜ untyped-y) (𝕊)))
+   (type-equal? (type-infer untyped-y) (String)))
 
 ; ============================================================================
-; Part 3: ∈⍜⊕ (Primitive Type Signatures)
+; Part 3: type-prim-sig (Primitive Type Signatures)
 ; ============================================================================
 
-(≋ "\nTesting ∈⍜⊕ (primitive type signatures)...")
+(print "\nTesting type-prim-sig (primitive type signatures)...")
 
 ; --- Arithmetic primitives ---
 
-(⊨ :sig-add
+(test-case :sig-add
    #t
-   (∈≡ (∈⍜⊕ :⊕) (→ (ℤ) (ℤ) (ℤ))))
+   (type-equal? (type-prim-sig :+) (-> (Int) (Int) (Int))))
 
-(⊨ :sig-sub
+(test-case :sig-sub
    #t
-   (∈≡ (∈⍜⊕ :⊖) (→ (ℤ) (ℤ) (ℤ))))
+   (type-equal? (type-prim-sig :-) (-> (Int) (Int) (Int))))
 
-(⊨ :sig-mul
+(test-case :sig-mul
    #t
-   (∈≡ (∈⍜⊕ :⊗) (→ (ℤ) (ℤ) (ℤ))))
+   (type-equal? (type-prim-sig :*) (-> (Int) (Int) (Int))))
 
-(⊨ :sig-div
+(test-case :sig-div
    #t
-   (∈≡ (∈⍜⊕ :⊘) (→ (ℤ) (ℤ) (ℤ))))
+   (type-equal? (type-prim-sig :/) (-> (Int) (Int) (Int))))
 
-(⊨ :sig-mod
+(test-case :sig-mod
    #t
-   (∈≡ (∈⍜⊕ :%) (→ (ℤ) (ℤ) (ℤ))))
+   (type-equal? (type-prim-sig :%) (-> (Int) (Int) (Int))))
 
 ; --- Comparison primitives ---
 
-(⊨ :sig-eq
+(test-case :sig-eq
    #t
-   (∈≡ (∈⍜⊕ :≡) (→ (⊤) (⊤) (𝔹))))
+   (type-equal? (type-prim-sig :equal?) (-> (Any) (Any) (Bool))))
 
-(⊨ :sig-neq
+(test-case :sig-neq
    #t
-   (∈≡ (∈⍜⊕ :≢) (→ (⊤) (⊤) (𝔹))))
+   (type-equal? (type-prim-sig :not-equal?) (-> (Any) (Any) (Bool))))
 
-(⊨ :sig-lt
+(test-case :sig-lt
    #t
-   (∈≡ (∈⍜⊕ :<) (→ (ℤ) (ℤ) (𝔹))))
+   (type-equal? (type-prim-sig :<) (-> (Int) (Int) (Bool))))
 
-(⊨ :sig-gt
+(test-case :sig-gt
    #t
-   (∈≡ (∈⍜⊕ :>) (→ (ℤ) (ℤ) (𝔹))))
+   (type-equal? (type-prim-sig :>) (-> (Int) (Int) (Bool))))
 
-(⊨ :sig-le
+(test-case :sig-le
    #t
-   (∈≡ (∈⍜⊕ :≤) (→ (ℤ) (ℤ) (𝔹))))
+   (type-equal? (type-prim-sig :<=) (-> (Int) (Int) (Bool))))
 
-(⊨ :sig-ge
+(test-case :sig-ge
    #t
-   (∈≡ (∈⍜⊕ :≥) (→ (ℤ) (ℤ) (𝔹))))
+   (type-equal? (type-prim-sig :>=) (-> (Int) (Int) (Bool))))
 
 ; --- Logic primitives ---
 
-(⊨ :sig-and
+(test-case :sig-and
    #t
-   (∈≡ (∈⍜⊕ :∧) (→ (𝔹) (𝔹) (𝔹))))
+   (type-equal? (type-prim-sig :and) (-> (Bool) (Bool) (Bool))))
 
-(⊨ :sig-or
+(test-case :sig-or
    #t
-   (∈≡ (∈⍜⊕ :∨) (→ (𝔹) (𝔹) (𝔹))))
+   (type-equal? (type-prim-sig :or) (-> (Bool) (Bool) (Bool))))
 
-(⊨ :sig-not
+(test-case :sig-not
    #t
-   (∈≡ (∈⍜⊕ :¬) (→ (𝔹) (𝔹))))
+   (type-equal? (type-prim-sig :not) (-> (Bool) (Bool))))
 
 ; --- List primitives ---
 
-(⊨ :sig-cons
+(test-case :sig-cons
    #t
-   (∈≡ (∈⍜⊕ :⟨⟩) (→ (⊤) (⊤) (⊤))))
+   (type-equal? (type-prim-sig :cons) (-> (Any) (Any) (Any))))
 
-(⊨ :sig-car
+(test-case :sig-car
    #t
-   (∈≡ (∈⍜⊕ :◁) (→ (⊤) (⊤))))
+   (type-equal? (type-prim-sig :car) (-> (Any) (Any))))
 
-(⊨ :sig-cdr
+(test-case :sig-cdr
    #t
-   (∈≡ (∈⍜⊕ :▷) (→ (⊤) (⊤))))
+   (type-equal? (type-prim-sig :cdr) (-> (Any) (Any))))
 
 ; --- Type primitives ---
 
-(⊨ :sig-typeof
+(test-case :sig-typeof
    #t
-   (∈≡ (∈⍜⊕ :∈⊙) (→ (⊤) (⊤))))
+   (type-equal? (type-prim-sig :type-of) (-> (Any) (Any))))
 
 ; --- Error primitives ---
 
-(⊨ :sig-is-error
+(test-case :sig-is-error
    #t
-   (∈≡ (∈⍜⊕ :⚠?) (→ (⊤) (𝔹))))
+   (type-equal? (type-prim-sig :error?) (-> (Any) (Bool))))
 
 ; --- String primitives ---
 
-(⊨ :sig-str-len
+(test-case :sig-str-len
    #t
-   (∈≡ (∈⍜⊕ :≈#) (→ (𝕊) (ℤ))))
+   (type-equal? (type-prim-sig :string-length) (-> (String) (Int))))
 
-(⊨ :sig-str-cat
+(test-case :sig-str-cat
    #t
-   (∈≡ (∈⍜⊕ :≈⊕) (→ (𝕊) (𝕊) (𝕊))))
+   (type-equal? (type-prim-sig :string-append) (-> (String) (String) (String))))
 
 ; Unknown primitive returns nil
-(⊨ :sig-unknown
+(test-case :sig-unknown
    #t
-   (≡ (∈⍜⊕ :nonexistent-prim) ∅))
+   (equal? (type-prim-sig :nonexistent-prim) nil))
 
 ; ============================================================================
-; Part 4: ∈⍜* (Expression Type Inference - without evaluation)
+; Part 4: type-infer-all (Expression Type Inference - without evaluation)
 ; ============================================================================
 
-(≋ "\nTesting ∈⍜* (expression type inference)...")
+(print "\nTesting type-infer-all (expression type inference)...")
 
 ; --- Literal inference ---
 
-(⊨ :expr-infer-number
+(test-case :expr-infer-number
    #t
-   (∈≡ (∈⍜* #42) (ℤ)))
+   (type-equal? (type-infer-all #42) (Int)))
 
-(⊨ :expr-infer-bool
+(test-case :expr-infer-bool
    #t
-   (∈≡ (∈⍜* #t) (𝔹)))
+   (type-equal? (type-infer-all #t) (Bool)))
 
-(⊨ :expr-infer-string
+(test-case :expr-infer-string
    #t
-   (∈≡ (∈⍜* "hello") (𝕊)))
+   (type-equal? (type-infer-all "hello") (String)))
 
-(⊨ :expr-infer-nil
+(test-case :expr-infer-nil
    #t
-   (∈≡ (∈⍜* ∅) (∅ₜ)))
+   (type-equal? (type-infer-all nil) (Nil-type)))
 
 ; --- Symbol inference (uses annotation registry) ---
 
-(≔ expr-typed-val #42)
-(∈ expr-typed-val (ℤ))
+(define expr-typed-val #42)
+(type-decl expr-typed-val (Int))
 
-(⊨ :expr-infer-symbol-annotated
+(test-case :expr-infer-symbol-annotated
    #t
-   (∈≡ (∈⍜* expr-typed-val) (ℤ)))
+   (type-equal? (type-infer-all expr-typed-val) (Int)))
 
-; Unannotated symbol → infer from current value
-(≔ expr-untyped-val "world")
+; Unannotated symbol -> infer from current value
+(define expr-untyped-val "world")
 
-(⊨ :expr-infer-symbol-unannotated
+(test-case :expr-infer-symbol-unannotated
    #t
-   (∈≡ (∈⍜* expr-untyped-val) (𝕊)))
+   (type-equal? (type-infer-all expr-untyped-val) (String)))
 
 ; --- Primitive application inference ---
 
-(⊨ :expr-infer-add
+(test-case :expr-infer-add
    #t
-   (∈≡ (∈⍜* (⊕ #1 #2)) (ℤ)))
+   (type-equal? (type-infer-all (+ #1 #2)) (Int)))
 
-(⊨ :expr-infer-sub
+(test-case :expr-infer-sub
    #t
-   (∈≡ (∈⍜* (⊖ #5 #3)) (ℤ)))
+   (type-equal? (type-infer-all (- #5 #3)) (Int)))
 
-(⊨ :expr-infer-mul
+(test-case :expr-infer-mul
    #t
-   (∈≡ (∈⍜* (⊗ #2 #3)) (ℤ)))
+   (type-equal? (type-infer-all (* #2 #3)) (Int)))
 
-(⊨ :expr-infer-lt
+(test-case :expr-infer-lt
    #t
-   (∈≡ (∈⍜* (< #1 #2)) (𝔹)))
+   (type-equal? (type-infer-all (< #1 #2)) (Bool)))
 
-(⊨ :expr-infer-eq
+(test-case :expr-infer-eq
    #t
-   (∈≡ (∈⍜* (≡ #1 #2)) (𝔹)))
+   (type-equal? (type-infer-all (equal? #1 #2)) (Bool)))
 
-(⊨ :expr-infer-and
+(test-case :expr-infer-and
    #t
-   (∈≡ (∈⍜* (∧ #t #f)) (𝔹)))
+   (type-equal? (type-infer-all (and #t #f)) (Bool)))
 
-(⊨ :expr-infer-not
+(test-case :expr-infer-not
    #t
-   (∈≡ (∈⍜* (¬ #t)) (𝔹)))
+   (type-equal? (type-infer-all (not #t)) (Bool)))
 
-(⊨ :expr-infer-str-cat
+(test-case :expr-infer-str-cat
    #t
-   (∈≡ (∈⍜* (≈⊕ "a" "b")) (𝕊)))
+   (type-equal? (type-infer-all (string-append "a" "b")) (String)))
 
-(⊨ :expr-infer-str-len
+(test-case :expr-infer-str-len
    #t
-   (∈≡ (∈⍜* (≈# "hello")) (ℤ)))
+   (type-equal? (type-infer-all (string-length "hello")) (Int)))
 
 ; --- Conditional inference (union of branches) ---
 
-(⊨ :expr-infer-cond-same
+(test-case :expr-infer-cond-same
    #t
-   (∈≡ (∈⍜* (? #t #1 #2)) (ℤ)))
+   (type-equal? (type-infer-all (if #t #1 #2)) (Int)))
 
-(⊨ :expr-infer-cond-different
+(test-case :expr-infer-cond-different
    #t
-   (∈≡ (∈⍜* (? #t #1 "hello")) (∪ₜ (ℤ) (𝕊))))
+   (type-equal? (type-infer-all (if #t #1 "hello")) (Union-type (Int) (String))))
 
-(⊨ :expr-infer-cond-bool
+(test-case :expr-infer-cond-bool
    #t
-   (∈≡ (∈⍜* (? #t #t #f)) (𝔹)))
+   (type-equal? (type-infer-all (if #t #t #f)) (Bool)))
 
 ; --- Lambda inference ---
 
-(⊨ :expr-infer-lambda-simple
+(test-case :expr-infer-lambda-simple
    #t
-   (∈≡ (∈⍜* (λ (x) #42)) (→ (⊤) (ℤ))))
+   (type-equal? (type-infer-all (lambda (x) #42)) (-> (Any) (Int))))
 
-(⊨ :expr-infer-lambda-multi
+(test-case :expr-infer-lambda-multi
    #t
-   (∈≡ (∈⍜* (λ (x y) (⊕ x y))) (→ (⊤) (⊤) (ℤ))))
+   (type-equal? (type-infer-all (lambda (x y) (+ x y))) (-> (Any) (Any) (Int))))
 
-(⊨ :expr-infer-lambda-bool-body
+(test-case :expr-infer-lambda-bool-body
    #t
-   (∈≡ (∈⍜* (λ (x) (< x #0))) (→ (⊤) (𝔹))))
+   (type-equal? (type-infer-all (lambda (x) (< x #0))) (-> (Any) (Bool))))
 
 ; --- Nested expression inference ---
 
-(⊨ :expr-infer-nested-arith
+(test-case :expr-infer-nested-arith
    #t
-   (∈≡ (∈⍜* (⊕ (⊗ #2 #3) #1)) (ℤ)))
+   (type-equal? (type-infer-all (+ (* #2 #3) #1)) (Int)))
 
-(⊨ :expr-infer-nested-compare
+(test-case :expr-infer-nested-compare
    #t
-   (∈≡ (∈⍜* (∧ (< #1 #2) (> #3 #0))) (𝔹)))
+   (type-equal? (type-infer-all (and (< #1 #2) (> #3 #0))) (Bool)))
 
 ; --- Function application inference ---
 
-(≔ my-inc (λ (n) (⊕ n #1)))
-(∈ my-inc (→ (ℤ) (ℤ)))
+(define my-inc (lambda (n) (+ n #1)))
+(type-decl my-inc (-> (Int) (Int)))
 
-(⊨ :expr-infer-user-func-call
+(test-case :expr-infer-user-func-call
    #t
-   (∈≡ (∈⍜* (my-inc #5)) (ℤ)))
+   (type-equal? (type-infer-all (my-inc #5)) (Int)))
 
-; Unannotated function application → ⊤
-(≔ my-id (λ (x) x))
+; Unannotated function application -> Any
+(define my-id (lambda (x) x))
 
-(⊨ :expr-infer-untyped-func-call
+(test-case :expr-infer-untyped-func-call
    #t
-   (∈≡ (∈⍜* (my-id #5)) (⊤)))
+   (type-equal? (type-infer-all (my-id #5)) (Any)))
 
 ; ============================================================================
 ; Summary
 ; ============================================================================
 
-(≋ "\nType Inference tests complete!")
+(print "\nType Inference tests complete!")

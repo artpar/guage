@@ -2,311 +2,311 @@
 ; Test suite for exception handling macros
 ; Tests all macros in stdlib/macros_exception.scm
 
-(≋ "Testing Exception Handling Macros...")
+(print "Testing Exception Handling Macros...")
 
 ; Load the exception macros
-(⋘ "bootstrap/stdlib/macros_exception.scm")
+(load "bootstrap/stdlib/macros_exception.scm")
 
 ; ============================================================================
-; Test: ⚡ (try-with)
+; Test: try-with (try-with)
 ; ============================================================================
 
-(≋ "\nTesting ⚡ (try-with)...")
+(print "\nTesting try-with (try-with)...")
 
 ; Success case - no error, handler not called
-(⊨ :try-success
+(test-case :try-success
    #3
-   (⚡ (⊘ #6 #2) (λ (e) :error-handled)))
+   (try-with (/ #6 #2) (lambda (e) :error-handled)))
 
 ; Error case - handler called
-(⊨ :try-error
+(test-case :try-error
    :handled
-   (⚡ (⊘ #1 #0) (λ (e) :handled)))
+   (try-with (/ #1 #0) (lambda (e) :handled)))
 
 ; Handler receives error value
-(⊨ :try-receives-error
+(test-case :try-receives-error
    #t
-   (⚡ (⊘ #1 #0) (λ (e) (⚠? e))))
+   (try-with (/ #1 #0) (lambda (e) (error? e))))
 
 ; ============================================================================
-; Test: ⚡⊳ (try-or)
+; Test: try-or (try-or)
 ; ============================================================================
 
-(≋ "Testing ⚡⊳ (try-or)...")
+(print "Testing try-or (try-or)...")
 
 ; Success case - returns result
-(⊨ :try-or-success
+(test-case :try-or-success
    #3
-   (⚡⊳ (⊘ #6 #2) :default))
+   (try-or (/ #6 #2) :default))
 
 ; Error case - returns default
-(⊨ :try-or-error
+(test-case :try-or-error
    :default
-   (⚡⊳ (⊘ #1 #0) :default))
+   (try-or (/ #1 #0) :default))
 
 ; Default is number
-(⊨ :try-or-num-default
+(test-case :try-or-num-default
    #0
-   (⚡⊳ (⊘ #1 #0) #0))
+   (try-or (/ #1 #0) #0))
 
 ; Default is nil
-(⊨ :try-or-nil-default
-   ∅
-   (⚡⊳ (⊘ #1 #0) ∅))
+(test-case :try-or-nil-default
+   nil
+   (try-or (/ #1 #0) nil))
 
 ; ============================================================================
-; Test: ⚡∅ (ignore-errors)
+; Test: ignore-errors (ignore-errors)
 ; ============================================================================
 
-(≋ "Testing ⚡∅ (ignore-errors)...")
+(print "Testing ignore-errors (ignore-errors)...")
 
 ; Success case - returns result
-(⊨ :ignore-success
+(test-case :ignore-success
    #3
-   (⚡∅ (⊘ #6 #2)))
+   (ignore-errors (/ #6 #2)))
 
 ; Error case - returns nil
-(⊨ :ignore-error
-   ∅
-   (⚡∅ (⊘ #1 #0)))
+(test-case :ignore-error
+   nil
+   (ignore-errors (/ #1 #0)))
 
 ; Nested expression success
-(⊨ :ignore-nested
+(test-case :ignore-nested
    #5
-   (⚡∅ (⊕ #2 #3)))
+   (ignore-errors (+ #2 #3)))
 
 ; ============================================================================
-; Test: ⚡? (error-type?)
+; Test: try (error-type?)
 ; ============================================================================
 
-(≋ "Testing ⚡? (error-type?)...")
+(print "Testing try (error-type?)...")
 
 ; Create test errors
-(≔ div-error (⚠ :div-by-zero #0))
-(≔ not-found-error (⚠ :not-found "x"))
+(define div-error (error :div-by-zero #0))
+(define not-found-error (error :not-found "x"))
 
 ; Match correct type
-(⊨ :errtype-match
+(test-case :errtype-match
    #t
-   (⚡? div-error :div-by-zero))
+   (try div-error :div-by-zero))
 
 ; No match different type
-(⊨ :errtype-no-match
+(test-case :errtype-no-match
    #f
-   (⚡? div-error :not-found))
+   (try div-error :not-found))
 
 ; Not an error at all
-(⊨ :errtype-not-error
+(test-case :errtype-not-error
    #f
-   (⚡? #42 :any))
+   (try #42 :any))
 
 ; Match :not-found
-(⊨ :errtype-not-found
+(test-case :errtype-not-found
    #t
-   (⚡? not-found-error :not-found))
+   (try not-found-error :not-found))
 
 ; ============================================================================
-; Test: ⚡⊙ (error-data)
+; Test: error-data-safe (error-data)
 ; ============================================================================
 
-(≋ "Testing ⚡⊙ (error-data)...")
+(print "Testing error-data-safe (error-data)...")
 
 ; Extract data from error
-(⊨ :errdata-extract
+(test-case :errdata-extract
    #0
-   (⚡⊙ (⚠ :div-by-zero #0)))
+   (error-data-safe (error :div-by-zero #0)))
 
 ; Extract string data
-(⊨ :errdata-string
+(test-case :errdata-string
    "missing key"
-   (⚡⊙ (⚠ :not-found "missing key")))
+   (error-data-safe (error :not-found "missing key")))
 
 ; Not an error returns nil
-(⊨ :errdata-not-error
-   ∅
-   (⚡⊙ #42))
+(test-case :errdata-not-error
+   nil
+   (error-data-safe #42))
 
 ; ============================================================================
-; Test: ⚡⇒ (error-case)
+; Test: match-error (error-case)
 ; ============================================================================
 
-(≋ "Testing ⚡⇒ (error-case)...")
+(print "Testing match-error (error-case)...")
 
 ; Match first clause
-(⊨ :errcase-first
+(test-case :errcase-first
    :zero
-   (⚡⇒ (⊘ #1 #0)
-      ((:div-by-zero (λ (d) :zero)))))
+   (match-error (/ #1 #0)
+      ((:div-by-zero (lambda (d) :zero)))))
 
 ; Match with data access
-(⊨ :errcase-data
+(test-case :errcase-data
    #t
-   (⚡⇒ (⊘ #1 #0)
-      ((:div-by-zero (λ (d) #t)))))
+   (match-error (/ #1 #0)
+      ((:div-by-zero (lambda (d) #t)))))
 
 ; Success passes through
-(⊨ :errcase-success
+(test-case :errcase-success
    #3
-   (⚡⇒ (⊘ #6 #2)
-      ((:div-by-zero (λ (d) :error)))))
+   (match-error (/ #6 #2)
+      ((:div-by-zero (lambda (d) :error)))))
 
 ; Two clauses - match second
-(⊨ :errcase-two-match
+(test-case :errcase-two-match
    :not-found
-   (⚡⇒ (⚠ :not-found "x")
-      ((:div-by-zero (λ (d) :zero)))
-      ((:not-found (λ (d) :not-found)))))
+   (match-error (error :not-found "x")
+      ((:div-by-zero (lambda (d) :zero)))
+      ((:not-found (lambda (d) :not-found)))))
 
 ; :else clause
-(⊨ :errcase-else
+(test-case :errcase-else
    :other
-   (⚡⇒ (⚠ :unknown-error "?")
-      ((:div-by-zero (λ (d) :zero)))
-      ((:else (λ (d) :other)))))
+   (match-error (error :unknown-error "?")
+      ((:div-by-zero (lambda (d) :zero)))
+      ((:else (lambda (d) :other)))))
 
 ; ============================================================================
-; Test: ⚡⟲ (try-finally)
+; Test: trace-error (try-finally)
 ; ============================================================================
 
-(≋ "Testing ⚡⟲ (try-finally)...")
+(print "Testing trace-error (try-finally)...")
 
 ; Success case - cleanup runs, returns result
 ; Note: Can't test side effects easily, but can test return value
-(⊨ :finally-success
+(test-case :finally-success
    #3
-   (⚡⟲ (⊘ #6 #2) :cleanup))
+   (trace-error (/ #6 #2) :cleanup))
 
 ; Error case - cleanup runs, returns error
-(⊨ :finally-error
+(test-case :finally-error
    #t
-   (⚠? (⚡⟲ (⊘ #1 #0) :cleanup)))
+   (error? (trace-error (/ #1 #0) :cleanup)))
 
 ; ============================================================================
-; Test: ⚡↺ (retry)
+; Test: retry (retry)
 ; ============================================================================
 
-(≋ "Testing ⚡↺ (retry)...")
+(print "Testing retry (retry)...")
 
 ; Success on first try
-(⊨ :retry-first-success
+(test-case :retry-first-success
    #3
-   (⚡↺ #3 (⊘ #6 #2)))
+   (retry #3 (/ #6 #2)))
 
 ; All retries exhausted (always errors)
-(⊨ :retry-exhausted
+(test-case :retry-exhausted
    #t
-   (⚠? (⚡↺ #3 (⊘ #1 #0))))
+   (error? (retry #3 (/ #1 #0))))
 
 ; Verify exhausted error type
-(⊨ :retry-exhausted-type
+(test-case :retry-exhausted-type
    :retry-exhausted
-   (⚠⊙ (⚡↺ #1 (⊘ #1 #0))))
+   (error-type (retry #1 (/ #1 #0))))
 
 ; ============================================================================
-; Test: ⚡∧ (all-succeed)
+; Test: and-errors (all-succeed)
 ; ============================================================================
 
-(≋ "Testing ⚡∧ (all-succeed)...")
+(print "Testing and-errors (all-succeed)...")
 
 ; Single success
-(⊨ :allsucceed-single
+(test-case :allsucceed-single
    #3
-   (⚡∧ (⊘ #6 #2)))
+   (and-errors (/ #6 #2)))
 
 ; Two successes - returns last
-(⊨ :allsucceed-two
+(test-case :allsucceed-two
    #5
-   (⚡∧ (⊘ #6 #2) (⊕ #2 #3)))
+   (and-errors (/ #6 #2) (+ #2 #3)))
 
 ; First fails
-(⊨ :allsucceed-first-fails
+(test-case :allsucceed-first-fails
    #t
-   (⚠? (⚡∧ (⊘ #1 #0) (⊕ #2 #3))))
+   (error? (and-errors (/ #1 #0) (+ #2 #3))))
 
 ; Second fails
-(⊨ :allsucceed-second-fails
+(test-case :allsucceed-second-fails
    #t
-   (⚠? (⚡∧ (⊘ #6 #2) (⊘ #1 #0))))
+   (error? (and-errors (/ #6 #2) (/ #1 #0))))
 
 ; Three expressions - all succeed
-(⊨ :allsucceed-three
+(test-case :allsucceed-three
    #9
-   (⚡∧ (⊘ #6 #2) (⊕ #2 #3) (⊗ #3 #3)))
+   (and-errors (/ #6 #2) (+ #2 #3) (* #3 #3)))
 
 ; ============================================================================
-; Test: ⚡∨ (first-success)
+; Test: or-errors (first-success)
 ; ============================================================================
 
-(≋ "Testing ⚡∨ (first-success)...")
+(print "Testing or-errors (first-success)...")
 
 ; Single success
-(⊨ :firstsuccess-single
+(test-case :firstsuccess-single
    #3
-   (⚡∨ (⊘ #6 #2)))
+   (or-errors (/ #6 #2)))
 
 ; First succeeds - returns first
-(⊨ :firstsuccess-first
+(test-case :firstsuccess-first
    #3
-   (⚡∨ (⊘ #6 #2) (⊘ #8 #2)))
+   (or-errors (/ #6 #2) (/ #8 #2)))
 
 ; First fails, second succeeds
-(⊨ :firstsuccess-second
+(test-case :firstsuccess-second
    #4
-   (⚡∨ (⊘ #1 #0) (⊘ #8 #2)))
+   (or-errors (/ #1 #0) (/ #8 #2)))
 
 ; All fail - returns last error
-(⊨ :firstsuccess-all-fail
+(test-case :firstsuccess-all-fail
    #t
-   (⚠? (⚡∨ (⊘ #1 #0) (⊘ #1 #0))))
+   (error? (or-errors (/ #1 #0) (/ #1 #0))))
 
 ; Three expressions - first succeeds
-(⊨ :firstsuccess-three-first
+(test-case :firstsuccess-three-first
    #2
-   (⚡∨ (⊘ #6 #3) (⊘ #1 #0) (⊘ #1 #0)))
+   (or-errors (/ #6 #3) (/ #1 #0) (/ #1 #0)))
 
 ; Three expressions - third succeeds
-(⊨ :firstsuccess-three-third
+(test-case :firstsuccess-three-third
    #5
-   (⚡∨ (⊘ #1 #0) (⊘ #1 #0) (⊕ #2 #3)))
+   (or-errors (/ #1 #0) (/ #1 #0) (+ #2 #3)))
 
 ; ============================================================================
 ; Integration Tests
 ; ============================================================================
 
-(≋ "Testing integration scenarios...")
+(print "Testing integration scenarios...")
 
 ; Chain of error handling
-(⊨ :chain-or-then-with
+(test-case :chain-or-then-with
    :recovered
-   (⚡ (⚡⊳ (⊘ #1 #0) (⚠ :fallback-error #0))
-      (λ (e) :recovered)))
+   (try-with (try-or (/ #1 #0) (error :fallback-error #0))
+      (lambda (e) :recovered)))
 
 ; All-succeed with error case handling
-(⊨ :chain-all-with-case
+(test-case :chain-all-with-case
    :caught
-   (⚡⊳ (⚡∧ (⊘ #6 #2) (⊘ #1 #0)) :caught))
+   (try-or (and-errors (/ #6 #2) (/ #1 #0)) :caught))
 
 ; First-success with finally
-(⊨ :chain-first-finally
+(test-case :chain-first-finally
    #3
-   (⚡⟲ (⚡∨ (⊘ #1 #0) (⊘ #6 #2)) :cleanup))
+   (trace-error (or-errors (/ #1 #0) (/ #6 #2)) :cleanup))
 
 ; Safe division function
-(≔ safe-div (λ (x y)
-  (⚡⊳ (⊘ x y) #0)))
+(define safe-div (lambda (x y)
+  (try-or (/ x y) #0)))
 
-(⊨ :safe-div-success
+(test-case :safe-div-success
    #3
    (safe-div #9 #3))
 
-(⊨ :safe-div-error
+(test-case :safe-div-error
    #0
    (safe-div #9 #0))
 
 ; Multiple operations with fallback
-(⊨ :multi-ops
+(test-case :multi-ops
    #6
-   (⊕ (⚡⊳ (⊘ #6 #2) #0)
-      (⚡⊳ (⊘ #9 #3) #0)))
+   (+ (try-or (/ #6 #2) #0)
+      (try-or (/ #9 #3) #0)))
 
-(≋ "\n✅ All exception handling macro tests passed!")
+(print "\n✅ All exception handling macro tests passed!")

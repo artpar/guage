@@ -3,31 +3,31 @@
 ;;;
 
 ;;; Test 1: Number global
-(≔ my-num #42)
-(≋ :my-num-direct)
-(≋ my-num)
+(define my-num #42)
+(print :my-num-direct)
+(print my-num)
 
-(≔ id (λ (x) x))
-(≋ :my-num-through-closure)
-(≋ (id my-num))
+(define id (lambda (x) x))
+(print :my-num-through-closure)
+(print (id my-num))
 
 ;;; Test 2: Symbol global
-(≔ my-sym :hello)
-(≋ :my-sym-direct)
-(≋ my-sym)
-(≋ :my-sym-through-closure)
-(≋ (id my-sym))
+(define my-sym :hello)
+(print :my-sym-direct)
+(print my-sym)
+(print :my-sym-through-closure)
+(print (id my-sym))
 
 ;;; Test 3: List global (not quoted)
-(≔ my-list (⟨⟩ #1 #2))
-(≋ :my-list-direct)
-(≋ my-list)
-(≋ :my-list-through-closure)
-(≋ (id my-list))
+(define my-list (cons #1 #2))
+(print :my-list-direct)
+(print my-list)
+(print :my-list-through-closure)
+(print (id my-list))
 
 ;;; Test 4: Quoted list global
-(≔ my-quoted (⌜ (a b c)))
-(≋ :my-quoted-direct)
-(≋ my-quoted)
-(≋ :my-quoted-through-closure)
-(≋ (id my-quoted))
+(define my-quoted (quote (a b c)))
+(print :my-quoted-direct)
+(print my-quoted)
+(print :my-quoted-through-closure)
+(print (id my-quoted))

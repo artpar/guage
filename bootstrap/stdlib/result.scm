@@ -7,113 +7,113 @@
 
 ;; Result type: Either error or success
 ;; Note: Variant definitions must be quoted!
-(⊚≔ :Result (⌜ (:Err :error)) (⌜ (:Ok :value)))
+(adt-define :Result (quote (:Err :error)) (quote (:Ok :value)))
 
 ;; =============================================================================
 ;; Constructors
 ;; =============================================================================
 
-;; ok :: α → Result α
+;; ok :: α -> Result α
 ;; Wrap a value in Ok (success)
-(≔ ok (λ (x)
-  (⊚ :Result :Ok x)))
+(define ok (lambda (x)
+  (adt-create :Result :Ok x)))
 
-;; err :: α → Result α
+;; err :: α -> Result α
 ;; Wrap a value in Err (failure)
-(≔ err (λ (x)
-  (⊚ :Result :Err x)))
+(define err (lambda (x)
+  (adt-create :Result :Err x)))
 
 ;; =============================================================================
 ;; Predicates
 ;; =============================================================================
 
-;; ok? :: Result α → 𝔹
+;; ok? :: Result α -> Bool
 ;; Check if Result is Ok
-(≔ ok? (λ (x)
-  (⊚? x :Result :Ok)))
+(define ok? (lambda (x)
+  (adt? x :Result :Ok)))
 
-;; err? :: Result α → 𝔹
+;; err? :: Result α -> Bool
 ;; Check if Result is Err
-(≔ err? (λ (x)
-  (⊚? x :Result :Err)))
+(define err? (lambda (x)
+  (adt? x :Result :Err)))
 
 ;; =============================================================================
 ;; Transformations
 ;; =============================================================================
 
-;; map :: (α → β) → Result α → Result β
+;; map :: (α -> β) -> Result α -> Result β
 ;; Transform the Ok value, leave Err unchanged
-(≔ map (λ (f) (λ (r)
-  (? (ok? r)
-     (ok (f (⊚→ r :value)))
+(define map (lambda (f) (lambda (r)
+  (if (ok? r)
+     (ok (f (adt-get r :value)))
      r))))
 
-;; map-err :: (α → β) → Result α → Result α
+;; map-err :: (α -> β) -> Result α -> Result α
 ;; Transform the Err value, leave Ok unchanged
-(≔ map-err (λ (f) (λ (r)
-  (? (err? r)
-     (err (f (⊚→ r :error)))
+(define map-err (lambda (f) (lambda (r)
+  (if (err? r)
+     (err (f (adt-get r :error)))
      r))))
 
-;; flatmap :: (α → Result β) → Result α → Result β
+;; flatmap :: (α -> Result β) -> Result α -> Result β
 ;; Monadic bind - chain operations that return Results
 ;; Also known as: bind, >>=, chain, andThen (in some languages)
-(≔ flatmap (λ (f) (λ (r)
-  (? (ok? r)
-     (f (⊚→ r :value))
+(define flatmap (lambda (f) (lambda (r)
+  (if (ok? r)
+     (f (adt-get r :value))
      r))))
 
-;; fold :: (α → γ) → (β → γ) → Result α → γ
+;; fold :: (α -> γ) -> (β -> γ) -> Result α -> γ
 ;; Eliminate Result - apply ok-fn to Ok, err-fn to Err
-(≔ fold (λ (ok-fn) (λ (err-fn) (λ (r)
-  (? (ok? r)
-     (ok-fn (⊚→ r :value))
-     (err-fn (⊚→ r :error)))))))
+(define fold (lambda (ok-fn) (lambda (err-fn) (lambda (r)
+  (if (ok? r)
+     (ok-fn (adt-get r :value))
+     (err-fn (adt-get r :error)))))))
 
 ;; =============================================================================
 ;; Extraction (Potentially Unsafe)
 ;; =============================================================================
 
-;; unwrap :: Result α → α | ⚠
+;; unwrap :: Result α -> α | error
 ;; Extract Ok value or return error
 ;; UNSAFE: Caller must handle potential error
-(≔ unwrap (λ (r)
-  (? (ok? r)
-     (⊚→ r :value)
-     (⚠ :unwrap-err (⊚→ r :error)))))
+(define unwrap (lambda (r)
+  (if (ok? r)
+     (adt-get r :value)
+     (error :unwrap-err (adt-get r :error)))))
 
-;; unwrap-or :: α → Result α → α
+;; unwrap-or :: α -> Result α -> α
 ;; Extract Ok value or return default
 ;; SAFE: Always returns a value
-(≔ unwrap-or (λ (default) (λ (r)
-  (? (ok? r)
-     (⊚→ r :value)
+(define unwrap-or (lambda (default) (lambda (r)
+  (if (ok? r)
+     (adt-get r :value)
      default))))
 
-;; unwrap-err :: Result α → α | ⚠
+;; unwrap-err :: Result α -> α | error
 ;; Extract Err value or return error
 ;; UNSAFE: For testing/debugging only
-(≔ unwrap-err (λ (r)
-  (? (err? r)
-     (⊚→ r :error)
-     (⚠ :unwrap-ok (⊚→ r :value)))))
+(define unwrap-err (lambda (r)
+  (if (err? r)
+     (adt-get r :error)
+     (error :unwrap-ok (adt-get r :value)))))
 
 ;; =============================================================================
 ;; Combinators
 ;; =============================================================================
 
-;; and-then :: Result α → Result β → Result β
+;; and-then :: Result α -> Result β -> Result β
 ;; Return second Result if first is Ok, otherwise first Err
 ;; Short-circuits on first error
-(≔ and-then (λ (r1) (λ (r2)
-  (? (ok? r1)
+(define and-then (lambda (r1) (lambda (r2)
+  (if (ok? r1)
      r2
      r1))))
 
-;; or-else :: Result α → Result α → Result α
+;; or-else :: Result α -> Result α -> Result α
 ;; Return first Result if Ok, otherwise try second
 ;; Fallback mechanism for errors
-(≔ or-else (λ (r1) (λ (r2)
-  (? (ok? r1)
+(define or-else (lambda (r1) (lambda (r2)
+  (if (ok? r1)
      r1
      r2))))

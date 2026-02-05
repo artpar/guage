@@ -1,9 +1,9 @@
-; Test: ←? works in file mode (post-EOF drain)
+; Test: actor-receive works in file mode (post-EOF drain)
 ; This exercises the fix for the file-mode hang bug.
-; Without the post-loop sched_run_all drain, ←? would hang.
+; Without the post-loop sched_run_all drain, actor-receive would hang.
 
-(⟳∅)
-(≔ srv (⟳ (λ (self) (≫ (←?) (λ (msg) msg)))))
-(→! srv :hello)
-(⟳! 10)
-(⊨ (⌜ :file-recv) :hello (⟳→ srv))
+(actor-reset)
+(define srv (actor-spawn (lambda (self) (bind (actor-receive) (lambda (msg) msg)))))
+(actor-send srv :hello)
+(actor-run 10)
+(test-case (quote :file-recv) :hello (actor-result srv))

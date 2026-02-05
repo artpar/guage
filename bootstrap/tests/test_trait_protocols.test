@@ -3,129 +3,129 @@
 ; ═══════════════════════════════════════════════════════════════
 
 ; Load sort (needed for ⊧sort) and traits
-(⋘ "bootstrap/stdlib/sort.scm")
-(⋘ "bootstrap/stdlib/traits.scm")
+(load "bootstrap/stdlib/sort.scm")
+(load "bootstrap/stdlib/traits.scm")
 
-(≋ "Testing Trait Protocols (FDT dispatch)...")
+(print "Testing Trait Protocols (FDT dispatch)...")
 
 ; ────────────────────────────────────────────────────────────────
-; ⊧∈ — FDT array-indexed type-of
+; runtime-type-of — FDT array-indexed type-of
 ; ────────────────────────────────────────────────────────────────
 
-(⊨ :fdt-type-of-number  :Number (⊧∈ #42))
-(⊨ :fdt-type-of-bool    :Bool   (⊧∈ #t))
-(⊨ :fdt-type-of-symbol  :Symbol (⊧∈ :foo))
-(⊨ :fdt-type-of-nil     :Nil    (⊧∈ ∅))
-(⊨ :fdt-type-of-string  :String (⊧∈ "hello"))
-(⊨ :fdt-type-of-pair    :Pair   (⊧∈ (⟨⟩ #1 #2)))
-(⊨ :fdt-type-of-lambda  :Lambda (⊧∈ (λ (x) x)))
-(⊨ :fdt-type-of-error   :Error  (⊧∈ (⚠ :test ∅)))
+(test-case :fdt-type-of-number  :Number (runtime-type-of #42))
+(test-case :fdt-type-of-bool    :Bool   (runtime-type-of #t))
+(test-case :fdt-type-of-symbol  :Symbol (runtime-type-of :foo))
+(test-case :fdt-type-of-nil     :Nil    (runtime-type-of nil))
+(test-case :fdt-type-of-string  :String (runtime-type-of "hello"))
+(test-case :fdt-type-of-pair    :Pair   (runtime-type-of (cons #1 #2)))
+(test-case :fdt-type-of-lambda  :Lambda (runtime-type-of (lambda (x) x)))
+(test-case :fdt-type-of-error   :Error  (runtime-type-of (error :test nil)))
 
 ; ────────────────────────────────────────────────────────────────
 ; :Showable — ⊧show dispatch
 ; ────────────────────────────────────────────────────────────────
 
-(⊨ :show-number  "42"  (⊧show #42))
-(⊨ :show-bool-t  "#t"  (⊧show #t))
-(⊨ :show-bool-f  "#f"  (⊧show #f))
-(⊨ :show-nil     "∅"   (⊧show ∅))
-(⊨ :show-string  "hello" (⊧show "hello"))
-(⊨ :show-lambda  "<λ>" (⊧show (λ (x) x)))
+(test-case :show-number  "42"  (⊧show #42))
+(test-case :show-bool-t  "#t"  (⊧show #t))
+(test-case :show-bool-f  "#f"  (⊧show #f))
+(test-case :show-nil     "∅"   (⊧show nil))
+(test-case :show-string  "hello" (⊧show "hello"))
+(test-case :show-lambda  "<λ>" (⊧show (lambda (x) x)))
 
 ; ────────────────────────────────────────────────────────────────
 ; :Equatable — ⊧≡ dispatch
 ; ────────────────────────────────────────────────────────────────
 
-(⊨ :eq-numbers-same    #t  ((⊧≡ #42) #42))
-(⊨ :eq-numbers-diff    #f  ((⊧≡ #42) #99))
-(⊨ :eq-bools-same      #t  ((⊧≡ #t) #t))
-(⊨ :eq-strings-same    #t  ((⊧≡ "abc") "abc"))
-(⊨ :eq-strings-diff    #f  ((⊧≡ "abc") "xyz"))
-(⊨ :eq-nil             #t  ((⊧≡ ∅) ∅))
-(⊨ :eq-symbols-same    #t  ((⊧≡ :foo) :foo))
+(test-case :eq-numbers-same    #t  ((⊧≡ #42) #42))
+(test-case :eq-numbers-diff    #f  ((⊧≡ #42) #99))
+(test-case :eq-bools-same      #t  ((⊧≡ #t) #t))
+(test-case :eq-strings-same    #t  ((⊧≡ "abc") "abc"))
+(test-case :eq-strings-diff    #f  ((⊧≡ "abc") "xyz"))
+(test-case :eq-nil             #t  ((⊧≡ nil) nil))
+(test-case :eq-symbols-same    #t  ((⊧≡ :foo) :foo))
 
 ; ────────────────────────────────────────────────────────────────
 ; :Comparable — ⊧compare, ⊧<, ⊧≤, ⊧>, ⊧≥
 ; ────────────────────────────────────────────────────────────────
 
-(⊨ :cmp-numbers-lt  :lt  ((⊧compare #1) #2))
-(⊨ :cmp-numbers-eq  :eq  ((⊧compare #5) #5))
-(⊨ :cmp-numbers-gt  :gt  ((⊧compare #9) #3))
+(test-case :cmp-numbers-lt  :lt  ((⊧compare #1) #2))
+(test-case :cmp-numbers-eq  :eq  ((⊧compare #5) #5))
+(test-case :cmp-numbers-gt  :gt  ((⊧compare #9) #3))
 
-(⊨ :lt-true   #t  ((⊧< #1) #2))
-(⊨ :lt-false  #f  ((⊧< #2) #1))
-(⊨ :le-true   #t  ((⊧≤ #1) #1))
-(⊨ :le-false  #f  ((⊧≤ #3) #1))
-(⊨ :gt-true   #t  ((⊧> #5) #2))
-(⊨ :gt-false  #f  ((⊧> #1) #2))
-(⊨ :ge-true   #t  ((⊧≥ #3) #3))
+(test-case :lt-true   #t  ((⊧< #1) #2))
+(test-case :lt-false  #f  ((⊧< #2) #1))
+(test-case :le-true   #t  ((⊧≤ #1) #1))
+(test-case :le-false  #f  ((⊧≤ #3) #1))
+(test-case :gt-true   #t  ((⊧> #5) #2))
+(test-case :gt-false  #f  ((⊧> #1) #2))
+(test-case :ge-true   #t  ((⊧≥ #3) #3))
 
 ; String comparison
-(⊨ :cmp-strings-lt  :lt  ((⊧compare "abc") "xyz"))
-(⊨ :cmp-strings-eq  :eq  ((⊧compare "hello") "hello"))
+(test-case :cmp-strings-lt  :lt  ((⊧compare "abc") "xyz"))
+(test-case :cmp-strings-eq  :eq  ((⊧compare "hello") "hello"))
 
 ; ────────────────────────────────────────────────────────────────
-; ⊧→! — fused dispatch matches ⊧→
+; trait-dispatch-fast — fused dispatch matches trait-dispatch
 ; ────────────────────────────────────────────────────────────────
 
-; ⊧→! takes value directly, ⊧→ takes type symbol
-(≔ fdt-show-fn  (⊧→! #42 :Showable :show))
-(≔ str-show-fn  (⊧→ :Number :Showable :show))
-(⊨ :fused-dispatch-matches  (str-show-fn #42)  (fdt-show-fn #42))
+; trait-dispatch-fast takes value directly, trait-dispatch takes type symbol
+(define fdt-show-fn  (trait-dispatch-fast #42 :Showable :show))
+(define str-show-fn  (trait-dispatch :Number :Showable :show))
+(test-case :fused-dispatch-matches  (str-show-fn #42)  (fdt-show-fn #42))
 
 ; ────────────────────────────────────────────────────────────────
-; FDT trait check (⊧?)
+; FDT trait check (trait?)
 ; ────────────────────────────────────────────────────────────────
 
-(⊨ :fdt-check-showable-number  #t  (⊧? :Number :Showable))
-(⊨ :fdt-check-showable-bool    #t  (⊧? :Bool :Showable))
-(⊨ :fdt-check-equatable-nil    #t  (⊧? :Nil :Equatable))
-(⊨ :fdt-check-comparable-num   #t  (⊧? :Number :Comparable))
+(test-case :fdt-check-showable-number  #t  (trait? :Number :Showable))
+(test-case :fdt-check-showable-bool    #t  (trait? :Bool :Showable))
+(test-case :fdt-check-equatable-nil    #t  (trait? :Nil :Equatable))
+(test-case :fdt-check-comparable-num   #t  (trait? :Number :Comparable))
 
-; Missing trait → #f
-(⊨ :fdt-check-missing  #f  (⊧? :Number :NonExistent))
+; Missing trait -> #f
+(test-case :fdt-check-missing  #f  (trait? :Number :NonExistent))
 
 ; ────────────────────────────────────────────────────────────────
 ; Defaults fallback
 ; ────────────────────────────────────────────────────────────────
 
-(≔ default-fn (λ (x) :default-result))
-(⊧≔ :DefaultTrait (⟨⟩ :op1 ∅) (⟨⟩ (⟨⟩ :op1 default-fn) ∅))
+(define default-fn (lambda (x) :default-result))
+(trait-define :DefaultTrait (cons :op1 nil) (cons (cons :op1 default-fn) nil))
 
 ; No impl for :Number, but default exists
-(⊨ :defaults-fallback  :default-result  ((⊧→ :Number :DefaultTrait :op1) #42))
-(⊨ :defaults-fused     :default-result  ((⊧→! #42 :DefaultTrait :op1) #42))
+(test-case :defaults-fallback  :default-result  ((trait-dispatch :Number :DefaultTrait :op1) #42))
+(test-case :defaults-fused     :default-result  ((trait-dispatch-fast #42 :DefaultTrait :op1) #42))
 
 ; ────────────────────────────────────────────────────────────────
-; Missing trait → error
+; Missing trait -> error
 ; ────────────────────────────────────────────────────────────────
 
-(⊨ :dispatch-missing-trait  #t  (⚠? (⊧→ :Number :NoSuchTrait :op)))
-(⊨ :fused-missing-trait     #t  (⚠? (⊧→! #42 :NoSuchTrait :op)))
+(test-case :dispatch-missing-trait  #t  (error? (trait-dispatch :Number :NoSuchTrait :op)))
+(test-case :fused-missing-trait     #t  (error? (trait-dispatch-fast #42 :NoSuchTrait :op)))
 
 ; ────────────────────────────────────────────────────────────────
 ; Generic sort via :Comparable
 ; ────────────────────────────────────────────────────────────────
 
-(≔ list-equal? (λ (lst1) (λ (lst2)
-  (? (∅? lst1)
-     (∅? lst2)
-     (? (∅? lst2)
+(define list-equal? (lambda (lst1) (lambda (lst2)
+  (if (null? lst1)
+     (null? lst2)
+     (if (null? lst2)
         #f
-        (? (≡ (◁ lst1) (◁ lst2))
-           ((list-equal? (▷ lst1)) (▷ lst2))
+        (if (equal? (car lst1) (car lst2))
+           ((list-equal? (cdr lst1)) (cdr lst2))
            #f))))))
 
-(⊨ :sort-numbers
+(test-case :sort-numbers
    #t
-   ((list-equal? (⊧sort (⟨⟩ #3 (⟨⟩ #1 (⟨⟩ #2 ∅)))))
-                 (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅)))))
+   ((list-equal? (⊧sort (cons #3 (cons #1 (cons #2 nil)))))
+                 (cons #1 (cons #2 (cons #3 nil)))))
 
-(⊨ :sort-strings
+(test-case :sort-strings
    #t
-   ((list-equal? (⊧sort (⟨⟩ "c" (⟨⟩ "a" (⟨⟩ "b" ∅)))))
-                 (⟨⟩ "a" (⟨⟩ "b" (⟨⟩ "c" ∅)))))
+   ((list-equal? (⊧sort (cons "c" (cons "a" (cons "b" nil)))))
+                 (cons "a" (cons "b" (cons "c" nil)))))
 
-(⊨ :sort-empty  #t  (∅? (⊧sort ∅)))
+(test-case :sort-empty  #t  (null? (⊧sort nil)))
 
-(≋ "\nTrait protocol tests complete.")
+(print "\nTrait protocol tests complete.")

@@ -8,95 +8,95 @@
 
 ; Clean module state (note: can't actually unload modules, but test with current state)
 ; Generate index
-(≔ empty-index (📖⊛))
+(define empty-index (doc-index))
 
 ; Should return a string
-(⊨ :index-returns-string
+(test-case :index-returns-string
    #t
-   (≈? empty-index))
+   (string? empty-index))
 
 ; Should not be empty (has header)
-(⊨ :index-not-empty
+(test-case :index-not-empty
    #f
-   (≈∅? empty-index))
+   (string-empty? empty-index))
 
 ;;; ===================================================================
 ;;; Test 2: Generate index with modules
 ;;; ===================================================================
 
 ; Load some test modules
-(≋⊲ "/tmp/test_mod1.scm" "(≔ add1 (λ (x) (⊕ x #1)))")
-(≋⊲ "/tmp/test_mod2.scm" "(⋘ \"/tmp/test_mod1.scm\") (≔ add2 (λ (x) (add1 (add1 x))))")
+(write-file "/tmp/test_mod1.scm" "(define add1 (lambda (x) (+ x #1)))")
+(write-file "/tmp/test_mod2.scm" "(load \"/tmp/test_mod1.scm\") (define add2 (lambda (x) (add1 (add1 x))))")
 
-(⋘ "/tmp/test_mod1.scm")
-(⋘ "/tmp/test_mod2.scm")
+(load "/tmp/test_mod1.scm")
+(load "/tmp/test_mod2.scm")
 
 ; Generate module index
-(≔ index (📖⊛))
+(define index (doc-index))
 
 ; Verify it's a string
-(⊨ :index-with-modules-is-string
+(test-case :index-with-modules-is-string
    #t
-   (≈? index))
+   (string? index))
 
 ; Should have substantial content
-(⊨ :index-has-content
+(test-case :index-has-content
    #t
-   (> (≈# index) #100))
+   (> (string-length index) #100))
 
 ; Print for manual verification
-(≋ "")
-(≋ "========================================")
-(≋ "Generated Module Index:")
-(≋ "========================================")
-(≋ index)
+(print "")
+(print "========================================")
+(print "Generated Module Index:")
+(print "========================================")
+(print index)
 
 ;;; ===================================================================
 ;;; Test 3: Export index to file
 ;;; ===================================================================
 
 ; Load stdlib module for richer index
-(⋘ "bootstrap/stdlib/option.scm")
+(load "bootstrap/stdlib/option.scm")
 
 ; Generate and export index
-(≔ export-result (📖⊛ "/tmp/module_index.md"))
+(define export-result (doc-index "/tmp/module_index.md"))
 
 ; Should return the output path
-(⊨ :index-export-returns-path
+(test-case :index-export-returns-path
    "/tmp/module_index.md"
    export-result)
 
 ; Verify file exists
-(⊨ :index-export-creates-file
+(test-case :index-export-creates-file
    #t
-   (≋? "/tmp/module_index.md"))
+   (file-exists? "/tmp/module_index.md"))
 
 ; Read and verify content
-(≔ exported-index (≋⊳ "/tmp/module_index.md"))
+(define exported-index (read-file "/tmp/module_index.md"))
 
-(⊨ :index-export-not-empty
+(test-case :index-export-not-empty
    #f
-   (≈∅? exported-index))
+   (string-empty? exported-index))
 
-(⊨ :index-export-has-content
+(test-case :index-export-has-content
    #t
-   (> (≈# exported-index) #200))
+   (> (string-length exported-index) #200))
 
-(≋ "")
-(≋ "Index exported to: /tmp/module_index.md")
+(print "")
+(print "Index exported to: /tmp/module_index.md")
 
 ;;; ===================================================================
 ;;; Test 4: Index contains cross-references
 ;;; ===================================================================
 
 ; Reload index to verify cross-reference format
-(≔ full-index (📖⊛))
+(define full-index (doc-index))
 
 ; Index should mention the test modules we loaded
 ; (Manual verification in output)
 
-(≋ "")
-(≋ "========================================")
-(≋ "Full Index with Cross-References:")
-(≋ "========================================")
-(≋ full-index)
+(print "")
+(print "========================================")
+(print "Full Index with Cross-References:")
+(print "========================================")
+(print full-index)

@@ -2,124 +2,124 @@
 ; Day 89 - Spawn, send, receive, scheduler
 
 ; ============ Reset actors before testing ============
-(⟳∅)
+(actor-reset)
 
 ; ============ Basic Spawn ============
 
 ; Spawn an actor that immediately returns
-(≔ a1 (⟳ (λ (self) :done)))
+(define a1 (actor-spawn (lambda (self) :done)))
 
 ; Actor should be alive before running
-(⊨ (⌜ :actor-alive-before-run) #t (⟳? a1))
+(test-case (quote :actor-alive-before-run) #t (actor-alive? a1))
 
 ; ============ Run and Check Result ============
 
 ; Run scheduler — actor body returns :done immediately
-(⟳! #100)
+(actor-run #100)
 
 ; After running, actor should be dead
-(⊨ (⌜ :actor-dead-after-run) #f (⟳? a1))
+(test-case (quote :actor-dead-after-run) #f (actor-alive? a1))
 
 ; Get the result of finished actor
-(⊨ (⌜ :actor-result) :done (⟳→ a1))
+(test-case (quote :actor-result) :done (actor-result a1))
 
 ; ============ Reset for next tests ============
-(⟳∅)
+(actor-reset)
 
 ; ============ Send and Receive ============
 
 ; Actor that receives one message and returns it
-(≔ a2 (⟳ (λ (self) (←?))))
-(→! a2 :hello)
-(⟳! #100)
-(⊨ (⌜ :send-receive-one) :hello (⟳→ a2))
+(define a2 (actor-spawn (lambda (self) (actor-receive))))
+(actor-send a2 :hello)
+(actor-run #100)
+(test-case (quote :send-receive-one) :hello (actor-result a2))
 
 ; ============ Reset ============
-(⟳∅)
+(actor-reset)
 
 ; ============ Multiple Messages (FIFO) ============
 
 ; Actor that receives two messages and returns them as a pair
-; Use ≫ (bind) to sequence multiple receives since lambdas have single body
-(≔ a3 (⟳ (λ (self)
-  (≫ (←?) (λ (m1)
-    (≫ (←?) (λ (m2)
-      (⟨⟩ m1 m2))))))))
+; Use bind (bind) to sequence multiple receives since lambdas have single body
+(define a3 (actor-spawn (lambda (self)
+  (bind (actor-receive) (lambda (m1)
+    (bind (actor-receive) (lambda (m2)
+      (cons m1 m2))))))))
 
-(→! a3 :first)
-(→! a3 :second)
-(⟳! #100)
-(⊨ (⌜ :fifo-order) (⟨⟩ :first :second) (⟳→ a3))
+(actor-send a3 :first)
+(actor-send a3 :second)
+(actor-run #100)
+(test-case (quote :fifo-order) (cons :first :second) (actor-result a3))
 
 ; ============ Reset ============
-(⟳∅)
+(actor-reset)
 
 ; ============ Send to Dead Actor ============
 
-(≔ a4 (⟳ (λ (self) :done)))
-(⟳! #100)
-(⊨ (⌜ :send-to-dead) #t (⚠? (→! a4 :msg)))
+(define a4 (actor-spawn (lambda (self) :done)))
+(actor-run #100)
+(test-case (quote :send-to-dead) #t (error? (actor-send a4 :msg)))
 
 ; ============ Reset ============
-(⟳∅)
+(actor-reset)
 
 ; ============ Multiple Actors ============
 
 ; Two actors: one sends to the other
-(≔ receiver (⟳ (λ (self) (←?))))
+(define receiver (actor-spawn (lambda (self) (actor-receive))))
 
-(≔ sender (⟳ (λ (self)
-  (≫ (→! receiver :ping) (λ (_) :sent)))))
+(define sender (actor-spawn (lambda (self)
+  (bind (actor-send receiver :ping) (lambda (_) :sent)))))
 
-(⟳! #100)
-(⊨ (⌜ :sender-result) :sent (⟳→ sender))
-(⊨ (⌜ :receiver-result) :ping (⟳→ receiver))
+(actor-run #100)
+(test-case (quote :sender-result) :sent (actor-result sender))
+(test-case (quote :receiver-result) :ping (actor-result receiver))
 
 ; ============ Reset ============
-(⟳∅)
+(actor-reset)
 
 ; ============ Actor Processes N Messages ============
 
 ; Actor that receives 3 messages, sums the numbers
-(≔ summer (⟳ (λ (self)
-  (≫ (←?) (λ (n1)
-    (≫ (←?) (λ (n2)
-      (≫ (←?) (λ (n3)
-        (⊕ (⊕ n1 n2) n3))))))))))
+(define summer (actor-spawn (lambda (self)
+  (bind (actor-receive) (lambda (n1)
+    (bind (actor-receive) (lambda (n2)
+      (bind (actor-receive) (lambda (n3)
+        (+ (+ n1 n2) n3))))))))))
 
-(→! summer #10)
-(→! summer #20)
-(→! summer #30)
-(⟳! #100)
-(⊨ (⌜ :sum-messages) #60 (⟳→ summer))
+(actor-send summer #10)
+(actor-send summer #20)
+(actor-send summer #30)
+(actor-run #100)
+(test-case (quote :sum-messages) #60 (actor-result summer))
 
 ; ============ Reset ============
-(⟳∅)
+(actor-reset)
 
 ; ============ Scheduler Tick Count ============
 
 ; Spawn actor that finishes immediately
-(≔ quick (⟳ (λ (self) #42)))
-(≔ ticks (⟳! #100))
+(define quick (actor-spawn (lambda (self) #42)))
+(define ticks (actor-run #100))
 ; Should have run at least 1 tick
-(⊨ (⌜ :ticks-ran) #t (> ticks #0))
+(test-case (quote :ticks-ran) #t (> ticks #0))
 
 ; ============ Reset ============
-(⟳∅)
+(actor-reset)
 
 ; ============ Actor Still Running Error ============
 
-(≔ waiting (⟳ (λ (self) (←?))))
+(define waiting (actor-spawn (lambda (self) (actor-receive))))
 ; Don't run scheduler — actor is still alive
-(⊨ (⌜ :result-while-running) #t (⚠? (⟳→ waiting)))
+(test-case (quote :result-while-running) #t (error? (actor-result waiting)))
 
 ; ============ Reset ============
-(⟳∅)
+(actor-reset)
 
 ; ============ Self Reference ============
 
 ; Actor behavior receives self and can check it's alive
-(≔ self-aware (⟳ (λ (self) (⟳? self))))
-(⟳! #100)
-; While running, self was alive → returns #t
-(⊨ (⌜ :self-ref-alive) #t (⟳→ self-aware))
+(define self-aware (actor-spawn (lambda (self) (actor-alive? self))))
+(actor-run #100)
+; While running, self was alive -> returns #t
+(test-case (quote :self-ref-alive) #t (actor-result self-aware))

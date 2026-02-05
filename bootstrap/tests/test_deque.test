@@ -1,48 +1,48 @@
-; Test: Deque (⊟) — DPDK-grade cache-optimized circular buffer
+; Test: Deque (deque) — DPDK-grade cache-optimized circular buffer
 ; Day 111
 
-(⊨ (⌜ :deque-new-empty) #t (∧ (≡ (⊟# (⊟)) #0) (⊟∅? (⊟))))
+(test-case (quote :deque-new-empty) #t (and (equal? (deque-size (deque)) #0) (deque-empty? (deque))))
 
-(⊨ (⌜ :deque-new-from-values) #3 (⊟# (⊟ #1 #2 #3)))
+(test-case (quote :deque-new-from-values) #3 (deque-size (deque #1 #2 #3)))
 
-(≔ d1 (⊟))
-(⊟▷ d1 #1)
-(⊟▷ d1 #2)
-(⊟▷ d1 #3)
-(⊨ (⌜ :deque-push-pop-back) #t
-  (∧ (≡ (⊟▷⊖ d1) #3) (∧ (≡ (⊟▷⊖ d1) #2) (≡ (⊟▷⊖ d1) #1))))
+(define d1 (deque))
+(deque-push-back d1 #1)
+(deque-push-back d1 #2)
+(deque-push-back d1 #3)
+(test-case (quote :deque-push-pop-back) #t
+  (and (equal? (deque-pop-back d1) #3) (and (equal? (deque-pop-back d1) #2) (equal? (deque-pop-back d1) #1))))
 
-(≔ d2 (⊟))
-(⊟◁ d2 #1)
-(⊟◁ d2 #2)
-(⊟◁ d2 #3)
-(⊨ (⌜ :deque-push-pop-front) #t
-  (∧ (≡ (⊟◁⊖ d2) #3) (∧ (≡ (⊟◁⊖ d2) #2) (≡ (⊟◁⊖ d2) #1))))
+(define d2 (deque))
+(deque-push-front d2 #1)
+(deque-push-front d2 #2)
+(deque-push-front d2 #3)
+(test-case (quote :deque-push-pop-front) #t
+  (and (equal? (deque-pop-front d2) #3) (and (equal? (deque-pop-front d2) #2) (equal? (deque-pop-front d2) #1))))
 
-(≔ d3 (⊟))
-(⊟▷ d3 #1)
-(⊟▷ d3 #2)
-(⊟▷ d3 #3)
-(⊨ (⌜ :deque-fifo-queue) #t
-  (∧ (≡ (⊟◁⊖ d3) #1) (∧ (≡ (⊟◁⊖ d3) #2) (≡ (⊟◁⊖ d3) #3))))
+(define d3 (deque))
+(deque-push-back d3 #1)
+(deque-push-back d3 #2)
+(deque-push-back d3 #3)
+(test-case (quote :deque-fifo-queue) #t
+  (and (equal? (deque-pop-front d3) #1) (and (equal? (deque-pop-front d3) #2) (equal? (deque-pop-front d3) #3))))
 
-(≔ d4 (⊟ #10 #20 #30))
-(⊨ (⌜ :deque-peek-no-remove) #t
-  (∧ (≡ (⊟◁? d4) #10) (∧ (≡ (⊟▷? d4) #30) (≡ (⊟# d4) #3))))
+(define d4 (deque #10 #20 #30))
+(test-case (quote :deque-peek-no-remove) #t
+  (and (equal? (deque-peek-front d4) #10) (and (equal? (deque-peek-back d4) #30) (equal? (deque-size d4) #3))))
 
-(≔ d5 (⊟))
-(⊨ (⌜ :deque-empty-predicate) #t (⊟∅? d5))
-(⊟▷ d5 #1)
-(⊨ (⌜ :deque-empty-after-push) #f (⊟∅? d5))
-(⊟◁⊖ d5)
-(⊨ (⌜ :deque-empty-after-pop-all) #t (⊟∅? d5))
+(define d5 (deque))
+(test-case (quote :deque-empty-predicate) #t (deque-empty? d5))
+(deque-push-back d5 #1)
+(test-case (quote :deque-empty-after-push) #f (deque-empty? d5))
+(deque-pop-front d5)
+(test-case (quote :deque-empty-after-pop-all) #t (deque-empty? d5))
 
-(≔ d6 (⊟ #1 #2 #3))
-(≔ lst (⊟⊙ d6))
-(⊨ (⌜ :deque-to-list) #t
-  (∧ (≡ (◁ lst) #1) (∧ (≡ (◁ (▷ lst)) #2) (≡ (◁ (▷ (▷ lst))) #3))))
+(define d6 (deque #1 #2 #3))
+(define lst (deque-to-list d6))
+(test-case (quote :deque-to-list) #t
+  (and (equal? (car lst) #1) (and (equal? (car (cdr lst)) #2) (equal? (car (cdr (cdr lst))) #3))))
 
-(⊨ (⌜ :deque-type-predicate) #t (∧ (⊟? (⊟)) (¬ (⊟? #42))))
+(test-case (quote :deque-type-predicate) #t (and (deque? (deque)) (not (deque? #42))))
 
-(⊨ (⌜ :deque-pop-empty-error) #t
-  (∧ (⚠? (⊟◁⊖ (⊟))) (⚠? (⊟▷⊖ (⊟)))))
+(test-case (quote :deque-pop-empty-error) #t
+  (and (error? (deque-pop-front (deque))) (error? (deque-pop-back (deque)))))

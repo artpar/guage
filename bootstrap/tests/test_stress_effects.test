@@ -3,131 +3,131 @@
 
 ;;; --- Effect declarations ---
 
-(⟪ :Counter :inc :get)
-(⟪ :Yield :value)
-(⟪ :State :get :put)
-(⟪ :Logger :log)
-(⟪ :Transform :apply)
-(⟪ :Validate :check)
-(⟪ :Cache :fetch)
-(⟪ :Auth :verify)
+(effect-def :Counter :inc :get)
+(effect-def :Yield :value)
+(effect-def :State :get :put)
+(effect-def :Logger :log)
+(effect-def :Transform :apply)
+(effect-def :Validate :check)
+(effect-def :Cache :fetch)
+(effect-def :Auth :verify)
 
 ;;; --- 1. 10,000 sequential perform calls in resumable handler ---
 
-(≔ count-loop (λ (n)
-  (? (≡ n #0) :done
-     (⪢ (↯ :Counter :inc) (count-loop (⊖ n #1))))))
+(define count-loop (lambda (n)
+  (if (equal? n #0) :done
+     (begin (perform :Counter :inc) (count-loop (- n #1))))))
 
-(≔ counted
-  (⟪↺⟫ (count-loop #10000)
+(define counted
+  (handle-resume (count-loop #10000)
     (:Counter
-      (:inc (λ (k) (k ∅)))
-      (:get (λ (k) (k #0))))))
+      (:inc (lambda (k) (k nil)))
+      (:get (lambda (k) (k #0))))))
 
-(⊨ :effect-10k-performs :done counted)
+(test-case :effect-10k-performs :done counted)
 
 ;;; --- 2. 8-deep nested effect handlers ---
 
-(⊨ :effect-8-nested #42
-  (⟪⟫
-    (⟪⟫
-      (⟪⟫
-        (⟪⟫
-          (⟪⟫
-            (⟪⟫
-              (⟪⟫
-                (⟪⟫ (↯ :Validate :check #42)
-                  (:Validate (:check (λ (x) x))))
-                (:Transform (:apply (λ (x) x))))
-              (:Cache (:fetch (λ (k) k))))
-            (:Auth (:verify (λ (t) t))))
-          (:Logger (:log (λ (msg) msg))))
-        (:State (:get (λ () #0)) (:put (λ (v) ∅))))
-      (:Counter (:inc (λ () ∅)) (:get (λ () #0))))
-    (:Yield (:value (λ (v) v)))))
+(test-case :effect-8-nested #42
+  (handle
+    (handle
+      (handle
+        (handle
+          (handle
+            (handle
+              (handle
+                (handle (perform :Validate :check #42)
+                  (:Validate (:check (lambda (x) x))))
+                (:Transform (:apply (lambda (x) x))))
+              (:Cache (:fetch (lambda (k) k))))
+            (:Auth (:verify (lambda (t) t))))
+          (:Logger (:log (lambda (msg) msg))))
+        (:State (:get (lambda () #0)) (:put (lambda (v) nil))))
+      (:Counter (:inc (lambda () nil)) (:get (lambda () #0))))
+    (:Yield (:value (lambda (v) v)))))
 
 ;;; --- 3. Effect forwarding: nested resumable, small count ---
 
-(≔ forward-loop (λ (n acc)
-  (? (≡ n #0) acc
-     (forward-loop (⊖ n #1) (⊕ acc (↯ :Counter :inc))))))
+(define forward-loop (lambda (n acc)
+  (if (equal? n #0) acc
+     (forward-loop (- n #1) (+ acc (perform :Counter :inc))))))
 
-(⊨ :effect-forward-10 #10
-  (⟪↺⟫
-    (⟪↺⟫ (forward-loop #10 #0)
+(test-case :effect-forward-10 #10
+  (handle-resume
+    (handle-resume (forward-loop #10 #0)
       (:Counter
-        (:inc (λ (k) (k #1)))
-        (:get (λ (k) (k #0)))))
-    (:Logger (:log (λ (msg) msg)))))
+        (:inc (lambda (k) (k #1)))
+        (:get (lambda (k) (k #0)))))
+    (:Logger (:log (lambda (msg) msg)))))
 
 ;;; --- 4. Resumable continuation with value ---
 
-(≔ resume-test
-  (⟪↺⟫ (⊕ (↯ :State :get) #100)
+(define resume-test
+  (handle-resume (+ (perform :State :get) #100)
     (:State
-      (:get (λ (k) (k #42)))
-      (:put (λ (k v) (k ∅))))))
+      (:get (lambda (k) (k #42)))
+      (:put (lambda (k v) (k nil))))))
 
-(⊨ :effect-resume-val #142 resume-test)
+(test-case :effect-resume-val #142 resume-test)
 
 ;;; --- 5. Accumulate via resumable handler 1000 times ---
 
-(≔ resume-loop (λ (n acc)
-  (? (≡ n #0) acc
-     (resume-loop (⊖ n #1) (⊕ acc (↯ :State :get))))))
+(define resume-loop (lambda (n acc)
+  (if (equal? n #0) acc
+     (resume-loop (- n #1) (+ acc (perform :State :get))))))
 
-(≔ resume-sum
-  (⟪↺⟫ (resume-loop #1000 #0)
+(define resume-sum
+  (handle-resume (resume-loop #1000 #0)
     (:State
-      (:get (λ (k) (k #1)))
-      (:put (λ (k v) (k ∅))))))
+      (:get (lambda (k) (k #1)))
+      (:put (lambda (k v) (k nil))))))
 
-(⊨ :effect-resume-1k #1000 resume-sum)
+(test-case :effect-resume-1k #1000 resume-sum)
 
 ;;; --- 6. Linear effect consumed once, verified 5,000 times in loop ---
 
-(⟪ :Linear :consume)
+(effect-def :Linear :consume)
 
-(≔ linear-loop (λ (n acc)
-  (? (≡ n #0) acc
-     (linear-loop (⊖ n #1)
-       (⊕ acc (⟪⟫ (↯ :Linear :consume #1)
-                 (:Linear (:consume (λ (x) x)))))))))
+(define linear-loop (lambda (n acc)
+  (if (equal? n #0) acc
+     (linear-loop (- n #1)
+       (+ acc (handle (perform :Linear :consume #1)
+                 (:Linear (:consume (lambda (x) x)))))))))
 
-(⊨ :effect-linear-5k #5000 (linear-loop #5000 #0))
+(test-case :effect-linear-5k #5000 (linear-loop #5000 #0))
 
 ;;; --- 7. Recursive function performing effect at each level ---
 
-(≔ recursive-effect (λ (n)
-  (? (≡ n #0) #0
-     (⊕ (↯ :Counter :inc) (recursive-effect (⊖ n #1))))))
+(define recursive-effect (lambda (n)
+  (if (equal? n #0) #0
+     (+ (perform :Counter :inc) (recursive-effect (- n #1))))))
 
-(≔ rec-eff-result
-  (⟪↺⟫ (recursive-effect #250)
+(define rec-eff-result
+  (handle-resume (recursive-effect #250)
     (:Counter
-      (:inc (λ (k) (k #1)))
-      (:get (λ (k) (k #0))))))
+      (:inc (lambda (k) (k #1)))
+      (:get (lambda (k) (k #0))))))
 
-(⊨ :effect-recursive-250 #250 rec-eff-result)
+(test-case :effect-recursive-250 #250 rec-eff-result)
 
 ;;; --- 8. Non-resumable handler dispatching multiple ops ---
 
-(⊨ :effect-dispatch-inc #1
-  (⟪⟫ (↯ :Counter :inc)
+(test-case :effect-dispatch-inc #1
+  (handle (perform :Counter :inc)
     (:Counter
-      (:inc (λ () #1))
-      (:get (λ () #0)))))
+      (:inc (lambda () #1))
+      (:get (lambda () #0)))))
 
-(⊨ :effect-dispatch-get #0
-  (⟪⟫ (↯ :Counter :get)
+(test-case :effect-dispatch-get #0
+  (handle (perform :Counter :get)
     (:Counter
-      (:inc (λ () #1))
-      (:get (λ () #0)))))
+      (:inc (lambda () #1))
+      (:get (lambda () #0)))))
 
-(⊨ :effect-dispatch-check #99
-  (⟪⟫ (↯ :Validate :check #99)
-    (:Validate (:check (λ (x) x)))))
+(test-case :effect-dispatch-check #99
+  (handle (perform :Validate :check #99)
+    (:Validate (:check (lambda (x) x)))))
 
-(⊨ :effect-dispatch-log :hello
-  (⟪⟫ (↯ :Logger :log :hello)
-    (:Logger (:log (λ (msg) msg)))))
+(test-case :effect-dispatch-log :hello
+  (handle (perform :Logger :log :hello)
+    (:Logger (:log (lambda (msg) msg)))))

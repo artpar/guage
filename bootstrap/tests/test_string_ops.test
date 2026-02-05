@@ -2,199 +2,199 @@
 ; Test suite for Day 121 String SDK — 20 SIMD-accelerated primitives
 ; Tests all tiers: Search, Transform, Trim, Split, Pad, Strip
 
-(≋ "Testing String SDK (Day 121)...")
+(print "Testing String SDK (Day 121)...")
 
 ; ============================================================================
-; Tier 1: Search — ≈⊳, ≈⊲, ≈∈?, ≈⊲?, ≈⊳?, ≈⊳#
+; Tier 1: Search — ≈⊳, ≈⊲, ≈∈?, ≈⊲?, ≈⊳?, string-count
 ; ============================================================================
 
-(≋ "  Tier 1: Search...")
+(print "  Tier 1: Search...")
 
-; ≈⊳ find
-(⊨ :find-basic #6 (≈⊳ "hello world" "world"))
-(⊨ :find-start #0 (≈⊳ "hello world" "hello"))
-(⊨ :find-not-found ∅ (≈⊳ "hello" "xyz"))
-(⊨ :find-empty-needle #0 (≈⊳ "hello" ""))
-(⊨ :find-single-char #4 (≈⊳ "hello" "o"))
-(⊨ :find-first-occ #0 (≈⊳ "abcabc" "abc"))
+; string-find find
+(test-case :find-basic #6 (string-find "hello world" "world"))
+(test-case :find-start #0 (string-find "hello world" "hello"))
+(test-case :find-not-found nil (string-find "hello" "xyz"))
+(test-case :find-empty-needle #0 (string-find "hello" ""))
+(test-case :find-single-char #4 (string-find "hello" "o"))
+(test-case :find-first-occ #0 (string-find "abcabc" "abc"))
 
-; ≈⊲ rfind
-(⊨ :rfind-basic #6 (≈⊲ "hello world" "world"))
-(⊨ :rfind-last #3 (≈⊲ "abcabc" "abc"))
-(⊨ :rfind-not-found ∅ (≈⊲ "hello" "xyz"))
-(⊨ :rfind-single-char #4 (≈⊲ "hello" "o"))
+; string-rfind rfind
+(test-case :rfind-basic #6 (string-rfind "hello world" "world"))
+(test-case :rfind-last #3 (string-rfind "abcabc" "abc"))
+(test-case :rfind-not-found nil (string-rfind "hello" "xyz"))
+(test-case :rfind-single-char #4 (string-rfind "hello" "o"))
 
-; ≈∈? contains
-(⊨ :contains-true #t (≈∈? "hello world" "world"))
-(⊨ :contains-false #f (≈∈? "hello" "xyz"))
-(⊨ :contains-empty #t (≈∈? "hello" ""))
+; string-contains? contains
+(test-case :contains-true #t (string-contains? "hello world" "world"))
+(test-case :contains-false #f (string-contains? "hello" "xyz"))
+(test-case :contains-empty #t (string-contains? "hello" ""))
 
-; ≈⊲? starts-with
-(⊨ :starts-with-match #t (≈⊲? "hello world" "hello"))
-(⊨ :starts-with-no-match #f (≈⊲? "hello world" "world"))
-(⊨ :starts-with-empty #t (≈⊲? "hello" ""))
-(⊨ :starts-with-longer #f (≈⊲? "hi" "hello"))
+; string-starts-with? starts-with
+(test-case :starts-with-match #t (string-starts-with? "hello world" "hello"))
+(test-case :starts-with-no-match #f (string-starts-with? "hello world" "world"))
+(test-case :starts-with-empty #t (string-starts-with? "hello" ""))
+(test-case :starts-with-longer #f (string-starts-with? "hi" "hello"))
 
-; ≈⊳? ends-with
-(⊨ :ends-with-match #t (≈⊳? "hello world" "world"))
-(⊨ :ends-with-no-match #f (≈⊳? "hello world" "hello"))
-(⊨ :ends-with-empty #t (≈⊳? "hello" ""))
-(⊨ :ends-with-longer #f (≈⊳? "hi" "hello"))
+; string-ends-with? ends-with
+(test-case :ends-with-match #t (string-ends-with? "hello world" "world"))
+(test-case :ends-with-no-match #f (string-ends-with? "hello world" "hello"))
+(test-case :ends-with-empty #t (string-ends-with? "hello" ""))
+(test-case :ends-with-longer #f (string-ends-with? "hi" "hello"))
 
-; ≈⊳# count
-(⊨ :count-multiple #3 (≈⊳# "abcabcabc" "abc"))
-(⊨ :count-zero #0 (≈⊳# "hello" "xyz"))
-(⊨ :count-single-char #2 (≈⊳# "hello" "l"))
-(⊨ :count-one #1 (≈⊳# "hello world" "world"))
-
-; ============================================================================
-; Tier 2: Transform — ≈⇄, ≈⊛, ≈⇔, ≈⇔#
-; ============================================================================
-
-(≋ "  Tier 2: Transform...")
-
-; ≈⇄ reverse
-(⊨ :reverse-basic "olleh" (≈⇄ "hello"))
-(⊨ :reverse-empty "" (≈⇄ ""))
-(⊨ :reverse-single "a" (≈⇄ "a"))
-(⊨ :reverse-palindrome "aba" (≈⇄ "aba"))
-
-; ≈⊛ repeat
-(⊨ :repeat-3 "abcabcabc" (≈⊛ "abc" #3))
-(⊨ :repeat-0 "" (≈⊛ "abc" #0))
-(⊨ :repeat-1 "abc" (≈⊛ "abc" #1))
-(⊨ :repeat-empty "" (≈⊛ "" #5))
-
-; ≈⇔ replace
-(⊨ :replace-basic "hello there" (≈⇔ "hello world" "world" "there"))
-(⊨ :replace-all "bbb" (≈⇔ "aaa" "a" "b"))
-(⊨ :replace-not-found "hello" (≈⇔ "hello" "xyz" "abc"))
-(⊨ :replace-delete "heo" (≈⇔ "hello" "l" ""))
-
-; ≈⇔# replacen
-(⊨ :replacen-first-2 "bb" (≈⇔# "abcabc" "abc" "b" #2))
-(⊨ :replacen-first-1 "babcabc" (≈⇔# "abcabcabc" "abc" "b" #1))
+; string-count count
+(test-case :count-multiple #3 (string-count "abcabcabc" "abc"))
+(test-case :count-zero #0 (string-count "hello" "xyz"))
+(test-case :count-single-char #2 (string-count "hello" "l"))
+(test-case :count-one #1 (string-count "hello world" "world"))
 
 ; ============================================================================
-; Tier 3: Trim — ≈⊏, ≈⊐, ≈⊏⊐
+; Tier 2: Transform — ≈⇄, ≈⊛, ≈⇔, string-replace-n
 ; ============================================================================
 
-(≋ "  Tier 3: Trim...")
+(print "  Tier 2: Transform...")
 
-; ≈⊏ trim-left
-(⊨ :trim-left-spaces "hello" (≈⊏ "  hello"))
-(⊨ :trim-left-tabs "hello" (≈⊏ "\thello"))
-(⊨ :trim-left-mixed "hello" (≈⊏ " \t\nhello"))
-(⊨ :trim-left-none "hello" (≈⊏ "hello"))
-(⊨ :trim-left-all "" (≈⊏ "   "))
+; string-reverse reverse
+(test-case :reverse-basic "olleh" (string-reverse "hello"))
+(test-case :reverse-empty "" (string-reverse ""))
+(test-case :reverse-single "a" (string-reverse "a"))
+(test-case :reverse-palindrome "aba" (string-reverse "aba"))
 
-; ≈⊐ trim-right
-(⊨ :trim-right-spaces "hello" (≈⊐ "hello  "))
-(⊨ :trim-right-tabs "hello" (≈⊐ "hello\t"))
-(⊨ :trim-right-none "hello" (≈⊐ "hello"))
-(⊨ :trim-right-all "" (≈⊐ "   "))
+; string-repeat repeat
+(test-case :repeat-3 "abcabcabc" (string-repeat "abc" #3))
+(test-case :repeat-0 "" (string-repeat "abc" #0))
+(test-case :repeat-1 "abc" (string-repeat "abc" #1))
+(test-case :repeat-empty "" (string-repeat "" #5))
 
-; ≈⊏⊐ trim
-(⊨ :trim-both "hello" (≈⊏⊐ "  hello  "))
-(⊨ :trim-mixed "hello" (≈⊏⊐ "\t\n hello \n\t"))
-(⊨ :trim-none "hello" (≈⊏⊐ "hello"))
+; string-replace replace
+(test-case :replace-basic "hello there" (string-replace "hello world" "world" "there"))
+(test-case :replace-all "bbb" (string-replace "aaa" "a" "b"))
+(test-case :replace-not-found "hello" (string-replace "hello" "xyz" "abc"))
+(test-case :replace-delete "heo" (string-replace "hello" "l" ""))
 
-; ============================================================================
-; Tier 4: Split — ≈÷, ≈÷#, ≈÷⊔
-; ============================================================================
-
-(≋ "  Tier 4: Split...")
-
-; ≈÷ split
-(⊨ :split-basic
-   (⟨⟩ "a" (⟨⟩ "b" (⟨⟩ "c" ∅)))
-   (≈÷ "a,b,c" ","))
-(⊨ :split-chars
-   (⟨⟩ "h" (⟨⟩ "e" (⟨⟩ "l" (⟨⟩ "l" (⟨⟩ "o" ∅)))))
-   (≈÷ "hello" ""))
-(⊨ :split-not-found
-   (⟨⟩ "hello" ∅)
-   (≈÷ "hello" ","))
-(⊨ :split-empty ∅ (≈÷ "" ","))
-(⊨ :split-multi-delim
-   (⟨⟩ "hello" (⟨⟩ "world" ∅))
-   (≈÷ "hello::world" "::"))
-
-; ≈÷# splitn
-(⊨ :splitn-3-parts
-   (⟨⟩ "a" (⟨⟩ "b" (⟨⟩ "c,d" ∅)))
-   (≈÷# "a,b,c,d" "," #3))
-(⊨ :splitn-1
-   (⟨⟩ "a,b,c" ∅)
-   (≈÷# "a,b,c" "," #1))
-
-; ≈÷⊔ fields
-(⊨ :fields-basic
-   (⟨⟩ "hello" (⟨⟩ "world" ∅))
-   (≈÷⊔ "hello world"))
-(⊨ :fields-multi-space
-   (⟨⟩ "hello" (⟨⟩ "world" ∅))
-   (≈÷⊔ "  hello   world  "))
-(⊨ :fields-tabs
-   (⟨⟩ "a" (⟨⟩ "b" (⟨⟩ "c" ∅)))
-   (≈÷⊔ "a\tb\tc"))
-(⊨ :fields-mixed-ws
-   (⟨⟩ "hello" (⟨⟩ "world" ∅))
-   (≈÷⊔ "\t hello \n world \r"))
+; string-replace-n replacen
+(test-case :replacen-first-2 "bb" (string-replace-n "abcabc" "abc" "b" #2))
+(test-case :replacen-first-1 "babcabc" (string-replace-n "abcabcabc" "abc" "b" #1))
 
 ; ============================================================================
-; Tier 5: Pad — ≈⊏⊕, ≈⊐⊕
+; Tier 3: Trim — ≈⊏, ≈⊐, string-trim
 ; ============================================================================
 
-(≋ "  Tier 5: Pad...")
+(print "  Tier 3: Trim...")
 
-; ≈⊏⊕ pad-left
-(⊨ :pad-left-basic "000hi" (≈⊏⊕ "hi" #5 "0"))
-(⊨ :pad-left-already "hello" (≈⊏⊕ "hello" #3 "0"))
-(⊨ :pad-left-exact "hello" (≈⊏⊕ "hello" #5 "0"))
+; string-trim-left trim-left
+(test-case :trim-left-spaces "hello" (string-trim-left "  hello"))
+(test-case :trim-left-tabs "hello" (string-trim-left "\thello"))
+(test-case :trim-left-mixed "hello" (string-trim-left " \t\nhello"))
+(test-case :trim-left-none "hello" (string-trim-left "hello"))
+(test-case :trim-left-all "" (string-trim-left "   "))
 
-; ≈⊐⊕ pad-right
-(⊨ :pad-right-basic "hi000" (≈⊐⊕ "hi" #5 "0"))
-(⊨ :pad-right-already "hello" (≈⊐⊕ "hello" #3 "0"))
-(⊨ :pad-right-space "hi   " (≈⊐⊕ "hi" #5 " "))
+; string-trim-right trim-right
+(test-case :trim-right-spaces "hello" (string-trim-right "hello  "))
+(test-case :trim-right-tabs "hello" (string-trim-right "hello\t"))
+(test-case :trim-right-none "hello" (string-trim-right "hello"))
+(test-case :trim-right-all "" (string-trim-right "   "))
+
+; string-trim trim
+(test-case :trim-both "hello" (string-trim "  hello  "))
+(test-case :trim-mixed "hello" (string-trim "\t\n hello \n\t"))
+(test-case :trim-none "hello" (string-trim "hello"))
 
 ; ============================================================================
-; Tier 6: Strip — ≈⊏⊖, ≈⊐⊖
+; Tier 4: Split — ≈÷, ≈÷#, string-fields
 ; ============================================================================
 
-(≋ "  Tier 6: Strip...")
+(print "  Tier 4: Split...")
 
-; ≈⊏⊖ strip-prefix
-(⊨ :strip-prefix-match "world" (≈⊏⊖ "hello world" "hello "))
-(⊨ :strip-prefix-no-match "hello world" (≈⊏⊖ "hello world" "xyz"))
-(⊨ :strip-prefix-empty "hello" (≈⊏⊖ "hello" ""))
+; string-split split
+(test-case :split-basic
+   (cons "a" (cons "b" (cons "c" nil)))
+   (string-split "a,b,c" ","))
+(test-case :split-chars
+   (cons "h" (cons "e" (cons "l" (cons "l" (cons "o" nil)))))
+   (string-split "hello" ""))
+(test-case :split-not-found
+   (cons "hello" nil)
+   (string-split "hello" ","))
+(test-case :split-empty nil (string-split "" ","))
+(test-case :split-multi-delim
+   (cons "hello" (cons "world" nil))
+   (string-split "hello::world" "::"))
 
-; ≈⊐⊖ strip-suffix
-(⊨ :strip-suffix-match "hello" (≈⊐⊖ "hello world" " world"))
-(⊨ :strip-suffix-no-match "hello world" (≈⊐⊖ "hello world" "xyz"))
-(⊨ :strip-suffix-empty "hello" (≈⊐⊖ "hello" ""))
+; string-split-n splitn
+(test-case :splitn-3-parts
+   (cons "a" (cons "b" (cons "c,d" nil)))
+   (string-split-n "a,b,c,d" "," #3))
+(test-case :splitn-1
+   (cons "a,b,c" nil)
+   (string-split-n "a,b,c" "," #1))
+
+; string-fields fields
+(test-case :fields-basic
+   (cons "hello" (cons "world" nil))
+   (string-fields "hello world"))
+(test-case :fields-multi-space
+   (cons "hello" (cons "world" nil))
+   (string-fields "  hello   world  "))
+(test-case :fields-tabs
+   (cons "a" (cons "b" (cons "c" nil)))
+   (string-fields "a\tb\tc"))
+(test-case :fields-mixed-ws
+   (cons "hello" (cons "world" nil))
+   (string-fields "\t hello \n world \r"))
+
+; ============================================================================
+; Tier 5: Pad — ≈⊏⊕, string-pad-right
+; ============================================================================
+
+(print "  Tier 5: Pad...")
+
+; string-pad-left pad-left
+(test-case :pad-left-basic "000hi" (string-pad-left "hi" #5 "0"))
+(test-case :pad-left-already "hello" (string-pad-left "hello" #3 "0"))
+(test-case :pad-left-exact "hello" (string-pad-left "hello" #5 "0"))
+
+; string-pad-right pad-right
+(test-case :pad-right-basic "hi000" (string-pad-right "hi" #5 "0"))
+(test-case :pad-right-already "hello" (string-pad-right "hello" #3 "0"))
+(test-case :pad-right-space "hi   " (string-pad-right "hi" #5 " "))
+
+; ============================================================================
+; Tier 6: Strip — ≈⊏⊖, string-strip-suffix
+; ============================================================================
+
+(print "  Tier 6: Strip...")
+
+; string-strip-prefix strip-prefix
+(test-case :strip-prefix-match "world" (string-strip-prefix "hello world" "hello "))
+(test-case :strip-prefix-no-match "hello world" (string-strip-prefix "hello world" "xyz"))
+(test-case :strip-prefix-empty "hello" (string-strip-prefix "hello" ""))
+
+; string-strip-suffix strip-suffix
+(test-case :strip-suffix-match "hello" (string-strip-suffix "hello world" " world"))
+(test-case :strip-suffix-no-match "hello world" (string-strip-suffix "hello world" "xyz"))
+(test-case :strip-suffix-empty "hello" (string-strip-suffix "hello" ""))
 
 ; ============================================================================
 ; Integration: long-name aliases via stdlib
 ; ============================================================================
 
-(≋ "  Integration: aliases...")
+(print "  Integration: aliases...")
 
-(⋘ "bootstrap/stdlib/string.scm")
+(load "bootstrap/stdlib/string.scm")
 
-(⊨ :alias-split
-   (⟨⟩ "a" (⟨⟩ "b" ∅))
+(test-case :alias-split
+   (cons "a" (cons "b" nil))
    (string-split "a,b" ","))
 
-(⊨ :alias-contains #t (string-contains? "hello world" "world"))
-(⊨ :alias-replace "hi there" (string-replace "hi world" "world" "there"))
-(⊨ :alias-trim "hello" (string-trim "  hello  "))
-(⊨ :alias-index-of #6 (string-index-of "hello world" "world"))
-(⊨ :alias-starts-with #t (string-starts-with? "hello" "hel"))
-(⊨ :alias-ends-with #t (string-ends-with? "hello" "llo"))
-(⊨ :alias-reverse "olleh" (string-reverse "hello"))
-(⊨ :alias-fields
-   (⟨⟩ "a" (⟨⟩ "b" ∅))
+(test-case :alias-contains #t (string-contains? "hello world" "world"))
+(test-case :alias-replace "hi there" (string-replace "hi world" "world" "there"))
+(test-case :alias-trim "hello" (string-trim "  hello  "))
+(test-case :alias-index-of #6 (string-index-of "hello world" "world"))
+(test-case :alias-starts-with #t (string-starts-with? "hello" "hel"))
+(test-case :alias-ends-with #t (string-ends-with? "hello" "llo"))
+(test-case :alias-reverse "olleh" (string-reverse "hello"))
+(test-case :alias-fields
+   (cons "a" (cons "b" nil))
    (string-fields "  a  b  "))
 
-(≋ "\n✅ All Day 121 String SDK tests passed!")
+(print "\n✅ All Day 121 String SDK tests passed!")

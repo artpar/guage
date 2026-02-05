@@ -2,17 +2,17 @@
 ;;; Debug lambda evaluation
 ;;;
 
-(⋘ "bootstrap/stdlib/eval.scm")
+(load "bootstrap/stdlib/eval.scm")
 
-(≔ empty-env (env-empty))
+(define empty-env (env-empty))
 
 ;;; Check structure of quoted lambda
-(≔ lambda-expr (⌜ (λ (:x) :x)))
-(≋ lambda-expr)
+(define lambda-expr (quote (lambda (:x) :x)))
+(print lambda-expr)
 
 ;;; Check parts
-(≋ (◁ lambda-expr))  ; Should be λ
-(≋ (▷ lambda-expr))  ; Should be ((:x) :x)
-(≋ (◁ (▷ lambda-expr)))  ; Should be (:x) - params
-(≋ (▷ (▷ lambda-expr)))  ; Should be (:x) - body
-(≋ (◁ (▷ (▷ lambda-expr))))  ; Should be :x - body
+(print (car lambda-expr))  ; Should be lambda
+(print (cdr lambda-expr))  ; Should be ((:x) :x)
+(print (car (cdr lambda-expr)))  ; Should be (:x) - params
+(print (cdr (cdr lambda-expr)))  ; Should be (:x) - body
+(print (car (cdr (cdr lambda-expr))))  ; Should be :x - body

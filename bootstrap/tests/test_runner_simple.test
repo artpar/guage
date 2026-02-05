@@ -1,28 +1,28 @@
 ; Simplified Test Runner - Test execution logic only
 
 ; Helper functions
-(≔ length (λ (lst)
-  (? (∅? lst)
+(define length (lambda (lst)
+  (if (null? lst)
      #0
-     (⊕ #1 (length (▷ lst))))))
+     (+ #1 (length (cdr lst))))))
 
 ; Execute a single test
-(≔ execute-test (λ (test)
-  (? (∅? test)
+(define execute-test (lambda (test)
+  (if (null? test)
      ⟨:error :empty-test⟩
-     (≔ test-sym (◁ test))
-     (≔ name (◁ (▷ test)))
-     (≔ expected (◁ (▷ (▷ test))))
-     (≔ actual (◁ (▷ (▷ (▷ test)))))
-     (? (≟ expected actual)
+     (define test-sym (car test))
+     (define name (car (cdr test)))
+     (define expected (car (cdr (cdr test))))
+     (define actual (car (cdr (cdr (cdr test)))))
+     (if (deep-equal? expected actual)
         ⟨:pass name⟩
         ⟨:fail name expected actual⟩))))
 
 ; Test with single primitive
-⟲ :testing-single-primitive
-(≔ add-tests (⌂⊨ (⌜ ⊕)))
-⟲ :tests-generated
-⟲ add-tests
-(≔ result (execute-test (◁ add-tests)))
-⟲ :test-result
+trace :testing-single-primitive
+(define add-tests (doc-tests (quote +)))
+trace :tests-generated
+trace add-tests
+(define result (execute-test (car add-tests)))
+trace :test-result
 result

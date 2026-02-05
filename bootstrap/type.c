@@ -60,14 +60,14 @@ static TypeExpr* parse_primary(const char** sig) {
     }
 
     /* Boolean type */
-    if (starts_with(*sig, "𝔹")) {
-        *sig += strlen("𝔹");
+    if (starts_with(*sig, "Bool")) {
+        *sig += strlen("Bool");
         return type_alloc(TYPE_BOOL);
     }
 
     /* Nil type */
-    if (starts_with(*sig, "∅")) {
-        *sig += strlen("∅");
+    if (starts_with(*sig, "nil")) {
+        *sig += strlen("nil");
         return type_alloc(TYPE_NIL);
     }
 
@@ -78,32 +78,32 @@ static TypeExpr* parse_primary(const char** sig) {
     }
 
     /* Lambda type */
-    if (starts_with(*sig, "λ")) {
-        *sig += strlen("λ");
+    if (starts_with(*sig, "lambda")) {
+        *sig += strlen("lambda");
         return type_alloc(TYPE_LAMBDA);
     }
 
     /* Error type */
-    if (starts_with(*sig, "⚠")) {
-        *sig += strlen("⚠");
+    if (starts_with(*sig, "error")) {
+        *sig += strlen("error");
         return type_alloc(TYPE_ERROR);
     }
 
     /* Struct type */
-    if (starts_with(*sig, "⊙")) {
-        *sig += strlen("⊙");
+    if (starts_with(*sig, "struct-create")) {
+        *sig += strlen("struct-create");
         return type_alloc(TYPE_STRUCT);
     }
 
     /* Node type */
-    if (starts_with(*sig, "⊚")) {
-        *sig += strlen("⊚");
+    if (starts_with(*sig, "adt-create")) {
+        *sig += strlen("adt-create");
         return type_alloc(TYPE_NODE);
     }
 
     /* Graph type */
-    if (starts_with(*sig, "⊝")) {
-        *sig += strlen("⊝");
+    if (starts_with(*sig, "graph-create")) {
+        *sig += strlen("graph-create");
         return type_alloc(TYPE_GRAPH);
     }
 
@@ -217,8 +217,8 @@ static TypeExpr* parse_type_expr(const char** sig) {
     skip_whitespace(sig);
 
     /* Function type α → β (right-associative) */
-    if (starts_with(*sig, "→")) {
-        *sig += strlen("→");
+    if (starts_with(*sig, "->")) {
+        *sig += strlen("->");
         skip_whitespace(sig);
 
         TypeExpr* right = parse_type_expr(sig);  /* Recursive for right-associativity */
@@ -234,8 +234,8 @@ static TypeExpr* parse_type_expr(const char** sig) {
     }
 
     /* Union type α | β */
-    if (starts_with(*sig, "|")) {
-        *sig += strlen("|");
+    if (starts_with(*sig, "abs")) {
+        *sig += strlen("abs");
         skip_whitespace(sig);
 
         TypeExpr* right = parse_type_expr(sig);
@@ -312,28 +312,28 @@ void type_print(TypeExpr* type) {
             printf("ℕ");
             break;
         case TYPE_BOOL:
-            printf("𝔹");
+            printf("Bool");
             break;
         case TYPE_NIL:
-            printf("∅");
+            printf("nil");
             break;
         case TYPE_SYMBOL:
             printf(":symbol");
             break;
         case TYPE_LAMBDA:
-            printf("λ");
+            printf("lambda");
             break;
         case TYPE_ERROR:
-            printf("⚠");
+            printf("error");
             break;
         case TYPE_STRUCT:
-            printf("⊙");
+            printf("struct-create");
             break;
         case TYPE_NODE:
-            printf("⊚");
+            printf("adt-create");
             break;
         case TYPE_GRAPH:
-            printf("⊝");
+            printf("graph-create");
             break;
         case TYPE_EFFECT:
             printf("effect");
@@ -355,7 +355,7 @@ void type_print(TypeExpr* type) {
             break;
         case TYPE_FUNC:
             type_print(type->data.func.from);
-            printf(" → ");
+            printf(" -> ");
             type_print(type->data.func.to);
             break;
         case TYPE_UNION:

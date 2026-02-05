@@ -1,27 +1,27 @@
 ; Debug test structure
 
 ; Generate tests
-(≔ tests (⌂⊨ (⌜ ⊕)))
+(define tests (doc-tests (quote +)))
 
 ; Show structure
-⟲ :all-tests
+trace :all-tests
 tests
 
-⟲ :first-test
-(≔ first (◁ tests))
+trace :first-test
+(define first (car tests))
 first
 
-⟲ :test-symbol
-(◁ first)
+trace :test-symbol
+(car first)
 
-⟲ :rest
-(▷ first)
+trace :rest
+(cdr first)
 
-⟲ :name
-(◁ (▷ first))
+trace :name
+(car (cdr first))
 
-⟲ :expected
-(◁ (▷ (▷ first)))
+trace :expected
+(car (cdr (cdr first)))
 
-⟲ :actual
-(◁ (▷ (▷ (▷ first))))
+trace :actual
+(car (cdr (cdr (cdr first))))

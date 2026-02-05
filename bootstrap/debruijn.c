@@ -93,7 +93,7 @@ Cell* debruijn_convert(Cell* expr, NameContext* ctx) {
 
     /* Number literals - wrap in quote to distinguish from De Bruijn indices */
     if (cell_is_number(expr)) {
-        Cell* quote_sym = cell_symbol("⌜");
+        Cell* quote_sym = cell_symbol("quote");
         Cell* result = cell_cons(quote_sym, cell_cons(expr, cell_nil()));
         cell_release(quote_sym);
         return result;
@@ -114,7 +114,7 @@ Cell* debruijn_convert(Cell* expr, NameContext* ctx) {
         if (cell_is_symbol(first)) {
             const char* sym = cell_get_symbol(first);
 
-            if (strcmp(sym, "λ") == 0) {
+            if (strcmp(sym, "lambda") == 0) {
                 /* Nested lambda: (λ (params...) body) */
                 Cell* params = cell_car(rest);
                 Cell* body_expr = cell_car(cell_cdr(rest));
@@ -196,7 +196,7 @@ Cell* debruijn_convert(Cell* expr, NameContext* ctx) {
 
                 /* Create a CONVERTED lambda marker: (:λ-converted (params) body) */
                 /* This tells eval.c not to convert again */
-                Cell* marker = cell_symbol(":λ-converted");
+                Cell* marker = cell_symbol(":lambda-converted");
                 Cell* result = cell_cons(marker,
                                         cell_cons(params,
                                                  cell_cons(converted_body, cell_nil())));

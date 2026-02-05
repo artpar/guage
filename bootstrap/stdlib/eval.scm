@@ -3,7 +3,7 @@
 ;;; Simple evaluator for numbers, booleans, symbols, and basic lists
 ;;;
 
-(⋘ "bootstrap/stdlib/eval-env.scm")
+(load "bootstrap/stdlib/eval-env.scm")
 
 ;; ===================================================================
 ;; Atom Evaluation
@@ -13,14 +13,14 @@
 ;; expr: Expression to evaluate
 ;; env: Environment for variable lookup
 ;; Returns: Evaluated value
-(≔ eval-atom (λ (expr) (λ (env)
-  (? (ℕ? expr)
+(define eval-atom (lambda (expr) (lambda (env)
+  (if (number? expr)
      expr                           ; Numbers self-evaluate
-     (? (𝔹? expr)
+     (if (boolean? expr)
         expr                        ; Booleans self-evaluate
-        (? (∅? expr)
+        (if (null? expr)
            expr                     ; Nil self-evaluates
-           (? (:? expr)
+           (if (symbol? expr)
               ((env-lookup env) expr)  ; Symbol lookup
               expr)))))))          ; Everything else self-evaluates
 
@@ -29,65 +29,65 @@
 ;; ===================================================================
 
 ;; Check if expression is a special form
-(≔ special-form? (λ (expr)
-  (? (∅? expr)
+(define special-form? (lambda (expr)
+  (if (null? expr)
      #f
-     (? (≡ (◁ expr) (⌜ λ))
+     (if (equal? (car expr) (quote lambda))
         #t
-        (? (≡ (◁ expr) (⌜ ?))
+        (if (equal? (car expr) (quote if))
            #t
-           (? (≡ (◁ expr) (⌜ ⌜))
+           (if (equal? (car expr) (quote quote))
               #t
-              (? (≡ (◁ expr) (⌜ ≔))
+              (if (equal? (car expr) (quote define))
                  #t
-                 (? (≡ (◁ expr) (⌜ ⊛))
+                 (if (equal? (car expr) (quote source))
                     #t
-                    (? (≡ (◁ expr) (⌜ ⌞))
+                    (if (equal? (car expr) (quote eval))
                        #t
                        #f)))))))))
 
 ;; Evaluate a lambda expression
 ;; Creates a closure: (:closure params body env)
-(≔ eval-lambda (λ (params) (λ (body) (λ (env)
-  (⟨⟩ :closure (⟨⟩ params (⟨⟩ body env)))))))
+(define eval-lambda (lambda (params) (lambda (body) (lambda (env)
+  (cons :closure (cons params (cons body env)))))))
 
 ;; Evaluate a conditional expression
-(≔ eval-if (λ (cond-expr) (λ (then-expr) (λ (else-expr) (λ (env)
-  (? ((eval cond-expr) env)
+(define eval-if (lambda (cond-expr) (lambda (then-expr) (lambda (else-expr) (lambda (env)
+  (if ((eval cond-expr) env)
      ((eval then-expr) env)
      ((eval else-expr) env)))))))
 
 ;; ===================================================================
-;; Letrec Support (⊛) - Substitution helpers
+;; Letrec Support (source) - Substitution helpers
 ;; ===================================================================
 
 ;; Check if symbol is in a list
-(≔ member? (λ (x) (λ (lst)
-  (? (∅? lst)
+(define member? (lambda (x) (lambda (lst)
+  (if (null? lst)
      #f
-     (? (≡ x (◁ lst))
+     (if (equal? x (car lst))
         #t
-        ((member? x) (▷ lst)))))))
+        ((member? x) (cdr lst)))))))
 
 ;; Substitute name with replacement in expression
 ;; Handles lambda shadowing correctly
-(≔ subst (λ (name) (λ (replacement) (λ (expr)
-  (? (:? expr)
+(define subst (lambda (name) (lambda (replacement) (lambda (expr)
+  (if (symbol? expr)
      ; Symbol - check if it matches
-     (? (≡ expr name) replacement expr)
-     (? (⟨⟩? expr)
+     (if (equal? expr name) replacement expr)
+     (if (pair? expr)
         ; List - check for lambda (shadowing) or recurse
-        (? (∅? expr)
+        (if (null? expr)
            expr
-           (? (≡ (◁ expr) (⌜ λ))
+           (if (equal? (car expr) (quote lambda))
               ; Lambda - check if name is shadowed by params
-              (? (⟨⟩? (▷ expr))
-                 (? ((member? name) (◁ (▷ expr)))
+              (if (pair? (cdr expr))
+                 (if ((member? name) (car (cdr expr)))
                     expr  ; Name shadowed, don't substitute
                     ; Substitute in body only
-                    (⟨⟩ (⌜ λ)
-                        (⟨⟩ (◁ (▷ expr))
-                            (((subst-list name) replacement) (▷ (▷ expr))))))
+                    (cons (quote lambda)
+                        (cons (car (cdr expr))
+                            (((subst-list name) replacement) (cdr (cdr expr))))))
                  expr)
               ; Not lambda - substitute in all elements
               (((subst-list name) replacement) expr)))
@@ -95,76 +95,76 @@
         expr))))))
 
 ;; Substitute in a list of expressions
-(≔ subst-list (λ (name) (λ (replacement) (λ (exprs)
-  (? (∅? exprs)
-     ∅
-     (⟨⟩ (((subst name) replacement) (◁ exprs))
-         (((subst-list name) replacement) (▷ exprs))))))))
+(define subst-list (lambda (name) (lambda (replacement) (lambda (exprs)
+  (if (null? exprs)
+     nil
+     (cons (((subst name) replacement) (car exprs))
+         (((subst-list name) replacement) (cdr exprs))))))))
 
 ;; Substitute multiple names at once
-(≔ subst-all (λ (names) (λ (replacements) (λ (expr)
-  (? (∅? names)
+(define subst-all (lambda (names) (lambda (replacements) (lambda (expr)
+  (if (null? names)
      expr
-     (((subst-all (▷ names)) (▷ replacements))
-      (((subst (◁ names)) (◁ replacements)) expr)))))))
+     (((subst-all (cdr names)) (cdr replacements))
+      (((subst (car names)) (car replacements)) expr)))))))
 
 ;; ===================================================================
 ;; Recursive Letrec Support
 ;; ===================================================================
 
 ;; Check if symbol appears anywhere in expression (respects lambda shadowing)
-(≔ contains-symbol? (λ (sym) (λ (expr)
-  (? (:? expr)
-     (≡ expr sym)
-     (? (⟨⟩? expr)
-        (? (∅? expr)
+(define contains-symbol? (lambda (sym) (lambda (expr)
+  (if (symbol? expr)
+     (equal? expr sym)
+     (if (pair? expr)
+        (if (null? expr)
            #f
-           (? (≡ (◁ expr) (⌜ λ))
-              (? (⟨⟩? (▷ expr))
-                 (? ((member? sym) (◁ (▷ expr)))
+           (if (equal? (car expr) (quote lambda))
+              (if (pair? (cdr expr))
+                 (if ((member? sym) (car (cdr expr)))
                     #f
-                    ((contains-symbol-list? sym) (▷ (▷ expr))))
+                    ((contains-symbol-list? sym) (cdr (cdr expr))))
                  #f)
               ((contains-symbol-list? sym) expr)))
         #f)))))
 
 ;; Check if symbol appears in any expression in list
-(≔ contains-symbol-list? (λ (sym) (λ (exprs)
-  (? (∅? exprs)
+(define contains-symbol-list? (lambda (sym) (lambda (exprs)
+  (if (null? exprs)
      #f
-     (? ((contains-symbol? sym) (◁ exprs))
+     (if ((contains-symbol? sym) (car exprs))
         #t
-        ((contains-symbol-list? sym) (▷ exprs)))))))
+        ((contains-symbol-list? sym) (cdr exprs)))))))
 
 ;; Check if a binding is recursive (name appears in body)
-(≔ is-recursive-binding? (λ (binding)
-  (? (⟨⟩? binding)
-     (? (⟨⟩? (▷ binding))
-        ((contains-symbol? (◁ binding)) (◁ (▷ binding)))
+(define is-recursive-binding? (lambda (binding)
+  (if (pair? binding)
+     (if (pair? (cdr binding))
+        ((contains-symbol? (car binding)) (car (cdr binding)))
         #f)
      #f)))
 
 ;; Transform recursive binding using Y-combinator pattern
-;; (λ (params) body) → ((λ (:self) (λ (params) body')) (λ (:self) (λ (params) body')))
+;; (lambda (params) body) -> ((lambda (:self) (lambda (params) body')) (lambda (:self) (lambda (params) body')))
 ;; where body' has `name` replaced with `(:self :self)`
-(≔ transform-recursive-ast (λ (name) (λ (lambda-expr)
-  (? (≡ (◁ lambda-expr) (⌜ λ))
-     (? (⟨⟩? (▷ lambda-expr))
-        (⟨⟩ (⟨⟩ (⌜ λ)
-                (⟨⟩ (⟨⟩ :self ∅)
-                    (⟨⟩ (⟨⟩ (⌜ λ)
-                            (⟨⟩ (◁ (▷ lambda-expr))
-                                (((subst-list name) (⟨⟩ :self (⟨⟩ :self ∅)))
-                                 (▷ (▷ lambda-expr)))))
-                        ∅)))
-            (⟨⟩ (⟨⟩ (⌜ λ)
-                    (⟨⟩ (⟨⟩ :self ∅)
-                        (⟨⟩ (⟨⟩ (⌜ λ)
-                                (⟨⟩ (◁ (▷ lambda-expr))
-                                    (((subst-list name) (⟨⟩ :self (⟨⟩ :self ∅)))
-                                     (▷ (▷ lambda-expr)))))
-                            ∅)))
-                ∅))
+(define transform-recursive-ast (lambda (name) (lambda (lambda-expr)
+  (if (equal? (car lambda-expr) (quote lambda))
+     (if (pair? (cdr lambda-expr))
+        (cons (cons (quote lambda)
+                (cons (cons :self nil)
+                    (cons (cons (quote lambda)
+                            (cons (car (cdr lambda-expr))
+                                (((subst-list name) (cons :self (cons :self nil)))
+                                 (cdr (cdr lambda-expr)))))
+                        nil)))
+            (cons (cons (quote lambda)
+                    (cons (cons :self nil)
+                        (cons (cons (quote lambda)
+                                (cons (car (cdr lambda-expr))
+                                    (((subst-list name) (cons :self (cons :self nil)))
+                                     (cdr (cdr lambda-expr)))))
+                            nil)))
+                nil))
         lambda-expr)
      lambda-expr))))
 
@@ -174,187 +174,187 @@
 
 ;; Extract all binding names from a list of bindings
 ;; bindings = ((name1 val1) (name2 val2) ...)
-(≔ collect-binding-names (λ (bindings)
-  (? (∅? bindings)
-     ∅
-     (⟨⟩ (◁ (◁ bindings))
-         (collect-binding-names (▷ bindings))))))
+(define collect-binding-names (lambda (bindings)
+  (if (null? bindings)
+     nil
+     (cons (car (car bindings))
+         (collect-binding-names (cdr bindings))))))
 
 ;; Check if any symbol in a list appears in expression
-(≔ contains-any-symbol? (λ (syms) (λ (expr)
-  (? (∅? syms)
+(define contains-any-symbol? (lambda (syms) (lambda (expr)
+  (if (null? syms)
      #f
-     (? ((contains-symbol? (◁ syms)) expr)
+     (if ((contains-symbol? (car syms)) expr)
         #t
-        ((contains-any-symbol? (▷ syms)) expr))))))
+        ((contains-any-symbol? (cdr syms)) expr))))))
 
 ;; Check if binding references any name from a list of names
-(≔ binding-references-names? (λ (binding) (λ (names)
-  (? (⟨⟩? binding)
-     (? (⟨⟩? (▷ binding))
-        ((contains-any-symbol? names) (◁ (▷ binding)))
+(define binding-references-names? (lambda (binding) (lambda (names)
+  (if (pair? binding)
+     (if (pair? (cdr binding))
+        ((contains-any-symbol? names) (car (cdr binding)))
         #f)
      #f))))
 
 ;; Check if bindings form a mutual recursion group
 ;; Returns #t if any binding references another binding's name
-(≔ is-mutual-recursion? (λ (bindings)
-  (? (∅? bindings)
+(define is-mutual-recursion? (lambda (bindings)
+  (if (null? bindings)
      #f
-     (? (∅? (▷ bindings))
+     (if (null? (cdr bindings))
         #f  ; Only one binding - not mutual
         ; Check if first binding references any other binding's name
         ((is-mutual-recursion-helper? bindings) (collect-binding-names bindings))))))
 
 ;; Helper: check if any binding references a name other than its own
-(≔ is-mutual-recursion-helper? (λ (bindings) (λ (all-names)
-  (? (∅? bindings)
+(define is-mutual-recursion-helper? (lambda (bindings) (lambda (all-names)
+  (if (null? bindings)
      #f
      ; For each binding, check if it references any OTHER name
-     (? ((binding-references-other-name? (◁ bindings)) all-names)
+     (if ((binding-references-other-name? (car bindings)) all-names)
         #t
-        ((is-mutual-recursion-helper? (▷ bindings)) all-names))))))
+        ((is-mutual-recursion-helper? (cdr bindings)) all-names))))))
 
 ;; Check if binding references any name other than its own
-(≔ binding-references-other-name? (λ (binding) (λ (all-names)
-  (? (⟨⟩? binding)
-     (? (⟨⟩? (▷ binding))
-        ((contains-any-symbol? ((remove-name (◁ binding)) all-names))
-         (◁ (▷ binding)))
+(define binding-references-other-name? (lambda (binding) (lambda (all-names)
+  (if (pair? binding)
+     (if (pair? (cdr binding))
+        ((contains-any-symbol? ((remove-name (car binding)) all-names))
+         (car (cdr binding)))
         #f)
      #f))))
 
 ;; Remove a name from a list of names
-(≔ remove-name (λ (name) (λ (names)
-  (? (∅? names)
-     ∅
-     (? (≡ name (◁ names))
-        (▷ names)
-        (⟨⟩ (◁ names) ((remove-name name) (▷ names))))))))
+(define remove-name (lambda (name) (lambda (names)
+  (if (null? names)
+     nil
+     (if (equal? name (car names))
+        (cdr names)
+        (cons (car names) ((remove-name name) (cdr names))))))))
 
 ;; Build accessor expression for nth element of pair structure
 ;; Supports N-function mutual recursion (Day 80)
-;; Structure: (⟨⟩ f0 (⟨⟩ f1 (⟨⟩ f2 ... fN-1)))
-;; index 0, total N → (:◁ (:self :self))
-;; index 1, total N → (:◁ (:▷ (:self :self)))
-;; index N-1, total N → (:▷ (:▷ ... (:self :self)))  (N-1 tails, no head)
-;; Note: Use (⌜ :◁) to get ::◁ (the keyword symbol that matches env bindings)
-(≔ build-accessor (λ (index) (λ (total)
-  (? (≡ (⊕ index #1) total)
+;; Structure: (cons f0 (cons f1 (cons f2 ... fN-1)))
+;; index 0, total N -> (:car (:self :self))
+;; index 1, total N -> (:car (:cdr (:self :self)))
+;; index N-1, total N -> (:cdr (:cdr ... (:self :self)))  (N-1 tails, no head)
+;; Note: Use (quote :car) to get ::◁ (the keyword symbol that matches env bindings)
+(define build-accessor (lambda (index) (lambda (total)
+  (if (equal? (+ index #1) total)
      ; Last function - just tails, no head
      (build-accessor-tails index)
      ; Not last - tails then head
-     (⟨⟩ (⌜ :◁) (⟨⟩ (build-accessor-tails index) ∅))))))
+     (cons (quote :car) (cons (build-accessor-tails index) nil))))))
 
-;; Build nested tail expressions: (:▷ (:▷ ... (:self :self)))
-;; n = 0 → (:self :self)
-;; n = 1 → (:▷ (:self :self))
-;; n = 2 → (:▷ (:▷ (:self :self)))
-(≔ build-accessor-tails (λ (n)
-  (? (≡ n #0)
-     (⟨⟩ :self (⟨⟩ :self ∅))  ; (:self :self)
-     (⟨⟩ (⌜ :▷) (⟨⟩ (build-accessor-tails (⊖ n #1)) ∅)))))
+;; Build nested tail expressions: (:cdr (:cdr ... (:self :self)))
+;; n = 0 -> (:self :self)
+;; n = 1 -> (:cdr (:self :self))
+;; n = 2 -> (:cdr (:cdr (:self :self)))
+(define build-accessor-tails (lambda (n)
+  (if (equal? n #0)
+     (cons :self (cons :self nil))  ; (:self :self)
+     (cons (quote :cdr) (cons (build-accessor-tails (- n #1)) nil)))))
 
 ;; Count list length
-(≔ list-length (λ (lst)
-  (? (∅? lst)
+(define list-length (lambda (lst)
+  (if (null? lst)
      #0
-     (⊕ #1 (list-length (▷ lst))))))
+     (+ #1 (list-length (cdr lst))))))
 
 ;; Build substitution pairs for mutual recursion
 ;; Returns list of (name . accessor) for N-function mutual recursion
 ;; names = list of binding names, index = current position, total = length of names
-(≔ build-mutual-substitutions (λ (names) (λ (index) (λ (total)
-  (? (∅? names)
-     ∅
-     (⟨⟩ (⟨⟩ (◁ names) ((build-accessor index) total))
-         (((build-mutual-substitutions (▷ names)) (⊕ index #1)) total)))))))
+(define build-mutual-substitutions (lambda (names) (lambda (index) (lambda (total)
+  (if (null? names)
+     nil
+     (cons (cons (car names) ((build-accessor index) total))
+         (((build-mutual-substitutions (cdr names)) (+ index #1)) total)))))))
 
 ;; Apply multiple substitutions to expression
 ;; subs = ((name1 . replacement1) (name2 . replacement2) ...)
-(≔ apply-substitutions (λ (subs) (λ (expr)
-  (? (∅? subs)
+(define apply-substitutions (lambda (subs) (lambda (expr)
+  (if (null? subs)
      expr
-     ((apply-substitutions (▷ subs))
-      (((subst (◁ (◁ subs))) (▷ (◁ subs))) expr))))))
+     ((apply-substitutions (cdr subs))
+      (((subst (car (car subs))) (cdr (car subs))) expr))))))
 
 ;; Transform a lambda body with mutual recursion substitutions
-(≔ transform-mutual-lambda (λ (lambda-expr) (λ (subs)
-  (? (≡ (◁ lambda-expr) (⌜ λ))
-     (? (⟨⟩? (▷ lambda-expr))
-        (⟨⟩ (⌜ λ)
-            (⟨⟩ (◁ (▷ lambda-expr))  ; params
-                ((apply-substitutions-list subs) (▷ (▷ lambda-expr)))))  ; body
+(define transform-mutual-lambda (lambda (lambda-expr) (lambda (subs)
+  (if (equal? (car lambda-expr) (quote lambda))
+     (if (pair? (cdr lambda-expr))
+        (cons (quote lambda)
+            (cons (car (cdr lambda-expr))  ; params
+                ((apply-substitutions-list subs) (cdr (cdr lambda-expr)))))  ; body
         lambda-expr)
      lambda-expr))))
 
 ;; Apply substitutions to list of expressions
-(≔ apply-substitutions-list (λ (subs) (λ (exprs)
-  (? (∅? exprs)
-     ∅
-     (⟨⟩ ((apply-substitutions subs) (◁ exprs))
-         ((apply-substitutions-list subs) (▷ exprs)))))))
+(define apply-substitutions-list (lambda (subs) (lambda (exprs)
+  (if (null? exprs)
+     nil
+     (cons ((apply-substitutions subs) (car exprs))
+         ((apply-substitutions-list subs) (cdr exprs)))))))
 
 ;; Build the pair structure for mutual recursion
-;; For 2 bindings: (:⟨⟩ transformed-lambda1 transformed-lambda2)
-;; Note: Use (⌜ :⟨⟩) to get ::⟨⟩ (the keyword symbol that matches env bindings)
-(≔ build-mutual-pair (λ (bindings) (λ (subs)
-  (? (∅? bindings)
-     ∅
-     (? (∅? (▷ bindings))
+;; For 2 bindings: (:cons transformed-lambda1 transformed-lambda2)
+;; Note: Use (quote :cons) to get ::⟨⟩ (the keyword symbol that matches env bindings)
+(define build-mutual-pair (lambda (bindings) (lambda (subs)
+  (if (null? bindings)
+     nil
+     (if (null? (cdr bindings))
         ; Last binding - just the transformed lambda
-        ((transform-mutual-lambda (◁ (▷ (◁ bindings)))) subs)
+        ((transform-mutual-lambda (car (cdr (car bindings)))) subs)
         ; More bindings - cons together
-        (⟨⟩ (⌜ :⟨⟩)
-            (⟨⟩ ((transform-mutual-lambda (◁ (▷ (◁ bindings)))) subs)
-                (⟨⟩ ((build-mutual-pair (▷ bindings)) subs)
-                    ∅))))))))
+        (cons (quote :cons)
+            (cons ((transform-mutual-lambda (car (cdr (car bindings)))) subs)
+                (cons ((build-mutual-pair (cdr bindings)) subs)
+                    nil))))))))
 
 ;; Transform mutually recursive bindings using Y-combinator pattern
 ;; Returns the transformed expression that produces nested pairs of closures
 ;; Supports N-function mutual recursion (Day 80)
-(≔ transform-mutual-ast (λ (bindings)
-  (? (∅? bindings)
-     ∅
-     (? (∅? (▷ bindings))
+(define transform-mutual-ast (lambda (bindings)
+  (if (null? bindings)
+     nil
+     (if (null? (cdr bindings))
         ; Single binding - shouldn't happen but handle it
-        (◁ (▷ (◁ bindings)))
+        (car (cdr (car bindings)))
         ; Multiple bindings - build mutual recursion structure
         ; Extract names and total once for efficiency
         ((transform-mutual-ast-helper bindings)
          (collect-binding-names bindings))))))
 
 ;; Helper that takes bindings and precomputed names
-(≔ transform-mutual-ast-helper (λ (bindings) (λ (names)
-  ((λ (subs)
-     (⟨⟩ (⟨⟩ (⌜ λ)
-             (⟨⟩ (⟨⟩ :self ∅)
-                 (⟨⟩ ((build-mutual-pair bindings) subs)
-                     ∅)))
-         (⟨⟩ (⟨⟩ (⌜ λ)
-                 (⟨⟩ (⟨⟩ :self ∅)
-                     (⟨⟩ ((build-mutual-pair bindings) subs)
-                         ∅)))
-             ∅)))
+(define transform-mutual-ast-helper (lambda (bindings) (lambda (names)
+  ((lambda (subs)
+     (cons (cons (quote lambda)
+             (cons (cons :self nil)
+                 (cons ((build-mutual-pair bindings) subs)
+                     nil)))
+         (cons (cons (quote lambda)
+                 (cons (cons :self nil)
+                     (cons ((build-mutual-pair bindings) subs)
+                         nil)))
+             nil)))
    (((build-mutual-substitutions names) #0) (list-length names))))))
 
 ;; Bind mutual recursion results to names
 ;; pair-result is the evaluated pair, bindings are the original bindings
 ;; Returns extended environment
-(≔ bind-mutual-results (λ (pair-result) (λ (bindings) (λ (env)
-  (? (∅? bindings)
+(define bind-mutual-results (lambda (pair-result) (lambda (bindings) (lambda (env)
+  (if (null? bindings)
      env
-     (? (∅? (▷ bindings))
+     (if (null? (cdr bindings))
         ; Last binding - bind to the result (not pair, just the function)
-        (((env-extend env) (◁ (◁ bindings))) pair-result)
-        ; First binding - bind to (◁ pair-result), recurse with (▷ pair-result)
-        (((bind-mutual-results (▷ pair-result))
-          (▷ bindings))
-         (((env-extend env) (◁ (◁ bindings))) (◁ pair-result)))))))))
+        (((env-extend env) (car (car bindings))) pair-result)
+        ; First binding - bind to (car pair-result), recurse with (cdr pair-result)
+        (((bind-mutual-results (cdr pair-result))
+          (cdr bindings))
+         (((env-extend env) (car (car bindings))) (car pair-result)))))))))
 
 ;; Evaluate mutually recursive bindings
-(≔ eval-mutual-letrec (λ (bindings) (λ (body) (λ (env)
-  (? (∅? bindings)
+(define eval-mutual-letrec (lambda (bindings) (lambda (body) (lambda (env)
+  (if (null? bindings)
      ((eval body) env)
      ; Transform and evaluate the mutual recursion structure
      ((eval body)
@@ -371,161 +371,161 @@
 ;; Handles defines by extending environment for subsequent expressions
 ;; Non-define expressions in non-final position are skipped (no side effects)
 ;; Returns value of last expression
-(≔ eval-body (λ (exprs) (λ (env)
-  (? (∅? exprs)
-     ∅                                    ; Empty body returns nil
-     (? (∅? (▷ exprs))
-        ((eval (◁ exprs)) env)           ; Last expression - evaluate and return
+(define eval-body (lambda (exprs) (lambda (env)
+  (if (null? exprs)
+     nil                                    ; Empty body returns nil
+     (if (null? (cdr exprs))
+        ((eval (car exprs)) env)           ; Last expression - evaluate and return
         ; More expressions follow - check for define
-        (? (⟨⟩? (◁ exprs))
-           (? (≡ (◁ (◁ exprs)) (⌜ ≔))
-              ; It's a define: (≔ name value) - extend env for rest
-              ; (◁ exprs) = (≔ name value)
-              ; (◁ (▷ (◁ exprs))) = name
-              ; (◁ (▷ (▷ (◁ exprs)))) = value-expr
-              ((eval-body (▷ exprs))
+        (if (pair? (car exprs))
+           (if (equal? (car (car exprs)) (quote define))
+              ; It's a define: (define name value) - extend env for rest
+              ; (car exprs) = (define name value)
+              ; (car (cdr (car exprs))) = name
+              ; (car (cdr (cdr (car exprs)))) = value-expr
+              ((eval-body (cdr exprs))
                (((env-extend env)
-                 (◁ (▷ (◁ exprs))))              ; name
-                ((eval (◁ (▷ (▷ (◁ exprs))))) env))) ; evaluated value
+                 (car (cdr (car exprs))))              ; name
+                ((eval (car (cdr (cdr (car exprs))))) env))) ; evaluated value
               ; Not a define - skip and continue
-              ((eval-body (▷ exprs)) env))
+              ((eval-body (cdr exprs)) env))
            ; Not a list - skip and continue
-           ((eval-body (▷ exprs)) env)))))))
+           ((eval-body (cdr exprs)) env)))))))
 
 ;; ===================================================================
-;; Letrec Evaluation (⊛) - With mutual recursion support
+;; Letrec Evaluation (source) - With mutual recursion support
 ;; ===================================================================
 
 ;; Evaluate letrec bindings
 ;; Handles: non-recursive, single recursive, and mutually recursive bindings
-(≔ eval-letrec (λ (bindings) (λ (body) (λ (env)
-  (? (∅? bindings)
+(define eval-letrec (lambda (bindings) (lambda (body) (lambda (env)
+  (if (null? bindings)
      ((eval body) env)
      ; Check for mutual recursion first (multiple bindings referencing each other)
-     (? (is-mutual-recursion? bindings)
+     (if (is-mutual-recursion? bindings)
         ; Mutual recursion - transform all bindings together
         (((eval-mutual-letrec bindings) body) env)
         ; Not mutual - check for single recursive binding
-        (? (is-recursive-binding? (◁ bindings))
+        (if (is-recursive-binding? (car bindings))
            ; Recursive - transform using Y-combinator pattern
-           (((eval-letrec (▷ bindings)) body)
+           (((eval-letrec (cdr bindings)) body)
             (((env-extend env)
-              (◁ (◁ bindings)))
-             ((eval ((transform-recursive-ast (◁ (◁ bindings)))
-                     (◁ (▷ (◁ bindings)))))
+              (car (car bindings)))
+             ((eval ((transform-recursive-ast (car (car bindings)))
+                     (car (cdr (car bindings)))))
               env)))
            ; Non-recursive - simple binding
-           (((eval-letrec (▷ bindings)) body)
+           (((eval-letrec (cdr bindings)) body)
             (((env-extend env)
-              (◁ (◁ bindings)))
-             ((eval (◁ (▷ (◁ bindings)))) env))))))))))
+              (car (car bindings)))
+             ((eval (car (cdr (car bindings)))) env))))))))))
 
 ;; ===================================================================
 ;; Function Application
 ;; ===================================================================
 
 ;; Bind parameters to arguments in environment
-(≔ bind-params (λ (params) (λ (args) (λ (env)
-  (? (∅? params)
+(define bind-params (lambda (params) (lambda (args) (lambda (env)
+  (if (null? params)
      env
-     (((bind-params (▷ params))
-       (▷ args))
-      (((env-extend env) (◁ params)) (◁ args))))))))
+     (((bind-params (cdr params))
+       (cdr args))
+      (((env-extend env) (car params)) (car args))))))))
 
 ;; Apply a function to arguments
 ;; fn: Function to apply (closure or primitive)
 ;; args: List of argument values
 ;; env: Current environment
-(≔ apply-fn (λ (fn) (λ (args) (λ (env)
-  (? (:? fn)
+(define apply-fn (lambda (fn) (lambda (args) (lambda (env)
+  (if (symbol? fn)
      (((apply-fn ((env-lookup env) fn)) args) env)  ; Look up and apply
-     (? (⟨⟩? fn)
+     (if (pair? fn)
         ; fn is a pair - check if it's a closure
-        (? (≡ (◁ fn) :closure)
+        (if (equal? (car fn) :closure)
            ; Closure: extract params, body-exprs, closure-env
            ; fn = (:closure . (params . (body-exprs . closure-env)))
-           (? (⟨⟩? (▷ fn))
+           (if (pair? (cdr fn))
               ; Get params and rest
-              (? (⟨⟩? (▷ (▷ fn)))
+              (if (pair? (cdr (cdr fn)))
                  ; Use eval-body for body-exprs (supports sequences with define)
-                 ((eval-body (◁ (▷ (▷ fn))))    ; body-exprs
-                  (((bind-params (◁ (▷ fn)))     ; params
+                 ((eval-body (car (cdr (cdr fn))))    ; body-exprs
+                  (((bind-params (car (cdr fn)))     ; params
                     args)
-                   (▷ (▷ (▷ fn)))))              ; closure-env
-                 (⚠ :invalid-closure-structure fn))
-              (⚠ :invalid-closure-structure fn))
-           (⚠ :not-a-closure fn))
+                   (cdr (cdr (cdr fn)))))              ; closure-env
+                 (error :invalid-closure-structure fn))
+              (error :invalid-closure-structure fn))
+           (error :not-a-closure fn))
         ; fn is not a symbol or pair - must be a primitive
-        (⊡ fn args)))))))
+        (apply-primitive fn args)))))))
 
 ;; Evaluate list of expressions
-(≔ eval-list-args (λ (exprs) (λ (env)
-  (? (∅? exprs)
-     ∅
-     (⟨⟩ ((eval (◁ exprs)) env)
-         ((eval-list-args (▷ exprs)) env))))))
+(define eval-list-args (lambda (exprs) (lambda (env)
+  (if (null? exprs)
+     nil
+     (cons ((eval (car exprs)) env)
+         ((eval-list-args (cdr exprs)) env))))))
 
 ;; Evaluate a list expression (function application)
-(≔ eval-list (λ (expr) (λ (env)
+(define eval-list (lambda (expr) (lambda (env)
   ; Check for special forms first
-  (? (special-form? expr)
+  (if (special-form? expr)
      ; Handle special forms
-     (? (≡ (◁ expr) (⌜ λ))
-        ; Lambda: (λ (params...) body-exprs...)
-        (? (⟨⟩? (▷ expr))
-           (? (⟨⟩? (▷ (▷ expr)))
-              (((eval-lambda (◁ (▷ expr)))   ; params list
-                (▷ (▷ expr)))                ; body-exprs (full list for sequences)
+     (if (equal? (car expr) (quote lambda))
+        ; Lambda: (lambda (params...) body-exprs...)
+        (if (pair? (cdr expr))
+           (if (pair? (cdr (cdr expr)))
+              (((eval-lambda (car (cdr expr)))   ; params list
+                (cdr (cdr expr)))                ; body-exprs (full list for sequences)
                env)
-              (⚠ :lambda-missing-body expr))
-           (⚠ :lambda-missing-params expr))
-        (? (≡ (◁ expr) (⌜ ?))
-           ; Conditional: (? cond then else)
-           (? (⟨⟩? (▷ expr))
-              (? (⟨⟩? (▷ (▷ expr)))
-                 (? (⟨⟩? (▷ (▷ (▷ expr))))
-                    ((((eval-if (◁ (▷ expr)))       ; cond
-                       (◁ (▷ (▷ expr))))            ; then
-                      (◁ (▷ (▷ (▷ expr)))))         ; else
+              (error :lambda-missing-body expr))
+           (error :lambda-missing-params expr))
+        (if (equal? (car expr) (quote if))
+           ; Conditional: (if cond then else)
+           (if (pair? (cdr expr))
+              (if (pair? (cdr (cdr expr)))
+                 (if (pair? (cdr (cdr (cdr expr))))
+                    ((((eval-if (car (cdr expr)))       ; cond
+                       (car (cdr (cdr expr))))            ; then
+                      (car (cdr (cdr (cdr expr)))))         ; else
                      env)
-                    (⚠ :if-missing-else expr))
-                 (⚠ :if-missing-then expr))
-              (⚠ :if-missing-condition expr))
-           ; Quote: (⌜ expr) - return expr unevaluated
-           (? (≡ (◁ expr) (⌜ ⌜))
-              (? (⟨⟩? (▷ expr))
-                 (◁ (▷ expr))            ; Return quoted expression
-                 (⚠ :quote-missing-expr expr))
-              ; Define: (≔ name value) - evaluate value and return it
+                    (error :if-missing-else expr))
+                 (error :if-missing-then expr))
+              (error :if-missing-condition expr))
+           ; Quote: (quote expr) - return expr unevaluated
+           (if (equal? (car expr) (quote quote))
+              (if (pair? (cdr expr))
+                 (car (cdr expr))            ; Return quoted expression
+                 (error :quote-missing-expr expr))
+              ; Define: (define name value) - evaluate value and return it
               ; Note: Environment extension only persists in body context (eval-body)
-              (? (≡ (◁ expr) (⌜ ≔))
-                 (? (⟨⟩? (▷ expr))
-                    (? (⟨⟩? (▷ (▷ expr)))
-                       ((eval (◁ (▷ (▷ expr)))) env)  ; Evaluate and return value
-                       (⚠ :define-missing-value expr))
-                    (⚠ :define-missing-name expr))
-                 ; Letrec: (⊛ ((name1 val1) (name2 val2) ...) body)
+              (if (equal? (car expr) (quote define))
+                 (if (pair? (cdr expr))
+                    (if (pair? (cdr (cdr expr)))
+                       ((eval (car (cdr (cdr expr)))) env)  ; Evaluate and return value
+                       (error :define-missing-value expr))
+                    (error :define-missing-name expr))
+                 ; Letrec: (source ((name1 val1) (name2 val2) ...) body)
                  ; Uses self-application transformation for recursion
-                 (? (≡ (◁ expr) (⌜ ⊛))
-                    (? (⟨⟩? (▷ expr))
-                       (? (⟨⟩? (▷ (▷ expr)))
-                          (((eval-letrec (◁ (▷ expr)))   ; bindings
-                            (◁ (▷ (▷ expr))))            ; body
+                 (if (equal? (car expr) (quote source))
+                    (if (pair? (cdr expr))
+                       (if (pair? (cdr (cdr expr)))
+                          (((eval-letrec (car (cdr expr)))   ; bindings
+                            (car (cdr (cdr expr))))            ; body
                            env)
-                          (⚠ :letrec-missing-body expr))
-                       (⚠ :letrec-missing-bindings expr))
-                    ; Meta-eval: (⌞ expr) - evaluate expr, then evaluate result
-                    (? (≡ (◁ expr) (⌜ ⌞))
-                       (? (⟨⟩? (▷ expr))
-                          ((eval ((eval (◁ (▷ expr))) env)) env)
-                          (⚠ :eval-missing-expr expr))
-                       (⚠ :unknown-special-form expr)))))))
+                          (error :letrec-missing-body expr))
+                       (error :letrec-missing-bindings expr))
+                    ; Meta-eval: (eval expr) - evaluate expr, then evaluate result
+                    (if (equal? (car expr) (quote eval))
+                       (if (pair? (cdr expr))
+                          ((eval ((eval (car (cdr expr))) env)) env)
+                          (error :eval-missing-expr expr))
+                       (error :unknown-special-form expr)))))))
      ; Regular function application
-     (? (∅? expr)
-        (⚠ :empty-application)
+     (if (null? expr)
+        (error :empty-application)
         ; Evaluate function
-        (((apply-fn ((eval (◁ expr)) env))
-          ((eval-list-args (▷ expr)) env))
+        (((apply-fn ((eval (car expr)) env))
+          ((eval-list-args (cdr expr)) env))
          env))))))
 
 ;; ===================================================================
@@ -536,7 +536,7 @@
 ;; expr: Expression to evaluate
 ;; env: Environment
 ;; Returns: Evaluated result
-(≔ eval (λ (expr) (λ (env)
-  (? (⟨⟩? expr)
+(define eval (lambda (expr) (lambda (env)
+  (if (pair? expr)
      ((eval-list expr) env)
      ((eval-atom expr) env)))))

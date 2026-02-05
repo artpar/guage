@@ -2,70 +2,70 @@
 ; Day 40: De Bruijn string support fix
 
 ; Test 1: Lambda with string literals should work
-(⊨ :string-in-lambda
+(test-case :string-in-lambda
    "hello"
-   ((λ (x) "hello") #42))
+   ((lambda (x) "hello") #42))
 
 ; Test 2: Lambda comparing string with parameter
-(⊨ :string-compare
+(test-case :string-compare
    #t
-   ((λ (s) (≈≡ s "test")) "test"))
+   ((lambda (s) (string-equal? s "test")) "test"))
 
 ; Test 3: Nested lambda with strings (2 levels)
-(⊨ :nested-with-strings-2
+(test-case :nested-with-strings-2
    "inner"
-   ((λ (outer)
-     ((λ (inner)
+   ((lambda (outer)
+     ((lambda (inner)
        inner)
       "inner"))
     "outer"))
 
 ; Test 4: Nested lambda with strings (3 levels)
-(⊨ :nested-with-strings-3
+(test-case :nested-with-strings-3
    "level3"
-   ((λ (l1)
-     ((λ (l2)
-       ((λ (l3)
+   ((lambda (l1)
+     ((lambda (l2)
+       ((lambda (l3)
          l3)
         "level3"))
       "level2"))
     "level1"))
 
 ; Test 5: Lambda using string operations
-(⊨ :string-ops-in-lambda
+(test-case :string-ops-in-lambda
    #7
-   ((λ (s) (≈# s)) "testing"))
+   ((lambda (s) (string-length s)) "testing"))
 
 ; Test 6: Nested lambda mixing strings and numbers
-(⊨ :mixed-nested
+(test-case :mixed-nested
    #42
-   ((λ (str)
-     ((λ (num)
+   ((lambda (str)
+     ((lambda (num)
        num)
       #42))
     "text"))
 
 ; Test 7: String as return value from nested structure
-(⊨ :string-return
+(test-case :string-return
    "result"
-   ((λ (x)
-     (? (≡ x #1)
+   ((lambda (x)
+     (if (equal? x #1)
         "result"
         "other"))
     #1))
 
 ; Test 8: Multiple string parameters
-(⊨ :multiple-strings
+(test-case :multiple-strings
    "ab"
-   ((λ (a b) (≈⊕ a b)) "a" "b"))
+   ((lambda (a b) (string-append a b)) "a" "b"))
 
 ; Test 9: Deep nesting (4 levels) with strings
-(⊨ :deep-nesting-strings
+(test-case :deep-nesting-strings
    "d"
-   ((λ (a)
-     ((λ (b)
-       ((λ (c)
-         ((λ (d)
+   ((lambda (a)
+     ((lambda (b)
+       ((lambda (c)
+         ((lambda (d)
            d)
           "d"))
         "c"))
@@ -73,8 +73,8 @@
     "a"))
 
 ; Test 10: Strings in conditional within lambda
-(⊨ :conditional-strings
+(test-case :conditional-strings
    "yes"
-   ((λ (test)
-     (? test "yes" "no"))
+   ((lambda (test)
+     (if test "yes" "no"))
     #t))

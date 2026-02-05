@@ -10,106 +10,106 @@
 ; ═══════════════════════════════════════════════════════════════
 
 ; Load stdlib
-(⋘ "bootstrap/stdlib/macros_control.scm")
-(⋘ "bootstrap/stdlib/macros_pattern.scm")
+(load "bootstrap/stdlib/macros_control.scm")
+(load "bootstrap/stdlib/macros_pattern.scm")
 
 ; ═══════════════════════════════════════════════════════════════
 ; Section 1: ∧* (and*) - Unlimited Short-Circuit AND
 ; ═══════════════════════════════════════════════════════════════
 
 ; Zero args - vacuous truth
-(⊨ :and-zero #t (∧*))
+(test-case :and-zero #t (∧*))
 
 ; Single arg
-(⊨ :and-one-t #t (∧* #t))
-(⊨ :and-one-f #f (∧* #f))
-(⊨ :and-one-val #42 (∧* #42))
+(test-case :and-one-t #t (∧* #t))
+(test-case :and-one-f #f (∧* #f))
+(test-case :and-one-val #42 (∧* #42))
 
 ; Two args
-(⊨ :and-two-tt #t (∧* #t #t))
-(⊨ :and-two-tf #f (∧* #t #f))
-(⊨ :and-two-ft #f (∧* #f #t))
+(test-case :and-two-tt #t (∧* #t #t))
+(test-case :and-two-tf #f (∧* #t #f))
+(test-case :and-two-ft #f (∧* #f #t))
 
 ; Five args (beyond old 4-arg limit)
-(⊨ :and-five-all-t #t (∧* #t #t #t #t #t))
-(⊨ :and-five-last-f #f (∧* #t #t #t #t #f))
-(⊨ :and-five-first-f #f (∧* #f #t #t #t #t))
+(test-case :and-five-all-t #t (∧* #t #t #t #t #t))
+(test-case :and-five-last-f #f (∧* #t #t #t #t #f))
+(test-case :and-five-first-f #f (∧* #f #t #t #t #t))
 
 ; Ten args
-(⊨ :and-ten #t (∧* #t #t #t #t #t #t #t #t #t #t))
-(⊨ :and-ten-fail #f (∧* #t #t #t #t #t #t #t #t #t #f))
+(test-case :and-ten #t (∧* #t #t #t #t #t #t #t #t #t #t))
+(test-case :and-ten-fail #f (∧* #t #t #t #t #t #t #t #t #t #f))
 
 ; Returns last value if all truthy (only #t is truthy in Guage)
-(⊨ :and-lisp-val :end (∧* #t #t :end))
-(⊨ :and-lisp-sym :finally (∧* #t #t #t #t #t :finally))
+(test-case :and-lisp-val :end (∧* #t #t :end))
+(test-case :and-lisp-sym :finally (∧* #t #t #t #t #t :finally))
 
 ; Short-circuit test - this would error if not short-circuited
-(⊨ :and-short #f (∧* #f (⊘ #1 #0)))
+(test-case :and-short #f (∧* #f (/ #1 #0)))
 
 ; ═══════════════════════════════════════════════════════════════
 ; Section 2: ∨* (or*) - Unlimited Short-Circuit OR
 ; ═══════════════════════════════════════════════════════════════
 
 ; Zero args - vacuous false
-(⊨ :or-zero #f (∨*))
+(test-case :or-zero #f (∨*))
 
 ; Single arg
-(⊨ :or-one-t #t (∨* #t))
-(⊨ :or-one-f #f (∨* #f))
-(⊨ :or-one-val #42 (∨* #42))
+(test-case :or-one-t #t (∨* #t))
+(test-case :or-one-f #f (∨* #f))
+(test-case :or-one-val #42 (∨* #42))
 
 ; Two args
-(⊨ :or-two-tt #t (∨* #t #t))
-(⊨ :or-two-tf #t (∨* #t #f))
-(⊨ :or-two-ft #t (∨* #f #t))
-(⊨ :or-two-ff #f (∨* #f #f))
+(test-case :or-two-tt #t (∨* #t #t))
+(test-case :or-two-tf #t (∨* #t #f))
+(test-case :or-two-ft #t (∨* #f #t))
+(test-case :or-two-ff #f (∨* #f #f))
 
 ; Five args (beyond old 4-arg limit)
-(⊨ :or-five-all-f #f (∨* #f #f #f #f #f))
-(⊨ :or-five-last-t #t (∨* #f #f #f #f #t))
-(⊨ :or-five-first-t #t (∨* #t #f #f #f #f))
+(test-case :or-five-all-f #f (∨* #f #f #f #f #f))
+(test-case :or-five-last-t #t (∨* #f #f #f #f #t))
+(test-case :or-five-first-t #t (∨* #t #f #f #f #f))
 
 ; Ten args
-(⊨ :or-ten-f #f (∨* #f #f #f #f #f #f #f #f #f #f))
-(⊨ :or-ten-t #t (∨* #f #f #f #f #f #f #f #f #f #t))
+(test-case :or-ten-f #f (∨* #f #f #f #f #f #f #f #f #f #f))
+(test-case :or-ten-t #t (∨* #f #f #f #f #f #f #f #f #f #t))
 
 ; Lisp semantics - returns first truthy value
-(⊨ :or-lisp-val #42 (∨* #f #42 #99))
-(⊨ :or-lisp-sym :found (∨* #f #f #f :found :not-reached))
+(test-case :or-lisp-val #42 (∨* #f #42 #99))
+(test-case :or-lisp-sym :found (∨* #f #f #f :found :not-reached))
 
 ; Short-circuit test - this would error if not short-circuited
-(⊨ :or-short #t (∨* #t (⊘ #1 #0)))
+(test-case :or-short #t (∨* #t (/ #1 #0)))
 
 ; ═══════════════════════════════════════════════════════════════
 ; Section 3: ⇒* (cond) - Unlimited Clauses
 ; ═══════════════════════════════════════════════════════════════
 
 ; Zero clauses
-(⊨ :cond-zero ∅ (⇒*))
+(test-case :cond-zero nil (⇒*))
 
 ; One clause
-(⊨ :cond-one-t :yes (⇒* (#t :yes)))
-(⊨ :cond-one-f ∅ (⇒* (#f :no)))
+(test-case :cond-one-t :yes (⇒* (#t :yes)))
+(test-case :cond-one-f nil (⇒* (#f :no)))
 
 ; Two clauses
-(⊨ :cond-two-first :first (⇒* (#t :first) (#t :second)))
-(⊨ :cond-two-second :second (⇒* (#f :first) (#t :second)))
+(test-case :cond-two-first :first (⇒* (#t :first) (#t :second)))
+(test-case :cond-two-second :second (⇒* (#f :first) (#t :second)))
 
 ; Five clauses (beyond old 5-clause limit)
-(⊨ :cond-five :fifth (⇒*
+(test-case :cond-five :fifth (⇒*
   (#f :1) (#f :2) (#f :3) (#f :4) (#t :fifth)))
 
 ; Six clauses
-(⊨ :cond-six :sixth (⇒*
+(test-case :cond-six :sixth (⇒*
   (#f :1) (#f :2) (#f :3) (#f :4) (#f :5) (#t :sixth)))
 
 ; Ten clauses
-(⊨ :cond-ten :ten (⇒*
+(test-case :cond-ten :ten (⇒*
   (#f :1) (#f :2) (#f :3) (#f :4) (#f :5)
   (#f :6) (#f :7) (#f :8) (#f :9) (#t :ten)))
 
 ; With expressions
-(⊨ :cond-expr :big (⇒*
+(test-case :cond-expr :big (⇒*
   ((> #5 #10) :small)
   ((> #5 #3) :big)
   (#t :default)))
@@ -119,78 +119,78 @@
 ; ═══════════════════════════════════════════════════════════════
 
 ; Zero bindings
-(⊨ :let-zero #42 (≔⇊ () #42))
+(test-case :let-zero #42 (≔⇊ () #42))
 
 ; One binding
-(⊨ :let-one #5 (≔⇊ ((:x #5)) :x))
+(test-case :let-one #5 (≔⇊ ((:x #5)) :x))
 
 ; Two bindings with dependency
-(⊨ :let-two #11 (≔⇊ ((:x #5) (:y (⊕ :x #1))) (⊕ :x :y)))
+(test-case :let-two #11 (≔⇊ ((:x #5) (:y (+ :x #1))) (+ :x :y)))
 
 ; Five bindings (beyond old 4-binding limit)
-(⊨ :let-five #15 (≔⇊ ((:a #1) (:b #2) (:c #3) (:d #4) (:e #5))
-  (⊕ :a (⊕ :b (⊕ :c (⊕ :d :e))))))
+(test-case :let-five #15 (≔⇊ ((:a #1) (:b #2) (:c #3) (:d #4) (:e #5))
+  (+ :a (+ :b (+ :c (+ :d :e))))))
 
 ; Six bindings - each references previous
-(⊨ :let-chain #720 (≔⇊
+(test-case :let-chain #720 (≔⇊
   ((:a #1)
-   (:b (⊗ :a #2))
-   (:c (⊗ :b #3))
-   (:d (⊗ :c #4))
-   (:e (⊗ :d #5))
-   (:f (⊗ :e #6)))
+   (:b (* :a #2))
+   (:c (* :b #3))
+   (:d (* :c #4))
+   (:e (* :d #5))
+   (:f (* :e #6)))
   :f))
 
 ; Eight bindings
-(⊨ :let-eight #8 (≔⇊
+(test-case :let-eight #8 (≔⇊
   ((:a #1) (:b #1) (:c #1) (:d #1)
    (:e #1) (:f #1) (:g #1) (:h #1))
-  (⊕ :a (⊕ :b (⊕ :c (⊕ :d (⊕ :e (⊕ :f (⊕ :g :h)))))))))
+  (+ :a (+ :b (+ :c (+ :d (+ :e (+ :f (+ :g :h)))))))))
 
 ; ═══════════════════════════════════════════════════════════════
 ; Section 5: ⇤ (case) - Unlimited Cases
 ; ═══════════════════════════════════════════════════════════════
 
 ; Just :else
-(⊨ :case-else :default (⇤ :anything (:else :default)))
+(test-case :case-else :default (⇤ :anything (:else :default)))
 
 ; One case, no match
-(⊨ :case-one-miss ∅ (⇤ :b (:a :matched)))
+(test-case :case-one-miss nil (⇤ :b (:a :matched)))
 
 ; One case with match
-(⊨ :case-one-hit :matched (⇤ :a (:a :matched)))
+(test-case :case-one-hit :matched (⇤ :a (:a :matched)))
 
 ; Two cases
-(⊨ :case-two-first :one (⇤ #1 (#1 :one) (#2 :two)))
-(⊨ :case-two-second :two (⇤ #2 (#1 :one) (#2 :two)))
+(test-case :case-two-first :one (⇤ #1 (#1 :one) (#2 :two)))
+(test-case :case-two-second :two (⇤ #2 (#1 :one) (#2 :two)))
 
 ; Five cases (beyond old limits)
-(⊨ :case-five :five (⇤ #5
+(test-case :case-five :five (⇤ #5
   (#1 :one) (#2 :two) (#3 :three) (#4 :four) (#5 :five)))
 
 ; Six cases with else
-(⊨ :case-six-else :default (⇤ #99
+(test-case :case-six-else :default (⇤ #99
   (#1 :one) (#2 :two) (#3 :three)
   (#4 :four) (#5 :five) (#6 :six) (:else :default)))
 
 ; Ten cases
-(⊨ :case-ten :ten (⇤ #10
+(test-case :case-ten :ten (⇤ #10
   (#1 :1) (#2 :2) (#3 :3) (#4 :4) (#5 :5)
   (#6 :6) (#7 :7) (#8 :8) (#9 :9) (#10 :ten)))
 
 ; Case with symbols - when :green matches, returns :go
-(⊨ :case-sym :go (⇤ :green
+(test-case :case-sym :go (⇤ :green
   (:red :stop) (:yellow :slow) (:green :go) (:else :unknown)))
 
 ; Verify single evaluation of expr
 ; bump returns counter value after incrementing, so first call returns #1
 ; which matches (#1 :one), returning :one
-(≔ counter #0)
-(≔ bump (λ () (≔ counter (⊕ counter #1)) counter))
-(⊨ :case-single-eval :one (⇤ (bump) (#1 :one) (#2 :two) (:else :other)))
-(⊨ :case-counter-check #1 counter)
+(define counter #0)
+(define bump (lambda () (define counter (+ counter #1)) counter))
+(test-case :case-single-eval :one (⇤ (bump) (#1 :one) (#2 :two) (:else :other)))
+(test-case :case-counter-check #1 counter)
 
 ; ═══════════════════════════════════════════════════════════════
 ; Summary
 ; ═══════════════════════════════════════════════════════════════
-(≋ "✓ 58 variadic stdlib macro tests complete")
+(print "✓ 58 variadic stdlib macro tests complete")

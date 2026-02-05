@@ -2,72 +2,72 @@
 ; Tests: register, whereis, unregister, registered list, auto-deregister
 
 ;;; Test 1: register-basic — register and whereis returns actor
-(⟳∅)
-(≔ a1 (⟳ (λ (self) (←?))))
-(⟳⊜⊕ :server a1)
-(≔ found (⟳⊜? :server))
-(⊨ (⌜ :register-basic) #t (≡ found a1))
+(actor-reset)
+(define a1 (actor-spawn (lambda (self) (actor-receive))))
+(registry-register :server a1)
+(define found (registry-whereis :server))
+(test-case (quote :register-basic) #t (equal? found a1))
 
 ;;; Test 2: register-send-by-name — send to named actor works
-(⟳∅)
-(≔ a2 (⟳ (λ (self) (←?))))
-(⟳⊜⊕ :echo a2)
-(≔ looked-up (⟳⊜? :echo))
-(→! looked-up :ping)
-(⟳! #100)
-(⊨ (⌜ :register-send-by-name) :ping (⟳→ a2))
+(actor-reset)
+(define a2 (actor-spawn (lambda (self) (actor-receive))))
+(registry-register :echo a2)
+(define looked-up (registry-whereis :echo))
+(actor-send looked-up :ping)
+(actor-run #100)
+(test-case (quote :register-send-by-name) :ping (actor-result a2))
 
-;;; Test 3: whereis-unregistered — returns ∅
-(⟳∅)
-(⊨ (⌜ :whereis-unregistered) ∅ (⟳⊜? :nonexistent))
+;;; Test 3: whereis-unregistered — returns nil
+(actor-reset)
+(test-case (quote :whereis-unregistered) nil (registry-whereis :nonexistent))
 
-;;; Test 4: unregister-basic — unregister then whereis returns ∅
-(⟳∅)
-(≔ a4 (⟳ (λ (self) (←?))))
-(⟳⊜⊕ :temp a4)
-(⟳⊜⊖ :temp)
-(⊨ (⌜ :unregister-basic) ∅ (⟳⊜? :temp))
+;;; Test 4: unregister-basic — unregister then whereis returns nil
+(actor-reset)
+(define a4 (actor-spawn (lambda (self) (actor-receive))))
+(registry-register :temp a4)
+(registry-unregister :temp)
+(test-case (quote :unregister-basic) nil (registry-whereis :temp))
 
 ;;; Test 5: register-duplicate-name — error on same name twice
-(⟳∅)
-(≔ a5a (⟳ (λ (self) (←?))))
-(≔ a5b (⟳ (λ (self) (←?))))
-(⟳⊜⊕ :dup-name a5a)
-(⊨ (⌜ :register-duplicate-name) #t (⚠? (⟳⊜⊕ :dup-name a5b)))
+(actor-reset)
+(define a5a (actor-spawn (lambda (self) (actor-receive))))
+(define a5b (actor-spawn (lambda (self) (actor-receive))))
+(registry-register :dup-name a5a)
+(test-case (quote :register-duplicate-name) #t (error? (registry-register :dup-name a5b)))
 
 ;;; Test 6: register-duplicate-actor — error if actor already registered
-(⟳∅)
-(≔ a6 (⟳ (λ (self) (←?))))
-(⟳⊜⊕ :name1 a6)
-(⊨ (⌜ :register-duplicate-actor) #t (⚠? (⟳⊜⊕ :name2 a6)))
+(actor-reset)
+(define a6 (actor-spawn (lambda (self) (actor-receive))))
+(registry-register :name1 a6)
+(test-case (quote :register-duplicate-actor) #t (error? (registry-register :name2 a6)))
 
 ;;; Test 7: registered-list — returns list of all names
-(⟳∅)
-(≔ a7a (⟳ (λ (self) (←?))))
-(≔ a7b (⟳ (λ (self) (←?))))
-(⟳⊜⊕ :svc-a a7a)
-(⟳⊜⊕ :svc-b a7b)
-(≔ names (⟳⊜*))
+(actor-reset)
+(define a7a (actor-spawn (lambda (self) (actor-receive))))
+(define a7b (actor-spawn (lambda (self) (actor-receive))))
+(registry-register :svc-a a7a)
+(registry-register :svc-b a7b)
+(define names (registry-list))
 ; List should have 2 elements
-(⊨ (⌜ :registered-list-count) #t
-  (∧ (¬ (≡ names ∅))
-      (¬ (≡ (▷ names) ∅))))
+(test-case (quote :registered-list-count) #t
+  (and (not (equal? names nil))
+      (not (equal? (cdr names) nil))))
 
 ;;; Test 8: dead-actor-auto-deregister — dead actor removed from registry
-(⟳∅)
-(≔ a8 (⟳ (λ (self) :done)))
-(⟳⊜⊕ :mortal a8)
-(⟳! #100)
-; Actor finished → should be auto-deregistered
-(⊨ (⌜ :dead-actor-auto-deregister) ∅ (⟳⊜? :mortal))
+(actor-reset)
+(define a8 (actor-spawn (lambda (self) :done)))
+(registry-register :mortal a8)
+(actor-run #100)
+; Actor finished -> should be auto-deregistered
+(test-case (quote :dead-actor-auto-deregister) nil (registry-whereis :mortal))
 
 ;;; Test 9: register-not-symbol — error if name isn't a symbol
-(⟳∅)
-(≔ a9 (⟳ (λ (self) (←?))))
-(⊨ (⌜ :register-not-symbol) #t (⚠? (⟳⊜⊕ #42 a9)))
+(actor-reset)
+(define a9 (actor-spawn (lambda (self) (actor-receive))))
+(test-case (quote :register-not-symbol) #t (error? (registry-register #42 a9)))
 
 ;;; Test 10: register-dead-actor — error if actor already dead
-(⟳∅)
-(≔ a10 (⟳ (λ (self) :done)))
-(⟳! #100)
-(⊨ (⌜ :register-dead-actor) #t (⚠? (⟳⊜⊕ :dead a10)))
+(actor-reset)
+(define a10 (actor-spawn (lambda (self) :done)))
+(actor-run #100)
+(test-case (quote :register-dead-actor) #t (error? (registry-register :dead a10)))

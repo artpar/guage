@@ -3,45 +3,45 @@
 ;;; Day 147
 ;;;
 
-(⋘ "bootstrap/stdlib/process.scm")
+(load "bootstrap/stdlib/process.scm")
 
 ; ============================================================================
 ; process-capture: capture stdout from commands
 ; ============================================================================
 
 ; Test: echo command
-(≔ echo-out (process-capture "echo hello"))
-(⊨ :capture-echo "hello\n" echo-out)
+(define echo-out (process-capture "echo hello"))
+(test-case :capture-echo "hello\n" echo-out)
 
 ; Test: multi-word echo
-(≔ echo2 (process-capture "echo hello world"))
-(⊨ :capture-echo-multi "hello world\n" echo2)
+(define echo2 (process-capture "echo hello world"))
+(test-case :capture-echo-multi "hello world\n" echo2)
 
 ; Test: printf (no trailing newline control)
-(≔ printf-out (process-capture "printf 'abc'"))
-(⊨ :capture-printf "abc" printf-out)
+(define printf-out (process-capture "printf 'abc'"))
+(test-case :capture-printf "abc" printf-out)
 
 ; ============================================================================
 ; process-run: fire-and-forget
 ; ============================================================================
 
 ; Test: true returns 0
-(⊨ :run-true #0 (process-run "true"))
+(test-case :run-true #0 (process-run "true"))
 
 ; ============================================================================
 ; process-capture-status: output + exit code
 ; ============================================================================
 
 ; Test: successful command
-(≔ cs (process-capture-status "echo ok"))
-(⊨ :capture-status-code #0 (◁ cs))
-(⊨ :capture-status-out "ok\n" (▷ cs))
+(define cs (process-capture-status "echo ok"))
+(test-case :capture-status-code #0 (car cs))
+(test-case :capture-status-out "ok\n" (cdr cs))
 
 ; ============================================================================
 ; Symbolic aliases
 ; ============================================================================
 
-(⊨ :alias-capture "hello\n" (⊙⌂⊛ "echo hello"))
+(test-case :alias-capture "hello\n" (⊙⌂⊛ "echo hello"))
 
 ; ============================================================================
 ; Tests complete

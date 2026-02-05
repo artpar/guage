@@ -2,367 +2,367 @@
 ; Test suite for type annotations
 ; Tests optional type hints for functions and values
 
-(≋ "Testing Type Annotations...")
+(print "Testing Type Annotations...")
 
 ; ============================================================================
 ; Test: Basic Type Constants
 ; ============================================================================
 
-(≋ "\nTesting basic type constants...")
+(print "\nTesting basic type constants...")
 
 ; Type constants are primitives that return type structures
-(⊨ :int-type-exists
+(test-case :int-type-exists
    #t
-   (⊙? (ℤ) :type))
+   (struct? (Int) :type))
 
-(⊨ :bool-type-exists
+(test-case :bool-type-exists
    #t
-   (⊙? (𝔹) :type))
+   (struct? (Bool) :type))
 
-(⊨ :string-type-exists
+(test-case :string-type-exists
    #t
-   (⊙? (𝕊) :type))
+   (struct? (String) :type))
 
-(⊨ :any-type-exists
+(test-case :any-type-exists
    #t
-   (⊙? (⊤) :type))
+   (struct? (Any) :type))
 
-(⊨ :nil-type-exists
+(test-case :nil-type-exists
    #t
-   (⊙? (∅ₜ) :type))
+   (struct? (Nil-type) :type))
 
 ; ============================================================================
-; Test: → (Function Type Constructor)
+; Test: -> (Function Type Constructor)
 ; ============================================================================
 
-(≋ "Testing → (function type)...")
+(print "Testing -> (function type)...")
 
 ; Create function types
-(⊨ :arrow-creates-type
+(test-case :arrow-creates-type
    #t
-   (⊙? (→ (ℤ) (ℤ)) :type))
+   (struct? (-> (Int) (Int)) :type))
 
 ; Multi-arg function type
-(⊨ :arrow-multi-arg
+(test-case :arrow-multi-arg
    #t
-   (⊙? (→ (ℤ) (ℤ) (ℤ)) :type))
+   (struct? (-> (Int) (Int) (Int)) :type))
 
 ; Nested function type (curried)
-(⊨ :arrow-curried
+(test-case :arrow-curried
    #t
-   (⊙? (→ (ℤ) (→ (ℤ) (ℤ))) :type))
+   (struct? (-> (Int) (-> (Int) (Int))) :type))
 
 ; ============================================================================
-; Test: []ₜ (List Type Constructor)
+; Test: List-type (List Type Constructor)
 ; ============================================================================
 
-(≋ "Testing []ₜ (list type)...")
+(print "Testing List-type (list type)...")
 
 ; Create list types
-(⊨ :list-type-creates
+(test-case :list-type-creates
    #t
-   (⊙? ([]ₜ (ℤ)) :type))
+   (struct? (List-type (Int)) :type))
 
-(⊨ :list-bool-type
+(test-case :list-bool-type
    #t
-   (⊙? ([]ₜ (𝔹)) :type))
+   (struct? (List-type (Bool)) :type))
 
 ; Nested list
-(⊨ :list-nested-type
+(test-case :list-nested-type
    #t
-   (⊙? ([]ₜ ([]ₜ (ℤ))) :type))
+   (struct? (List-type (List-type (Int))) :type))
 
 ; ============================================================================
-; Test: ⟨⟩ₜ (Pair Type Constructor)
+; Test: Pair-type (Pair Type Constructor)
 ; ============================================================================
 
-(≋ "Testing ⟨⟩ₜ (pair type)...")
+(print "Testing Pair-type (pair type)...")
 
 ; Create pair types
-(⊨ :pair-type-creates
+(test-case :pair-type-creates
    #t
-   (⊙? (⟨⟩ₜ (ℤ) (ℤ)) :type))
+   (struct? (Pair-type (Int) (Int)) :type))
 
-(⊨ :pair-mixed-type
+(test-case :pair-mixed-type
    #t
-   (⊙? (⟨⟩ₜ (ℤ) (𝕊)) :type))
+   (struct? (Pair-type (Int) (String)) :type))
 
 ; ============================================================================
-; Test: ∪ₜ (Union Type Constructor)
+; Test: Union-type (Union Type Constructor)
 ; ============================================================================
 
-(≋ "Testing ∪ₜ (union type)...")
+(print "Testing Union-type (union type)...")
 
 ; Create union types
-(⊨ :union-type-creates
+(test-case :union-type-creates
    #t
-   (⊙? (∪ₜ (ℤ) (∅ₜ)) :type))
+   (struct? (Union-type (Int) (Nil-type)) :type))
 
-(⊨ :union-int-string
+(test-case :union-int-string
    #t
-   (⊙? (∪ₜ (ℤ) (𝕊)) :type))
+   (struct? (Union-type (Int) (String)) :type))
 
 ; ============================================================================
-; Test: ∈⊙ (typeof - runtime type detection)
+; Test: type-of (typeof - runtime type detection)
 ; ============================================================================
 
-(≋ "Testing ∈⊙ (typeof)...")
+(print "Testing type-of (typeof)...")
 
 ; Type of integer
-(⊨ :typeof-int
+(test-case :typeof-int
    #t
-   (⊙? (∈⊙ #42) :type))
+   (struct? (type-of #42) :type))
 
 ; Type of boolean
-(⊨ :typeof-bool-t
+(test-case :typeof-bool-t
    #t
-   (⊙? (∈⊙ #t) :type))
+   (struct? (type-of #t) :type))
 
-(⊨ :typeof-bool-f
+(test-case :typeof-bool-f
    #t
-   (⊙? (∈⊙ #f) :type))
+   (struct? (type-of #f) :type))
 
 ; Type of string
-(⊨ :typeof-string
+(test-case :typeof-string
    #t
-   (⊙? (∈⊙ "hello") :type))
+   (struct? (type-of "hello") :type))
 
 ; Type of nil
-(⊨ :typeof-nil
+(test-case :typeof-nil
    #t
-   (⊙? (∈⊙ ∅) :type))
+   (struct? (type-of nil) :type))
 
 ; Type of symbol
-(⊨ :typeof-symbol
+(test-case :typeof-symbol
    :symbol
-   (∈⊙ :foo))
+   (type-of :foo))
 
 ; Type of pair
-(⊨ :typeof-pair
+(test-case :typeof-pair
    :pair
-   (∈⊙ (⟨⟩ #1 #2)))
+   (type-of (cons #1 #2)))
 
 ; Type of lambda
-(⊨ :typeof-lambda
+(test-case :typeof-lambda
    :function
-   (∈⊙ (λ (x) x)))
+   (type-of (lambda (x) x)))
 
 ; Type of error
-(⊨ :typeof-error
+(test-case :typeof-error
    :error
-   (∈⊙ (⚠ :test-error #0)))
+   (type-of (error :test-error #0)))
 
 ; ============================================================================
-; Test: ∈≡ (Type equality)
+; Test: type-equal? (Type equality)
 ; ============================================================================
 
-(≋ "Testing ∈≡ (type equality)...")
+(print "Testing type-equal? (type equality)...")
 
 ; Same basic types
-(⊨ :type-eq-int
+(test-case :type-eq-int
    #t
-   (∈≡ (ℤ) (ℤ)))
+   (type-equal? (Int) (Int)))
 
-(⊨ :type-eq-bool
+(test-case :type-eq-bool
    #t
-   (∈≡ (𝔹) (𝔹)))
+   (type-equal? (Bool) (Bool)))
 
 ; Different basic types
-(⊨ :type-neq-int-bool
+(test-case :type-neq-int-bool
    #f
-   (∈≡ (ℤ) (𝔹)))
+   (type-equal? (Int) (Bool)))
 
 ; Function types equal
-(⊨ :type-eq-func
+(test-case :type-eq-func
    #t
-   (∈≡ (→ (ℤ) (ℤ)) (→ (ℤ) (ℤ))))
+   (type-equal? (-> (Int) (Int)) (-> (Int) (Int))))
 
 ; Function types not equal
-(⊨ :type-neq-func
+(test-case :type-neq-func
    #f
-   (∈≡ (→ (ℤ) (ℤ)) (→ (ℤ) (𝔹))))
+   (type-equal? (-> (Int) (Int)) (-> (Int) (Bool))))
 
 ; List types equal
-(⊨ :type-eq-list
+(test-case :type-eq-list
    #t
-   (∈≡ ([]ₜ (ℤ)) ([]ₜ (ℤ))))
+   (type-equal? (List-type (Int)) (List-type (Int))))
 
 ; List types not equal
-(⊨ :type-neq-list
+(test-case :type-neq-list
    #f
-   (∈≡ ([]ₜ (ℤ)) ([]ₜ (𝔹))))
+   (type-equal? (List-type (Int)) (List-type (Bool))))
 
 ; ============================================================================
-; Test: ∈⊆ (Subtype checking)
+; Test: type-subtype? (Subtype checking)
 ; ============================================================================
 
-(≋ "Testing ∈⊆ (subtype)...")
+(print "Testing type-subtype? (subtype)...")
 
 ; Same type is subtype of itself
-(⊨ :subtype-same
+(test-case :subtype-same
    #t
-   (∈⊆ (ℤ) (ℤ)))
+   (type-subtype? (Int) (Int)))
 
-; Everything is subtype of ⊤ (any)
-(⊨ :subtype-any-int
+; Everything is subtype of Any (any)
+(test-case :subtype-any-int
    #t
-   (∈⊆ (ℤ) (⊤)))
+   (type-subtype? (Int) (Any)))
 
-(⊨ :subtype-any-bool
+(test-case :subtype-any-bool
    #t
-   (∈⊆ (𝔹) (⊤)))
+   (type-subtype? (Bool) (Any)))
 
-(⊨ :subtype-any-string
+(test-case :subtype-any-string
    #t
-   (∈⊆ (𝕊) (⊤)))
+   (type-subtype? (String) (Any)))
 
 ; Different types are not subtypes of each other
-(⊨ :not-subtype-int-bool
+(test-case :not-subtype-int-bool
    #f
-   (∈⊆ (ℤ) (𝔹)))
+   (type-subtype? (Int) (Bool)))
 
 ; Union subtype checking
-(⊨ :subtype-union-left
+(test-case :subtype-union-left
    #t
-   (∈⊆ (ℤ) (∪ₜ (ℤ) (𝕊))))
+   (type-subtype? (Int) (Union-type (Int) (String))))
 
-(⊨ :subtype-union-right
+(test-case :subtype-union-right
    #t
-   (∈⊆ (𝕊) (∪ₜ (ℤ) (𝕊))))
+   (type-subtype? (String) (Union-type (Int) (String))))
 
 ; ============================================================================
-; Test: ∈! (Type assertion)
+; Test: type-assert! (Type assertion)
 ; ============================================================================
 
-(≋ "Testing ∈! (type assertion)...")
+(print "Testing type-assert! (type assertion)...")
 
 ; Assert value has correct type - returns value
-(⊨ :assert-int-ok
+(test-case :assert-int-ok
    #42
-   (∈! #42 (ℤ)))
+   (type-assert! #42 (Int)))
 
-(⊨ :assert-string-ok
+(test-case :assert-string-ok
    "hello"
-   (∈! "hello" (𝕊)))
+   (type-assert! "hello" (String)))
 
-(⊨ :assert-bool-ok
+(test-case :assert-bool-ok
    #t
-   (∈! #t (𝔹)))
+   (type-assert! #t (Bool)))
 
-(⊨ :assert-nil-ok
-   ∅
-   (∈! ∅ (∅ₜ)))
+(test-case :assert-nil-ok
+   nil
+   (type-assert! nil (Nil-type)))
 
 ; Assert any type (always succeeds)
-(⊨ :assert-any-ok
+(test-case :assert-any-ok
    :anything
-   (∈! :anything (⊤)))
+   (type-assert! :anything (Any)))
 
 ; Assert with wrong type returns error
-(⊨ :assert-type-error
+(test-case :assert-type-error
    #t
-   (⚠? (∈! "not-an-int" (ℤ))))
+   (error? (type-assert! "not-an-int" (Int))))
 
-(⊨ :assert-type-error2
+(test-case :assert-type-error2
    #t
-   (⚠? (∈! #42 (𝕊))))
+   (error? (type-assert! #42 (String))))
 
 ; ============================================================================
-; Test: ∈ and ∈? (Type declaration and query)
+; Test: type-decl and type-check (Type declaration and query)
 ; ============================================================================
 
-(≋ "Testing ∈ and ∈? (declaration and query)...")
+(print "Testing type-decl and type-check (declaration and query)...")
 
 ; Declare type for a value
-(≔ my-x #42)
-(∈ my-x (ℤ))
+(define my-x #42)
+(type-decl my-x (Int))
 
 ; Query declared type
-(⊨ :query-declared
+(test-case :query-declared
    #t
-   (∈≡ (∈? my-x) (ℤ)))
+   (type-equal? (type-check my-x) (Int)))
 
 ; Declare type for a function
-(≔ my-inc (λ (n) (⊕ n #1)))
-(∈ my-inc (→ (ℤ) (ℤ)))
+(define my-inc (lambda (n) (+ n #1)))
+(type-decl my-inc (-> (Int) (Int)))
 
-(⊨ :query-func-type
+(test-case :query-func-type
    #t
-   (∈≡ (∈? my-inc) (→ (ℤ) (ℤ))))
+   (type-equal? (type-check my-inc) (-> (Int) (Int))))
 
 ; Query undeclared - returns nil
-(≔ my-y #99)
-(⊨ :query-undeclared
-   ∅
-   (∈? my-y))
+(define my-y #99)
+(test-case :query-undeclared
+   nil
+   (type-check my-y))
 
 ; ============================================================================
 ; Test: Type introspection for function types
 ; ============================================================================
 
-(≋ "Testing type introspection...")
+(print "Testing type introspection...")
 
 ; Get domain (input type) of function type
-(⊨ :type-domain
+(test-case :type-domain
    #t
-   (∈≡ (∈◁ (→ (ℤ) (𝔹))) (ℤ)))
+   (type-equal? (type-domain (-> (Int) (Bool))) (Int)))
 
 ; Get codomain (output type) of function type
-(⊨ :type-codomain
+(test-case :type-codomain
    #t
-   (∈≡ (∈▷ (→ (ℤ) (𝔹))) (𝔹)))
+   (type-equal? (type-codomain (-> (Int) (Bool))) (Bool)))
 
 ; Get element type of list type
-(⊨ :type-element
+(test-case :type-element
    #t
-   (∈≡ (∈⊙ₜ ([]ₜ (ℤ))) (ℤ)))
+   (type-equal? (type-element (List-type (Int))) (Int)))
 
 ; Multi-arg function domain
-(⊨ :type-domain-multi
+(test-case :type-domain-multi
    #t
-   (∈≡ (∈◁ (→ (ℤ) (𝔹) (𝕊))) (ℤ)))
+   (type-equal? (type-domain (-> (Int) (Bool) (String))) (Int)))
 
 ; ============================================================================
 ; Integration Tests
 ; ============================================================================
 
-(≋ "Testing integration scenarios...")
+(print "Testing integration scenarios...")
 
 ; Declare and use typed values
-(≔ typed-add (λ (x y) (⊕ x y)))
-(∈ typed-add (→ (ℤ) (ℤ) (ℤ)))
+(define typed-add (lambda (x y) (+ x y)))
+(type-decl typed-add (-> (Int) (Int) (Int)))
 
-(⊨ :typed-func-use
+(test-case :typed-func-use
    #5
    (typed-add #2 #3))
 
-(⊨ :typed-func-query
+(test-case :typed-func-query
    #t
-   (∈≡ (∈? typed-add) (→ (ℤ) (ℤ) (ℤ))))
+   (type-equal? (type-check typed-add) (-> (Int) (Int) (Int))))
 
 ; Multiple declarations
-(≔ a #1)
-(≔ b #2)
-(≔ c "three")
-(∈ a (ℤ))
-(∈ b (ℤ))
-(∈ c (𝕊))
+(define a #1)
+(define b #2)
+(define c "three")
+(type-decl a (Int))
+(type-decl b (Int))
+(type-decl c (String))
 
-(⊨ :multi-decl-a
+(test-case :multi-decl-a
    #t
-   (∈≡ (∈? a) (ℤ)))
+   (type-equal? (type-check a) (Int)))
 
-(⊨ :multi-decl-b
+(test-case :multi-decl-b
    #t
-   (∈≡ (∈? b) (ℤ)))
+   (type-equal? (type-check b) (Int)))
 
-(⊨ :multi-decl-c
+(test-case :multi-decl-c
    #t
-   (∈≡ (∈? c) (𝕊)))
+   (type-equal? (type-check c) (String)))
 
 ; Type checks with computed values
-(⊨ :typeof-computed
+(test-case :typeof-computed
    #t
-   (⊙? (∈⊙ (⊕ #1 #2)) :type))
+   (struct? (type-of (+ #1 #2)) :type))
 
-(≋ "\n✅ All type annotation tests passed!")
+(print "\n✅ All type annotation tests passed!")

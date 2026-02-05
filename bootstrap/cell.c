@@ -1292,7 +1292,7 @@ void cell_print(Cell* c) {
             printf("\"%s\"", c->data.atom.string);
             break;
         case CELL_ATOM_NIL:
-            printf("∅");
+            printf("nil");
             break;
         case CELL_PAIR:
             printf("⟨");
@@ -1302,30 +1302,30 @@ void cell_print(Cell* c) {
             printf("⟩");
             break;
         case CELL_LAMBDA:
-            printf("λ[%d]", c->data.lambda.arity);
+            printf("lambda[%d]", c->data.lambda.arity);
             break;
         case CELL_BUILTIN:
             printf("<builtin>");
             break;
         case CELL_ERROR:
-            printf("⚠:%s", c->data.error.message);
+            printf("error:%s", c->data.error.message);
             if (c->data.error.data && !cell_is_nil(c->data.error.data)) {
                 printf(":");
                 cell_print(c->data.error.data);
             }
             if (c->data.error.cause) {
-                printf(" → ");
+                printf(" -> ");
                 cell_print(c->data.error.cause);
             }
             break;
         case CELL_STRUCT:
             /* Print structure as (⊙/⊚ Type :variant fields) */
             if (c->data.structure.kind == STRUCT_LEAF) {
-                printf("⊙");
+                printf("struct-create");
             } else if (c->data.structure.kind == STRUCT_NODE) {
-                printf("⊚");
+                printf("adt-create");
             } else {
-                printf("⊝");
+                printf("graph-create");
             }
             printf("[");
             cell_print(c->data.structure.type_tag);
@@ -1341,7 +1341,7 @@ void cell_print(Cell* c) {
             break;
         case CELL_GRAPH:
             /* Print graph as (⊝ type nodes:N edges:E) */
-            printf("⊝[");
+            printf("graph-create[");
             switch (c->data.graph.graph_type) {
                 case GRAPH_CFG: printf("CFG"); break;
                 case GRAPH_DFG: printf("DFG"); break;
@@ -1367,46 +1367,46 @@ void cell_print(Cell* c) {
             printf("]");
             break;
         case CELL_ACTOR:
-            printf("⟳[%d]", c->data.actor.actor_id);
+            printf("actor-spawn[%d]", c->data.actor.actor_id);
             break;
         case CELL_CHANNEL:
             printf("⟿[%d]", c->data.channel.channel_id);
             break;
         case CELL_BOX:
-            printf("□[");
+            printf("box[");
             cell_print(c->data.box.value);
             printf("]");
             break;
         case CELL_WEAK_REF:
             if (c->data.weak_ref.target && c->data.weak_ref.target->rc.biased > 0) {
-                printf("◇[alive]");
+                printf("weak-ref[alive]");
             } else {
-                printf("◇[dead]");
+                printf("weak-ref[dead]");
             }
             break;
         case CELL_HASHMAP:
-            printf("⊞[%u]", c->data.hashmap.size);
+            printf("hashmap[%u]", c->data.hashmap.size);
             break;
         case CELL_SET:
-            printf("⊍[%u]", c->data.hashset.size);
+            printf("set[%u]", c->data.hashset.size);
             break;
         case CELL_DEQUE:
-            printf("⊟[%u]", c->data.deque.tail - c->data.deque.head);
+            printf("deque[%u]", c->data.deque.tail - c->data.deque.head);
             break;
         case CELL_BUFFER:
-            printf("◈[%u]", c->data.buffer.size);
+            printf("bytebuf[%u]", c->data.buffer.size);
             break;
         case CELL_VECTOR:
             printf("⟦%u⟧", c->data.vector.size);
             break;
         case CELL_HEAP:
-            printf("△[%u]", c->data.pq.size);
+            printf("heap[%u]", c->data.pq.size);
             break;
         case CELL_SORTED_MAP:
-            printf("⋔[%u]", c->data.sorted_map.size);
+            printf("sorted-map[%u]", c->data.sorted_map.size);
             break;
         case CELL_TRIE:
-            printf("⊮[%u]", c->data.trie.size);
+            printf("trie[%u]", c->data.trie.size);
             break;
         case CELL_ITERATOR: {
             IteratorData* id = (IteratorData*)c->data.iterator.iter_data;
@@ -1415,21 +1415,21 @@ void cell_print(Cell* c) {
                 "smap","trie","buf","graph",
                 "map","filter","take","drop","chain","zip"
             };
-            const char* kn = (id && id->kind <= ITER_ZIP) ? kind_names[id->kind] : "?";
-            printf("⊣[%s%s]", kn, (id && id->exhausted) ? ":done" : "");
+            const char* kn = (id && id->kind <= ITER_ZIP) ? kind_names[id->kind] : "if";
+            printf("iter[%s%s]", kn, (id && id->exhausted) ? ":done" : "");
             break;
         }
         case CELL_PORT:
-            printf("⊞⊳[fd:%d%s%s]",
+            printf("port-open[fd:%d%s%s]",
                    c->data.port.fd,
                    (c->data.port.flags & PORT_INPUT) ? " in" : "",
                    (c->data.port.flags & PORT_OUTPUT) ? " out" : "");
             break;
         case CELL_DIR:
-            printf("≋⊙[dir%s]", c->data.dirstream.is_open ? "" : ":closed");
+            printf("file-info[dir%s]", c->data.dirstream.is_open ? "" : ":closed");
             break;
         case CELL_FFI_PTR:
-            printf("⌁[%s:%p]", c->data.ffi_ptr.type_tag ? c->data.ffi_ptr.type_tag : "?",
+            printf("⌁[%s:%p]", c->data.ffi_ptr.type_tag ? c->data.ffi_ptr.type_tag : "if",
                    c->data.ffi_ptr.ptr);
             break;
     }

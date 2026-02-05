@@ -2,79 +2,79 @@
 ; Tests generators, property tests, and shrinking
 
 ; ============ Helper: List Length ============
-(≔ len (λ (lst)
-  (? (∅? lst)
+(define len (lambda (lst)
+  (if (null? lst)
      #0
-     (⊕ #1 (len (▷ lst))))))
+     (+ #1 (len (cdr lst))))))
 
 ; ============ Generator Tests ============
 
 ; Test gen-int returns number in range [1, 10]
-(≔ test-gen-int (gen-int #1 #10))
-(⊨ :gen-int-is-number #t (ℕ? test-gen-int))
-(⊨ :gen-int-in-range #t (∧ (≥ test-gen-int #1) (≤ test-gen-int #10)))
+(define test-gen-int (gen-int #1 #10))
+(test-case :gen-int-is-number #t (number? test-gen-int))
+(test-case :gen-int-in-range #t (and (>= test-gen-int #1) (<= test-gen-int #10)))
 
 ; Test gen-int with single value range
-(⊨ :gen-int-single #5 (gen-int #5 #5))
+(test-case :gen-int-single #5 (gen-int #5 #5))
 
 ; Test gen-int error on invalid range
-(⊨ :gen-int-invalid-range #t (⚠? (gen-int #10 #1)))
+(test-case :gen-int-invalid-range #t (error? (gen-int #10 #1)))
 
 ; Test gen-bool returns boolean
-(⊨ :gen-bool-returns-bool #t (𝔹? (gen-bool)))
+(test-case :gen-bool-returns-bool #t (boolean? (gen-bool)))
 
 ; Test gen-symbol from list
-(≔ test-symbols (⟨⟩ :a (⟨⟩ :b (⟨⟩ :c ∅))))
-(≔ test-result (gen-symbol test-symbols))
-(⊨ :gen-symbol-in-list #t
-   (∨ (∨ (≡ test-result :a) (≡ test-result :b)) (≡ test-result :c)))
+(define test-symbols (cons :a (cons :b (cons :c nil))))
+(define test-result (gen-symbol test-symbols))
+(test-case :gen-symbol-in-list #t
+   (or (or (equal? test-result :a) (equal? test-result :b)) (equal? test-result :c)))
 
 ; Test gen-symbol error on empty list
-(⊨ :gen-symbol-empty #t (⚠? (gen-symbol ∅)))
+(test-case :gen-symbol-empty #t (error? (gen-symbol nil)))
 
 ; Test gen-list with constant generator
-(≔ const-gen (λ () #42))
-(≔ const-list (gen-list const-gen #5))
-(⊨ :gen-list-constant #5 (len const-list))
+(define const-gen (lambda () #42))
+(define const-list (gen-list const-gen #5))
+(test-case :gen-list-constant #5 (len const-list))
 
 ; Test gen-list with zero size
-(≔ zero-gen (λ () #1))
-(⊨ :gen-list-zero ∅ (gen-list zero-gen #0))
+(define zero-gen (lambda () #1))
+(test-case :gen-list-zero nil (gen-list zero-gen #0))
 
 ; Test gen-list with random integers
-(≔ int-gen (λ () (gen-int #1 #100)))
-(≔ int-list (gen-list int-gen #10))
-(⊨ :gen-list-integers #10 (len int-list))
+(define int-gen (lambda () (gen-int #1 #100)))
+(define int-list (gen-list int-gen #10))
+(test-case :gen-list-integers #10 (len int-list))
 
 ; ============ Property-Based Test Tests ============
 
 ; Simple property: all generated numbers are positive
-(⊨-prop :all-positive
-        (λ (n) (> n #0))
-        (λ () (gen-int #1 #100)))
+(test-property :all-positive
+        (lambda (n) (> n #0))
+        (lambda () (gen-int #1 #100)))
 
 ; Property: list length matches requested size
-(⊨-prop :list-length-correct
-        (λ (lst) (≡ (len lst) #5))
-        (λ () (gen-list (λ () (gen-int #1 #10)) #5)))
+(test-property :list-length-correct
+        (lambda (lst) (equal? (len lst) #5))
+        (lambda () (gen-list (lambda () (gen-int #1 #10)) #5)))
 
 ; Property: boolean is always true or false
-(⊨-prop :bool-valid
-        (λ (b) (∨ (≡ b #t) (≡ b #f)))
-        (λ () (gen-bool)))
+(test-property :bool-valid
+        (lambda (b) (or (equal? b #t) (equal? b #f)))
+        (lambda () (gen-bool)))
 
 ; Property: generated integer is in range
-(⊨-prop :int-in-range
-        (λ (n) (∧ (≥ n #-10) (≤ n #10)))
-        (λ () (gen-int #-10 #10)))
+(test-property :int-in-range
+        (lambda (n) (and (>= n #-10) (<= n #10)))
+        (lambda () (gen-int #-10 #10)))
 
 ; Property: list length is preserved (simpler test without reverse)
-(≔ count (λ (lst)
-  (? (∅? lst)
+(define count (lambda (lst)
+  (if (null? lst)
      #0
-     (⊕ #1 (count (▷ lst))))))
+     (+ #1 (count (cdr lst))))))
 
-(⊨-prop :list-length-preserved
-        (λ (lst) (≡ (len lst) (count lst)))
-        (λ () (gen-list (λ () (gen-int #1 #10)) #5)))
+(test-property :list-length-preserved
+        (lambda (lst) (equal? (len lst) (count lst)))
+        (lambda () (gen-list (lambda () (gen-int #1 #10)) #5)))
 

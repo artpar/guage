@@ -3,105 +3,105 @@
 
 ;;; --- 1. Box increment loop with division: 100,000 iterations ---
 
-(≔ calc-box (□ #0))
-(≔ err-count-box (□ #0))
+(define calc-box (box #0))
+(define err-count-box (box #0))
 
 ;; Helper: process one iteration given i and divisor
-(≔ div-step (λ (i divisor)
-  (? (≡ divisor #0)
-     (□← err-count-box (⊕ (□→ err-count-box) #1))
-     (□← calc-box (⊕ (□→ calc-box) (⊘ i divisor))))))
+(define div-step (lambda (i divisor)
+  (if (equal? divisor #0)
+     (box-set! err-count-box (+ (unbox err-count-box) #1))
+     (box-set! calc-box (+ (unbox calc-box) (/ i divisor))))))
 
-(≔ div-loop (λ (i)
-  (? (≡ i #0) :done
-     (⪢ (div-step i (% i #3))
-         (div-loop (⊖ i #1))))))
+(define div-loop (lambda (i)
+  (if (equal? i #0) :done
+     (begin (div-step i (% i #3))
+         (div-loop (- i #1))))))
 
 (div-loop #100000)
 
 ;; ~33333 errors (every 3rd: 3,6,9,...99999)
-(⊨ :be-div-errors #33333 (□→ err-count-box))
-(⊨ :be-div-calc-positive #t (> (□→ calc-box) #0))
+(test-case :be-div-errors #33333 (unbox err-count-box))
+(test-case :be-div-calc-positive #t (> (unbox calc-box) #0))
 
 ;;; --- 2. Error-as-value chain: 1,000 operations, collect errors into list ---
 
-(≔ error-list-box (□ ∅))
+(define error-list-box (box nil))
 
-(≔ error-chain (λ (i)
-  (? (≡ i #0) :done
-     (⪢ (? (≡ (% i #3) #0)
-            (□← error-list-box (⟨⟩ (⚠ :chain-err i) (□→ error-list-box)))
-            ∅)
-         (error-chain (⊖ i #1))))))
+(define error-chain (lambda (i)
+  (if (equal? i #0) :done
+     (begin (if (equal? (% i #3) #0)
+            (box-set! error-list-box (cons (error :chain-err i) (unbox error-list-box)))
+            nil)
+         (error-chain (- i #1))))))
 
 (error-chain #1000)
 
 ;; Count errors
-(≔ count-errors (λ (lst n)
-  (? (∅? lst) n
-     (count-errors (▷ lst) (⊕ n #1)))))
+(define count-errors (lambda (lst n)
+  (if (null? lst) n
+     (count-errors (cdr lst) (+ n #1)))))
 
-(⊨ :be-error-chain #333 (count-errors (□→ error-list-box) #0))
+(test-case :be-error-chain #333 (count-errors (unbox error-list-box) #0))
 
 ;;; --- 3. Transaction pattern: box backup→op→if error restore ---
 
-(≔ txn-box (□ #0))
-(≔ txn-success-box (□ #0))
+(define txn-box (box #0))
+(define txn-success-box (box #0))
 
-(≔ txn-step (λ (i backup)
-  (? (≡ (% i #5) #0)
-     (□← txn-box backup)  ;; restore on error
-     (⪢ (□← txn-box (⊕ backup #1))
-         (□← txn-success-box (⊕ (□→ txn-success-box) #1))))))
+(define txn-step (lambda (i backup)
+  (if (equal? (% i #5) #0)
+     (box-set! txn-box backup)  ;; restore on error
+     (begin (box-set! txn-box (+ backup #1))
+         (box-set! txn-success-box (+ (unbox txn-success-box) #1))))))
 
-(≔ transaction (λ (i)
-  (? (≡ i #0) :done
-     (⪢ (txn-step i (□→ txn-box))
-         (transaction (⊖ i #1))))))
+(define transaction (lambda (i)
+  (if (equal? i #0) :done
+     (begin (txn-step i (unbox txn-box))
+         (transaction (- i #1))))))
 
 (transaction #50000)
 
 ;; 50000/5 = 10000 failures, 40000 successes
-(⊨ :be-txn-successes #40000 (□→ txn-success-box))
-(⊨ :be-txn-final-value #40000 (□→ txn-box))
+(test-case :be-txn-successes #40000 (unbox txn-success-box))
+(test-case :be-txn-final-value #40000 (unbox txn-box))
 
 ;;; --- 4. Error accumulator: 50,000 operations ---
 
-(≔ acc-err-box (□ #0))
+(define acc-err-box (box #0))
 
-(≔ acc-loop (λ (i)
-  (? (≡ i #0) (□→ acc-err-box)
-     (⪢ (? (≡ (% i #3) #0)
-            (□← acc-err-box (⊕ (□→ acc-err-box) #1))
-            ∅)
-         (acc-loop (⊖ i #1))))))
+(define acc-loop (lambda (i)
+  (if (equal? i #0) (unbox acc-err-box)
+     (begin (if (equal? (% i #3) #0)
+            (box-set! acc-err-box (+ (unbox acc-err-box) #1))
+            nil)
+         (acc-loop (- i #1))))))
 
-;; 50000/3 ≈ 16666
-(⊨ :be-acc-errors #16666 (acc-loop #50000))
+;; 50000/3 string 16666
+(test-case :be-acc-errors #16666 (acc-loop #50000))
 
 ;;; --- 5. Box swap stress: 1,000,000 swaps on single box ---
 
-(≔ swap-box (□ #0))
+(define swap-box (box #0))
 
-(≔ swap-loop (λ (i)
-  (? (≡ i #0) (□→ swap-box)
-     (⪢ (□← swap-box i)
-         (swap-loop (⊖ i #1))))))
+(define swap-loop (lambda (i)
+  (if (equal? i #0) (unbox swap-box)
+     (begin (box-set! swap-box i)
+         (swap-loop (- i #1))))))
 
 ;; Last swap sets it to 1
-(⊨ :be-swap-million #1 (swap-loop #1000000))
+(test-case :be-swap-million #1 (swap-loop #1000000))
 
 ;;; --- 6. HashMap insert loop: skip every 5th ---
 
-(≔ stress-hm (⊞))
+(define stress-hm (hashmap))
 
-(≔ hm-loop (λ (i)
-  (? (≡ i #0) :done
-     (⪢ (? (≡ (% i #5) #0) ∅
-            (⊞← stress-hm i (⊗ i #2)))
-         (hm-loop (⊖ i #1))))))
+(define hm-loop (lambda (i)
+  (if (equal? i #0) :done
+     (begin (if (equal? (% i #5) #0) nil
+            (hashmap-put stress-hm i (* i #2)))
+         (hm-loop (- i #1))))))
 
 (hm-loop #10000)
 
 ;; 10000 - 2000 skipped = 8000 entries
-(⊨ :be-hm-size #8000 (⊞# stress-hm))
+(test-case :be-hm-size #8000 (hashmap-size stress-hm))

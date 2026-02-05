@@ -3,15 +3,15 @@
 ;;;
 
 ;;; Test 1: Define quoted value and pass through identity
-(≔ my-quoted (⌜ (a b c)))
-(≋ :my-quoted-value)
-(≋ my-quoted)
+(define my-quoted (quote (a b c)))
+(print :my-quoted-value)
+(print my-quoted)
 
-(≔ id (λ (x) x))
-(≋ :pass-through-id)
-(≋ (id my-quoted))
+(define id (lambda (x) x))
+(print :pass-through-id)
+(print (id my-quoted))
 
 ;;; Test 2: Create closure and pass quoted value
-(≔ get-head (λ (x) (◁ x)))
-(≋ :try-car)
-(≋ (get-head my-quoted))
+(define get-head (lambda (x) (car x)))
+(print :try-car)
+(print (get-head my-quoted))

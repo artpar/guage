@@ -104,7 +104,7 @@ bool is_branch_point(Cell* expr) {
     }
 
     const char* sym = cell_get_symbol(op);
-    return strcmp(sym, "?") == 0;  /* Conditional */
+    return strcmp(sym, "if") == 0;  /* Conditional */
 }
 
 /* Check if expression is terminal (return/exit) */

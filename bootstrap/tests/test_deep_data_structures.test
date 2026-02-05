@@ -4,88 +4,88 @@
 
 ;;; --- Build HashMap imperatively from list of pairs ---
 
-(≔ m1 (⊞ (⟨⟩ :a #1) (⟨⟩ :b #2) (⟨⟩ :c #3)))
+(define m1 (hashmap (cons :a #1) (cons :b #2) (cons :c #3)))
 
-(⊨ :map-from-list-size #3 (⊞# m1))
-(⊨ :map-from-list-a    #1 (⊞→ m1 :a))
-(⊨ :map-from-list-c    #3 (⊞→ m1 :c))
+(test-case :map-from-list-size #3 (hashmap-size m1))
+(test-case :map-from-list-a    #1 (hashmap-get m1 :a))
+(test-case :map-from-list-c    #3 (hashmap-get m1 :c))
 
 ;;; --- Vector as stack: push 3, pop 3 in LIFO order ---
 
-(≔ v1 (⟦⟧))
-(⟦⊕ v1 #10)
-(⟦⊕ v1 #20)
-(⟦⊕ v1 #30)
+(define v1 (vector))
+(vector-push! v1 #10)
+(vector-push! v1 #20)
+(vector-push! v1 #30)
 
-(⊨ :vec-stack-size #3 (⟦# v1))
-(≔ p3 (⟦⊖ v1))
-(≔ p2 (⟦⊖ v1))
-(≔ p1 (⟦⊖ v1))
-(⊨ :vec-lifo-order (⟨⟩ #30 (⟨⟩ #20 (⟨⟩ #10 ∅)))
-  (⟨⟩ p3 (⟨⟩ p2 (⟨⟩ p1 ∅))))
+(test-case :vec-stack-size #3 (vector-length v1))
+(define p3 (vector-pop! v1))
+(define p2 (vector-pop! v1))
+(define p1 (vector-pop! v1))
+(test-case :vec-lifo-order (cons #30 (cons #20 (cons #10 nil)))
+  (cons p3 (cons p2 (cons p1 nil))))
 
 ;;; --- Box containing HashMap for mutable key-value store ---
 
-(≔ store-map (⊞))
-(≔ store (□ store-map))
-(⊞← (□→ store) :x #10)
-(⊞← (□→ store) :y #20)
+(define store-map (hashmap))
+(define store (box store-map))
+(hashmap-put (unbox store) :x #10)
+(hashmap-put (unbox store) :y #20)
 
-(⊨ :box-map-x #10 (⊞→ (□→ store) :x))
-(⊨ :box-map-y #20 (⊞→ (□→ store) :y))
+(test-case :box-map-x #10 (hashmap-get (unbox store) :x))
+(test-case :box-map-y #20 (hashmap-get (unbox store) :y))
 
 ;;; --- Count occurrences in list -> HashMap of frequencies ---
 
-(≔ freq-map (⊞))
-(≔ freq-loop (λ (l)
-  (? (∅? l) freq-map
-     (⪢
-       (≔ fk (◁ l))
-       (≔ fold (⊞→ freq-map fk))
-       (⊞← freq-map fk (? (∅? fold) #1 (⊕ fold #1)))
-       (freq-loop (▷ l))))))
+(define freq-map (hashmap))
+(define freq-loop (lambda (l)
+  (if (null? l) freq-map
+     (begin
+       (define fk (car l))
+       (define fold (hashmap-get freq-map fk))
+       (hashmap-put freq-map fk (if (null? fold) #1 (+ fold #1)))
+       (freq-loop (cdr l))))))
 
-(freq-loop (⟨⟩ :a (⟨⟩ :b (⟨⟩ :a (⟨⟩ :c (⟨⟩ :a (⟨⟩ :b ∅)))))))
+(freq-loop (cons :a (cons :b (cons :a (cons :c (cons :a (cons :b nil)))))))
 
-(⊨ :freq-a #3 (⊞→ freq-map :a))
-(⊨ :freq-b #2 (⊞→ freq-map :b))
-(⊨ :freq-c #1 (⊞→ freq-map :c))
+(test-case :freq-a #3 (hashmap-get freq-map :a))
+(test-case :freq-b #2 (hashmap-get freq-map :b))
+(test-case :freq-c #1 (hashmap-get freq-map :c))
 
 ;;; --- Vector collects range of numbers ---
 
-(≔ vr (⟦⟧))
-(≔ range-loop (λ (i n)
-  (? (> i n) vr
-     (⪢ (⟦⊕ vr i) (range-loop (⊕ i #1) n)))))
+(define vr (vector))
+(define range-loop (lambda (i n)
+  (if (> i n) vr
+     (begin (vector-push! vr i) (range-loop (+ i #1) n)))))
 
 (range-loop #1 #5)
 
-(⊨ :vec-range-size  #5 (⟦# vr))
-(⊨ :vec-range-first #1 (⟦→ vr #0))
-(⊨ :vec-range-last  #5 (⟦→ vr #4))
+(test-case :vec-range-size  #5 (vector-length vr))
+(test-case :vec-range-first #1 (vector-ref vr #0))
+(test-case :vec-range-last  #5 (vector-ref vr #4))
 
 ;;; --- HashMap lookup with nil-check fallback ---
 
-(≔ get-or-default (λ (m key default)
-  (⪢
-    (≔ gov (⊞→ m key))
-    (? (∅? gov) default gov))))
+(define get-or-default (lambda (m key default)
+  (begin
+    (define gov (hashmap-get m key))
+    (if (null? gov) default gov))))
 
-(≔ m2 (⊞))
-(⊞← m2 :name "alice")
+(define m2 (hashmap))
+(hashmap-put m2 :name "alice")
 
-(⊨ :get-found   "alice"   (get-or-default m2 :name "unknown"))
-(⊨ :get-missing "unknown" (get-or-default m2 :age "unknown"))
+(test-case :get-found   "alice"   (get-or-default m2 :name "unknown"))
+(test-case :get-missing "unknown" (get-or-default m2 :age "unknown"))
 
 ;;; --- Recursive list-to-vector conversion ---
 
-(≔ l2v (⟦⟧))
-(≔ list-to-vec (λ (lst)
-  (? (∅? lst) l2v
-     (⪢ (⟦⊕ l2v (◁ lst)) (list-to-vec (▷ lst))))))
+(define l2v (vector))
+(define list-to-vec (lambda (lst)
+  (if (null? lst) l2v
+     (begin (vector-push! l2v (car lst)) (list-to-vec (cdr lst))))))
 
-(list-to-vec (⟨⟩ #100 (⟨⟩ #200 (⟨⟩ #300 ∅))))
+(list-to-vec (cons #100 (cons #200 (cons #300 nil))))
 
-(⊨ :list-to-vec-size #3 (⟦# l2v))
-(⊨ :list-to-vec-0 #100 (⟦→ l2v #0))
-(⊨ :list-to-vec-2 #300 (⟦→ l2v #2))
+(test-case :list-to-vec-size #3 (vector-length l2v))
+(test-case :list-to-vec-0 #100 (vector-ref l2v #0))
+(test-case :list-to-vec-2 #300 (vector-ref l2v #2))

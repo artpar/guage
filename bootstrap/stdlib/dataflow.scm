@@ -20,47 +20,47 @@
 ; ═══════════════════════════════════════════════════════════════
 
 ; Load list operations
-(⋘ "bootstrap/stdlib/list.scm")
+(load "bootstrap/stdlib/list.scm")
 
 ; ═══════════════════════════════════════════════════════════════
 ; Set Operations (lists as sets)
 ; ═══════════════════════════════════════════════════════════════
 
-; ∪∪ :: [α] → [α] → [α]
+; ∪∪ :: [α] -> [α] -> [α]
 ; Set union - elements in either set (no duplicates)
-(≔ ∪∪ (λ (set2) (λ (set1)
+(define ∪∪ (lambda (set2) (lambda (set1)
   (∪ ((⧺ set2) set1)))))
 
-; ∩ :: [α] → [α] → [α]
+; ∩ :: [α] -> [α] -> [α]
 ; Set intersection - elements in both sets
-(≔ ∩ (λ (set2) (λ (set1)
-  ((⊲ (λ (x) ((∋ x) set2))) set1))))
+(define ∩ (lambda (set2) (lambda (set1)
+  ((list-filter (lambda (x) ((∋ x) set2))) set1))))
 
-; ∖ :: [α] → [α] → [α]
+; ∖ :: [α] -> [α] -> [α]
 ; Set difference - elements in first but not second
-(≔ ∖ (λ (set2) (λ (set1)
-  ((⊲ (λ (x) (¬ ((∋ x) set2)))) set1))))
+(define ∖ (lambda (set2) (lambda (set1)
+  ((list-filter (lambda (x) (not ((∋ x) set2)))) set1))))
 
-; ⊆ :: [α] → [α] → 𝔹
+; ⊆ :: [α] -> [α] -> Bool
 ; Subset - is first a subset of second
-(≔ ⊆ (λ (set2) (λ (set1)
-  ((∀ (λ (x) ((∋ x) set2))) set1))))
+(define ⊆ (lambda (set2) (lambda (set1)
+  ((∀ (lambda (x) ((∋ x) set2))) set1))))
 
-; ≡∪ :: [α] → [α] → 𝔹
+; ≡∪ :: [α] -> [α] -> Bool
 ; Set equality - same elements (order independent)
-(≔ ≡∪ (λ (set2) (λ (set1)
-  (∧ ((⊆ set2) set1) ((⊆ set1) set2)))))
+(define ≡∪ (lambda (set2) (lambda (set1)
+  (and ((⊆ set2) set1) ((⊆ set1) set2)))))
 
 ; ═══════════════════════════════════════════════════════════════
 ; Fixed Point Iteration
 ; ═══════════════════════════════════════════════════════════════
 
-; ⊛⊛ :: (α → α) → α → α
+; ⊛⊛ :: (α -> α) -> α -> α
 ; Fixed point - iterate until no change
 ; Uses set equality for termination
-(≔ ⊛⊛ (λ (f) (λ (init)
-  ((λ (next)
-    (? ((≡∪ next) init)
+(define ⊛⊛ (lambda (f) (lambda (init)
+  ((lambda (next)
+    (if ((≡∪ next) init)
        init
        ((⊛⊛ f) next)))
    (f init)))))
@@ -79,49 +79,49 @@
 ; gen = definitions generated at this node
 ; kill = definitions killed at this node
 ; in = definitions reaching entry of node
-(≔ ⇝⊃-transfer (λ (gen) (λ (kill) (λ (in)
+(define ⇝⊃-transfer (lambda (gen) (lambda (kill) (lambda (in)
   ((∪∪ gen) ((∖ kill) in))))))
 
 ; Single iteration of reaching definitions
 ; nodes = list of (node-id gen kill preds)
 ; current = current solution (list of (node-id in out))
-(≔ ⇝⊃-iter (λ (nodes) (λ (current)
-  (? (∅? nodes)
-     ∅
-     (⟨⟩ ((⇝⊃-node (◁ nodes)) current)
-         ((⇝⊃-iter (▷ nodes)) current))))))
+(define ⇝⊃-iter (lambda (nodes) (lambda (current)
+  (if (null? nodes)
+     nil
+     (cons ((⇝⊃-node (car nodes)) current)
+         ((⇝⊃-iter (cdr nodes)) current))))))
 
 ; Process one node for reaching definitions
 ; node = (node-id gen kill preds)
 ; solution = current (node-id in out) pairs
-(≔ ⇝⊃-node (λ (node) (λ (solution)
-  ((λ (node-id) ((λ (gen) ((λ (kill) ((λ (preds)
+(define ⇝⊃-node (lambda (node) (lambda (solution)
+  ((lambda (node-id) ((lambda (gen) ((lambda (kill) ((lambda (preds)
     ; in = union of out[pred] for all predecessors
-    ((λ (in)
+    ((lambda (in)
       ; out = gen ∪ (in - kill)
-      ((λ (out)
-        (⟨⟩ node-id (⟨⟩ in (⟨⟩ out ∅))))
+      ((lambda (out)
+        (cons node-id (cons in (cons out nil))))
        (((⇝⊃-transfer gen) kill) in)))
      ((⇝⊃-meet preds) solution)))
-   (◁ (▷ (▷ (▷ node))))))   ; preds
-   (◁ (▷ (▷ node)))))       ; kill
-   (◁ (▷ node))))           ; gen
-   (◁ node)))))             ; node-id
+   (car (cdr (cdr (cdr node))))))   ; preds
+   (car (cdr (cdr node)))))       ; kill
+   (car (cdr node))))           ; gen
+   (car node)))))             ; node-id
 
 ; Meet function: union of predecessor outputs
-(≔ ⇝⊃-meet (λ (preds) (λ (solution)
-  (? (∅? preds)
-     ∅
-     ((∪∪ ((⇝⊃-get-out (◁ preds)) solution))
-      ((⇝⊃-meet (▷ preds)) solution))))))
+(define ⇝⊃-meet (lambda (preds) (lambda (solution)
+  (if (null? preds)
+     nil
+     ((∪∪ ((⇝⊃-get-out (car preds)) solution))
+      ((⇝⊃-meet (cdr preds)) solution))))))
 
 ; Get out set for a node from solution
-(≔ ⇝⊃-get-out (λ (node-id) (λ (solution)
-  (? (∅? solution)
-     ∅
-     (? (≡ node-id (◁ (◁ solution)))
-        (◁ (▷ (▷ (◁ solution))))  ; out is third element
-        ((⇝⊃-get-out node-id) (▷ solution)))))))
+(define ⇝⊃-get-out (lambda (node-id) (lambda (solution)
+  (if (null? solution)
+     nil
+     (if (equal? node-id (car (car solution)))
+        (car (cdr (cdr (car solution))))  ; out is third element
+        ((⇝⊃-get-out node-id) (cdr solution)))))))
 
 ; ═══════════════════════════════════════════════════════════════
 ; Data Flow Analysis: Live Variables
@@ -137,40 +137,40 @@
 ; use = variables used at this node
 ; def = variables defined at this node
 ; out = variables live at exit of node
-(≔ ⇝←-transfer (λ (use) (λ (def) (λ (out)
+(define ⇝←-transfer (lambda (use) (lambda (def) (lambda (out)
   ((∪∪ use) ((∖ def) out))))))
 
 ; Process one node for live variables
 ; node = (node-id use def succs)
 ; solution = current (node-id in out) pairs
-(≔ ⇝←-node (λ (node) (λ (solution)
-  ((λ (node-id) ((λ (use) ((λ (def) ((λ (succs)
+(define ⇝←-node (lambda (node) (lambda (solution)
+  ((lambda (node-id) ((lambda (use) ((lambda (def) ((lambda (succs)
     ; out = union of in[succ] for all successors
-    ((λ (out)
+    ((lambda (out)
       ; in = use ∪ (out - def)
-      ((λ (in)
-        (⟨⟩ node-id (⟨⟩ in (⟨⟩ out ∅))))
+      ((lambda (in)
+        (cons node-id (cons in (cons out nil))))
        (((⇝←-transfer use) def) out)))
      ((⇝←-meet succs) solution)))
-   (◁ (▷ (▷ (▷ node))))))   ; succs
-   (◁ (▷ (▷ node)))))       ; def
-   (◁ (▷ node))))           ; use
-   (◁ node)))))             ; node-id
+   (car (cdr (cdr (cdr node))))))   ; succs
+   (car (cdr (cdr node)))))       ; def
+   (car (cdr node))))           ; use
+   (car node)))))             ; node-id
 
 ; Meet function: union of successor inputs
-(≔ ⇝←-meet (λ (succs) (λ (solution)
-  (? (∅? succs)
-     ∅
-     ((∪∪ ((⇝←-get-in (◁ succs)) solution))
-      ((⇝←-meet (▷ succs)) solution))))))
+(define ⇝←-meet (lambda (succs) (lambda (solution)
+  (if (null? succs)
+     nil
+     ((∪∪ ((⇝←-get-in (car succs)) solution))
+      ((⇝←-meet (cdr succs)) solution))))))
 
 ; Get in set for a node from solution
-(≔ ⇝←-get-in (λ (node-id) (λ (solution)
-  (? (∅? solution)
-     ∅
-     (? (≡ node-id (◁ (◁ solution)))
-        (◁ (▷ (◁ solution)))  ; in is second element
-        ((⇝←-get-in node-id) (▷ solution)))))))
+(define ⇝←-get-in (lambda (node-id) (lambda (solution)
+  (if (null? solution)
+     nil
+     (if (equal? node-id (car (car solution)))
+        (car (cdr (car solution)))  ; in is second element
+        ((⇝←-get-in node-id) (cdr solution)))))))
 
 ; ═══════════════════════════════════════════════════════════════
 ; Data Flow Analysis: Available Expressions
@@ -183,27 +183,27 @@
 ; Direction: Forward
 
 ; Meet function for available expressions: intersection
-(≔ ⇝∪-meet (λ (preds) (λ (solution)
-  (? (∅? preds)
-     ∅  ; Empty means "all expressions" in theory, but we use empty for init
-     (? (∅? (▷ preds))
+(define ⇝∪-meet (lambda (preds) (lambda (solution)
+  (if (null? preds)
+     nil  ; Empty means "all expressions" in theory, but we use empty for init
+     (if (null? (cdr preds))
         ; Single predecessor - just return its out
-        ((⇝⊃-get-out (◁ preds)) solution)
+        ((⇝⊃-get-out (car preds)) solution)
         ; Multiple predecessors - intersect
-        ((∩ ((⇝⊃-get-out (◁ preds)) solution))
-         ((⇝∪-meet (▷ preds)) solution)))))))
+        ((∩ ((⇝⊃-get-out (car preds)) solution))
+         ((⇝∪-meet (cdr preds)) solution)))))))
 
 ; ═══════════════════════════════════════════════════════════════
 ; Helper: Initialize solution with empty sets
 ; ═══════════════════════════════════════════════════════════════
 
-(≔ ⇝-init-solution (λ (nodes)
-  (? (∅? nodes)
-     ∅
-     (⟨⟩ (⟨⟩ (◁ (◁ nodes))  ; node-id
-             (⟨⟩ ∅           ; in = empty
-                 (⟨⟩ ∅ ∅)))  ; out = empty
-         (⇝-init-solution (▷ nodes))))))
+(define ⇝-init-solution (lambda (nodes)
+  (if (null? nodes)
+     nil
+     (cons (cons (car (car nodes))  ; node-id
+             (cons nil           ; in = empty
+                 (cons nil nil)))  ; out = empty
+         (⇝-init-solution (cdr nodes))))))
 
 ; ═══════════════════════════════════════════════════════════════
 ; Module Complete

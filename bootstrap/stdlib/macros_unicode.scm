@@ -3,9 +3,9 @@
 ; ═══════════════════════════════════════════════════════════════
 
 ; Test with single Unicode mathematical letters
-(⧉ ?¬ (𝕩 𝕪) (⌞̃ (? (~ 𝕩) ∅ (~ 𝕪))))
+(macro unless (𝕩 𝕪) (quasiquote-tilde (if (~ 𝕩) nil (~ 𝕪))))
 
 ; Test with more single Unicode letters
-(⧉ ≔↓ (𝕧 𝕨 𝕓) (⌞̃ ((λ (𝕧) (~ 𝕓)) (~ 𝕨))))
+(macro let-local (𝕧 𝕨 𝕓) (quasiquote-tilde ((lambda (𝕧) (~ 𝕓)) (~ 𝕨))))
 
 "✓ Unicode macros loaded"

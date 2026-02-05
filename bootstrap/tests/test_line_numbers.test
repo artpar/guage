@@ -1,19 +1,19 @@
-; Test suite for source introspection (⊛)
-; Verifies that ⊛ returns lambda body correctly
+; Test suite for source introspection (source)
+; Verifies that source returns lambda body correctly
 
-(≋ "Testing Source Introspection...")
+(print "Testing Source Introspection...")
 
 ; Lambda source retrieval
-(≔ my-fn (λ (x) (⊕ x #1)))
+(define my-fn (lambda (x) (+ x #1)))
 
-; ⊛ returns the body of a lambda
-(⊨ :lambda-source-is-pair
+; source returns the body of a lambda
+(test-case :lambda-source-is-pair
    #t
-   (⟨⟩? (⊛ my-fn)))
+   (pair? (source my-fn)))
 
-; ⊛ on non-lambda returns error
-(⊨ :source-non-lambda-error
+; source on non-lambda returns error
+(test-case :source-non-lambda-error
    #t
-   (⚠? (⊛ #42)))
+   (error? (source #42)))
 
-(≋ "\nSource introspection tests complete.")
+(print "\nSource introspection tests complete.")

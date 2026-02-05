@@ -46,7 +46,7 @@ typedef struct {
 } FixEdit;
 
 typedef struct {
-    const char* message;          /* "try using ⚡⊳ for a default value" */
+    const char* message;          /* "try using ⚡generic-param for a default value" */
     FixApplicability applicability;
     FixEdit* edits;               /* Array of simultaneous edits */
     uint32_t edit_count;

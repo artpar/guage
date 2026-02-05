@@ -96,8 +96,8 @@ ExhaustivenessResult pattern_check_exhaustiveness(Cell* clauses) {
 
 /* Emit warning about incomplete pattern match */
 void warn_incomplete_match(Cell* value) {
-    fprintf(stderr, "\n⚠️  Warning: Pattern match may be incomplete\n");
-    fprintf(stderr, "   → Matching value of type: ");
+    fprintf(stderr, "\nerror️  Warning: Pattern match may be incomplete\n");
+    fprintf(stderr, "   -> Matching value of type: ");
 
     if (!value) {
         fprintf(stderr, "nil\n");
@@ -134,16 +134,16 @@ void warn_incomplete_match(Cell* value) {
                 break;
         }
     }
-    fprintf(stderr, "   → Consider adding a catch-all pattern: _ or variable\n");
-    fprintf(stderr, "   → Missing cases will cause runtime :no-match error\n\n");
+    fprintf(stderr, "   -> Consider adding a catch-all pattern: _ or variable\n");
+    fprintf(stderr, "   -> Missing cases will cause runtime :no-match error\n\n");
 }
 
 /* Emit warning about unreachable pattern */
 void warn_unreachable_pattern(int clause_index) {
-    fprintf(stderr, "\n⚠️  Warning: Unreachable pattern detected\n");
-    fprintf(stderr, "   → Pattern at position %d (1-based: %d)\n",
+    fprintf(stderr, "\nerror️  Warning: Unreachable pattern detected\n");
+    fprintf(stderr, "   -> Pattern at position %d (1-based: %d)\n",
             clause_index, clause_index + 1);
-    fprintf(stderr, "   → Previous pattern(s) already handle all cases\n");
-    fprintf(stderr, "   → This pattern will never match\n");
-    fprintf(stderr, "   → Consider removing it or reordering patterns\n\n");
+    fprintf(stderr, "   -> Previous pattern(s) already handle all cases\n");
+    fprintf(stderr, "   -> This pattern will never match\n");
+    fprintf(stderr, "   -> Consider removing it or reordering patterns\n\n");
 }

@@ -486,7 +486,7 @@ void actor_notify_exit(Actor* exiting, Cell* reason) {
     /* Notify monitors: send ⟨:DOWN id reason⟩ message (outside lock) */
     for (int i = 0; i < monitor_count; i++) {
         Actor* watcher = actor_lookup(monitor_ids[i]);
-        LOG_DEBUG("notify_exit: actor %d → monitor watcher %d (found=%d alive=%d)",
+        LOG_DEBUG("notify_exit: actor %d -> monitor watcher %d (found=%d alive=%d)",
             exiting->id, monitor_ids[i], watcher != NULL, watcher ? watcher->alive : 0);
         if (watcher && watcher->alive) {
             Cell* exit_reason = is_error ? reason : cell_symbol(":normal");

@@ -143,30 +143,30 @@ bool is_operation(Cell* expr) {
     const char* sym = cell_get_symbol(head);
 
     /* Arithmetic operations */
-    if (strcmp(sym, "⊕") == 0 || strcmp(sym, "⊖") == 0 ||
-        strcmp(sym, "⊗") == 0 || strcmp(sym, "⊘") == 0) {
+    if (strcmp(sym, "+") == 0 || strcmp(sym, "-") == 0 ||
+        strcmp(sym, "*") == 0 || strcmp(sym, "/") == 0) {
         return true;
     }
 
     /* Comparison operations */
-    if (strcmp(sym, "≡") == 0 || strcmp(sym, "≢") == 0 ||
+    if (strcmp(sym, "equal?") == 0 || strcmp(sym, "not-equal?") == 0 ||
         strcmp(sym, "<") == 0 || strcmp(sym, ">") == 0 ||
-        strcmp(sym, "≤") == 0 || strcmp(sym, "≥") == 0) {
+        strcmp(sym, "<=") == 0 || strcmp(sym, ">=") == 0) {
         return true;
     }
 
     /* Logic operations */
-    if (strcmp(sym, "∧") == 0 || strcmp(sym, "∨") == 0 || strcmp(sym, "¬") == 0) {
+    if (strcmp(sym, "and") == 0 || strcmp(sym, "or") == 0 || strcmp(sym, "not") == 0) {
         return true;
     }
 
     /* Conditional (produces a value) */
-    if (strcmp(sym, "?") == 0) {
+    if (strcmp(sym, "if") == 0) {
         return true;
     }
 
     /* List operations */
-    if (strcmp(sym, "⟨⟩") == 0 || strcmp(sym, "◁") == 0 || strcmp(sym, "▷") == 0) {
+    if (strcmp(sym, "cons") == 0 || strcmp(sym, "car") == 0 || strcmp(sym, "cdr") == 0) {
         return true;
     }
 
@@ -252,7 +252,7 @@ static int dfg_walk(DFGBuilder* builder, Cell* expr) {
     const char* op = cell_get_symbol(head);
 
     /* Conditional: test, then, else */
-    if (strcmp(op, "?") == 0) {
+    if (strcmp(op, "if") == 0) {
         int node_idx = dfg_builder_add_node(builder, expr);
 
         Cell* rest = cell_cdr(expr);

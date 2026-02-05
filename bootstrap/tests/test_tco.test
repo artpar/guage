@@ -2,57 +2,57 @@
 ;;; Day 120: TCO + Short-Circuit ∧/∨ Tests
 ;;;
 
-;;; === Short-circuit ∧ (AND) ===
+;;; === Short-circuit and (AND) ===
 
-;;; ∧ with #f first arg — must NOT evaluate second arg
-(⊨ (⌜ :and-short-circuit-false) #f (∧ #f (⚠ :should-not-eval)))
+;;; and with #f first arg — must NOT evaluate second arg
+(test-case (quote :and-short-circuit-false) #f (and #f (error :should-not-eval)))
 
-;;; ∧ with #t first arg — evaluates and returns second
-(⊨ (⌜ :and-true-true) #t (∧ #t #t))
-(⊨ (⌜ :and-true-false) #f (∧ #t #f))
+;;; and with #t first arg — evaluates and returns second
+(test-case (quote :and-true-true) #t (and #t #t))
+(test-case (quote :and-true-false) #f (and #t #f))
 
-;;; ∧ with non-bool first arg — truthy, evaluates second
-(⊨ (⌜ :and-number-truthy) #42 (∧ #1 #42))
+;;; and with non-bool first arg — truthy, evaluates second
+(test-case (quote :and-number-truthy) #42 (and #1 #42))
 
-;;; === Short-circuit ∨ (OR) ===
+;;; === Short-circuit or (OR) ===
 
-;;; ∨ with #t first arg — must NOT evaluate second arg
-(⊨ (⌜ :or-short-circuit-true) #t (∨ #t (⚠ :should-not-eval)))
+;;; or with #t first arg — must NOT evaluate second arg
+(test-case (quote :or-short-circuit-true) #t (or #t (error :should-not-eval)))
 
-;;; ∨ with #f first arg — evaluates and returns second
-(⊨ (⌜ :or-false-true) #t (∨ #f #t))
-(⊨ (⌜ :or-false-false) #f (∨ #f #f))
+;;; or with #f first arg — evaluates and returns second
+(test-case (quote :or-false-true) #t (or #f #t))
+(test-case (quote :or-false-false) #f (or #f #f))
 
-;;; ∨ with non-bool falsy — only #f is falsy, so non-bool falls through
-(⊨ (⌜ :or-number-truthy) #42 (∨ #f #42))
+;;; or with non-bool falsy — only #f is falsy, so non-bool falls through
+(test-case (quote :or-number-truthy) #42 (or #f #42))
 
 ;;; === ∧/∨ in tail position ===
 
-;;; Nested ∧ in tail position
-(≔ and-chain (λ (a b c) (∧ a (∧ b c))))
-(⊨ (⌜ :and-chain-all-true) #t (and-chain #t #t #t))
-(⊨ (⌜ :and-chain-first-false) #f (and-chain #f #t #t))
-(⊨ (⌜ :and-chain-last-false) #f (and-chain #t #t #f))
+;;; Nested and in tail position
+(define and-chain (lambda (a b c) (and a (and b c))))
+(test-case (quote :and-chain-all-true) #t (and-chain #t #t #t))
+(test-case (quote :and-chain-first-false) #f (and-chain #f #t #t))
+(test-case (quote :and-chain-last-false) #f (and-chain #t #t #f))
 
-;;; Nested ∨ in tail position
-(≔ or-chain (λ (a b c) (∨ a (∨ b c))))
-(⊨ (⌜ :or-chain-all-false) #f (or-chain #f #f #f))
-(⊨ (⌜ :or-chain-first-true) #t (or-chain #t #f #f))
-(⊨ (⌜ :or-chain-last-true) #t (or-chain #f #f #t))
+;;; Nested or in tail position
+(define or-chain (lambda (a b c) (or a (or b c))))
+(test-case (quote :or-chain-all-false) #f (or-chain #f #f #f))
+(test-case (quote :or-chain-first-true) #t (or-chain #t #f #f))
+(test-case (quote :or-chain-last-true) #t (or-chain #f #f #t))
 
 ;;; === Error propagation ===
 
 ;;; Error in first arg propagates
-(⊨ (⌜ :and-error-first) #t (⚠? (∧ (⚠ :boom) #t)))
-(⊨ (⌜ :or-error-first) #t (⚠? (∨ (⚠ :boom) #t)))
+(test-case (quote :and-error-first) #t (error? (and (error :boom) #t)))
+(test-case (quote :or-error-first) #t (error? (or (error :boom) #t)))
 
 ;;; === Deep tail recursion (TCO stress test) ===
 
 ;;; Count down from N — tests TCO doesn't blow the stack
-(≔ countdown (λ (n) (? (≡ n #0) #0 (countdown (⊖ n #1)))))
-(⊨ (⌜ :tco-deep-recursion) #0 (countdown #100000))
+(define countdown (lambda (n) (if (equal? n #0) #0 (countdown (- n #1)))))
+(test-case (quote :tco-deep-recursion) #0 (countdown #100000))
 
 ;;; Mutual-style via conditional tail — even/odd parity
-(≔ parity (λ (n) (? (≡ n #0) :even (? (≡ n #1) :odd (parity (⊖ n #2))))))
-(⊨ (⌜ :tco-parity-even) :even (parity #100000))
-(⊨ (⌜ :tco-parity-odd) :odd (parity #99999))
+(define parity (lambda (n) (if (equal? n #0) :even (if (equal? n #1) :odd (parity (- n #2))))))
+(test-case (quote :tco-parity-even) :even (parity #100000))
+(test-case (quote :tco-parity-odd) :odd (parity #99999))

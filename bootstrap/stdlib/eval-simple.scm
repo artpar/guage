@@ -3,21 +3,21 @@
 ;;; Minimal version - just numbers, symbols, and primitives
 ;;;
 
-(⋘ "bootstrap/stdlib/eval-env.scm")
+(load "bootstrap/stdlib/eval-env.scm")
 
 ;; Evaluate an expression
 ;; For now: just handle atoms and don't handle special forms
-(≔ eval-simple (λ (expr) (λ (env)
-  (? (ℕ? expr)
+(define eval-simple (lambda (expr) (lambda (env)
+  (if (number? expr)
      expr                                   ; Numbers self-evaluate
-     (? (𝔹? expr)
+     (if (boolean? expr)
         expr                                ; Booleans self-evaluate
-        (? (:? expr)
+        (if (symbol? expr)
            ((env-lookup env) expr)          ; Symbol lookup
-           (? (∅? expr)
+           (if (null? expr)
               expr                          ; Nil self-evaluates
               ; Lists - function application
-              (? (⟨⟩? expr)
+              (if (pair? expr)
                  ; For now, just evaluate function and args
                  ; Don't handle special forms yet
                  expr

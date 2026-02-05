@@ -1,104 +1,104 @@
-; Test: Channel Select — ⟿⊞ and ⟿⊞?
+; Test: Channel Select — chan-select and chan-select-try
 ; Day 91 - Select/Alt on multiple channels
 
 ; ============ Reset ============
-(⟳∅)
-(⟿∅)
+(actor-reset)
+(chan-reset)
 
 ; ============ Test 1: select-basic ============
 ; Single channel with data, returns ⟨chan value⟩
 
-(≔ ch-s1 (⟿⊚))
-(⟿→ ch-s1 :hello)
-(≔ sel1 (⟿⊞? ch-s1))
-(⊨ (⌜ :select-basic) :hello (▷ sel1))
+(define ch-s1 (chan-create))
+(chan-send ch-s1 :hello)
+(define sel1 (chan-select-try ch-s1))
+(test-case (quote :select-basic) :hello (cdr sel1))
 
 ; ============ Reset ============
-(⟳∅)
-(⟿∅)
+(actor-reset)
+(chan-reset)
 
 ; ============ Test 2: select-correct-chan ============
 ; Two channels, only second has data, returns correct pair
 
-(≔ ch-a (⟿⊚))
-(≔ ch-b (⟿⊚))
-(⟿→ ch-b :from-b)
-(≔ sel2 (⟿⊞? ch-a ch-b))
-(⊨ (⌜ :select-correct-chan) :from-b (▷ sel2))
+(define ch-a (chan-create))
+(define ch-b (chan-create))
+(chan-send ch-b :from-b)
+(define sel2 (chan-select-try ch-a ch-b))
+(test-case (quote :select-correct-chan) :from-b (cdr sel2))
 
 ; ============ Reset ============
-(⟳∅)
-(⟿∅)
+(actor-reset)
+(chan-reset)
 
 ; ============ Test 3: select-try-empty ============
-; Non-blocking on empty channel returns ∅
+; Non-blocking on empty channel returns nil
 
-(≔ ch-e (⟿⊚))
-(⊨ (⌜ :select-try-empty) ∅ (⟿⊞? ch-e))
+(define ch-e (chan-create))
+(test-case (quote :select-try-empty) nil (chan-select-try ch-e))
 
 ; ============ Reset ============
-(⟳∅)
-(⟿∅)
+(actor-reset)
+(chan-reset)
 
 ; ============ Test 4: select-try-data ============
 ; Non-blocking with data returns ⟨chan value⟩
 
-(≔ ch-d (⟿⊚))
-(⟿→ ch-d #42)
-(≔ sel4 (⟿⊞? ch-d))
-(⊨ (⌜ :select-try-data) #42 (▷ sel4))
+(define ch-d (chan-create))
+(chan-send ch-d #42)
+(define sel4 (chan-select-try ch-d))
+(test-case (quote :select-try-data) #42 (cdr sel4))
 
 ; ============ Reset ============
-(⟳∅)
-(⟿∅)
+(actor-reset)
+(chan-reset)
 
 ; ============ Test 5: select-blocking ============
 ; Actor blocks on select, wakes when producer sends
 
-(≔ ch-w (⟿⊚))
-(≔ waiter (⟳ (λ (self) (⟿⊞ ch-w))))
-(≔ sender-w (⟳ (λ (self) (⟿→ ch-w :woke))))
-(⟳! #100)
-(≔ sel5 (⟳→ waiter))
-(⊨ (⌜ :select-blocking) :woke (▷ sel5))
+(define ch-w (chan-create))
+(define waiter (actor-spawn (lambda (self) (chan-select ch-w))))
+(define sender-w (actor-spawn (lambda (self) (chan-send ch-w :woke))))
+(actor-run #100)
+(define sel5 (actor-result waiter))
+(test-case (quote :select-blocking) :woke (cdr sel5))
 
 ; ============ Reset ============
-(⟳∅)
-(⟿∅)
+(actor-reset)
+(chan-reset)
 
 ; ============ Test 6: select-all-closed ============
 ; All channels closed returns error
 
-(≔ ch-c1 (⟿⊚))
-(≔ ch-c2 (⟿⊚))
-(⟿× ch-c1)
-(⟿× ch-c2)
-(⊨ (⌜ :select-all-closed) #t (⚠? (⟿⊞? ch-c1 ch-c2)))
+(define ch-c1 (chan-create))
+(define ch-c2 (chan-create))
+(chan-close ch-c1)
+(chan-close ch-c2)
+(test-case (quote :select-all-closed) #t (error? (chan-select-try ch-c1 ch-c2)))
 
 ; ============ Reset ============
-(⟳∅)
-(⟿∅)
+(actor-reset)
+(chan-reset)
 
 ; ============ Test 7: select-some-closed ============
 ; Mix of closed/open — data on open channel works
 
-(≔ ch-cl (⟿⊚))
-(≔ ch-op (⟿⊚))
-(⟿× ch-cl)
-(⟿→ ch-op :open-val)
-(≔ sel7 (⟿⊞? ch-cl ch-op))
-(⊨ (⌜ :select-some-closed) :open-val (▷ sel7))
+(define ch-cl (chan-create))
+(define ch-op (chan-create))
+(chan-close ch-cl)
+(chan-send ch-op :open-val)
+(define sel7 (chan-select-try ch-cl ch-op))
+(test-case (quote :select-some-closed) :open-val (cdr sel7))
 
 ; ============ Reset ============
-(⟳∅)
-(⟿∅)
+(actor-reset)
+(chan-reset)
 
 ; ============ Test 8: select-three ============
 ; Three channels, third has data
 
-(≔ ch-t1 (⟿⊚))
-(≔ ch-t2 (⟿⊚))
-(≔ ch-t3 (⟿⊚))
-(⟿→ ch-t3 :third)
-(≔ sel8 (⟿⊞? ch-t1 ch-t2 ch-t3))
-(⊨ (⌜ :select-three) :third (▷ sel8))
+(define ch-t1 (chan-create))
+(define ch-t2 (chan-create))
+(define ch-t3 (chan-create))
+(chan-send ch-t3 :third)
+(define sel8 (chan-select-try ch-t1 ch-t2 ch-t3))
+(test-case (quote :select-three) :third (cdr sel8))

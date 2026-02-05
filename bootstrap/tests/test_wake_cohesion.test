@@ -5,98 +5,98 @@
 ; exists in channel.c and actor.c, but some suspend paths in primitives.c
 ; don't register the actor as a waiter. Without registration:
 ; - Single-scheduler: poll loop hides the bug (checks conditions every tick)
-; - Multi-scheduler: parked workers never get woken → latency or deadlock
+; - Multi-scheduler: parked workers never get woken -> latency or deadlock
 ;
-; These tests use ⟳⚐ (actor-wait-flag introspection) to verify the
+; These tests use actor-wait-flag (actor-wait-flag introspection) to verify the
 ; exact property: wait_flag == 1 after suspension.
 
 
 ; ============ SUSPEND_MAILBOX: wait_flag must be set ============
-(⟳∅)
+(actor-reset)
 
-(≔ mb-actor (⟳ (λ (self) (≫ (←?) (λ (msg) msg)))))
-(⟳! 5)
+(define mb-actor (actor-spawn (lambda (self) (bind (actor-receive) (lambda (msg) msg)))))
+(actor-run 5)
 
-(⊨ (⌜ :mailbox-wait-flag) #1 (⟳⚐ mb-actor))
+(test-case (quote :mailbox-wait-flag) #1 (actor-wait-flag mb-actor))
 
 
 ; ============ SUSPEND_CHAN_RECV: wait_flag must be set ============
-(⟳∅)
-(⟿∅)
+(actor-reset)
+(chan-reset)
 
-(≔ ch-recv (⟿⊚))
-(≔ recv-actor (⟳ (λ (self) (≫ (⟿← ch-recv) (λ (v) v)))))
-(⟳! 5)
+(define ch-recv (chan-create))
+(define recv-actor (actor-spawn (lambda (self) (bind (chan-recv ch-recv) (lambda (v) v)))))
+(actor-run 5)
 
-(⊨ (⌜ :chan-recv-wait-flag) #1 (⟳⚐ recv-actor))
+(test-case (quote :chan-recv-wait-flag) #1 (actor-wait-flag recv-actor))
 
 
 ; ============ SUSPEND_CHAN_SEND: wait_flag must be set ============
 ; Note: capacity rounds to power-of-2, min 2. Fill both slots first.
-(⟳∅)
-(⟿∅)
+(actor-reset)
+(chan-reset)
 
-(≔ ch-send (⟿⊚ #2))
-(≔ filler1 (⟳ (λ (self) (⟿→ ch-send :fill1))))
-(≔ filler2 (⟳ (λ (self) (⟿→ ch-send :fill2))))
-(⟳! 5)
-(≔ send-actor (⟳ (λ (self) (⟿→ ch-send :blocked))))
-(⟳! 5)
+(define ch-send (chan-create #2))
+(define filler1 (actor-spawn (lambda (self) (chan-send ch-send :fill1))))
+(define filler2 (actor-spawn (lambda (self) (chan-send ch-send :fill2))))
+(actor-run 5)
+(define send-actor (actor-spawn (lambda (self) (chan-send ch-send :blocked))))
+(actor-run 5)
 
-(⊨ (⌜ :chan-send-wait-flag) #1 (⟳⚐ send-actor))
+(test-case (quote :chan-send-wait-flag) #1 (actor-wait-flag send-actor))
 
 
 ; ============ SUSPEND_SELECT: wait_flag must be set ============
-(⟳∅)
-(⟿∅)
+(actor-reset)
+(chan-reset)
 
-(≔ ch-sel1 (⟿⊚))
-(≔ ch-sel2 (⟿⊚))
+(define ch-sel1 (chan-create))
+(define ch-sel2 (chan-create))
 
-(≔ selector (⟳ (λ (self)
-  (≫ (⟿⊞ ch-sel1 ch-sel2) (λ (pair) (▷ pair))))))
+(define selector (actor-spawn (lambda (self)
+  (bind (chan-select ch-sel1 ch-sel2) (lambda (pair) (cdr pair))))))
 
-(⟳! 5)
+(actor-run 5)
 
-(⊨ (⌜ :select-wait-flag) #1 (⟳⚐ selector))
+(test-case (quote :select-wait-flag) #1 (actor-wait-flag selector))
 
 
 ; ============ SUSPEND_TASK_AWAIT: wait_flag must be set ============
-(⟳∅)
+(actor-reset)
 
-(≔ slow-worker (⟳ (λ (self) (≫ (←?) (λ (msg) msg)))))
-(≔ awaiter (⟳ (λ (self) (⟳⊲ slow-worker))))
+(define slow-worker (actor-spawn (lambda (self) (bind (actor-receive) (lambda (msg) msg)))))
+(define awaiter (actor-spawn (lambda (self) (task-await slow-worker))))
 
-(⟳! 5)
+(actor-run 5)
 
-(⊨ (⌜ :task-await-wait-flag) #1 (⟳⚐ awaiter))
+(test-case (quote :task-await-wait-flag) #1 (actor-wait-flag awaiter))
 
 
 ; ============ Behavioral: SELECT wake after fix ============
-(⟳∅)
-(⟿∅)
+(actor-reset)
+(chan-reset)
 
-(≔ ch-bsel1 (⟿⊚))
-(≔ ch-bsel2 (⟿⊚))
+(define ch-bsel1 (chan-create))
+(define ch-bsel2 (chan-create))
 
-(≔ bselector (⟳ (λ (self)
-  (≫ (⟿⊞ ch-bsel1 ch-bsel2) (λ (pair) (▷ pair))))))
+(define bselector (actor-spawn (lambda (self)
+  (bind (chan-select ch-bsel1 ch-bsel2) (lambda (pair) (cdr pair))))))
 
-(⟳! 5)
-(⟿→ ch-bsel2 :selected-data)
-(⟳! 10)
+(actor-run 5)
+(chan-send ch-bsel2 :selected-data)
+(actor-run 10)
 
-(⊨ (⌜ :select-wake-behavioral) :selected-data (⟳→ bselector))
+(test-case (quote :select-wake-behavioral) :selected-data (actor-result bselector))
 
 
 ; ============ Behavioral: TASK_AWAIT wake after fix ============
-(⟳∅)
+(actor-reset)
 
-(≔ bworker (⟳ (λ (self) (≫ (←?) (λ (msg) msg)))))
-(≔ bawaiter (⟳ (λ (self) (⟳⊲ bworker))))
+(define bworker (actor-spawn (lambda (self) (bind (actor-receive) (lambda (msg) msg)))))
+(define bawaiter (actor-spawn (lambda (self) (task-await bworker))))
 
-(⟳! 10)
-(→! bworker :finished)
-(⟳! 15)
+(actor-run 10)
+(actor-send bworker :finished)
+(actor-run 15)
 
-(⊨ (⌜ :task-await-wake-behavioral) :finished (⟳→ bawaiter))
+(test-case (quote :task-await-wake-behavioral) :finished (actor-result bawaiter))

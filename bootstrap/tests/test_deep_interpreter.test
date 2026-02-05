@@ -5,179 +5,179 @@
 
 ;;; --- AST defined as ADT ---
 
-(⊚≔ :Expr
-  (⌜ (:Lit :val))
-  (⌜ (:Var :name))
-  (⌜ (:Plus :left :right))
-  (⌜ (:Times :left :right))
-  (⌜ (:IfZ :cond :then :else))
-  (⌜ (:Let :var :val :body))
-  (⌜ (:Lam :param :body))
-  (⌜ (:App :fn :arg)))
+(adt-define :Expr
+  (quote (:Lit :val))
+  (quote (:Var :name))
+  (quote (:Plus :left :right))
+  (quote (:Times :left :right))
+  (quote (:IfZ :cond :then :else))
+  (quote (:Let :var :val :body))
+  (quote (:Lam :param :body))
+  (quote (:App :fn :arg)))
 
 ;;; --- Environment via HashMap (copy-on-extend for immutability) ---
 
-(≔ empty-env (⊞))
+(define empty-env (hashmap))
 
-(≔ env-lookup (λ (env name)
-  (⪢
-    (≔ elv (⊞→ env name))
-    (? (∅? elv) (⚠ :undefined-var name) elv))))
+(define env-lookup (lambda (env name)
+  (begin
+    (define elv (hashmap-get env name))
+    (if (null? elv) (error :undefined-var name) elv))))
 
-(≔ env-extend (λ (env name val)
-  (⪢
-    (≔ nenv (⊞))
-    (≔ ekeys (⊞⊙ env))
-    (≔ ecopy (λ (ks)
-      (? (∅? ks) ∅
-         (⪢ (⊞← nenv (◁ ks) (⊞→ env (◁ ks)))
-             (ecopy (▷ ks))))))
+(define env-extend (lambda (env name val)
+  (begin
+    (define nenv (hashmap))
+    (define ekeys (hashmap-keys env))
+    (define ecopy (lambda (ks)
+      (if (null? ks) nil
+         (begin (hashmap-put nenv (car ks) (hashmap-get env (car ks)))
+             (ecopy (cdr ks))))))
     (ecopy ekeys)
-    (⊞← nenv name val)
+    (hashmap-put nenv name val)
     nenv)))
 
 ;;; --- Forward declaration stub (will be redefined) ---
-(≔ interp (λ (expr env) ∅))
+(define interp (lambda (expr env) nil))
 
 ;;; --- Evaluator helpers (one per node type to avoid deep nesting) ---
 
-(≔ interp-plus (λ (expr env)
-  (⪢
-    (≔ ipL (interp (⊚→ expr :left) env))
-    (≔ ipR (interp (⊚→ expr :right) env))
-    (? (⚠? ipL) ipL (? (⚠? ipR) ipR (⊕ ipL ipR))))))
+(define interp-plus (lambda (expr env)
+  (begin
+    (define ipL (interp (adt-get expr :left) env))
+    (define ipR (interp (adt-get expr :right) env))
+    (if (error? ipL) ipL (if (error? ipR) ipR (+ ipL ipR))))))
 
-(≔ interp-times (λ (expr env)
-  (⪢
-    (≔ itL (interp (⊚→ expr :left) env))
-    (≔ itR (interp (⊚→ expr :right) env))
-    (? (⚠? itL) itL (? (⚠? itR) itR (⊗ itL itR))))))
+(define interp-times (lambda (expr env)
+  (begin
+    (define itL (interp (adt-get expr :left) env))
+    (define itR (interp (adt-get expr :right) env))
+    (if (error? itL) itL (if (error? itR) itR (* itL itR))))))
 
-(≔ interp-ifz (λ (expr env)
-  (⪢
-    (≔ icv (interp (⊚→ expr :cond) env))
-    (? (⚠? icv) icv
-       (? (≡ icv #0)
-          (interp (⊚→ expr :then) env)
-          (interp (⊚→ expr :else) env))))))
+(define interp-ifz (lambda (expr env)
+  (begin
+    (define icv (interp (adt-get expr :cond) env))
+    (if (error? icv) icv
+       (if (equal? icv #0)
+          (interp (adt-get expr :then) env)
+          (interp (adt-get expr :else) env))))))
 
-(≔ interp-let (λ (expr env)
-  (⪢
-    (≔ ilv (interp (⊚→ expr :val) env))
-    (? (⚠? ilv) ilv
-       (interp (⊚→ expr :body)
-               (env-extend env (⊚→ expr :var) ilv))))))
+(define interp-let (lambda (expr env)
+  (begin
+    (define ilv (interp (adt-get expr :val) env))
+    (if (error? ilv) ilv
+       (interp (adt-get expr :body)
+               (env-extend env (adt-get expr :var) ilv))))))
 
-(≔ interp-app (λ (expr env)
-  (⪢
-    (≔ iafv (interp (⊚→ expr :fn) env))
-    (≔ iaav (interp (⊚→ expr :arg) env))
-    (? (⚠? iafv) iafv
-       (? (⚠? iaav) iaav
-          (? (∧ (⟨⟩? iafv) (≡ (◁ iafv) :closure))
-             (⪢
-               (≔ iap (◁ (▷ iafv)))
-               (≔ iab (◁ (▷ (▷ iafv))))
-               (≔ iae (◁ (▷ (▷ (▷ iafv)))))
+(define interp-app (lambda (expr env)
+  (begin
+    (define iafv (interp (adt-get expr :fn) env))
+    (define iaav (interp (adt-get expr :arg) env))
+    (if (error? iafv) iafv
+       (if (error? iaav) iaav
+          (if (and (pair? iafv) (equal? (car iafv) :closure))
+             (begin
+               (define iap (car (cdr iafv)))
+               (define iab (car (cdr (cdr iafv))))
+               (define iae (car (cdr (cdr (cdr iafv)))))
                (interp iab (env-extend iae iap iaav)))
-             (⚠ :not-a-function iafv)))))))
+             (error :not-a-function iafv)))))))
 
 ;;; --- Main evaluator dispatcher ---
 
-(≔ interp (λ (expr env)
-  (? (⊚? expr :Expr :Lit)   (⊚→ expr :val)
-  (? (⊚? expr :Expr :Var)   (env-lookup env (⊚→ expr :name))
-  (? (⊚? expr :Expr :Plus)  (interp-plus expr env)
-  (? (⊚? expr :Expr :Times) (interp-times expr env)
-  (? (⊚? expr :Expr :IfZ)   (interp-ifz expr env)
-  (? (⊚? expr :Expr :Let)   (interp-let expr env)
-  (? (⊚? expr :Expr :Lam)
-     (⟨⟩ :closure (⟨⟩ (⊚→ expr :param) (⟨⟩ (⊚→ expr :body) (⟨⟩ env ∅))))
-  (? (⊚? expr :Expr :App)   (interp-app expr env)
-     (⚠ :unknown-expr expr)))))))))))
+(define interp (lambda (expr env)
+  (if (adt? expr :Expr :Lit)   (adt-get expr :val)
+  (if (adt? expr :Expr :Var)   (env-lookup env (adt-get expr :name))
+  (if (adt? expr :Expr :Plus)  (interp-plus expr env)
+  (if (adt? expr :Expr :Times) (interp-times expr env)
+  (if (adt? expr :Expr :IfZ)   (interp-ifz expr env)
+  (if (adt? expr :Expr :Let)   (interp-let expr env)
+  (if (adt? expr :Expr :Lam)
+     (cons :closure (cons (adt-get expr :param) (cons (adt-get expr :body) (cons env nil))))
+  (if (adt? expr :Expr :App)   (interp-app expr env)
+     (error :unknown-expr expr)))))))))))
 
 ;;; --- Test: literal ---
-(⊨ :interp-lit #42
-  (interp (⊚ :Expr :Lit #42) empty-env))
+(test-case :interp-lit #42
+  (interp (adt-create :Expr :Lit #42) empty-env))
 
 ;;; --- Test: addition ---
-(⊨ :interp-add #8
-  (interp (⊚ :Expr :Plus (⊚ :Expr :Lit #3) (⊚ :Expr :Lit #5)) empty-env))
+(test-case :interp-add #8
+  (interp (adt-create :Expr :Plus (adt-create :Expr :Lit #3) (adt-create :Expr :Lit #5)) empty-env))
 
 ;;; --- Test: multiplication ---
-(⊨ :interp-times #15
-  (interp (⊚ :Expr :Times (⊚ :Expr :Lit #3) (⊚ :Expr :Lit #5)) empty-env))
+(test-case :interp-times #15
+  (interp (adt-create :Expr :Times (adt-create :Expr :Lit #3) (adt-create :Expr :Lit #5)) empty-env))
 
 ;;; --- Test: nested arithmetic: (2 + 3) * 4 ---
-(⊨ :interp-nested #20
-  (interp (⊚ :Expr :Times
-    (⊚ :Expr :Plus (⊚ :Expr :Lit #2) (⊚ :Expr :Lit #3))
-    (⊚ :Expr :Lit #4))
+(test-case :interp-nested #20
+  (interp (adt-create :Expr :Times
+    (adt-create :Expr :Plus (adt-create :Expr :Lit #2) (adt-create :Expr :Lit #3))
+    (adt-create :Expr :Lit #4))
   empty-env))
 
 ;;; --- Test: if-zero true branch ---
-(⊨ :interp-ifz-true #10
-  (interp (⊚ :Expr :IfZ (⊚ :Expr :Lit #0) (⊚ :Expr :Lit #10) (⊚ :Expr :Lit #20))
+(test-case :interp-ifz-true #10
+  (interp (adt-create :Expr :IfZ (adt-create :Expr :Lit #0) (adt-create :Expr :Lit #10) (adt-create :Expr :Lit #20))
   empty-env))
 
 ;;; --- Test: if-zero false branch ---
-(⊨ :interp-ifz-false #20
-  (interp (⊚ :Expr :IfZ (⊚ :Expr :Lit #1) (⊚ :Expr :Lit #10) (⊚ :Expr :Lit #20))
+(test-case :interp-ifz-false #20
+  (interp (adt-create :Expr :IfZ (adt-create :Expr :Lit #1) (adt-create :Expr :Lit #10) (adt-create :Expr :Lit #20))
   empty-env))
 
 ;;; --- Test: let binding ---
-(⊨ :interp-let #12
-  (interp (⊚ :Expr :Let :x (⊚ :Expr :Lit #5)
-    (⊚ :Expr :Plus (⊚ :Expr :Var :x) (⊚ :Expr :Lit #7)))
+(test-case :interp-let #12
+  (interp (adt-create :Expr :Let :x (adt-create :Expr :Lit #5)
+    (adt-create :Expr :Plus (adt-create :Expr :Var :x) (adt-create :Expr :Lit #7)))
   empty-env))
 
 ;;; --- Test: nested let ---
-(⊨ :interp-nested-let #11
-  (interp (⊚ :Expr :Let :x (⊚ :Expr :Lit #3)
-    (⊚ :Expr :Let :y (⊚ :Expr :Lit #8)
-      (⊚ :Expr :Plus (⊚ :Expr :Var :x) (⊚ :Expr :Var :y))))
+(test-case :interp-nested-let #11
+  (interp (adt-create :Expr :Let :x (adt-create :Expr :Lit #3)
+    (adt-create :Expr :Let :y (adt-create :Expr :Lit #8)
+      (adt-create :Expr :Plus (adt-create :Expr :Var :x) (adt-create :Expr :Var :y))))
   empty-env))
 
 ;;; --- Test: lambda + application ---
-(⊨ :interp-lam-app #10
-  (interp (⊚ :Expr :App
-    (⊚ :Expr :Lam :x (⊚ :Expr :Times (⊚ :Expr :Var :x) (⊚ :Expr :Lit #2)))
-    (⊚ :Expr :Lit #5))
+(test-case :interp-lam-app #10
+  (interp (adt-create :Expr :App
+    (adt-create :Expr :Lam :x (adt-create :Expr :Times (adt-create :Expr :Var :x) (adt-create :Expr :Lit #2)))
+    (adt-create :Expr :Lit #5))
   empty-env))
 
 ;;; --- Test: closure captures environment ---
-(⊨ :interp-closure #15
-  (interp (⊚ :Expr :Let :y (⊚ :Expr :Lit #10)
-    (⊚ :Expr :App
-      (⊚ :Expr :Lam :x (⊚ :Expr :Plus (⊚ :Expr :Var :x) (⊚ :Expr :Var :y)))
-      (⊚ :Expr :Lit #5)))
+(test-case :interp-closure #15
+  (interp (adt-create :Expr :Let :y (adt-create :Expr :Lit #10)
+    (adt-create :Expr :App
+      (adt-create :Expr :Lam :x (adt-create :Expr :Plus (adt-create :Expr :Var :x) (adt-create :Expr :Var :y)))
+      (adt-create :Expr :Lit #5)))
   empty-env))
 
 ;;; --- Test: undefined variable error ---
-(⊨ :interp-undef-var #t
-  (⚠? (interp (⊚ :Expr :Var :z) empty-env)))
+(test-case :interp-undef-var #t
+  (error? (interp (adt-create :Expr :Var :z) empty-env)))
 
 ;;; --- Test: non-function application error ---
-(⊨ :interp-not-fn #t
-  (⚠? (interp (⊚ :Expr :App (⊚ :Expr :Lit #42) (⊚ :Expr :Lit #1)) empty-env)))
+(test-case :interp-not-fn #t
+  (error? (interp (adt-create :Expr :App (adt-create :Expr :Lit #42) (adt-create :Expr :Lit #1)) empty-env)))
 
 ;;; --- Test: complex expression: let f = λx.(x+1) in f(f(3)) ---
-(⊨ :interp-complex #5
-  (interp (⊚ :Expr :Let :f
-    (⊚ :Expr :Lam :x (⊚ :Expr :Plus (⊚ :Expr :Var :x) (⊚ :Expr :Lit #1)))
-    (⊚ :Expr :App (⊚ :Expr :Var :f)
-      (⊚ :Expr :App (⊚ :Expr :Var :f) (⊚ :Expr :Lit #3))))
+(test-case :interp-complex #5
+  (interp (adt-create :Expr :Let :f
+    (adt-create :Expr :Lam :x (adt-create :Expr :Plus (adt-create :Expr :Var :x) (adt-create :Expr :Lit #1)))
+    (adt-create :Expr :App (adt-create :Expr :Var :f)
+      (adt-create :Expr :App (adt-create :Expr :Var :f) (adt-create :Expr :Lit #3))))
   empty-env))
 
 ;;; --- Test: evaluator wrapped in effect handler ---
 
-(⟪ :InterpLog :eval)
+(effect-def :InterpLog :eval)
 
-(⊨ :interp-with-effect #8
-  (⟪⟫
-    (interp (⊚ :Expr :Plus
-      (⊚ :Expr :Lit (↯ :InterpLog :eval #3))
-      (⊚ :Expr :Lit (↯ :InterpLog :eval #5)))
+(test-case :interp-with-effect #8
+  (handle
+    (interp (adt-create :Expr :Plus
+      (adt-create :Expr :Lit (perform :InterpLog :eval #3))
+      (adt-create :Expr :Lit (perform :InterpLog :eval #5)))
     empty-env)
     (:InterpLog
-      (:eval (λ (v) v)))))
+      (:eval (lambda (v) v)))))

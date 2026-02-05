@@ -1,22 +1,22 @@
 ; Introspection Tests
 
-; Note: ⊙ symbol is now used for structure primitives (Phase 2C)
+; Note: struct-create symbol is now used for structure primitives (Phase 2C)
 ; Type-of tests disabled - type introspection moved to separate primitive (future)
-; (⊨ (⌜ :typeof-number) :number (⊙ #42))
-; (⊨ (⌜ :typeof-bool) :bool (⊙ #t))
-; (⊨ (⌜ :typeof-nil) :nil (⊙ ∅))
+; (test-case (quote :typeof-number) :number (struct-create #42))
+; (test-case (quote :typeof-bool) :bool (struct-create #t))
+; (test-case (quote :typeof-nil) :nil (struct-create nil))
 
 ; Lambda introspection
-(≔ f1 (λ (x) x))
-(≔ f2 (λ (x y) (⊕ x y)))
-(≔ f3 (λ (a b c) (⊗ a (⊕ b c))))
+(define f1 (lambda (x) x))
+(define f2 (lambda (x y) (+ x y)))
+(define f3 (lambda (a b c) (* a (+ b c))))
 
-; (⊨ (⌜ :typeof-lambda) :lambda (⊙ f1))
-(⊨ (⌜ :arity-1) #1 (⧉ f1))
-(⊨ (⌜ :arity-2) #2 (⧉ f2))
-(⊨ (⌜ :arity-3) #3 (⧉ f3))
+; (test-case (quote :typeof-lambda) :lambda (struct-create f1))
+(test-case (quote :arity-1) #1 (arity f1))
+(test-case (quote :arity-2) #2 (arity f2))
+(test-case (quote :arity-3) #3 (arity f3))
 
 ; Deep equality
-(⊨ (⌜ :eq-numbers) #t (≟ #42 #42))
-(⊨ (⌜ :eq-bools) #t (≟ #t #t))
-(⊨ (⌜ :neq-numbers) #f (≟ #42 #43))
+(test-case (quote :eq-numbers) #t (deep-equal? #42 #42))
+(test-case (quote :eq-bools) #t (deep-equal? #t #t))
+(test-case (quote :neq-numbers) #f (deep-equal? #42 #43))

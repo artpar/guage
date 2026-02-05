@@ -3,176 +3,176 @@
 
 ;;; --- 1. Spawn 250 actors (near max 256), each returns a value ---
 
-(⟳∅)
+(actor-reset)
 
-(≔ spawn-many (λ (i acc)
-  (? (≡ i #0) acc
-     (spawn-many (⊖ i #1) (⟨⟩ (⟳ (λ (self) i)) acc)))))
+(define spawn-many (lambda (i acc)
+  (if (equal? i #0) acc
+     (spawn-many (- i #1) (cons (actor-spawn (lambda (self) i)) acc)))))
 
-(≔ actors-250 (spawn-many #250 ∅))
-(⟳! #50000)
+(define actors-250 (spawn-many #250 nil))
+(actor-run #50000)
 
 ;; Count how many completed
-(≔ count-done (λ (lst acc)
-  (? (∅? lst) acc
-     (count-done (▷ lst)
-       (⊕ acc (? (⟳? (◁ lst)) #0 #1))))))
+(define count-done (lambda (lst acc)
+  (if (null? lst) acc
+     (count-done (cdr lst)
+       (+ acc (if (actor-alive? (car lst)) #0 #1))))))
 
-(⊨ :actors-250-all-done #250 (count-done actors-250 #0))
+(test-case :actors-250-all-done #250 (count-done actors-250 #0))
 
 ;;; --- 2. Single actor receives 250 messages, accumulates sum ---
 
-(⟳∅)
+(actor-reset)
 
 ;; Define loop outside actor so body is a single monadic expression
-(≔ acc-loop (λ (n total)
-  (? (≡ n #0) total
-     (≫ (←?) (λ (msg)
-       (acc-loop (⊖ n #1) (⊕ total msg)))))))
+(define acc-loop (lambda (n total)
+  (if (equal? n #0) total
+     (bind (actor-receive) (lambda (msg)
+       (acc-loop (- n #1) (+ total msg)))))))
 
-(≔ accumulator (⟳ (λ (self) (acc-loop #180 #0))))
+(define accumulator (actor-spawn (lambda (self) (acc-loop #180 #0))))
 
 ;; Send 180 messages (stay under mailbox capacity when burst-sent)
-(≔ send-loop (λ (i)
-  (? (≡ i #0) :done
-     (⪢ (→! accumulator i)
-         (send-loop (⊖ i #1))))))
+(define send-loop (lambda (i)
+  (if (equal? i #0) :done
+     (begin (actor-send accumulator i)
+         (send-loop (- i #1))))))
 
 (send-loop #180)
-(⟳! #50000)
+(actor-run #50000)
 
 ;; Sum of 1..180 = 16290
-(⊨ :actor-180-msgs #16290 (⟳→ accumulator))
+(test-case :actor-180-msgs #16290 (actor-result accumulator))
 
 ;;; --- 3. Ping-pong: 2 actors exchange 100 messages each ---
 
-(⟳∅)
+(actor-reset)
 
 ;; Pass self as parameter since loops are defined outside actor
-(≔ ping-loop (λ (me n)
-  (? (≡ n #0) :ping-done
-     (≫ (←?) (λ (msg)
-       (⪢ (? (→! (◁ msg) (⟨⟩ me :pong)) ∅ ∅)
-           (ping-loop me (⊖ n #1))))))))
+(define ping-loop (lambda (me n)
+  (if (equal? n #0) :ping-done
+     (bind (actor-receive) (lambda (msg)
+       (begin (if (actor-send (car msg) (cons me :pong)) nil nil)
+           (ping-loop me (- n #1))))))))
 
-(≔ pong-loop (λ (me n)
-  (? (≡ n #0) :pong-done
-     (≫ (←?) (λ (msg)
-       (⪢ (? (→! (◁ msg) (⟨⟩ me :ping)) ∅ ∅)
-           (pong-loop me (⊖ n #1))))))))
+(define pong-loop (lambda (me n)
+  (if (equal? n #0) :pong-done
+     (bind (actor-receive) (lambda (msg)
+       (begin (if (actor-send (car msg) (cons me :ping)) nil nil)
+           (pong-loop me (- n #1))))))))
 
-(≔ pinger (⟳ (λ (self) (ping-loop self #100))))
-(≔ ponger (⟳ (λ (self) (pong-loop self #100))))
+(define pinger (actor-spawn (lambda (self) (ping-loop self #100))))
+(define ponger (actor-spawn (lambda (self) (pong-loop self #100))))
 
 ;; Kick off by sending first message
-(→! pinger (⟨⟩ ponger :start))
-(⟳! #10000)
+(actor-send pinger (cons ponger :start))
+(actor-run #10000)
 
-(⊨ :actor-pingpong-pinger :ping-done (⟳→ pinger))
-(⊨ :actor-pingpong-ponger :pong-done (⟳→ ponger))
+(test-case :actor-pingpong-pinger :ping-done (actor-result pinger))
+(test-case :actor-pingpong-ponger :pong-done (actor-result ponger))
 
 ;;; --- 4. Fan-out: 1 actor sends to 50 workers, each processes 100 msgs ---
 
-(⟳∅)
+(actor-reset)
 
 ;; Worker loop defined outside actor — each worker receives 20 msgs
-(≔ w-loop (λ (n total)
-  (? (≡ n #0) total
-     (≫ (←?) (λ (msg)
-       (w-loop (⊖ n #1) (⊕ total msg)))))))
+(define w-loop (lambda (n total)
+  (if (equal? n #0) total
+     (bind (actor-receive) (lambda (msg)
+       (w-loop (- n #1) (+ total msg)))))))
 
-(≔ make-worker (λ ()
-  (⟳ (λ (self) (w-loop #20 #0)))))
+(define make-worker (lambda ()
+  (actor-spawn (lambda (self) (w-loop #20 #0)))))
 
-(≔ spawn-workers (λ (n acc)
-  (? (≡ n #0) acc
-     (spawn-workers (⊖ n #1) (⟨⟩ (make-worker) acc)))))
+(define spawn-workers (lambda (n acc)
+  (if (equal? n #0) acc
+     (spawn-workers (- n #1) (cons (make-worker) acc)))))
 
-(≔ workers (spawn-workers #20 ∅))
+(define workers (spawn-workers #20 nil))
 
 ;; Send 20 messages to each worker
-(≔ send-to-worker (λ (w i)
-  (? (≡ i #0) :done
-     (⪢ (→! w #1) (send-to-worker w (⊖ i #1))))))
+(define send-to-worker (lambda (w i)
+  (if (equal? i #0) :done
+     (begin (actor-send w #1) (send-to-worker w (- i #1))))))
 
-(≔ fanout (λ (wlist msg-n)
-  (? (∅? wlist) :done
-     (⪢ (send-to-worker (◁ wlist) msg-n)
-         (fanout (▷ wlist) msg-n)))))
+(define fanout (lambda (wlist msg-n)
+  (if (null? wlist) :done
+     (begin (send-to-worker (car wlist) msg-n)
+         (fanout (cdr wlist) msg-n)))))
 
 (fanout workers #20)
-(⟳! #100000)
+(actor-run #100000)
 
 ;; Count completed workers
-(≔ count-workers-done (λ (lst acc)
-  (? (∅? lst) acc
-     (count-workers-done (▷ lst)
-       (⊕ acc (? (⟳? (◁ lst)) #0 #1))))))
+(define count-workers-done (lambda (lst acc)
+  (if (null? lst) acc
+     (count-workers-done (cdr lst)
+       (+ acc (if (actor-alive? (car lst)) #0 #1))))))
 
-(⊨ :actor-fanout-done #20 (count-workers-done workers #0))
+(test-case :actor-fanout-done #20 (count-workers-done workers #0))
 
 ;;; --- 5. Rapid lifecycle: spawn→run→die cycle 200 times ---
 
-(⟳∅)
+(actor-reset)
 
-(≔ lifecycle-loop (λ (n)
-  (? (≡ n #0) :done
-     (⪢
-       (⟳∅)
-       (≔ tmp (⟳ (λ (self) :bye)))
-       (⟳! #100)
-       (lifecycle-loop (⊖ n #1))))))
+(define lifecycle-loop (lambda (n)
+  (if (equal? n #0) :done
+     (begin
+       (actor-reset)
+       (define tmp (actor-spawn (lambda (self) :bye)))
+       (actor-run #100)
+       (lifecycle-loop (- n #1))))))
 
-(⊨ :actor-lifecycle-200 :done (lifecycle-loop #200))
+(test-case :actor-lifecycle-200 :done (lifecycle-loop #200))
 
 ;;; --- 6. Actor spawns child actors 4 levels deep ---
 
-(⟳∅)
+(actor-reset)
 
-(≔ tree-actor (λ (depth)
-  (⟳ (λ (self)
-    (? (≡ depth #0) #1
-       (⪢
-         (≔ c1 (tree-actor (⊖ depth #1)))
-         (≔ c2 (tree-actor (⊖ depth #1)))
-         (⟳! #5000)
-         (≔ r1 (⟳→ c1))
-         (≔ r2 (⟳→ c2))
-         (⊕ #1 (⊕ (? (⚠? r1) #0 r1) (? (⚠? r2) #0 r2)))))))))
+(define tree-actor (lambda (depth)
+  (actor-spawn (lambda (self)
+    (if (equal? depth #0) #1
+       (begin
+         (define c1 (tree-actor (- depth #1)))
+         (define c2 (tree-actor (- depth #1)))
+         (actor-run #5000)
+         (define r1 (actor-result c1))
+         (define r2 (actor-result c2))
+         (+ #1 (+ (if (error? r1) #0 r1) (if (error? r2) #0 r2)))))))))
 
-(≔ tree-root (tree-actor #4))
-(⟳! #50000)
-(≔ tree-result (⟳→ tree-root))
+(define tree-root (tree-actor #4))
+(actor-run #50000)
+(define tree-result (actor-result tree-root))
 
 ;; Binary tree depth 4: 1+2+4+8+16 = 31 actors
-(⊨ :actor-tree-completes #t (? (⚠? tree-result) #f #t))
+(test-case :actor-tree-completes #t (if (error? tree-result) #f #t))
 
 ;;; --- 7. Scheduler tick stress: 100K ticks, verify no crash ---
 
-(⟳∅)
-(≔ tick-actor (⟳ (λ (self) :survived)))
-(⟳! #100000)
-(⊨ :actor-100k-ticks :survived (⟳→ tick-actor))
+(actor-reset)
+(define tick-actor (actor-spawn (lambda (self) :survived)))
+(actor-run #100000)
+(test-case :actor-100k-ticks :survived (actor-result tick-actor))
 
 ;;; --- 8. Mailbox fill: send 250 messages before processing ---
 
-(⟳∅)
+(actor-reset)
 
 ;; Drain loop defined outside actor
-(≔ drain-loop (λ (n total)
-  (? (≡ n #0) total
-     (≫ (←?) (λ (msg)
-       (drain-loop (⊖ n #1) (⊕ total msg)))))))
+(define drain-loop (lambda (n total)
+  (if (equal? n #0) total
+     (bind (actor-receive) (lambda (msg)
+       (drain-loop (- n #1) (+ total msg)))))))
 
-(≔ mailbox-actor (⟳ (λ (self) (drain-loop #180 #0))))
+(define mailbox-actor (actor-spawn (lambda (self) (drain-loop #180 #0))))
 
-(≔ fill-mailbox (λ (i)
-  (? (≡ i #0) :done
-     (⪢ (→! mailbox-actor i)
-         (fill-mailbox (⊖ i #1))))))
+(define fill-mailbox (lambda (i)
+  (if (equal? i #0) :done
+     (begin (actor-send mailbox-actor i)
+         (fill-mailbox (- i #1))))))
 
 (fill-mailbox #180)
-(⟳! #50000)
+(actor-run #50000)
 
 ;; Sum of 1..180 = 16290
-(⊨ :actor-mailbox-180 #16290 (⟳→ mailbox-actor))
+(test-case :actor-mailbox-180 #16290 (actor-result mailbox-actor))

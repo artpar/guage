@@ -1,115 +1,115 @@
-; Day 103: GenStage (producer-consumer) tests — ⟳⊵, ⟳⊵⊕, ⟳⊵→, ⟳⊵⊙, ⟳⊵?, ⟳⊵×
+; Day 103: GenStage (producer-consumer) tests — ⟳⊵, ⟳⊵⊕, ⟳⊵→, ⟳⊵⊙, ⟳⊵?, stage-stop
 
 ; Reset state
-(⟳∅)
+(actor-reset)
 
 ; === stage-new-producer ===
 ; Create a producer stage
-(⟳∅)
-(≔ p (⟳⊵ :producer
-  (λ (demand state) (⟨⟩ (⟨⟩ state ∅) (⊕ state #1)))
+(actor-reset)
+(define p (stage-new :producer
+  (lambda (demand state) (cons (cons state nil) (+ state #1)))
   #0))
-(⊨ (⌜ :stage-new-producer) #t (≥ p #0))
+(test-case (quote :stage-new-producer) #t (>= p #0))
 
 ; === stage-new-consumer ===
 ; Create a consumer stage
-(⟳∅)
-(≔ c (⟳⊵ :consumer
-  (λ (events state) (⊕ state #1))
+(actor-reset)
+(define c (stage-new :consumer
+  (lambda (events state) (+ state #1))
   #0))
-(⊨ (⌜ :stage-new-consumer) #t (≥ c #0))
+(test-case (quote :stage-new-consumer) #t (>= c #0))
 
 ; === stage-ask-producer ===
 ; Ask producer for events — returns list from handler
-(⟳∅)
-(≔ p (⟳⊵ :producer
-  (λ (demand state)
+(actor-reset)
+(define p (stage-new :producer
+  (lambda (demand state)
     ; always produce (state), advance state by demand
-    (⟨⟩ (⟨⟩ state ∅) (⊕ state demand)))
+    (cons (cons state nil) (+ state demand)))
   #0))
-(≔ evts (⟳⊵→ p #3))
+(define evts (stage-ask p #3))
 ; Should get (0) and state advanced to 3
-(⊨ (⌜ :stage-ask-producer) (⟨⟩ #0 ∅) evts)
+(test-case (quote :stage-ask-producer) (cons #0 nil) evts)
 
 ; === stage-ask-updates-state ===
 ; Asking updates producer state across calls
-(⟳∅)
-(≔ p (⟳⊵ :producer
-  (λ (demand state)
-    (⟨⟩ (⟨⟩ state ∅) (⊕ state #1)))
+(actor-reset)
+(define p (stage-new :producer
+  (lambda (demand state)
+    (cons (cons state nil) (+ state #1)))
   #10))
-(⟳⊵→ p #1)   ; produces (10), state→11
-(⟳⊵→ p #1)   ; produces (11), state→12
-(≔ evts (⟳⊵→ p #1))  ; produces (12), state→13
-(⊨ (⌜ :stage-ask-updates-state) (⟨⟩ #12 ∅) evts)
+(stage-ask p #1)   ; produces (10), state→11
+(stage-ask p #1)   ; produces (11), state→12
+(define evts (stage-ask p #1))  ; produces (12), state→13
+(test-case (quote :stage-ask-updates-state) (cons #12 nil) evts)
 
 ; === stage-subscribe-basic ===
 ; Subscribe consumer to producer
-(⟳∅)
-(≔ p (⟳⊵ :producer
-  (λ (demand state) (⟨⟩ (⟨⟩ state ∅) (⊕ state #1)))
+(actor-reset)
+(define p (stage-new :producer
+  (lambda (demand state) (cons (cons state nil) (+ state #1)))
   #0))
-(≔ c (⟳⊵ :consumer
-  (λ (events state) (⊕ state #1))
+(define c (stage-new :consumer
+  (lambda (events state) (+ state #1))
   #0))
-(⊨ (⌜ :stage-subscribe-basic) #t (⟳⊵⊕ c p))
+(test-case (quote :stage-subscribe-basic) #t (stage-subscribe c p))
 
 ; === stage-dispatch ===
 ; Dispatch events to subscribed consumer updates its state
-(⟳∅)
-(≔ p (⟳⊵ :producer
-  (λ (demand state) (⟨⟩ (⟨⟩ state ∅) (⊕ state #1)))
+(actor-reset)
+(define p (stage-new :producer
+  (lambda (demand state) (cons (cons state nil) (+ state #1)))
   #0))
-(≔ c (⟳⊵ :consumer
-  (λ (events state) (⊕ state #1))
+(define c (stage-new :consumer
+  (lambda (events state) (+ state #1))
   #0))
-(⟳⊵⊕ c p)
+(stage-subscribe c p)
 ; Dispatch events to consumers
-(⟳⊵⊙ p (⟨⟩ :hello ∅))
+(stage-dispatch p (cons :hello nil))
 ; Consumer handler called, state incremented to 1
-(≔ info (⟳⊵? c))
-(⊨ (⌜ :stage-dispatch) #1 (▷ info))
+(define info (stage-info c))
+(test-case (quote :stage-dispatch) #1 (cdr info))
 
 ; === stage-info ===
 ; Get stage info returns ⟨mode state⟩
-(⟳∅)
-(≔ p (⟳⊵ :producer
-  (λ (demand state) (⟨⟩ ∅ state))
+(actor-reset)
+(define p (stage-new :producer
+  (lambda (demand state) (cons nil state))
   #42))
-(≔ info (⟳⊵? p))
-(⊨ (⌜ :stage-info) (⟨⟩ :producer #42) info)
+(define info (stage-info p))
+(test-case (quote :stage-info) (cons :producer #42) info)
 
 ; === stage-stop ===
 ; Stop returns final state
-(⟳∅)
-(≔ p (⟳⊵ :producer
-  (λ (demand state) (⟨⟩ ∅ state))
+(actor-reset)
+(define p (stage-new :producer
+  (lambda (demand state) (cons nil state))
   :final))
-(⊨ (⌜ :stage-stop) :final (⟳⊵× p))
+(test-case (quote :stage-stop) :final (stage-stop p))
 
 ; === stage-stop-error ===
 ; Operations on stopped stage return error
-(⟳∅)
-(≔ p (⟳⊵ :producer (λ (demand state) (⟨⟩ ∅ state)) #0))
-(⟳⊵× p)
-(⊨ (⌜ :stage-stop-error) #t (⚠? (⟳⊵→ p #1)))
+(actor-reset)
+(define p (stage-new :producer (lambda (demand state) (cons nil state)) #0))
+(stage-stop p)
+(test-case (quote :stage-stop-error) #t (error? (stage-ask p #1)))
 
 ; === stage-producer-consumer ===
 ; Producer-consumer mode: handler receives events, returns ⟨out-events new-state⟩
-(⟳∅)
-(≔ pc (⟳⊵ :producer-consumer
-  (λ (events state)
+(actor-reset)
+(define pc (stage-new :producer-consumer
+  (lambda (events state)
     ; pass events through, increment state
-    (⟨⟩ events (⊕ state #1)))
+    (cons events (+ state #1)))
   #0))
-(≔ c (⟳⊵ :consumer
-  (λ (events state)
+(define c (stage-new :consumer
+  (lambda (events state)
     ; state = first event received
-    (? (≡ events ∅) state (◁ events)))
+    (if (equal? events nil) state (car events)))
   :none))
-(⟳⊵⊕ c pc)
+(stage-subscribe c pc)
 ; Dispatch events into producer-consumer
-(⟳⊵⊙ pc (⟨⟩ :data ∅))
+(stage-dispatch pc (cons :data nil))
 ; pc state should be 1, c should have received forwarded events
-(≔ pc-info (⟳⊵? pc))
-(⊨ (⌜ :stage-producer-consumer) #1 (▷ pc-info))
+(define pc-info (stage-info pc))
+(test-case (quote :stage-producer-consumer) #1 (cdr pc-info))

@@ -1,8 +1,8 @@
 ; ═══════════════════════════════════════════════════════════════
 ; Test suite for pattern-based macros (Day 75)
 ; ═══════════════════════════════════════════════════════════════
-; Symbol: ⧉⊜ (macro-rules)
-; Syntax: (⧉⊜ name ((pattern) template) ...)
+; Symbol: macro-rules (macro-rules)
+; Syntax: (macro-rules name ((pattern) template) ...)
 ;
 ; Pattern variables: symbols starting with $ (e.g., $x, $body)
 ; Literal keywords: any non-pattern-var symbols match exactly
@@ -13,174 +13,174 @@
 ; ═══════════════════════════════════════════════════════════════
 
 ; Test 1: Simple single-pattern macro
-(⧉⊜ inc1
-  (($x) (⊕ $x #1)))
+(macro-rules inc1
+  (($x) (+ $x #1)))
 
-(⊨ :pattern-macro-simple #6 (inc1 #5))
+(test-case :pattern-macro-simple #6 (inc1 #5))
 
 ; Test 2: Macro with two arguments
-(⧉⊜ add-double
-  (($x $y) (⊕ (⊗ $x #2) $y)))
+(macro-rules add-double
+  (($x $y) (+ (* $x #2) $y)))
 
-(⊨ :pattern-macro-two-args #12 (add-double #5 #2))
+(test-case :pattern-macro-two-args #12 (add-double #5 #2))
 
 ; Test 3: Macro with three arguments
-(⧉⊜ add3
-  (($x $y $z) (⊕ $x (⊕ $y $z))))
+(macro-rules add3
+  (($x $y $z) (+ $x (+ $y $z))))
 
-(⊨ :pattern-macro-three-args #10 (add3 #2 #3 #5))
+(test-case :pattern-macro-three-args #10 (add3 #2 #3 #5))
 
 ; ═══════════════════════════════════════════════════════════════
 ; Section 2: Multiple Pattern Clauses
 ; ═══════════════════════════════════════════════════════════════
 
 ; Test 4: Multi-clause - different arities
-(⧉⊜ my-add
+(macro-rules my-add
   (($x) $x)
-  (($x $y) (⊕ $x $y))
-  (($x $y $z) (⊕ $x (⊕ $y $z))))
+  (($x $y) (+ $x $y))
+  (($x $y $z) (+ $x (+ $y $z))))
 
-(⊨ :multi-clause-one #5 (my-add #5))
-(⊨ :multi-clause-two #7 (my-add #3 #4))
-(⊨ :multi-clause-three #10 (my-add #2 #3 #5))
+(test-case :multi-clause-one #5 (my-add #5))
+(test-case :multi-clause-two #7 (my-add #3 #4))
+(test-case :multi-clause-three #10 (my-add #2 #3 #5))
 
 ; Test 5: Pattern with specific arity selection
-(⧉⊜ arity-test
+(macro-rules arity-test
   (($a) :one)
   (($a $b) :two)
   (($a $b $c) :three))
 
-(⊨ :arity-one :one (arity-test #1))
-(⊨ :arity-two :two (arity-test #1 #2))
-(⊨ :arity-three :three (arity-test #1 #2 #3))
+(test-case :arity-one :one (arity-test #1))
+(test-case :arity-two :two (arity-test #1 #2))
+(test-case :arity-three :three (arity-test #1 #2 #3))
 
 ; ═══════════════════════════════════════════════════════════════
 ; Section 3: Literal Keyword Matching
 ; ═══════════════════════════════════════════════════════════════
 
 ; Test 6: Match literal keywords in pattern
-(⧉⊜ kw-test
-  ((:left $x) (⟨⟩ :l $x))
-  ((:right $x) (⟨⟩ :r $x)))
+(macro-rules kw-test
+  ((:left $x) (cons :l $x))
+  ((:right $x) (cons :r $x)))
 
-(⊨ :kw-left (⟨⟩ :l #5) (kw-test :left #5))
-(⊨ :kw-right (⟨⟩ :r #10) (kw-test :right #10))
+(test-case :kw-left (cons :l #5) (kw-test :left #5))
+(test-case :kw-right (cons :r #10) (kw-test :right #10))
 
 ; Test 7: Keyword in middle of pattern
-(⧉⊜ between-kw
-  (($x :to $y) (⟨⟩ $x $y)))
+(macro-rules between-kw
+  (($x :to $y) (cons $x $y)))
 
-(⊨ :kw-middle (⟨⟩ #1 #10) (between-kw #1 :to #10))
+(test-case :kw-middle (cons #1 #10) (between-kw #1 :to #10))
 
 ; ═══════════════════════════════════════════════════════════════
 ; Section 4: Nested Patterns
 ; ═══════════════════════════════════════════════════════════════
 
 ; Test 8: Nested list patterns - extract from pair
-(⧉⊜ extract-pair
-  ((($a $b)) (⊕ $a $b)))
+(macro-rules extract-pair
+  ((($a $b)) (+ $a $b)))
 
-(⊨ :nested-extract #7 (extract-pair (#3 #4)))
+(test-case :nested-extract #7 (extract-pair (#3 #4)))
 
 ; Test 9: Double nested - pattern ((($a))) matches (((#42)))
-(⧉⊜ deep-extract
+(macro-rules deep-extract
   (((($a))) $a))
 
-(⊨ :deep-nested #42 (deep-extract ((#42))))
+(test-case :deep-nested #42 (deep-extract ((#42))))
 
 ; ═══════════════════════════════════════════════════════════════
 ; Section 5: Template with Complex Expressions
 ; ═══════════════════════════════════════════════════════════════
 
 ; Test 10: Template with multiple uses of pattern var
-(⧉⊜ double
-  (($x) (⊕ $x $x)))
+(macro-rules double
+  (($x) (+ $x $x)))
 
-(⊨ :double-use #10 (double #5))
+(test-case :double-use #10 (double #5))
 
 ; Test 11: Template with nested expressions
-(⧉⊜ complex-template
-  (($x $y) (⊗ (⊕ $x #1) (⊖ $y #1))))
+(macro-rules complex-template
+  (($x $y) (* (+ $x #1) (- $y #1))))
 
-(⊨ :complex-templ #24 (complex-template #5 #5))
+(test-case :complex-templ #24 (complex-template #5 #5))
 
 ; Test 12: Template building a list
-(⧉⊜ make-triple
-  (($a $b $c) (⟨⟩ $a (⟨⟩ $b (⟨⟩ $c ∅)))))
+(macro-rules make-triple
+  (($a $b $c) (cons $a (cons $b (cons $c nil)))))
 
-(⊨ :make-triple-head #1 (◁ (make-triple #1 #2 #3)))
-(⊨ :make-triple-second #2 (◁ (▷ (make-triple #1 #2 #3))))
+(test-case :make-triple-head #1 (car (make-triple #1 #2 #3)))
+(test-case :make-triple-second #2 (car (cdr (make-triple #1 #2 #3))))
 
 ; ═══════════════════════════════════════════════════════════════
 ; Section 6: Conditional Macros
 ; ═══════════════════════════════════════════════════════════════
 
 ; Test 13: When macro (single clause)
-(⧉⊜ when2
-  (($cond $body) (? $cond $body ∅)))
+(macro-rules when2
+  (($cond $body) (if $cond $body nil)))
 
-(⊨ :when-true #42 (when2 #t #42))
-(⊨ :when-false ∅ (when2 #f #42))
+(test-case :when-true #42 (when2 #t #42))
+(test-case :when-false nil (when2 #f #42))
 
 ; Test 14: Unless macro
-(⧉⊜ unless2
-  (($cond $body) (? $cond ∅ $body)))
+(macro-rules unless2
+  (($cond $body) (if $cond nil $body)))
 
-(⊨ :unless-true ∅ (unless2 #t #42))
-(⊨ :unless-false #42 (unless2 #f #42))
+(test-case :unless-true nil (unless2 #t #42))
+(test-case :unless-false #42 (unless2 #f #42))
 
 ; ═══════════════════════════════════════════════════════════════
 ; Section 7: Hygiene Tests
 ; ═══════════════════════════════════════════════════════════════
 
 ; Test 15: Macro doesn't accidentally capture
-(≔ x #100)
-(⧉⊜ use-outer
-  (($y) (⊕ $y x)))
+(define x #100)
+(macro-rules use-outer
+  (($y) (+ $y x)))
 
-(⊨ :hygiene-outer #105 (use-outer #5))
+(test-case :hygiene-outer #105 (use-outer #5))
 
 ; Test 16: Pattern var shadows outer
-(⧉⊜ shadow-x
-  (($x) (⊗ $x #2)))
+(macro-rules shadow-x
+  (($x) (* $x #2)))
 
-(⊨ :hygiene-shadow #10 (shadow-x #5))
+(test-case :hygiene-shadow #10 (shadow-x #5))
 
 ; ═══════════════════════════════════════════════════════════════
 ; Section 8: Literal Matching in Patterns
 ; ═══════════════════════════════════════════════════════════════
 
 ; Test 17: Literal number matching in first position
-(⧉⊜ literal-first
+(macro-rules literal-first
   ((#0 $x) :zero)
   ((#1 $x) :one)
   (($n $x) :other))
 
-(⊨ :literal-zero :zero (literal-first #0 :ignored))
-(⊨ :literal-one :one (literal-first #1 :ignored))
-(⊨ :literal-other :other (literal-first #5 :ignored))
+(test-case :literal-zero :zero (literal-first #0 :ignored))
+(test-case :literal-one :one (literal-first #1 :ignored))
+(test-case :literal-other :other (literal-first #5 :ignored))
 
 ; Test 18: Literal in second position
-(⧉⊜ literal-second
-  (($x #0) (⟨⟩ $x :zero))
-  (($x #1) (⟨⟩ $x :one))
-  (($x $y) (⟨⟩ $x :other)))
+(macro-rules literal-second
+  (($x #0) (cons $x :zero))
+  (($x #1) (cons $x :one))
+  (($x $y) (cons $x :other)))
 
-(⊨ :literal-second-zero (⟨⟩ :a :zero) (literal-second :a #0))
-(⊨ :literal-second-one (⟨⟩ :b :one) (literal-second :b #1))
-(⊨ :literal-second-other (⟨⟩ :c :other) (literal-second :c #5))
+(test-case :literal-second-zero (cons :a :zero) (literal-second :a #0))
+(test-case :literal-second-one (cons :b :one) (literal-second :b #1))
+(test-case :literal-second-other (cons :c :other) (literal-second :c #5))
 
 ; ═══════════════════════════════════════════════════════════════
 ; Section 9: Error Cases
 ; ═══════════════════════════════════════════════════════════════
 
 ; Test 19: No matching pattern (wrong arity)
-(⧉⊜ fixed-arity
-  (($x $y) (⊕ $x $y)))
+(macro-rules fixed-arity
+  (($x $y) (+ $x $y)))
 
-(⊨ :no-match-arity #t (⚠? (fixed-arity #1)))
+(test-case :no-match-arity #t (error? (fixed-arity #1)))
 
 ; ═══════════════════════════════════════════════════════════════
 ; Summary
 ; ═══════════════════════════════════════════════════════════════
-(≋ "✓ 25 Pattern-based macros tests")
+(print "✓ 25 Pattern-based macros tests")

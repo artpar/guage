@@ -1,152 +1,152 @@
 ; Structure Primitives Tests - Phase 2C Week 1
 
 ; Define Point structure
-(⊙≔ (⌜ :Point) (⌜ :x) (⌜ :y))
+(struct-define (quote :Point) (quote :x) (quote :y))
 
 ; Create point instance
-(≔ p1 (⊙ (⌜ :Point) #3 #4))
+(define p1 (struct-create (quote :Point) #3 #4))
 
 ; Test field access
-(⊨ (⌜ :point-x) #3 (⊙→ p1 (⌜ :x)))
-(⊨ (⌜ :point-y) #4 (⊙→ p1 (⌜ :y)))
+(test-case (quote :point-x) #3 (struct-get p1 (quote :x)))
+(test-case (quote :point-y) #4 (struct-get p1 (quote :y)))
 
 ; Define Rectangle structure
-(⊙≔ (⌜ :Rectangle) (⌜ :width) (⌜ :height) (⌜ :color))
+(struct-define (quote :Rectangle) (quote :width) (quote :height) (quote :color))
 
 ; Create rectangle instance
-(≔ r1 (⊙ (⌜ :Rectangle) #10 #20 (⌜ :blue)))
+(define r1 (struct-create (quote :Rectangle) #10 #20 (quote :blue)))
 
 ; Test rectangle fields
-(⊨ (⌜ :rect-width) #10 (⊙→ r1 (⌜ :width)))
-(⊨ (⌜ :rect-height) #20 (⊙→ r1 (⌜ :height)))
-(⊨ (⌜ :rect-color) (⌜ :blue) (⊙→ r1 (⌜ :color)))
+(test-case (quote :rect-width) #10 (struct-get r1 (quote :width)))
+(test-case (quote :rect-height) #20 (struct-get r1 (quote :height)))
+(test-case (quote :rect-color) (quote :blue) (struct-get r1 (quote :color)))
 
 ; Create another point
-(≔ p2 (⊙ (⌜ :Point) #7 #8))
-(⊨ (⌜ :point2-x) #7 (⊙→ p2 (⌜ :x)))
-(⊨ (⌜ :point2-y) #8 (⊙→ p2 (⌜ :y)))
+(define p2 (struct-create (quote :Point) #7 #8))
+(test-case (quote :point2-x) #7 (struct-get p2 (quote :x)))
+(test-case (quote :point2-y) #8 (struct-get p2 (quote :y)))
 
 ; Test field update (immutable)
-(≔ p3 (⊙← p1 (⌜ :x) #100))
-(⊨ (⌜ :update-field-x) #100 (⊙→ p3 (⌜ :x)))
-(⊨ (⌜ :update-field-y-unchanged) #4 (⊙→ p3 (⌜ :y)))
-(⊨ (⌜ :original-unchanged) #3 (⊙→ p1 (⌜ :x)))
+(define p3 (struct-set p1 (quote :x) #100))
+(test-case (quote :update-field-x) #100 (struct-get p3 (quote :x)))
+(test-case (quote :update-field-y-unchanged) #4 (struct-get p3 (quote :y)))
+(test-case (quote :original-unchanged) #3 (struct-get p1 (quote :x)))
 
 ; Test type checking
-(⊨ (⌜ :is-point) #t (⊙? p1 (⌜ :Point)))
-(⊨ (⌜ :is-rect) #t (⊙? r1 (⌜ :Rectangle)))
-(⊨ (⌜ :not-rect) #f (⊙? p1 (⌜ :Rectangle)))
-(⊨ (⌜ :not-point) #f (⊙? r1 (⌜ :Point)))
-(⊨ (⌜ :number-not-struct) #f (⊙? #42 (⌜ :Point)))
+(test-case (quote :is-point) #t (struct? p1 (quote :Point)))
+(test-case (quote :is-rect) #t (struct? r1 (quote :Rectangle)))
+(test-case (quote :not-rect) #f (struct? p1 (quote :Rectangle)))
+(test-case (quote :not-point) #f (struct? r1 (quote :Point)))
+(test-case (quote :number-not-struct) #f (struct? #42 (quote :Point)))
 
 ; ============ Node/ADT Structure Tests ============
 
 ; Define List ADT with two variants
-(⊚≔ (⌜ :List) (⟨⟩ (⌜ :Nil) ∅) (⟨⟩ (⌜ :Cons) (⟨⟩ (⌜ :head) (⟨⟩ (⌜ :tail) ∅))))
+(adt-define (quote :List) (cons (quote :Nil) nil) (cons (quote :Cons) (cons (quote :head) (cons (quote :tail) nil))))
 
 ; Create empty list (Nil variant)
-(≔ nil (⊚ (⌜ :List) (⌜ :Nil)))
+(define empty-list (adt-create (quote :List) (quote :Nil)))
 
 ; Test Nil variant checking
-(⊨ (⌜ :nil-is-list-nil) #t (⊚? nil (⌜ :List) (⌜ :Nil)))
-(⊨ (⌜ :nil-not-cons) #f (⊚? nil (⌜ :List) (⌜ :Cons)))
+(test-case (quote :nil-is-list-nil) #t (adt? empty-list (quote :List) (quote :Nil)))
+(test-case (quote :nil-not-cons) #f (adt? empty-list (quote :List) (quote :Cons)))
 
 ; Create list with one element (Cons variant)
-(≔ cons1 (⊚ (⌜ :List) (⌜ :Cons) #1 nil))
+(define cons1 (adt-create (quote :List) (quote :Cons) #1 empty-list))
 
 ; Test Cons variant checking
-(⊨ (⌜ :cons1-is-list-cons) #t (⊚? cons1 (⌜ :List) (⌜ :Cons)))
-(⊨ (⌜ :cons1-not-nil) #f (⊚? cons1 (⌜ :List) (⌜ :Nil)))
+(test-case (quote :cons1-is-list-cons) #t (adt? cons1 (quote :List) (quote :Cons)))
+(test-case (quote :cons1-not-nil) #f (adt? cons1 (quote :List) (quote :Nil)))
 
 ; Test field access on Cons
-(⊨ (⌜ :cons1-head) #1 (⊚→ cons1 (⌜ :head)))
-(⊨ (⌜ :cons1-tail-is-nil) #t (⊚? (⊚→ cons1 (⌜ :tail)) (⌜ :List) (⌜ :Nil)))
+(test-case (quote :cons1-head) #1 (adt-get cons1 (quote :head)))
+(test-case (quote :cons1-tail-is-nil) #t (adt? (adt-get cons1 (quote :tail)) (quote :List) (quote :Nil)))
 
 ; Create list with two elements
-(≔ cons2 (⊚ (⌜ :List) (⌜ :Cons) #2 cons1))
+(define cons2 (adt-create (quote :List) (quote :Cons) #2 cons1))
 
 ; Test nested list
-(⊨ (⌜ :cons2-head) #2 (⊚→ cons2 (⌜ :head)))
-(⊨ (⌜ :cons2-tail-is-cons) #t (⊚? (⊚→ cons2 (⌜ :tail)) (⌜ :List) (⌜ :Cons)))
-(⊨ (⌜ :cons2-tail-head) #1 (⊚→ (⊚→ cons2 (⌜ :tail)) (⌜ :head)))
+(test-case (quote :cons2-head) #2 (adt-get cons2 (quote :head)))
+(test-case (quote :cons2-tail-is-cons) #t (adt? (adt-get cons2 (quote :tail)) (quote :List) (quote :Cons)))
+(test-case (quote :cons2-tail-head) #1 (adt-get (adt-get cons2 (quote :tail)) (quote :head)))
 
 ; Define Tree ADT with two variants
-(⊚≔ (⌜ :Tree) (⟨⟩ (⌜ :Leaf) (⟨⟩ (⌜ :value) ∅)) (⟨⟩ (⌜ :Node) (⟨⟩ (⌜ :left) (⟨⟩ (⌜ :right) ∅))))
+(adt-define (quote :Tree) (cons (quote :Leaf) (cons (quote :value) nil)) (cons (quote :Node) (cons (quote :left) (cons (quote :right) nil))))
 
 ; Create leaf
-(≔ leaf (⊚ (⌜ :Tree) (⌜ :Leaf) #42))
+(define leaf (adt-create (quote :Tree) (quote :Leaf) #42))
 
 ; Test leaf
-(⊨ (⌜ :leaf-is-tree-leaf) #t (⊚? leaf (⌜ :Tree) (⌜ :Leaf)))
-(⊨ (⌜ :leaf-not-node) #f (⊚? leaf (⌜ :Tree) (⌜ :Node)))
-(⊨ (⌜ :leaf-value) #42 (⊚→ leaf (⌜ :value)))
+(test-case (quote :leaf-is-tree-leaf) #t (adt? leaf (quote :Tree) (quote :Leaf)))
+(test-case (quote :leaf-not-node) #f (adt? leaf (quote :Tree) (quote :Node)))
+(test-case (quote :leaf-value) #42 (adt-get leaf (quote :value)))
 
 ; Create tree node
-(≔ left-leaf (⊚ (⌜ :Tree) (⌜ :Leaf) #10))
-(≔ right-leaf (⊚ (⌜ :Tree) (⌜ :Leaf) #20))
-(≔ node (⊚ (⌜ :Tree) (⌜ :Node) left-leaf right-leaf))
+(define left-leaf (adt-create (quote :Tree) (quote :Leaf) #10))
+(define right-leaf (adt-create (quote :Tree) (quote :Leaf) #20))
+(define node (adt-create (quote :Tree) (quote :Node) left-leaf right-leaf))
 
 ; Test node
-(⊨ (⌜ :node-is-tree-node) #t (⊚? node (⌜ :Tree) (⌜ :Node)))
-(⊨ (⌜ :node-not-leaf) #f (⊚? node (⌜ :Tree) (⌜ :Leaf)))
-(⊨ (⌜ :node-left-is-leaf) #t (⊚? (⊚→ node (⌜ :left)) (⌜ :Tree) (⌜ :Leaf)))
-(⊨ (⌜ :node-right-is-leaf) #t (⊚? (⊚→ node (⌜ :right)) (⌜ :Tree) (⌜ :Leaf)))
-(⊨ (⌜ :node-left-value) #10 (⊚→ (⊚→ node (⌜ :left)) (⌜ :value)))
-(⊨ (⌜ :node-right-value) #20 (⊚→ (⊚→ node (⌜ :right)) (⌜ :value)))
+(test-case (quote :node-is-tree-node) #t (adt? node (quote :Tree) (quote :Node)))
+(test-case (quote :node-not-leaf) #f (adt? node (quote :Tree) (quote :Leaf)))
+(test-case (quote :node-left-is-leaf) #t (adt? (adt-get node (quote :left)) (quote :Tree) (quote :Leaf)))
+(test-case (quote :node-right-is-leaf) #t (adt? (adt-get node (quote :right)) (quote :Tree) (quote :Leaf)))
+(test-case (quote :node-left-value) #10 (adt-get (adt-get node (quote :left)) (quote :value)))
+(test-case (quote :node-right-value) #20 (adt-get (adt-get node (quote :right)) (quote :value)))
 
 ; ============ Graph Structure Tests ============
 
 ; Define simple generic graph
-(⊝≔ (⌜ :Graph) (⌜ :generic) (⌜ :nodes) (⌜ :edges))
+(graph-define (quote :Graph) (quote :generic) (quote :nodes) (quote :edges))
 
 ; Create empty graph
-(≔ g0 (⊝ (⌜ :Graph)))
+(define g0 (graph-create (quote :Graph)))
 
 ; Test empty graph properties
-(⊨ (⌜ :empty-graph-nodes) ∅ (⊝→ g0 (⌜ :nodes)))
-(⊨ (⌜ :empty-graph-edges) ∅ (⊝→ g0 (⌜ :edges)))
+(test-case (quote :empty-graph-nodes) nil (graph-query g0 (quote :nodes)))
+(test-case (quote :empty-graph-edges) nil (graph-query g0 (quote :edges)))
 
 ; Add first node
-(≔ g1 (⊝⊕ g0 #0))
+(define g1 (graph-add-node g0 #0))
 
 ; Test single node (nodes list is not empty)
-(⊨ (⌜ :graph-has-node) #t (⟨⟩? (⊝→ g1 (⌜ :nodes))))
+(test-case (quote :graph-has-node) #t (pair? (graph-query g1 (quote :nodes))))
 
 ; Add second node
-(≔ g2 (⊝⊕ g1 #1))
+(define g2 (graph-add-node g1 #1))
 
 ; Test two nodes (nodes list has tail that is non-empty)
-(⊨ (⌜ :graph-has-two-nodes) #t (⟨⟩? (▷ (⊝→ g2 (⌜ :nodes)))))
+(test-case (quote :graph-has-two-nodes) #t (pair? (cdr (graph-query g2 (quote :nodes)))))
 
 ; Test immutability - original unchanged
-(⊨ (⌜ :graph-original-unchanged) ∅ (⊝→ g0 (⌜ :nodes)))
+(test-case (quote :graph-original-unchanged) nil (graph-query g0 (quote :nodes)))
 
 ; Create fresh graph for edge testing
-(≔ eg (⊝ (⌜ :Graph)))
-(≔ eg (⊝⊕ eg #10))
-(≔ eg (⊝⊕ eg #20))
+(define eg (graph-create (quote :Graph)))
+(define eg (graph-add-node eg #10))
+(define eg (graph-add-node eg #20))
 
 ; Add single edge
-(≔ eg2 (⊝⊗ eg #10 #20 (⌜ :connects)))
+(define eg2 (graph-add-edge eg #10 #20 (quote :connects)))
 
 ; Test edge exists
-(⊨ (⌜ :graph-has-edge) #t (⟨⟩? (⊝→ eg2 (⌜ :edges))))
+(test-case (quote :graph-has-edge) #t (pair? (graph-query eg2 (quote :edges))))
 
 ; Test graph type checking
-(⊨ (⌜ :is-graph) #t (⊝? g0 (⌜ :Graph)))
-(⊨ (⌜ :is-graph-with-nodes) #t (⊝? g2 (⌜ :Graph)))
-(⊨ (⌜ :number-not-graph) #f (⊝? #42 (⌜ :Graph)))
-(⊨ (⌜ :struct-not-graph) #f (⊝? p1 (⌜ :Graph)))
+(test-case (quote :is-graph) #t (graph? g0 (quote :Graph)))
+(test-case (quote :is-graph-with-nodes) #t (graph? g2 (quote :Graph)))
+(test-case (quote :number-not-graph) #f (graph? #42 (quote :Graph)))
+(test-case (quote :struct-not-graph) #f (graph? p1 (quote :Graph)))
 
 ; Define CFG graph type
-(⊝≔ (⌜ :CFG) (⌜ :cfg) (⌜ :nodes) (⌜ :edges) (⌜ :entry) (⌜ :exit))
+(graph-define (quote :CFG) (quote :cfg) (quote :nodes) (quote :edges) (quote :entry) (quote :exit))
 
 ; Create CFG instance
-(≔ cfg (⊝ (⌜ :CFG)))
+(define cfg (graph-create (quote :CFG)))
 
 ; Test CFG is a graph
-(⊨ (⌜ :cfg-is-graph) #t (⊝? cfg (⌜ :CFG)))
+(test-case (quote :cfg-is-graph) #t (graph? cfg (quote :CFG)))
 
-; Test CFG entry/exit (should be ∅ for empty CFG)
-(⊨ (⌜ :cfg-no-entry) ∅ (⊝→ cfg (⌜ :entry)))
-(⊨ (⌜ :cfg-no-exit) ∅ (⊝→ cfg (⌜ :exit)))
+; Test CFG entry/exit (should be nil for empty CFG)
+(test-case (quote :cfg-no-entry) nil (graph-query cfg (quote :entry)))
+(test-case (quote :cfg-no-exit) nil (graph-query cfg (quote :exit)))

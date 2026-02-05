@@ -1,226 +1,226 @@
 ;;; Stress: Real-World Scenario — Order Processing System
 ;;; Tier 3 — ADT + GenServer + Supervisor + Channel + Effects + Pattern Match + HashMap + ETS
 
-(⟳∅)
-(⟿∅)
+(actor-reset)
+(chan-reset)
 
 ;;; --- ADT definitions ---
 
-(⊚≔ :OrderStatus
-  (⌜ (:Pending))
-  (⌜ (:Validating))
-  (⌜ (:Processing))
-  (⌜ (:Shipped))
-  (⌜ (:Failed :reason)))
+(adt-define :OrderStatus
+  (quote (:Pending))
+  (quote (:Validating))
+  (quote (:Processing))
+  (quote (:Shipped))
+  (quote (:Failed :reason)))
 
-(⊚≔ :OrderMsg
-  (⌜ (:Submit :order-id :data))
-  (⌜ (:GetStatus :order-id)))
+(adt-define :OrderMsg
+  (quote (:Submit :order-id :data))
+  (quote (:GetStatus :order-id)))
 
 ;;; --- Effect declarations ---
 
-(⟪ :Validate :check)
+(effect-def :Validate :check)
 
 ;;; --- ETS for persistence ---
 
-(⟳⊞⊕ :orders)
-(⟳⊞⊕ :stats)
-(⟳⊞⊙ :stats :submitted #0)
-(⟳⊞⊙ :stats :shipped #0)
-(⟳⊞⊙ :stats :failed #0)
+(ets-new :orders)
+(ets-new :stats)
+(ets-insert :stats :submitted #0)
+(ets-insert :stats :shipped #0)
+(ets-insert :stats :failed #0)
 
 ;;; --- Notification channel ---
 
-(≔ notify-ch (⟿⊚))
+(define notify-ch (chan-create))
 
 ;;; --- Order processing server ---
 
-(≔ order-server-fn (λ (self)
-  (⪢
-    (≔ process-order (λ (order-id data)
-      (⪢
+(define order-server-fn (lambda (self)
+  (begin
+    (define process-order (lambda (order-id data)
+      (begin
         ;; Set to Pending
-        (⟳⊞⊙ :orders order-id (⊚ :OrderStatus :Pending))
-        (⟳⊞⊙ :stats :submitted (⊕ (⟳⊞? :stats :submitted) #1))
+        (ets-insert :orders order-id (adt-create :OrderStatus :Pending))
+        (ets-insert :stats :submitted (+ (ets-lookup :stats :submitted) #1))
 
         ;; Validate
-        (⟳⊞⊙ :orders order-id (⊚ :OrderStatus :Validating))
-        (≔ valid (? (> data #0) #t #f))
+        (ets-insert :orders order-id (adt-create :OrderStatus :Validating))
+        (define valid (if (> data #0) #t #f))
 
-        (? valid
-           (⪢
+        (if valid
+           (begin
              ;; Process
-             (⟳⊞⊙ :orders order-id (⊚ :OrderStatus :Processing))
+             (ets-insert :orders order-id (adt-create :OrderStatus :Processing))
              ;; Ship
-             (⟳⊞⊙ :orders order-id (⊚ :OrderStatus :Shipped))
-             (⟳⊞⊙ :stats :shipped (⊕ (⟳⊞? :stats :shipped) #1))
+             (ets-insert :orders order-id (adt-create :OrderStatus :Shipped))
+             (ets-insert :stats :shipped (+ (ets-lookup :stats :shipped) #1))
              :shipped)
-           (⪢
+           (begin
              ;; Failed
-             (⟳⊞⊙ :orders order-id (⊚ :OrderStatus :Failed :invalid-data))
-             (⟳⊞⊙ :stats :failed (⊕ (⟳⊞? :stats :failed) #1))
+             (ets-insert :orders order-id (adt-create :OrderStatus :Failed :invalid-data))
+             (ets-insert :stats :failed (+ (ets-lookup :stats :failed) #1))
              :failed)))))
 
     ;; Server loop
-    (≔ srv-loop (λ ()
-      (≫ (←?) (λ (msg)
-        (⪢
-          (≔ caller (◁ (▷ msg)))
-          (≔ req (◁ (▷ (▷ msg))))
-          (≔ response
-            (? (⟨⟩? req)
-               (process-order (◁ req) (▷ req))
+    (define srv-loop (lambda ()
+      (bind (actor-receive) (lambda (msg)
+        (begin
+          (define caller (car (cdr msg)))
+          (define req (car (cdr (cdr msg))))
+          (define response
+            (if (pair? req)
+               (process-order (car req) (cdr req))
                :unknown))
-          (≫ (⟳⇅! caller response) (λ (_)
+          (bind (actor-reply caller response) (lambda (_)
             (srv-loop))))))))
     (srv-loop))))
 
 ;;; --- Supervisor wrapping the server ---
 
-(≔ order-sup (⟳⊛ :one-for-one (⟨⟩ order-server-fn ∅)))
-(⟳! #500)
+(define order-sup (sup-start :one-for-one (cons order-server-fn nil)))
+(actor-run #500)
 
 ;;; --- Client submitting orders ---
 
-(≔ submit-orders (λ (server n total-shipped total-failed)
-  (? (≡ n #0) (⟨⟩ total-shipped total-failed)
-     (≫ (⟳⇅ server (⟨⟩ n (? (≡ (% n #10) #0) (⊖ #0 #1) n))) (λ (r)
-       (? (≡ r :shipped)
-          (submit-orders server (⊖ n #1) (⊕ total-shipped #1) total-failed)
-          (submit-orders server (⊖ n #1) total-shipped (⊕ total-failed #1))))))))
+(define submit-orders (lambda (server n total-shipped total-failed)
+  (if (equal? n #0) (cons total-shipped total-failed)
+     (bind (actor-call server (cons n (if (equal? (% n #10) #0) (- #0 #1) n))) (lambda (r)
+       (if (equal? r :shipped)
+          (submit-orders server (- n #1) (+ total-shipped #1) total-failed)
+          (submit-orders server (- n #1) total-shipped (+ total-failed #1))))))))
 
 ;;; --- Test 1: Process 500 orders through full pipeline ---
 
-(≔ kids (⟳⊛? order-sup))
-(≔ server (◁ kids))
+(define kids (sup-children order-sup))
+(define server (car kids))
 
-(≔ client1 (⟳ (λ (self)
+(define client1 (actor-spawn (lambda (self)
   (submit-orders server #500 #0 #0))))
 
-(⟳! #500000)
+(actor-run #500000)
 
-(≔ result1 (⟳→ client1))
-(≔ shipped1 (◁ result1))
-(≔ failed1 (▷ result1))
+(define result1 (actor-result client1))
+(define shipped1 (car result1))
+(define failed1 (cdr result1))
 
 ;; Every 10th order fails (data = -1), so 50 failures, 450 shipped
-(⊨ :rw-shipped-450 #450 shipped1)
-(⊨ :rw-failed-50 #50 failed1)
-(⊨ :rw-total-500 #500 (⊕ shipped1 failed1))
+(test-case :rw-shipped-450 #450 shipped1)
+(test-case :rw-failed-50 #50 failed1)
+(test-case :rw-total-500 #500 (+ shipped1 failed1))
 
 ;;; --- Test 2: Verify ETS stats ---
 
-(⊨ :rw-ets-submitted #500 (⟳⊞? :stats :submitted))
-(⊨ :rw-ets-shipped #450 (⟳⊞? :stats :shipped))
-(⊨ :rw-ets-failed #50 (⟳⊞? :stats :failed))
+(test-case :rw-ets-submitted #500 (ets-lookup :stats :submitted))
+(test-case :rw-ets-shipped #450 (ets-lookup :stats :shipped))
+(test-case :rw-ets-failed #50 (ets-lookup :stats :failed))
 
 ;;; --- Test 3: Crash server, supervisor restarts, continue processing ---
 
 ;; Reset stats for round 2
-(⟳⊞⊙ :stats :submitted #0)
-(⟳⊞⊙ :stats :shipped #0)
-(⟳⊞⊙ :stats :failed #0)
+(ets-insert :stats :submitted #0)
+(ets-insert :stats :shipped #0)
+(ets-insert :stats :failed #0)
 
 ;; Crash the server
-(→! server :crash-now)
-(⟳! #5000)
+(actor-send server :crash-now)
+(actor-run #5000)
 
 ;; Get new server after restart
-(≔ kids2 (⟳⊛? order-sup))
-(≔ server2 (◁ kids2))
+(define kids2 (sup-children order-sup))
+(define server2 (car kids2))
 
 ;; Process another 500 orders
-(≔ client2 (⟳ (λ (self)
+(define client2 (actor-spawn (lambda (self)
   (submit-orders server2 #500 #0 #0))))
 
-(⟳! #500000)
+(actor-run #500000)
 
-(≔ result2 (⟳→ client2))
-(⊨ :rw-post-crash-total #500 (⊕ (◁ result2) (▷ result2)))
+(define result2 (actor-result client2))
+(test-case :rw-post-crash-total #500 (+ (car result2) (cdr result2)))
 
 ;;; --- Test 4: Query order statuses from ETS ---
 
 ;; Spot check some orders
-(≔ order-100 (⟳⊞? :orders #100))
-(⊨ :rw-order-exists #t (¬ (∅? order-100)))
+(define order-100 (ets-lookup :orders #100))
+(test-case :rw-order-exists #t (not (null? order-100)))
 
 ;;; --- Test 5: Verify counts are consistent ---
 
-(≔ final-submitted (⟳⊞? :stats :submitted))
-(≔ final-shipped (⟳⊞? :stats :shipped))
-(≔ final-failed (⟳⊞? :stats :failed))
+(define final-submitted (ets-lookup :stats :submitted))
+(define final-shipped (ets-lookup :stats :shipped))
+(define final-failed (ets-lookup :stats :failed))
 
-(⊨ :rw-counts-consistent #t
-  (≡ final-submitted (⊕ final-shipped final-failed)))
+(test-case :rw-counts-consistent #t
+  (equal? final-submitted (+ final-shipped final-failed)))
 
 ;;; --- Test 6: Concurrent clients (5 clients × 100 orders each) ---
 
-(⟳∅)
-(⟿∅)
+(actor-reset)
+(chan-reset)
 
-(⟳⊞⊕ :orders2)
-(⟳⊞⊕ :stats2)
-(⟳⊞⊙ :stats2 :submitted #0)
-(⟳⊞⊙ :stats2 :shipped #0)
-(⟳⊞⊙ :stats2 :failed #0)
+(ets-new :orders2)
+(ets-new :stats2)
+(ets-insert :stats2 :submitted #0)
+(ets-insert :stats2 :shipped #0)
+(ets-insert :stats2 :failed #0)
 
 ;; New server for concurrent test
-(≔ conc-server-fn (λ (self)
-  (⪢
-    (≔ srv-loop (λ ()
-      (≫ (←?) (λ (msg)
-        (⪢
-          (≔ caller (◁ (▷ msg)))
-          (≔ req (◁ (▷ (▷ msg))))
-          (≔ order-id (? (⟨⟩? req) (◁ req) #0))
-          (≔ data (? (⟨⟩? req) (▷ req) #0))
+(define conc-server-fn (lambda (self)
+  (begin
+    (define srv-loop (lambda ()
+      (bind (actor-receive) (lambda (msg)
+        (begin
+          (define caller (car (cdr msg)))
+          (define req (car (cdr (cdr msg))))
+          (define order-id (if (pair? req) (car req) #0))
+          (define data (if (pair? req) (cdr req) #0))
           ;; Simple processing
-          (⟳⊞⊙ :stats2 :submitted (⊕ (⟳⊞? :stats2 :submitted) #1))
-          (? (> data #0)
-             (⪢ (⟳⊞⊙ :stats2 :shipped (⊕ (⟳⊞? :stats2 :shipped) #1))
-                 (⟳⇅! caller :shipped))
-             (⪢ (⟳⊞⊙ :stats2 :failed (⊕ (⟳⊞? :stats2 :failed) #1))
-                 (⟳⇅! caller :failed)))
+          (ets-insert :stats2 :submitted (+ (ets-lookup :stats2 :submitted) #1))
+          (if (> data #0)
+             (begin (ets-insert :stats2 :shipped (+ (ets-lookup :stats2 :shipped) #1))
+                 (actor-reply caller :shipped))
+             (begin (ets-insert :stats2 :failed (+ (ets-lookup :stats2 :failed) #1))
+                 (actor-reply caller :failed)))
           (srv-loop))))))
     (srv-loop))))
 
-(≔ conc-sup (⟳⊛ :one-for-one (⟨⟩ conc-server-fn ∅)))
-(⟳! #500)
+(define conc-sup (sup-start :one-for-one (cons conc-server-fn nil)))
+(actor-run #500)
 
-(≔ conc-kids (⟳⊛? conc-sup))
-(≔ conc-server (◁ conc-kids))
+(define conc-kids (sup-children conc-sup))
+(define conc-server (car conc-kids))
 
 ;; Done channel for synchronization
-(≔ done-ch (⟿⊚))
+(define done-ch (chan-create))
 
 ;; Spawn 5 client actors
-(≔ spawn-clients (λ (n)
-  (? (≡ n #0) :done
-     (⪢
-       (⟳ (λ (self)
-         (⪢
-           (≔ cl (λ (i)
-             (? (≡ i #0) (⟿→ done-ch :done)
-                (≫ (⟳⇅ conc-server (⟨⟩ (⊕ (⊗ n #1000) i) i)) (λ (r)
-                  (cl (⊖ i #1)))))))
+(define spawn-clients (lambda (n)
+  (if (equal? n #0) :done
+     (begin
+       (actor-spawn (lambda (self)
+         (begin
+           (define cl (lambda (i)
+             (if (equal? i #0) (chan-send done-ch :done)
+                (bind (actor-call conc-server (cons (+ (* n #1000) i) i)) (lambda (r)
+                  (cl (- i #1)))))))
            (cl #100))))
-       (spawn-clients (⊖ n #1))))))
+       (spawn-clients (- n #1))))))
 
 (spawn-clients #5)
 
 ;; Wait for all 5 to finish
-(≔ done-waiter (⟳ (λ (self)
-  (⪢
-    (≔ wait (λ (n)
-      (? (≡ n #0) :all-done
-         (≫ (⟿← done-ch) (λ (_)
-           (wait (⊖ n #1)))))))
+(define done-waiter (actor-spawn (lambda (self)
+  (begin
+    (define wait (lambda (n)
+      (if (equal? n #0) :all-done
+         (bind (chan-recv done-ch) (lambda (_)
+           (wait (- n #1)))))))
     (wait #5)))))
 
-(⟳! #500000)
+(actor-run #500000)
 
-(⊨ :rw-concurrent-done :all-done (⟳→ done-waiter))
-(⊨ :rw-concurrent-submitted #500 (⟳⊞? :stats2 :submitted))
-(⊨ :rw-concurrent-consistent #t
-  (≡ (⟳⊞? :stats2 :submitted)
-     (⊕ (⟳⊞? :stats2 :shipped) (⟳⊞? :stats2 :failed))))
+(test-case :rw-concurrent-done :all-done (actor-result done-waiter))
+(test-case :rw-concurrent-submitted #500 (ets-lookup :stats2 :submitted))
+(test-case :rw-concurrent-consistent #t
+  (equal? (ets-lookup :stats2 :submitted)
+     (+ (ets-lookup :stats2 :shipped) (ets-lookup :stats2 :failed))))

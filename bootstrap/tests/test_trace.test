@@ -2,14 +2,14 @@
 ;;; Use trace to debug
 ;;;
 
-(≔ id (λ (x) (⟲ :in-closure x)))
+(define id (lambda (x) (trace :in-closure x)))
 
 ;;; Test with quoted value
-(≋ :test-quoted)
-(≔ result (id (⌜ (a b c))))
-(≋ result)
+(print :test-quoted)
+(define result (id (quote (a b c))))
+(print result)
 
 ;;; Test with non-quoted list
-(≋ :test-non-quoted)
-(≔ result2 (id (⟨⟩ #1 #2)))
-(≋ result2)
+(print :test-non-quoted)
+(define result2 (id (cons #1 #2)))
+(print result2)

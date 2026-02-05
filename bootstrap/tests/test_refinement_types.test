@@ -2,64 +2,64 @@
 ; Three-tier predicate evaluation with constraint trees
 
 ; === Definition ===
-(∈⊡ :Positive ℤ (λ (x) (> x #0)))
-(∈⊡ :NonNeg ℤ (λ (x) (≥ x #0)))
-(∈⊡ :Even ℤ (λ (x) (≡ (% x #2) #0)))
-(∈⊡ :Percentage ℤ (λ (x) (∧ (≥ x #0) (≤ x #100))))
-(∈⊡ :NonZero ℤ (λ (x) (≢ x #0)))
-(∈⊡ :NonEmpty 𝕊 (λ (s) (> (≈# s) #0)))
+(refine-def :Positive Int (lambda (x) (> x #0)))
+(refine-def :NonNeg Int (lambda (x) (>= x #0)))
+(refine-def :Even Int (lambda (x) (equal? (% x #2) #0)))
+(refine-def :Percentage Int (lambda (x) (and (>= x #0) (<= x #100))))
+(refine-def :NonZero Int (lambda (x) (not-equal? x #0)))
+(refine-def :NonEmpty String (lambda (s) (> (string-length s) #0)))
 
-; === Check (∈⊡?) ===
-(⊨ :pos-5       #t (∈⊡? #5 :Positive))
-(⊨ :pos-neg3    #f (∈⊡? #-3 :Positive))
-(⊨ :pos-0       #f (∈⊡? #0 :Positive))
-(⊨ :nonneg-0    #t (∈⊡? #0 :NonNeg))
-(⊨ :nonneg-neg  #f (∈⊡? #-1 :NonNeg))
-(⊨ :even-4      #t (∈⊡? #4 :Even))
-(⊨ :even-3      #f (∈⊡? #3 :Even))
-(⊨ :pct-50      #t (∈⊡? #50 :Percentage))
-(⊨ :pct-101     #f (∈⊡? #101 :Percentage))
-(⊨ :pct-neg     #f (∈⊡? #-1 :Percentage))
-(⊨ :nz-5        #t (∈⊡? #5 :NonZero))
-(⊨ :nz-0        #f (∈⊡? #0 :NonZero))
-(⊨ :wrong-base  #f (∈⊡? "hello" :Positive))
+; === Check (refine-check?) ===
+(test-case :pos-5       #t (refine-check? #5 :Positive))
+(test-case :pos-neg3    #f (refine-check? #-3 :Positive))
+(test-case :pos-0       #f (refine-check? #0 :Positive))
+(test-case :nonneg-0    #t (refine-check? #0 :NonNeg))
+(test-case :nonneg-neg  #f (refine-check? #-1 :NonNeg))
+(test-case :even-4      #t (refine-check? #4 :Even))
+(test-case :even-3      #f (refine-check? #3 :Even))
+(test-case :pct-50      #t (refine-check? #50 :Percentage))
+(test-case :pct-101     #f (refine-check? #101 :Percentage))
+(test-case :pct-neg     #f (refine-check? #-1 :Percentage))
+(test-case :nz-5        #t (refine-check? #5 :NonZero))
+(test-case :nz-0        #f (refine-check? #0 :NonZero))
+(test-case :wrong-base  #f (refine-check? "hello" :Positive))
 
 ; === String refinement ===
-(⊨ :ne-hello    #t (∈⊡? "hello" :NonEmpty))
-(⊨ :ne-empty    #f (∈⊡? "" :NonEmpty))
+(test-case :ne-hello    #t (refine-check? "hello" :NonEmpty))
+(test-case :ne-empty    #f (refine-check? "" :NonEmpty))
 
-; === Assert (∈⊡!) ===
-(⊨ :assert-ok   #5 (∈⊡! #5 :Positive))
-(⊨ :assert-fail #t (⚠? (∈⊡! #-3 :Positive)))
-(⊨ :assert-pct  #50 (∈⊡! #50 :Percentage))
+; === Assert (refine-assert!) ===
+(test-case :assert-ok   #5 (refine-assert! #5 :Positive))
+(test-case :assert-fail #t (error? (refine-assert! #-3 :Positive)))
+(test-case :assert-pct  #50 (refine-assert! #50 :Percentage))
 
 ; === Introspection ===
-(⊨ :base-int    #t (∈≡ (∈⊡⊙ :Positive) (ℤ)))
-(⊨ :base-str    #t (∈≡ (∈⊡⊙ :NonEmpty) (𝕊)))
-(⊨ :pred-fn     #t (≡ (∈⊙ (∈⊡→ :Positive)) :function))
-(⊨ :pred-apply  #t ((∈⊡→ :Positive) #5))
-(⊨ :undef-err   #t (⚠? (∈⊡⊙ :NoSuch)))
+(test-case :base-int    #t (type-equal? (refine-base :Positive) (Int)))
+(test-case :base-str    #t (type-equal? (refine-base :NonEmpty) (String)))
+(test-case :pred-fn     #t (equal? (type-of (refine-pred :Positive)) :function))
+(test-case :pred-apply  #t ((refine-pred :Positive) #5))
+(test-case :undef-err   #t (error? (refine-base :NoSuch)))
 
-; === Constraint tree (∈⊡⊢) ===
-(⊨ :con-not-nil #t (¬ (∅? (∈⊡⊢ :Positive))))
+; === Constraint tree (refine-constraint) ===
+(test-case :con-not-nil #t (not (null? (refine-constraint :Positive))))
 
 ; === Composition ===
-(≔ pos-even (∈⊡∧ :Positive :Even))
-(⊨ :and-4      #t (∈⊡? #4 pos-even))
-(⊨ :and-3      #f (∈⊡? #3 pos-even))
-(⊨ :and-neg2   #f (∈⊡? #-2 pos-even))
+(define pos-even (refine-intersect :Positive :Even))
+(test-case :and-4      #t (refine-check? #4 pos-even))
+(test-case :and-3      #f (refine-check? #3 pos-even))
+(test-case :and-neg2   #f (refine-check? #-2 pos-even))
 
-(≔ pos-or-neg (∈⊡∨ :Positive :NonNeg))
-(⊨ :or-5       #t (∈⊡? #5 pos-or-neg))
-(⊨ :or-0       #t (∈⊡? #0 pos-or-neg))
+(define pos-or-neg (refine-union :Positive :NonNeg))
+(test-case :or-5       #t (refine-check? #5 pos-or-neg))
+(test-case :or-0       #t (refine-check? #0 pos-or-neg))
 
 ; === Subtyping ===
-(⊨ :sub-base   #t (∈⊡⊆ :Positive ℤ))
-(⊨ :sub-any    #t (∈⊡⊆ :Positive ⊤))
-(⊨ :sub-wrong  #f (∈⊡⊆ :Positive 𝕊))
+(test-case :sub-base   #t (refine-subtype? :Positive Int))
+(test-case :sub-any    #t (refine-subtype? :Positive Any))
+(test-case :sub-wrong  #f (refine-subtype? :Positive String))
 
 ; === List all ===
-(⊨ :list-nonempty #t (¬ (∅? (∈⊡∀))))
+(test-case :list-nonempty #t (not (null? (refine-list))))
 
 ; === Find matching ===
-(⊨ :find-5 #t (¬ (∅? (∈⊡∈ #5))))
+(test-case :find-5 #t (not (null? (refine-find #5))))

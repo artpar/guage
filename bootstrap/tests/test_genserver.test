@@ -1,107 +1,107 @@
-; Day 97: GenServer / Call-Reply tests — ⟳⇅, ⟳⇅!
+; Day 97: GenServer / Call-Reply tests — ⟳⇅, actor-reply
 
 ; Reset state
-(⟳∅)
+(actor-reset)
 
 ; === call-reply-basic ===
 ; Basic synchronous call-reply pattern
-(⟳∅)
-(≔ server (⟳ (λ (self)
-  (≫ (←?) (λ (msg)
-    (≫ (⟳⇅! (◁ (▷ msg)) (⊕ (◁ (▷ (▷ msg))) #10)) (λ (_)
+(actor-reset)
+(define server (actor-spawn (lambda (self)
+  (bind (actor-receive) (lambda (msg)
+    (bind (actor-reply (car (cdr msg)) (+ (car (cdr (cdr msg))) #10)) (lambda (_)
       :done)))))))
 ; Server receives ⟨:call caller-id request⟩, replies with request+10
-(≔ client (⟳ (λ (self)
-  (⟳⇅ server #5))))
-(⟳! #20)
-(⊨ (⌜ :call-reply-basic) #15 (⟳→ client))
+(define client (actor-spawn (lambda (self)
+  (actor-call server #5))))
+(actor-run #20)
+(test-case (quote :call-reply-basic) #15 (actor-result client))
 
 ; === call-reply-echo ===
 ; Server echoes back the request
-(⟳∅)
-(≔ echo-server (⟳ (λ (self)
-  (≫ (←?) (λ (msg)
-    (⟳⇅! (◁ (▷ msg)) (◁ (▷ (▷ msg)))))))))
-(≔ client (⟳ (λ (self)
-  (⟳⇅ echo-server :hello))))
-(⟳! #20)
-(⊨ (⌜ :call-reply-echo) :hello (⟳→ client))
+(actor-reset)
+(define echo-server (actor-spawn (lambda (self)
+  (bind (actor-receive) (lambda (msg)
+    (actor-reply (car (cdr msg)) (car (cdr (cdr msg)))))))))
+(define client (actor-spawn (lambda (self)
+  (actor-call echo-server :hello))))
+(actor-run #20)
+(test-case (quote :call-reply-echo) :hello (actor-result client))
 
 ; === call-reply-multiple ===
 ; Multiple sequential calls to same server
-(⟳∅)
-(≔ counter (⟳ (λ (self)
-  (≫ (←?) (λ (msg1)
-    (≫ (⟳⇅! (◁ (▷ msg1)) #1) (λ (_)
-      (≫ (←?) (λ (msg2)
-        (⟳⇅! (◁ (▷ msg2)) #2))))))))))
-(≔ client (⟳ (λ (self)
-  (≫ (⟳⇅ counter :a) (λ (r1)
-    (≫ (⟳⇅ counter :b) (λ (r2)
-      (⟨⟩ r1 r2))))))))
-(⟳! #50)
-(⊨ (⌜ :call-reply-multiple) (⟨⟩ #1 #2) (⟳→ client))
+(actor-reset)
+(define counter (actor-spawn (lambda (self)
+  (bind (actor-receive) (lambda (msg1)
+    (bind (actor-reply (car (cdr msg1)) #1) (lambda (_)
+      (bind (actor-receive) (lambda (msg2)
+        (actor-reply (car (cdr msg2)) #2))))))))))
+(define client (actor-spawn (lambda (self)
+  (bind (actor-call counter :a) (lambda (r1)
+    (bind (actor-call counter :b) (lambda (r2)
+      (cons r1 r2))))))))
+(actor-run #50)
+(test-case (quote :call-reply-multiple) (cons #1 #2) (actor-result client))
 
 ; === call-not-actor ===
 ; Calling non-actor returns error
-(⟳∅)
-(⊨ (⌜ :call-not-actor) #t (⚠? (⟳⇅ #42 :req)))
+(actor-reset)
+(test-case (quote :call-not-actor) #t (error? (actor-call #42 :req)))
 
 ; === call-dead-actor ===
 ; Calling dead actor returns error
-(⟳∅)
-(≔ dead (⟳ (λ (self) :done)))
-(⟳! #5)
-(≔ client (⟳ (λ (self) (⟳⇅ dead :req))))
-(⟳! #10)
-(⊨ (⌜ :call-dead-actor) #t (⚠? (⟳→ client)))
+(actor-reset)
+(define dead (actor-spawn (lambda (self) :done)))
+(actor-run #5)
+(define client (actor-spawn (lambda (self) (actor-call dead :req))))
+(actor-run #10)
+(test-case (quote :call-dead-actor) #t (error? (actor-result client)))
 
 ; === reply-not-actor ===
 ; Reply to non-actor returns error
-(⟳∅)
-(⊨ (⌜ :reply-not-actor) #t (⚠? (⟳⇅! #999 :response)))
+(actor-reset)
+(test-case (quote :reply-not-actor) #t (error? (actor-reply #999 :response)))
 
 ; === call-with-registered ===
 ; Call a registered server by name lookup
-(⟳∅)
-(≔ srv (⟳ (λ (self)
-  (≫ (←?) (λ (msg)
-    (⟳⇅! (◁ (▷ msg)) :pong))))))
-(⟳⊜⊕ :ping-server srv)
-(≔ client (⟳ (λ (self)
-  (⟳⇅ (⟳⊜? :ping-server) :ping))))
-(⟳! #20)
-(⊨ (⌜ :call-with-registered) :pong (⟳→ client))
+(actor-reset)
+(define srv (actor-spawn (lambda (self)
+  (bind (actor-receive) (lambda (msg)
+    (actor-reply (car (cdr msg)) :pong))))))
+(registry-register :ping-server srv)
+(define client (actor-spawn (lambda (self)
+  (actor-call (registry-whereis :ping-server) :ping))))
+(actor-run #20)
+(test-case (quote :call-with-registered) :pong (actor-result client))
 
 ; === call-message-format ===
 ; Verify the message format sent to server is ⟨:call caller-id request⟩
-(⟳∅)
-(≔ inspect-server (⟳ (λ (self)
-  (≫ (←?) (λ (msg)
-    (≫ (⟳⇅! (◁ (▷ msg)) msg) (λ (_)
+(actor-reset)
+(define inspect-server (actor-spawn (lambda (self)
+  (bind (actor-receive) (lambda (msg)
+    (bind (actor-reply (car (cdr msg)) msg) (lambda (_)
       :done)))))))
-(≔ client (⟳ (λ (self)
-  (⟳⇅ inspect-server :test-req))))
-(⟳! #20)
+(define client (actor-spawn (lambda (self)
+  (actor-call inspect-server :test-req))))
+(actor-run #20)
 ; The reply is the raw message the server received
-(≔ raw-msg (⟳→ client))
-(⊨ (⌜ :call-message-format) :call (◁ raw-msg))
+(define raw-msg (actor-result client))
+(test-case (quote :call-message-format) :call (car raw-msg))
 
 ; === call-with-timer ===
 ; Combine call with timer — delayed reply
-(⟳∅)
-(≔ delayed-server (⟳ (λ (self)
-  (≫ (←?) (λ (msg)
-    (≫ (⟳⏱ #3 self msg) (λ (_)
-      (≫ (←?) (λ (timer-msg)
-        (⟳⇅! (◁ (▷ timer-msg)) :delayed-response))))))))))
-(≔ client (⟳ (λ (self)
-  (⟳⇅ delayed-server :req))))
-(⟳! #30)
-(⊨ (⌜ :call-with-timer) :delayed-response (⟳→ client))
+(actor-reset)
+(define delayed-server (actor-spawn (lambda (self)
+  (bind (actor-receive) (lambda (msg)
+    (bind (timer-send-after #3 self msg) (lambda (_)
+      (bind (actor-receive) (lambda (timer-msg)
+        (actor-reply (car (cdr timer-msg)) :delayed-response))))))))))
+(define client (actor-spawn (lambda (self)
+  (actor-call delayed-server :req))))
+(actor-run #30)
+(test-case (quote :call-with-timer) :delayed-response (actor-result client))
 
 ; === call-outside-actor ===
 ; Call from outside actor context returns error
-(⟳∅)
-(≔ srv (⟳ (λ (self) (←?))))
-(⊨ (⌜ :call-outside-actor) #t (⚠? (⟳⇅ srv :req)))
+(actor-reset)
+(define srv (actor-spawn (lambda (self) (actor-receive))))
+(test-case (quote :call-outside-actor) #t (error? (actor-call srv :req)))

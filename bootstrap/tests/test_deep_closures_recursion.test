@@ -4,106 +4,106 @@
 
 ;;; --- Closure-returned function used as effect handler operation ---
 
-(⟪ :Compute :calc)
+(effect-def :Compute :calc)
 
-(≔ make-doubler (λ () (λ (x) (⊗ x #2))))
+(define make-doubler (lambda () (lambda (x) (* x #2))))
 
-(⊨ :closure-in-handler #20
-  (⟪⟫ (↯ :Compute :calc #10)
+(test-case :closure-in-handler #20
+  (handle (perform :Compute :calc #10)
     (:Compute
       (:calc (make-doubler)))))
 
 ;;; --- Recursive function that yields values via resumable effect (countdown yield-collect) ---
 
-(⟪ :Yield :value)
+(effect-def :Yield :value)
 
-(≔ countdown-yield (λ (n)
-  (? (≡ n #0) ∅
-     (⪢ (↯ :Yield :value n) (countdown-yield (⊖ n #1))))))
+(define countdown-yield (lambda (n)
+  (if (equal? n #0) nil
+     (begin (perform :Yield :value n) (countdown-yield (- n #1))))))
 
-(⊨ :yield-countdown (⟨⟩ #3 (⟨⟩ #2 (⟨⟩ #1 ∅)))
-  (⟪↺⟫ (countdown-yield #3)
+(test-case :yield-countdown (cons #3 (cons #2 (cons #1 nil)))
+  (handle-resume (countdown-yield #3)
     (:Yield
-      (:value (λ (k v) (⟨⟩ v (k ∅)))))))
+      (:value (lambda (k v) (cons v (k nil)))))))
 
 ;;; --- TCO with large N via accumulator ---
 
-(≔ sum-acc (λ (n acc)
-  (? (≡ n #0) acc
-     (sum-acc (⊖ n #1) (⊕ acc n)))))
+(define sum-acc (lambda (n acc)
+  (if (equal? n #0) acc
+     (sum-acc (- n #1) (+ acc n)))))
 
-(⊨ :tco-large #50005000 (sum-acc #10000 #0))
+(test-case :tco-large #50005000 (sum-acc #10000 #0))
 
 ;;; --- Box mutation inside recursive function ---
 
-(≔ counter (□ #0))
-(≔ inc-n (λ (n)
-  (? (≡ n #0) (□→ counter)
-     (⪢ (□← counter (⊕ (□→ counter) #1))
-         (inc-n (⊖ n #1))))))
+(define counter (box #0))
+(define inc-n (lambda (n)
+  (if (equal? n #0) (unbox counter)
+     (begin (box-set! counter (+ (unbox counter) #1))
+         (inc-n (- n #1))))))
 
 (inc-n #100)
-(⊨ :box-recursive #100 (□→ counter))
+(test-case :box-recursive #100 (unbox counter))
 
 ;;; --- Box mutation inside effect handler ---
 
-(≔ log-box (□ ∅))
+(define log-box (box nil))
 
-(⟪ :Logger :log)
+(effect-def :Logger :log)
 
-(⊨ :box-in-handler :logged
-  (⟪⟫
-    (⪢ (↯ :Logger :log :hello) :logged)
+(test-case :box-in-handler :logged
+  (handle
+    (begin (perform :Logger :log :hello) :logged)
     (:Logger
-      (:log (λ (msg) (⪢ (□← log-box msg) :logged))))))
+      (:log (lambda (msg) (begin (box-set! log-box msg) :logged))))))
 
-(⊨ :box-after-handler :hello (□→ log-box))
+(test-case :box-after-handler :hello (unbox log-box))
 
-;;; --- Higher-order: make-adder → apply-n-times recursive ---
+;;; --- Higher-order: make-adder -> apply-n-times recursive ---
 
-(≔ make-adder (λ (n) (λ (x) (⊕ x n))))
-(≔ add5 (make-adder #5))
+(define make-adder (lambda (n) (lambda (x) (+ x n))))
+(define add5 (make-adder #5))
 
-(≔ apply-n-times (λ (f n x)
-  (? (≡ n #0) x
-     (apply-n-times f (⊖ n #1) (f x)))))
+(define apply-n-times (lambda (f n x)
+  (if (equal? n #0) x
+     (apply-n-times f (- n #1) (f x)))))
 
-(⊨ :apply-n-times #50 (apply-n-times add5 #10 #0))
+(test-case :apply-n-times #50 (apply-n-times add5 #10 #0))
 
 ;;; --- Mutual recursion (even?/odd?) ---
 
-(≔ my-even? (λ (n)
-  (? (≡ n #0) #t (my-odd? (⊖ n #1)))))
+(define my-even? (lambda (n)
+  (if (equal? n #0) #t (my-odd? (- n #1)))))
 
-(≔ my-odd? (λ (n)
-  (? (≡ n #0) #f (my-even? (⊖ n #1)))))
+(define my-odd? (lambda (n)
+  (if (equal? n #0) #f (my-even? (- n #1)))))
 
-(⊨ :mutual-even #t (my-even? #10))
-(⊨ :mutual-odd  #t (my-odd? #7))
+(test-case :mutual-even #t (my-even? #10))
+(test-case :mutual-odd  #t (my-odd? #7))
 
 ;;; --- Recursive map over list using closure ---
 
-(≔ my-map (λ (f lst)
-  (? (∅? lst) ∅
-     (⟨⟩ (f (◁ lst)) (my-map f (▷ lst))))))
+(define my-map (lambda (f lst)
+  (if (null? lst) nil
+     (cons (f (car lst)) (my-map f (cdr lst))))))
 
-(⊨ :map-closure #t
-  (≟ (my-map (λ (x) (⊗ x #3)) (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅))))
-     (⟨⟩ #3 (⟨⟩ #6 (⟨⟩ #9 ∅)))))
+(test-case :map-closure #t
+  (deep-equal? (my-map (lambda (x) (* x #3)) (cons #1 (cons #2 (cons #3 nil))))
+     (cons #3 (cons #6 (cons #9 nil)))))
 
 ;;; --- Recursive effect accumulation (counter via resumable) ---
 
-(⟪ :Counter :inc :get)
+(effect-def :Counter :inc :get)
 
-(⊨ :effect-counter #5
-  (⟪↺⟫
-    (⪢
-      (↯ :Counter :inc)
-      (↯ :Counter :inc)
-      (↯ :Counter :inc)
-      (↯ :Counter :inc)
-      (↯ :Counter :inc)
-      (↯ :Counter :get))
+(test-case :effect-counter #5
+  (handle-resume
+    (begin
+      (perform :Counter :inc)
+      (perform :Counter :inc)
+      (perform :Counter :inc)
+      (perform :Counter :inc)
+      (perform :Counter :inc)
+      (perform :Counter :get))
     (:Counter
-      (:inc (λ (k) (⊕ #1 (k ∅))))
-      (:get (λ (k) (k #0))))))
+      (:inc (lambda (k) (+ #1 (k nil))))
+      (:get (lambda (k) (k #0))))))

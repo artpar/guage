@@ -3,24 +3,24 @@
 ;;;
 
 ;;; Test 1: Identity function (should work)
-(≔ id (λ (x) x))
-(≋ :test-identity)
-(≋ (id #42))
+(define id (lambda (x) x))
+(print :test-identity)
+(print (id #42))
 
 ;;; Test 2: Function that returns a constant (should work)
-(≔ const-fn (λ (x) #100))
-(≋ :test-constant)
-(≋ (const-fn #42))
+(define const-fn (lambda (x) #100))
+(print :test-constant)
+(print (const-fn #42))
 
 ;;; Test 3: Function that applies a primitive to its argument
-(≋ :test-primitive-on-arg)
-(≔ is-nil? (λ (x) (∅? x)))
-(≋ (is-nil? ∅))
-(≋ (is-nil? #42))
+(print :test-primitive-on-arg)
+(define is-nil? (lambda (x) (null? x)))
+(print (is-nil? nil))
+(print (is-nil? #42))
 
 ;;; Test 4: Function that passes argument to another primitive
-(≔ get-head (λ (x) (◁ x)))
-(≋ :test-car-on-arg)
-(≔ my-list (⟨⟩ #1 #2))
-(≋ my-list)
-(≋ (get-head my-list))
+(define get-head (lambda (x) (car x)))
+(print :test-car-on-arg)
+(define my-list (cons #1 #2))
+(print my-list)
+(print (get-head my-list))

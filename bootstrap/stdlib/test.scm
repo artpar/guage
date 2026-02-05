@@ -16,33 +16,33 @@
 ;;;
 ;;; Usage:
 ;;;   (⊨⊕ :math:add
-;;;     (:basic     #5  (⊕ #2 #3))
-;;;     (:zero      #0  (⊕ #0 #0))
-;;;     (:negative  #-1 (⊕ #2 #-3)))
+;;;     (:basic     #5  (+ #2 #3))
+;;;     (:zero      #0  (+ #0 #0))
+;;;     (:negative  #-1 (+ #2 #-3)))
 ;;;
-;;; Expands to ⊨⊕⊙ calls for each test.
+;;; Expands to test-register calls for each test.
 ;;; ═══════════════════════════════════════════
 
 ;;; Helper: concatenate symbol names with ":" separator
-(≔ ⊨⊕:concat (λ (suite name)
-  (≈→: (≈⊕ (≈⊕ (≈ suite) ":") (≈ name)))))
+(define ⊨⊕:concat (lambda (suite name)
+  (string->symbol (string-append (string-append (string suite) ":") (string name)))))
 
 ;;; Helper: convert string to symbol (using eval of quoted symbol)
-(≔ ≈→: (λ (s) s))
+(define string->symbol (lambda (s) s))
 
 ;;; Register a single test from suite definition
-(≔ ⊨⊕:register-one (λ (suite-name test-spec)
-  (? (∅? test-spec)
-     ∅
-     (? (⟨⟩? test-spec)
-        (≔ name (◁ test-spec))
-        (≔ expected (◁ (▷ test-spec)))
-        (≔ actual-expr (◁ (▷ (▷ test-spec))))
+(define ⊨⊕:register-one (lambda (suite-name test-spec)
+  (if (null? test-spec)
+     nil
+     (if (pair? test-spec)
+        (define name (car test-spec))
+        (define expected (car (cdr test-spec)))
+        (define actual-expr (car (cdr (cdr test-spec))))
         ;; Build full test name as string
-        (≔ full-name-str (≈⊕ (≈⊕ (≈ suite-name) ":") (≈ name)))
+        (define full-name-str (string-append (string-append (string suite-name) ":") (string name)))
         ;; Register using the suite:name key
-        (⊨⊕⊙ name (λ () (⊨ (⌜ name) expected actual-expr)))
-        ∅))))
+        (test-register name (lambda () (test-case (quote name) expected actual-expr)))
+        nil))))
 
 ;;; ═══════════════════════════════════════════
 ;;; Iterator-Based Result Filtering: ⊨⊕⊲
@@ -52,20 +52,20 @@
 ;;; ═══════════════════════════════════════════
 
 ;;; Filter results by predicate using iterator pipeline
-(≔ ⊨⊕⊲ (λ (results pred)
-  (⊣⊕ (⊣⊲ pred (⊣ results)))))
+(define ⊨⊕⊲ (lambda (results pred)
+  (iter-collect (iter-filter pred (iter results)))))
 
 ;;; Get only failures from results list
-(≔ ⊨⊕⊲:failures (λ (results)
-  (⊨⊕⊲ results (λ (r) (≡ (⊞→ r :status) :fail)))))
+(define ⊨⊕⊲:failures (lambda (results)
+  (⊨⊕⊲ results (lambda (r) (equal? (hashmap-get r :status) :fail)))))
 
 ;;; Get only passes from results list
-(≔ ⊨⊕⊲:passes (λ (results)
-  (⊨⊕⊲ results (λ (r) (≡ (⊞→ r :status) :pass)))))
+(define ⊨⊕⊲:passes (lambda (results)
+  (⊨⊕⊲ results (lambda (r) (equal? (hashmap-get r :status) :pass)))))
 
 ;;; Map over results extracting field
-(≔ ⊨⊕⊲:names (λ (results)
-  (⊣⊕ (⊣↦ (λ (r) (⊞→ r :name)) (⊣ results)))))
+(define ⊨⊕⊲:names (lambda (results)
+  (iter-collect (iter-map (lambda (r) (hashmap-get r :name)) (iter results)))))
 
 ;;; ═══════════════════════════════════════════
 ;;; Timing Report: ⊨⊕⋔
@@ -74,18 +74,18 @@
 ;;; ═══════════════════════════════════════════
 
 ;;; Get top N slowest tests from results
-;;; results must be the ⊞ returned by ⊨⊕!
-(≔ ⊨⊕⋔ (λ (results n)
-  (≔ timing (⊞→ results :timing))
-  (? (∅? timing)
-     ∅
+;;; results must be the hashmap returned by test-run-registry
+(define ⊨⊕⋔ (lambda (results n)
+  (define timing (hashmap-get results :timing))
+  (if (null? timing)
+     nil
      ;; Iterate from max downward using SortedMap entries, take n
-     (⊣⊕ (⊣↑ n (⊣ (⋔* timing)))))))
+     (iter-collect (iter-take n (iter (sorted-map-entries timing)))))))
 
 ;;; Get the single slowest test
-(≔ ⊨⊕⋔:slowest (λ (results)
-  (≔ timing (⊞→ results :timing))
-  (? (∅? timing) ∅ (⋔▷ timing))))
+(define ⊨⊕⋔:slowest (lambda (results)
+  (define timing (hashmap-get results :timing))
+  (if (null? timing) nil (sorted-map-max timing))))
 
 ;;; ═══════════════════════════════════════════
 ;;; Tag-Based Selection: ⊨⊕⊍
@@ -95,9 +95,9 @@
 ;;; ═══════════════════════════════════════════
 
 ;;; Get all test names with a given tag (returns list)
-(≔ ⊨⊕⊍:by-tag (λ (tag)
+(define ⊨⊕⊍:by-tag (lambda (tag)
   ;; Query the tag trie for "tag:*" prefix
-  (⊮⊙ g_tag_registry tag)))
+  (trie-prefix-keys g_tag_registry tag)))
 
 ;;; ═══════════════════════════════════════════
 ;;; Parallel Suite Runner: ⊨⊕‖
@@ -108,19 +108,19 @@
 
 ;;; Run test suites in parallel using actors + channels
 ;;; Each top-level test spawns as an actor, results collected via channel.
-(≔ ⊨⊕‖ (λ (prefix)
-  (≔ ch (⟿⊚ #100))
-  (≔ results (⊨⊕! prefix))
-  (≔ result-list (⊞→ results :results))
+(define ⊨⊕‖ (lambda (prefix)
+  (define ch (chan-create #100))
+  (define results (test-run-registry prefix))
+  (define result-list (hashmap-get results :results))
   ;; Spawn actor per result to demonstrate pipeline
-  (≔ spawn-collectors (λ (items)
-    (? (∅? items)
-       ∅
-       (⟳ (λ (self)
-         (⟿→ ch (◁ items))))
-       (spawn-collectors (▷ items)))))
+  (define spawn-collectors (lambda (items)
+    (if (null? items)
+       nil
+       (actor-spawn (lambda (self)
+         (chan-send ch (car items))))
+       (spawn-collectors (cdr items)))))
   (spawn-collectors result-list)
-  (⟳! #1000)
+  (actor-run #1000)
   results))
 
 ;;; ═══════════════════════════════════════════
@@ -128,19 +128,19 @@
 ;;; ═══════════════════════════════════════════
 
 ;;; Pretty-print test results summary
-(≔ ⊨⊕:summary (λ (results)
-  (≋ "═══ Test Results ═══")
-  (≋ (≈⊕ "Passed: " (≈ (⊞→ results :passed))))
-  (≋ (≈⊕ "Failed: " (≈ (⊞→ results :failed))))
-  (≋ (≈⊕ "Total:  " (≈ (⊞→ results :total))))
-  (≋ (≈⊕ "Time:   " (≈⊕ (≈ (⊞→ results :elapsed)) "µs")))
+(define ⊨⊕:summary (lambda (results)
+  (print "═══ Test Results ═══")
+  (print (string-append "Passed: " (string (hashmap-get results :passed))))
+  (print (string-append "Failed: " (string (hashmap-get results :failed))))
+  (print (string-append "Total:  " (string (hashmap-get results :total))))
+  (print (string-append "Time:   " (string-append (string (hashmap-get results :elapsed)) "µs")))
   results))
 
 ;;; Assert a test result map shows all passing
-(≔ ⊨⊕:all-pass? (λ (results)
-  (≡ (⊞→ results :failed) #0)))
+(define ⊨⊕:all-pass? (lambda (results)
+  (equal? (hashmap-get results :failed) #0)))
 
 ;;; Run all and exit with status
-(≔ ⊨⊕:run-exit (λ ()
-  (⊨⊕!)
-  (⊨⊜×)))
+(define ⊨⊕:run-exit (lambda ()
+  (test-run-registry)
+  (test-exit)))

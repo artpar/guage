@@ -13,269 +13,269 @@
 ; Phase 1: Character Classification
 ; ═══════════════════════════════════════════════════════════════
 
-; ≈⊙space? :: :symbol → 𝔹
+; ≈⊙space? :: :symbol -> Bool
 ; Check if character symbol is whitespace
-(≔ ≈⊙space? (λ (𝕔)
-  (∨ (≡ 𝕔 (≈→ " " #0))
-  (∨ (≡ 𝕔 (≈→ "\t" #0))
-  (∨ (≡ 𝕔 (≈→ "\n" #0))
-      (≡ 𝕔 (≈→ "\r" #0)))))))
+(define ≈⊙space? (lambda (𝕔)
+  (or (equal? 𝕔 (string-ref " " #0))
+  (or (equal? 𝕔 (string-ref "\t" #0))
+  (or (equal? 𝕔 (string-ref "\n" #0))
+      (equal? 𝕔 (string-ref "\r" #0)))))))
 
-; ≈⊙digit? :: :symbol → 𝔹
+; ≈⊙digit? :: :symbol -> Bool
 ; Check if character symbol is a digit (0-9)
-(≔ ≈⊙digit? (λ (𝕔)
-  (∨ (≡ 𝕔 (≈→ "0" #0))
-  (∨ (≡ 𝕔 (≈→ "1" #0))
-  (∨ (≡ 𝕔 (≈→ "2" #0))
-  (∨ (≡ 𝕔 (≈→ "3" #0))
-  (∨ (≡ 𝕔 (≈→ "4" #0))
-  (∨ (≡ 𝕔 (≈→ "5" #0))
-  (∨ (≡ 𝕔 (≈→ "6" #0))
-  (∨ (≡ 𝕔 (≈→ "7" #0))
-  (∨ (≡ 𝕔 (≈→ "8" #0))
-      (≡ 𝕔 (≈→ "9" #0)))))))))))))
+(define ≈⊙digit? (lambda (𝕔)
+  (or (equal? 𝕔 (string-ref "0" #0))
+  (or (equal? 𝕔 (string-ref "1" #0))
+  (or (equal? 𝕔 (string-ref "2" #0))
+  (or (equal? 𝕔 (string-ref "3" #0))
+  (or (equal? 𝕔 (string-ref "4" #0))
+  (or (equal? 𝕔 (string-ref "5" #0))
+  (or (equal? 𝕔 (string-ref "6" #0))
+  (or (equal? 𝕔 (string-ref "7" #0))
+  (or (equal? 𝕔 (string-ref "8" #0))
+      (equal? 𝕔 (string-ref "9" #0)))))))))))))
 
-; ≈⊙paren? :: :symbol → 𝔹
+; ≈⊙paren? :: :symbol -> Bool
 ; Check if character is parenthesis
-(≔ ≈⊙paren? (λ (𝕔)
-  (∨ (≡ 𝕔 (≈→ "(" #0))
-      (≡ 𝕔 (≈→ ")" #0)))))
+(define ≈⊙paren? (lambda (𝕔)
+  (or (equal? 𝕔 (string-ref "(" #0))
+      (equal? 𝕔 (string-ref ")" #0)))))
 
-; ≈⊙special? :: :symbol → 𝔹
+; ≈⊙special? :: :symbol -> Bool
 ; Check if character is special delimiter
-(≔ ≈⊙special? (λ (𝕔)
-  (∨ (≈⊙space? 𝕔)
-  (∨ (≈⊙paren? 𝕔)
-  (∨ (≡ 𝕔 (≈→ "\"" #0))
-  (∨ (≡ 𝕔 (≈→ "'" #0))
-      (≡ 𝕔 (≈→ ";" #0))))))))
+(define ≈⊙special? (lambda (𝕔)
+  (or (≈⊙space? 𝕔)
+  (or (≈⊙paren? 𝕔)
+  (or (equal? 𝕔 (string-ref "\"" #0))
+  (or (equal? 𝕔 (string-ref "'" #0))
+      (equal? 𝕔 (string-ref ";" #0))))))))
 
 ; ═══════════════════════════════════════════════════════════════
 ; Phase 2: Tokenization Helpers
 ; ═══════════════════════════════════════════════════════════════
 
-; ≈⊙→token :: :symbol → α → token
+; ≈⊙→token :: :symbol -> α -> token
 ; Create token structure: ⟨type value⟩
-(≔ ≈⊙→token (λ (𝕥 𝕧)
-  (⟨⟩ 𝕥 𝕧)))
+(define ≈⊙→token (lambda (𝕥 𝕧)
+  (cons 𝕥 𝕧)))
 
-; ≈⊙token-type :: token → :symbol
+; ≈⊙token-type :: token -> :symbol
 ; Get token type
-(≔ ≈⊙token-type (λ (𝕥)
-  (◁ 𝕥)))
+(define ≈⊙token-type (lambda (𝕥)
+  (car 𝕥)))
 
-; ≈⊙token-val :: token → α
+; ≈⊙token-val :: token -> α
 ; Get token value
-(≔ ≈⊙token-val (λ (𝕥)
-  (▷ 𝕥)))
+(define ≈⊙token-val (lambda (𝕥)
+  (cdr 𝕥)))
 
-; ≈⊙skip-ws :: ≈ → ℕ → ℕ
+; ≈⊙skip-ws :: string -> ℕ -> ℕ
 ; Skip whitespace, return new position
-(≔ ≈⊙skip-ws (λ (𝕤 𝕡)
-  (? (≥ 𝕡 (≈# 𝕤))
+(define ≈⊙skip-ws (lambda (𝕤 𝕡)
+  (if (>= 𝕡 (string-length 𝕤))
      𝕡
-     (? (≈⊙space? (≈→ 𝕤 𝕡))
-        (≈⊙skip-ws 𝕤 (⊕ 𝕡 #1))
+     (if (≈⊙space? (string-ref 𝕤 𝕡))
+        (≈⊙skip-ws 𝕤 (+ 𝕡 #1))
         𝕡))))
 
-; ≈⊙skip-comment :: ≈ → ℕ → ℕ
+; ≈⊙skip-comment :: string -> ℕ -> ℕ
 ; Skip comment (from ; to newline), return new position
-(≔ ≈⊙skip-comment (λ (𝕤 𝕡)
-  (? (≥ 𝕡 (≈# 𝕤))
+(define ≈⊙skip-comment (lambda (𝕤 𝕡)
+  (if (>= 𝕡 (string-length 𝕤))
      𝕡
-     (? (≡ (≈→ 𝕤 𝕡) (≈→ "\n" #0))
-        (⊕ 𝕡 #1)
-        (≈⊙skip-comment 𝕤 (⊕ 𝕡 #1))))))
+     (if (equal? (string-ref 𝕤 𝕡) (string-ref "\n" #0))
+        (+ 𝕡 #1)
+        (≈⊙skip-comment 𝕤 (+ 𝕡 #1))))))
 
 ; ═══════════════════════════════════════════════════════════════
 ; Phase 3: Token Reading
 ; ═══════════════════════════════════════════════════════════════
 
-; ≈⊙read-number :: ≈ → ℕ → ℕ → ≈
+; ≈⊙read-number :: string -> ℕ -> ℕ -> string
 ; Read number characters until delimiter
-(≔ ≈⊙read-number (λ (𝕤 𝕡 𝕤𝕥𝕒𝕣𝕥)
-  (? (≥ 𝕡 (≈# 𝕤))
-     (≈⊂ 𝕤 𝕤𝕥𝕒𝕣𝕥 𝕡)
-     (? (≈⊙special? (≈→ 𝕤 𝕡))
-        (≈⊂ 𝕤 𝕤𝕥𝕒𝕣𝕥 𝕡)
-        (≈⊙read-number 𝕤 (⊕ 𝕡 #1) 𝕤𝕥𝕒𝕣𝕥)))))
+(define ≈⊙read-number (lambda (𝕤 𝕡 𝕤𝕥𝕒𝕣𝕥)
+  (if (>= 𝕡 (string-length 𝕤))
+     (string-slice 𝕤 𝕤𝕥𝕒𝕣𝕥 𝕡)
+     (if (≈⊙special? (string-ref 𝕤 𝕡))
+        (string-slice 𝕤 𝕤𝕥𝕒𝕣𝕥 𝕡)
+        (≈⊙read-number 𝕤 (+ 𝕡 #1) 𝕤𝕥𝕒𝕣𝕥)))))
 
-; ≈⊙read-symbol :: ≈ → ℕ → ℕ → ≈
+; ≈⊙read-symbol :: string -> ℕ -> ℕ -> string
 ; Read symbol characters until delimiter
-(≔ ≈⊙read-symbol (λ (𝕤 𝕡 𝕤𝕥𝕒𝕣𝕥)
-  (? (≥ 𝕡 (≈# 𝕤))
-     (≈⊂ 𝕤 𝕤𝕥𝕒𝕣𝕥 𝕡)
-     (? (≈⊙special? (≈→ 𝕤 𝕡))
-        (≈⊂ 𝕤 𝕤𝕥𝕒𝕣𝕥 𝕡)
-        (≈⊙read-symbol 𝕤 (⊕ 𝕡 #1) 𝕤𝕥𝕒𝕣𝕥)))))
+(define ≈⊙read-symbol (lambda (𝕤 𝕡 𝕤𝕥𝕒𝕣𝕥)
+  (if (>= 𝕡 (string-length 𝕤))
+     (string-slice 𝕤 𝕤𝕥𝕒𝕣𝕥 𝕡)
+     (if (≈⊙special? (string-ref 𝕤 𝕡))
+        (string-slice 𝕤 𝕤𝕥𝕒𝕣𝕥 𝕡)
+        (≈⊙read-symbol 𝕤 (+ 𝕡 #1) 𝕤𝕥𝕒𝕣𝕥)))))
 
-; ≈⊙read-string :: ≈ → ℕ → ℕ → ≈
+; ≈⊙read-string :: string -> ℕ -> ℕ -> string
 ; Read string characters until closing quote
-(≔ ≈⊙read-string (λ (𝕤 𝕡 𝕤𝕥𝕒𝕣𝕥)
-  (? (≥ 𝕡 (≈# 𝕤))
-     (⚠ (⌜ :unclosed-string) (≈⊂ 𝕤 𝕤𝕥𝕒𝕣𝕥 𝕡))
-     (? (≡ (≈→ 𝕤 𝕡) (≈→ "\"" #0))
-        (≈⊂ 𝕤 𝕤𝕥𝕒𝕣𝕥 𝕡)
-        (≈⊙read-string 𝕤 (⊕ 𝕡 #1) 𝕤𝕥𝕒𝕣𝕥)))))
+(define ≈⊙read-string (lambda (𝕤 𝕡 𝕤𝕥𝕒𝕣𝕥)
+  (if (>= 𝕡 (string-length 𝕤))
+     (error (quote :unclosed-string) (string-slice 𝕤 𝕤𝕥𝕒𝕣𝕥 𝕡))
+     (if (equal? (string-ref 𝕤 𝕡) (string-ref "\"" #0))
+        (string-slice 𝕤 𝕤𝕥𝕒𝕣𝕥 𝕡)
+        (≈⊙read-string 𝕤 (+ 𝕡 #1) 𝕤𝕥𝕒𝕣𝕥)))))
 
 ; ═══════════════════════════════════════════════════════════════
 ; Phase 4: Tokenizer
 ; ═══════════════════════════════════════════════════════════════
 
-; ≈⊙tokenize-one :: ≈ → ℕ → ⟨token ℕ⟩ | ∅
-; Read one token from position, return ⟨token new-position⟩ or ∅ at EOF
-(≔ ≈⊙tokenize-one (λ (𝕤 𝕡)
+; ≈⊙tokenize-one :: string -> ℕ -> ⟨token ℕ⟩ | nil
+; Read one token from position, return ⟨token new-position⟩ or nil at EOF
+(define ≈⊙tokenize-one (lambda (𝕤 𝕡)
   ; Skip whitespace using lambda binding
-  ((λ (𝕡′)
+  ((lambda (𝕡′)
     ; Check if at end
-    (? (≥ 𝕡′ (≈# 𝕤))
-       ∅
+    (if (>= 𝕡′ (string-length 𝕤))
+       nil
 
        ; Check for comment
-       (? (≡ (≈→ 𝕤 𝕡′) (≈→ ";" #0))
+       (if (equal? (string-ref 𝕤 𝕡′) (string-ref ";" #0))
           (≈⊙tokenize-one 𝕤 (≈⊙skip-comment 𝕤 𝕡′))
 
           ; Check for left paren
-          (? (≡ (≈→ 𝕤 𝕡′) (≈→ "(" #0))
-             (⟨⟩ (≈⊙→token (⌜ :lparen) (≈→ "(" #0)) (⊕ 𝕡′ #1))
+          (if (equal? (string-ref 𝕤 𝕡′) (string-ref "(" #0))
+             (cons (≈⊙→token (quote :lparen) (string-ref "(" #0)) (+ 𝕡′ #1))
 
              ; Check for right paren
-             (? (≡ (≈→ 𝕤 𝕡′) (≈→ ")" #0))
-                (⟨⟩ (≈⊙→token (⌜ :rparen) (≈→ ")" #0)) (⊕ 𝕡′ #1))
+             (if (equal? (string-ref 𝕤 𝕡′) (string-ref ")" #0))
+                (cons (≈⊙→token (quote :rparen) (string-ref ")" #0)) (+ 𝕡′ #1))
 
                 ; Check for quote
-                (? (≡ (≈→ 𝕤 𝕡′) (≈→ "'" #0))
-                   (⟨⟩ (≈⊙→token (⌜ :quote) (≈→ "'" #0)) (⊕ 𝕡′ #1))
+                (if (equal? (string-ref 𝕤 𝕡′) (string-ref "'" #0))
+                   (cons (≈⊙→token (quote :quote) (string-ref "'" #0)) (+ 𝕡′ #1))
 
                    ; Check for string
-                   (? (≡ (≈→ 𝕤 𝕡′) (≈→ "\"" #0))
-                      ((λ (𝕤𝕥𝕣)
-                        (? (⚠? 𝕤𝕥𝕣)
-                           (⟨⟩ 𝕤𝕥𝕣 𝕡′)  ; Return error
-                           (⟨⟩ (≈⊙→token (⌜ :string) 𝕤𝕥𝕣)
-                               (⊕ (⊕ 𝕡′ #1) (⊕ (≈# 𝕤𝕥𝕣) #1)))))
-                       (≈⊙read-string 𝕤 (⊕ 𝕡′ #1) (⊕ 𝕡′ #1)))
+                   (if (equal? (string-ref 𝕤 𝕡′) (string-ref "\"" #0))
+                      ((lambda (𝕤𝕥𝕣)
+                        (if (error? 𝕤𝕥𝕣)
+                           (cons 𝕤𝕥𝕣 𝕡′)  ; Return error
+                           (cons (≈⊙→token (quote :string) 𝕤𝕥𝕣)
+                               (+ (+ 𝕡′ #1) (+ (string-length 𝕤𝕥𝕣) #1)))))
+                       (≈⊙read-string 𝕤 (+ 𝕡′ #1) (+ 𝕡′ #1)))
 
                       ; Check for number (digit or -)
-                      (? (∨ (≈⊙digit? (≈→ 𝕤 𝕡′))
-                             (≡ (≈→ 𝕤 𝕡′) (≈→ "-" #0)))
-                         ((λ (𝕟𝕦𝕞)
-                           (⟨⟩ (≈⊙→token (⌜ :number) 𝕟𝕦𝕞) (⊕ 𝕡′ (≈# 𝕟𝕦𝕞))))
+                      (if (or (≈⊙digit? (string-ref 𝕤 𝕡′))
+                             (equal? (string-ref 𝕤 𝕡′) (string-ref "-" #0)))
+                         ((lambda (𝕟𝕦𝕞)
+                           (cons (≈⊙→token (quote :number) 𝕟𝕦𝕞) (+ 𝕡′ (string-length 𝕟𝕦𝕞))))
                           (≈⊙read-number 𝕤 𝕡′ 𝕡′))
 
                          ; Must be symbol
-                         ((λ (𝕤𝕪𝕞)
-                           (⟨⟩ (≈⊙→token (⌜ :symbol) 𝕤𝕪𝕞) (⊕ 𝕡′ (≈# 𝕤𝕪𝕞))))
+                         ((lambda (𝕤𝕪𝕞)
+                           (cons (≈⊙→token (quote :symbol) 𝕤𝕪𝕞) (+ 𝕡′ (string-length 𝕤𝕪𝕞))))
                           (≈⊙read-symbol 𝕤 𝕡′ 𝕡′))))))))))
    (≈⊙skip-ws 𝕤 𝕡))))
 
-; ≈⊙tokenize :: ≈ → [token] | ⚠
+; ≈⊙tokenize :: string -> [token] | error
 ; Tokenize entire string into list of tokens
-(≔ ≈⊙tokenize (λ (𝕤)
+(define ≈⊙tokenize (lambda (𝕤)
   (≈⊙tokenize-loop 𝕤 #0)))
 
 ; Tokenize loop - calls tokenize-one repeatedly (no nested lambda, calls tokenize-one 3x)
-(≔ ≈⊙tokenize-loop (λ (𝕤 𝕡)
-  (? (≥ 𝕡 (≈# 𝕤))
-     ∅  ; At end of string
-     ; Check if tokenize-one returns ∅
-     (? (∅? (≈⊙tokenize-one 𝕤 𝕡))
-        ∅
+(define ≈⊙tokenize-loop (lambda (𝕤 𝕡)
+  (if (>= 𝕡 (string-length 𝕤))
+     nil  ; At end of string
+     ; Check if tokenize-one returns nil
+     (if (null? (≈⊙tokenize-one 𝕤 𝕡))
+        nil
         ; Check if token is error
-        (? (⚠? (◁ (≈⊙tokenize-one 𝕤 𝕡)))
-           (◁ (≈⊙tokenize-one 𝕤 𝕡))  ; Return the error
+        (if (error? (car (≈⊙tokenize-one 𝕤 𝕡)))
+           (car (≈⊙tokenize-one 𝕤 𝕡))  ; Return the error
            ; Build list: cons token onto recursive call
-           (⟨⟩ (◁ (≈⊙tokenize-one 𝕤 𝕡))
-               (≈⊙tokenize-loop 𝕤 (▷ (≈⊙tokenize-one 𝕤 𝕡)))))))))
+           (cons (car (≈⊙tokenize-one 𝕤 𝕡))
+               (≈⊙tokenize-loop 𝕤 (cdr (≈⊙tokenize-one 𝕤 𝕡)))))))))
 
 ; ═══════════════════════════════════════════════════════════════
 ; Phase 5: Parser
 ; ═══════════════════════════════════════════════════════════════
 
-; ≈⊙parse-one :: [token] → ⟨expr [token]⟩ | ⚠
+; ≈⊙parse-one :: [token] -> ⟨expr [token]⟩ | error
 ; Parse one expression from token list
 ; Returns ⟨parsed-expr remaining-tokens⟩
-(≔ ≈⊙parse-one (λ (𝕥𝕠𝕜𝕤)
-  (? (∅? 𝕥𝕠𝕜𝕤)
-     (⚠ (⌜ :unexpected-eof) ∅)
+(define ≈⊙parse-one (lambda (𝕥𝕠𝕜𝕤)
+  (if (null? 𝕥𝕠𝕜𝕤)
+     (error (quote :unexpected-eof) nil)
 
      ; Use nested lambda bindings for local variables
-     ((λ (𝕥𝕠𝕜)
-       ((λ (𝕥𝕪𝕡𝕖)
-         ((λ (𝕧𝕒𝕝)
+     ((lambda (𝕥𝕠𝕜)
+       ((lambda (𝕥𝕪𝕡𝕖)
+         ((lambda (𝕧𝕒𝕝)
            ; Check token type
-           (? (≡ 𝕥𝕪𝕡𝕖 (⌜ :number))
+           (if (equal? 𝕥𝕪𝕡𝕖 (quote :number))
               ; TODO: Convert string to number (for now return string)
-              (⟨⟩ 𝕧𝕒𝕝 (▷ 𝕥𝕠𝕜𝕤))
+              (cons 𝕧𝕒𝕝 (cdr 𝕥𝕠𝕜𝕤))
 
-              (? (≡ 𝕥𝕪𝕡𝕖 (⌜ :string))
-                 (⟨⟩ 𝕧𝕒𝕝 (▷ 𝕥𝕠𝕜𝕤))
+              (if (equal? 𝕥𝕪𝕡𝕖 (quote :string))
+                 (cons 𝕧𝕒𝕝 (cdr 𝕥𝕠𝕜𝕤))
 
-                 (? (≡ 𝕥𝕪𝕡𝕖 (⌜ :symbol))
+                 (if (equal? 𝕥𝕪𝕡𝕖 (quote :symbol))
                     ; Convert string to symbol
                     ; TODO: Proper symbol creation (for now return string)
-                    (⟨⟩ 𝕧𝕒𝕝 (▷ 𝕥𝕠𝕜𝕤))
+                    (cons 𝕧𝕒𝕝 (cdr 𝕥𝕠𝕜𝕤))
 
-                    (? (≡ 𝕥𝕪𝕡𝕖 (⌜ :quote))
-                       ; Parse quoted expression: ' → (⌜ ...)
-                       ((λ (𝕢𝕦𝕠𝕥𝕖𝕕)
-                         (? (⚠? 𝕢𝕦𝕠𝕥𝕖𝕕)
+                    (if (equal? 𝕥𝕪𝕡𝕖 (quote :quote))
+                       ; Parse quoted expression: ' -> (quote ...)
+                       ((lambda (𝕢𝕦𝕠𝕥𝕖𝕕)
+                         (if (error? 𝕢𝕦𝕠𝕥𝕖𝕕)
                             𝕢𝕦𝕠𝕥𝕖𝕕
-                            (⟨⟩ (⟨⟩ (⌜ ⌜) (⟨⟩ (◁ 𝕢𝕦𝕠𝕥𝕖𝕕) ∅))
-                                (▷ 𝕢𝕦𝕠𝕥𝕖𝕕))))
-                        (≈⊙parse-one (▷ 𝕥𝕠𝕜𝕤)))
+                            (cons (cons (quote quote) (cons (car 𝕢𝕦𝕠𝕥𝕖𝕕) nil))
+                                (cdr 𝕢𝕦𝕠𝕥𝕖𝕕))))
+                        (≈⊙parse-one (cdr 𝕥𝕠𝕜𝕤)))
 
-                       (? (≡ 𝕥𝕪𝕡𝕖 (⌜ :lparen))
+                       (if (equal? 𝕥𝕪𝕡𝕖 (quote :lparen))
                           ; Parse list until rparen
-                          (≈⊙parse-list (▷ 𝕥𝕠𝕜𝕤))
+                          (≈⊙parse-list (cdr 𝕥𝕠𝕜𝕤))
 
-                          (? (≡ 𝕥𝕪𝕡𝕖 (⌜ :rparen))
-                             (⚠ (⌜ :unexpected-rparen) 𝕧𝕒𝕝)
-                             (⚠ (⌜ :unknown-token-type) 𝕥𝕪𝕡𝕖))))))))
+                          (if (equal? 𝕥𝕪𝕡𝕖 (quote :rparen))
+                             (error (quote :unexpected-rparen) 𝕧𝕒𝕝)
+                             (error (quote :unknown-token-type) 𝕥𝕪𝕡𝕖))))))))
           (≈⊙token-val 𝕥𝕠𝕜)))
         (≈⊙token-type 𝕥𝕠𝕜)))
-      (◁ 𝕥𝕠𝕜𝕤)))))
+      (car 𝕥𝕠𝕜𝕤)))))
 
-; ≈⊙parse-list :: [token] → ⟨list [token]⟩ | ⚠
+; ≈⊙parse-list :: [token] -> ⟨list [token]⟩ | error
 ; Parse list elements until rparen
 ; Returns ⟨list-expr remaining-tokens⟩
-(≔ ≈⊙parse-list (λ (𝕥𝕠𝕜𝕤)
-  (? (∅? 𝕥𝕠𝕜𝕤)
-     (⚠ (⌜ :unclosed-list) ∅)
+(define ≈⊙parse-list (lambda (𝕥𝕠𝕜𝕤)
+  (if (null? 𝕥𝕠𝕜𝕤)
+     (error (quote :unclosed-list) nil)
 
-     ((λ (𝕥𝕠𝕜)
-       ((λ (𝕥𝕪𝕡𝕖)
+     ((lambda (𝕥𝕠𝕜)
+       ((lambda (𝕥𝕪𝕡𝕖)
          ; Check for closing paren
-         (? (≡ 𝕥𝕪𝕡𝕖 (⌜ :rparen))
-            (⟨⟩ ∅ (▷ 𝕥𝕠𝕜𝕤))
+         (if (equal? 𝕥𝕪𝕡𝕖 (quote :rparen))
+            (cons nil (cdr 𝕥𝕠𝕜𝕤))
 
             ; Parse one element
-            ((λ (𝕖𝕝𝕖𝕞)
-              (? (⚠? 𝕖𝕝𝕖𝕞)
+            ((lambda (𝕖𝕝𝕖𝕞)
+              (if (error? 𝕖𝕝𝕖𝕞)
                  𝕖𝕝𝕖𝕞
 
                  ; Parse rest of list
-                 ((λ (𝕣𝕖𝕤𝕥)
-                   (? (⚠? 𝕣𝕖𝕤𝕥)
+                 ((lambda (𝕣𝕖𝕤𝕥)
+                   (if (error? 𝕣𝕖𝕤𝕥)
                       𝕣𝕖𝕤𝕥
-                      (⟨⟩ (⟨⟩ (◁ 𝕖𝕝𝕖𝕞) (◁ 𝕣𝕖𝕤𝕥))
-                          (▷ 𝕣𝕖𝕤𝕥))))
-                  (≈⊙parse-list (▷ 𝕖𝕝𝕖𝕞)))))
+                      (cons (cons (car 𝕖𝕝𝕖𝕞) (car 𝕣𝕖𝕤𝕥))
+                          (cdr 𝕣𝕖𝕤𝕥))))
+                  (≈⊙parse-list (cdr 𝕖𝕝𝕖𝕞)))))
              (≈⊙parse-one 𝕥𝕠𝕜𝕤))))
         (≈⊙token-type 𝕥𝕠𝕜)))
-      (◁ 𝕥𝕠𝕜𝕤)))))
+      (car 𝕥𝕠𝕜𝕤)))))
 
-; ≈⊙parse :: ≈ → expr | ⚠
+; ≈⊙parse :: string -> expr | error
 ; Parse string into S-expression
-; Example: (≈⊙parse "(+ 1 2)") → ⟨"+" ⟨"1" ⟨"2" ∅⟩⟩⟩
-(≔ ≈⊙parse (λ (𝕤)
-  ((λ (𝕥𝕠𝕜𝕤)
-    (? (⚠? 𝕥𝕠𝕜𝕤)
+; Example: (≈⊙parse "(+ 1 2)") -> ⟨"+" ⟨"1" ⟨"2" ∅⟩⟩⟩
+(define ≈⊙parse (lambda (𝕤)
+  ((lambda (𝕥𝕠𝕜𝕤)
+    (if (error? 𝕥𝕠𝕜𝕤)
        𝕥𝕠𝕜𝕤
-       ((λ (𝕣𝕖𝕤)
-         (? (⚠? 𝕣𝕖𝕤)
+       ((lambda (𝕣𝕖𝕤)
+         (if (error? 𝕣𝕖𝕤)
             𝕣𝕖𝕤
-            (◁ 𝕣𝕖𝕤)))
+            (car 𝕣𝕖𝕤)))
         (≈⊙parse-one 𝕥𝕠𝕜𝕤))))
    (≈⊙tokenize 𝕤))))
 

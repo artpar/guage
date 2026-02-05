@@ -4,258 +4,258 @@
 ; ============ Effect Declaration ============
 
 ; Declare effect with operations
-(⟪ :Console :print :read)
-(⊨ (⌜ :declare-effect) #t #t)
+(effect-def :Console :print :read)
+(test-case (quote :declare-effect) #t #t)
 
 ; Declare another effect
-(⟪ :State :get :put)
-(⊨ (⌜ :declare-state) #t #t)
+(effect-def :State :get :put)
+(test-case (quote :declare-state) #t #t)
 
 ; Declare single-op effect
-(⟪ :Logger :log)
-(⊨ (⌜ :declare-logger) #t #t)
+(effect-def :Logger :log)
+(test-case (quote :declare-logger) #t #t)
 
 ; ============ Effect Query ============
 
 ; Query declared effect
-(⊨ (⌜ :query-console) #t (⟪? :Console))
-(⊨ (⌜ :query-state) #t (⟪? :State))
-(⊨ (⌜ :query-undeclared) #f (⟪? :Nope))
+(test-case (quote :query-console) #t (effect? :Console))
+(test-case (quote :query-state) #t (effect? :State))
+(test-case (quote :query-undeclared) #f (effect? :Nope))
 
 ; ============ Basic Handle + Perform ============
 
 ; Simple perform returns handler's result
-(⊨ (⌜ :basic-handle)
+(test-case (quote :basic-handle)
   :printed
-  (⟪⟫ (↯ :Console :print "hello")
+  (handle (perform :Console :print "hello")
     (:Console
-      (:print (λ (msg) :printed))
-      (:read (λ () "input")))))
+      (:print (lambda (msg) :printed))
+      (:read (lambda () "input")))))
 
 ; Perform read operation
-(⊨ (⌜ :basic-read)
+(test-case (quote :basic-read)
   "fake-input"
-  (⟪⟫ (↯ :Console :read)
+  (handle (perform :Console :read)
     (:Console
-      (:print (λ (msg) :ok))
-      (:read (λ () "fake-input")))))
+      (:print (lambda (msg) :ok))
+      (:read (lambda () "fake-input")))))
 
 ; ============ Perform Result in Computation ============
 
 ; Use perform result in arithmetic
-(⊨ (⌜ :perform-in-expr)
+(test-case (quote :perform-in-expr)
   #43
-  (⟪⟫ (⊕ (↯ :State :get) #1)
+  (handle (+ (perform :State :get) #1)
     (:State
-      (:get (λ () #42))
-      (:put (λ (v) ∅)))))
+      (:get (lambda () #42))
+      (:put (lambda (v) nil)))))
 
 ; Use perform result in conditional
-(⊨ (⌜ :perform-in-cond)
+(test-case (quote :perform-in-cond)
   :big
-  (⟪⟫ (? (> (↯ :State :get) #10) :big :small)
+  (handle (if (> (perform :State :get) #10) :big :small)
     (:State
-      (:get (λ () #42))
-      (:put (λ (v) ∅)))))
+      (:get (lambda () #42))
+      (:put (lambda (v) nil)))))
 
 ; Perform with argument
-(⊨ (⌜ :perform-with-args)
+(test-case (quote :perform-with-args)
   :done
-  (⟪⟫ (↯ :State :put #99)
+  (handle (perform :State :put #99)
     (:State
-      (:get (λ () #0))
-      (:put (λ (v) :done)))))
+      (:get (lambda () #0))
+      (:put (lambda (v) :done)))))
 
 ; Handler uses argument value
-(⊨ (⌜ :handler-uses-arg)
+(test-case (quote :handler-uses-arg)
   #198
-  (⟪⟫ (↯ :State :put #99)
+  (handle (perform :State :put #99)
     (:State
-      (:get (λ () #0))
-      (:put (λ (v) (⊗ v #2))))))
+      (:get (lambda () #0))
+      (:put (lambda (v) (* v #2))))))
 
 ; ============ Nested Handlers ============
 
 ; Inner handler shadows outer for same effect
-(⊨ (⌜ :nested-shadow)
+(test-case (quote :nested-shadow)
   #99
-  (⟪⟫
-    (⟪⟫ (↯ :State :get)
+  (handle
+    (handle (perform :State :get)
       (:State
-        (:get (λ () #99))
-        (:put (λ (v) ∅))))
+        (:get (lambda () #99))
+        (:put (lambda (v) nil))))
     (:State
-      (:get (λ () #42))
-      (:put (λ (v) ∅)))))
+      (:get (lambda () #42))
+      (:put (lambda (v) nil)))))
 
 ; Outer handler reached for different effect
-(⊨ (⌜ :nested-different)
+(test-case (quote :nested-different)
   :logged
-  (⟪⟫
-    (⟪⟫ (↯ :Logger :log "inner")
+  (handle
+    (handle (perform :Logger :log "inner")
       (:State
-        (:get (λ () #0))
-        (:put (λ (v) ∅))))
+        (:get (lambda () #0))
+        (:put (lambda (v) nil))))
     (:Logger
-      (:log (λ (msg) :logged)))))
+      (:log (lambda (msg) :logged)))))
 
 ; ============ Handler as Closure ============
 
 ; Handler captures enclosing scope
-(≔ multiplier #3)
-(⊨ (⌜ :handler-closure)
+(define multiplier #3)
+(test-case (quote :handler-closure)
   #126
-  (⟪⟫ (↯ :State :get)
+  (handle (perform :State :get)
     (:State
-      (:get (λ () (⊗ #42 multiplier)))
-      (:put (λ (v) ∅)))))
+      (:get (lambda () (* #42 multiplier)))
+      (:put (lambda (v) nil)))))
 
 ; Handler from named function
-(≔ my-reader (λ () "config-value"))
-(⊨ (⌜ :handler-named-fn)
+(define my-reader (lambda () "config-value"))
+(test-case (quote :handler-named-fn)
   "config-value"
-  (⟪⟫ (↯ :Console :read)
+  (handle (perform :Console :read)
     (:Console
-      (:print (λ (msg) ∅))
+      (:print (lambda (msg) nil))
       (:read my-reader))))
 
 ; ============ Unhandled Effect ============
 
 ; Performing without handler returns error
-(⊨ (⌜ :unhandled-effect)
+(test-case (quote :unhandled-effect)
   #t
-  (⚠? (↯ :Console :print "oops")))
+  (error? (perform :Console :print "oops")))
 
 ; Performing undeclared effect returns error
-(⊨ (⌜ :unknown-effect)
+(test-case (quote :unknown-effect)
   #t
-  (⚠? (↯ :Unknown :op)))
+  (error? (perform :Unknown :op)))
 
 ; Performing unknown operation returns error
-(⊨ (⌜ :unknown-op)
+(test-case (quote :unknown-op)
   #t
-  (⚠? (⟪⟫ (↯ :Console :mystery)
+  (error? (handle (perform :Console :mystery)
     (:Console
-      (:print (λ (msg) ∅))))))
+      (:print (lambda (msg) nil))))))
 
 ; ============ No Effect Performed ============
 
 ; Body without performs returns normally
-(⊨ (⌜ :no-perform)
+(test-case (quote :no-perform)
   #42
-  (⟪⟫ #42
+  (handle #42
     (:State
-      (:get (λ () #0))
-      (:put (λ (v) ∅)))))
+      (:get (lambda () #0))
+      (:put (lambda (v) nil)))))
 
 ; Complex body without performs
-(⊨ (⌜ :no-perform-complex)
+(test-case (quote :no-perform-complex)
   #10
-  (⟪⟫ (⊕ #3 #7)
+  (handle (+ #3 #7)
     (:State
-      (:get (λ () #0))
-      (:put (λ (v) ∅)))))
+      (:get (lambda () #0))
+      (:put (lambda (v) nil)))))
 
 ; ============ Effect + Lambda ============
 
 ; Perform inside lambda within handler scope
-(⊨ (⌜ :perform-in-lambda)
+(test-case (quote :perform-in-lambda)
   #42
-  (⟪⟫ ((λ () (↯ :State :get)))
+  (handle ((lambda () (perform :State :get)))
     (:State
-      (:get (λ () #42))
-      (:put (λ (v) ∅)))))
+      (:get (lambda () #42))
+      (:put (lambda (v) nil)))))
 
 ; Higher-order: pass effectful function
-(⊨ (⌜ :effectful-fn)
+(test-case (quote :effectful-fn)
   #42
-  (⟪⟫ ((λ (f) (f)) (λ () (↯ :State :get)))
+  (handle ((lambda (f) (f)) (lambda () (perform :State :get)))
     (:State
-      (:get (λ () #42))
-      (:put (λ (v) ∅)))))
+      (:get (lambda () #42))
+      (:put (lambda (v) nil)))))
 
 ; ============ Multiple Effect Types Nested ============
 
 ; Handle different effects in nested handlers
-(⊨ (⌜ :multi-effect)
+(test-case (quote :multi-effect)
   #42
-  (⟪⟫
-    (⟪⟫ (⊕ (↯ :State :get) (↯ :Logger :log "hi"))
+  (handle
+    (handle (+ (perform :State :get) (perform :Logger :log "hi"))
       (:Logger
-        (:log (λ (msg) #2))))
+        (:log (lambda (msg) #2))))
     (:State
-      (:get (λ () #40))
-      (:put (λ (v) ∅)))))
+      (:get (lambda () #40))
+      (:put (lambda (v) nil)))))
 
 ; ============ Pure and Bind ============
 
 ; Pure lifts value unchanged
-(⊨ (⌜ :pure-lift) #42 (⤴ #42))
-(⊨ (⌜ :pure-string) "hello" (⤴ "hello"))
+(test-case (quote :pure-lift) #42 (effect-pure #42))
+(test-case (quote :pure-string) "hello" (effect-pure "hello"))
 
-; Bind sequences: (≫ val fn) applies fn to val
-(⊨ (⌜ :bind-basic)
+; Bind sequences: (bind val fn) applies fn to val
+(test-case (quote :bind-basic)
   #43
-  (≫ #42 (λ (x) (⊕ x #1))))
+  (bind #42 (lambda (x) (+ x #1))))
 
 ; Bind with effect result
-(⊨ (⌜ :bind-effect)
+(test-case (quote :bind-effect)
   #43
-  (⟪⟫ (≫ (↯ :State :get) (λ (x) (⊕ x #1)))
+  (handle (bind (perform :State :get) (lambda (x) (+ x #1)))
     (:State
-      (:get (λ () #42))
-      (:put (λ (v) ∅)))))
+      (:get (lambda () #42))
+      (:put (lambda (v) nil)))))
 
 ; ============ Multiple Args ============
 
 ; Handler receives multiple args
-(⟪ :Math :compute)
-(⊨ (⌜ :multi-arg)
+(effect-def :Math :compute)
+(test-case (quote :multi-arg)
   #7
-  (⟪⟫ (↯ :Math :compute #3 #4)
+  (handle (perform :Math :compute #3 #4)
     (:Math
-      (:compute (λ (a b) (⊕ a b))))))
+      (:compute (lambda (a b) (+ a b))))))
 
 ; Three args
-(⊨ (⌜ :three-args)
+(test-case (quote :three-args)
   #24
-  (⟪⟫ (↯ :Math :compute #2 #3 #4)
+  (handle (perform :Math :compute #2 #3 #4)
     (:Math
-      (:compute (λ (a b c) (⊗ a (⊗ b c)))))))
+      (:compute (lambda (a b c) (* a (* b c)))))))
 
 ; ============ Practical: Config Reader ============
 
-(⟪ :Config :get)
+(effect-def :Config :get)
 
-(≔ get-config (λ (key) (↯ :Config :get key)))
+(define get-config (lambda (key) (perform :Config :get key)))
 
-(⊨ (⌜ :config-reader)
+(test-case (quote :config-reader)
   "localhost:5432"
-  (⟪⟫ (get-config :db-url)
+  (handle (get-config :db-url)
     (:Config
-      (:get (λ (key)
-        (? (≡ key :db-url) "localhost:5432"
-           (? (≡ key :port) #8080
+      (:get (lambda (key)
+        (if (equal? key :db-url) "localhost:5432"
+           (if (equal? key :port) #8080
               "unknown")))))))
 
-(⊨ (⌜ :config-port)
+(test-case (quote :config-port)
   #8080
-  (⟪⟫ (get-config :port)
+  (handle (get-config :port)
     (:Config
-      (:get (λ (key)
-        (? (≡ key :db-url) "localhost:5432"
-           (? (≡ key :port) #8080
+      (:get (lambda (key)
+        (if (equal? key :db-url) "localhost:5432"
+           (if (equal? key :port) #8080
               "unknown")))))))
 
 ; ============ Zero-arg Perform ============
 
 ; Perform with no args (just operation name)
-(⊨ (⌜ :zero-arg-perform)
+(test-case (quote :zero-arg-perform)
   #42
-  (⟪⟫ (↯ :State :get)
+  (handle (perform :State :get)
     (:State
-      (:get (λ () #42))
-      (:put (λ (v) ∅)))))
+      (:get (lambda () #42))
+      (:put (lambda (v) nil)))))
 
 ; ============ Summary ============
 ; Total: 35 tests

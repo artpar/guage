@@ -1,69 +1,69 @@
-; Test: Sorted Map (⋔) — SIMD B-Tree
+; Test: Sorted Map (sorted-map) — SIMD B-Tree
 ; Day 116
 
 ; 1. Create + size — empty map
-(⊨ (⌜ :smap-new-empty) #0 (⋔# (⋔)))
+(test-case (quote :smap-new-empty) #0 (sorted-map-size (sorted-map)))
 
 ; 2. Create from pairs + get
-(≔ sm1 (⋔ (⟨⟩ :a #1) (⟨⟩ :b #2) (⟨⟩ :c #3)))
-(⊨ (⌜ :smap-from-pairs-size) #3 (⋔# sm1))
-(⊨ (⌜ :smap-get-a) #1 (⋔→ sm1 :a))
-(⊨ (⌜ :smap-get-b) #2 (⋔→ sm1 :b))
-(⊨ (⌜ :smap-get-c) #3 (⋔→ sm1 :c))
-(⊨ (⌜ :smap-get-missing) ∅ (⋔→ sm1 :z))
+(define sm1 (sorted-map (cons :a #1) (cons :b #2) (cons :c #3)))
+(test-case (quote :smap-from-pairs-size) #3 (sorted-map-size sm1))
+(test-case (quote :smap-get-a) #1 (sorted-map-get sm1 :a))
+(test-case (quote :smap-get-b) #2 (sorted-map-get sm1 :b))
+(test-case (quote :smap-get-c) #3 (sorted-map-get sm1 :c))
+(test-case (quote :smap-get-missing) nil (sorted-map-get sm1 :z))
 
 ; 3. Put + overwrite + has
-(≔ sm2 (⋔))
-(⋔← sm2 :x #10)
-(⋔← sm2 :y #20)
-(⊨ (⌜ :smap-put-size) #2 (⋔# sm2))
-(⊨ (⌜ :smap-has-yes) #t (⋔∋ sm2 :x))
-(⊨ (⌜ :smap-has-no) #f (⋔∋ sm2 :z))
-(⋔← sm2 :x #99)
-(⊨ (⌜ :smap-overwrite) #99 (⋔→ sm2 :x))
-(⊨ (⌜ :smap-overwrite-size) #2 (⋔# sm2))
+(define sm2 (sorted-map))
+(sorted-map-put sm2 :x #10)
+(sorted-map-put sm2 :y #20)
+(test-case (quote :smap-put-size) #2 (sorted-map-size sm2))
+(test-case (quote :smap-has-yes) #t (sorted-map-has? sm2 :x))
+(test-case (quote :smap-has-no) #f (sorted-map-has? sm2 :z))
+(sorted-map-put sm2 :x #99)
+(test-case (quote :smap-overwrite) #99 (sorted-map-get sm2 :x))
+(test-case (quote :smap-overwrite-size) #2 (sorted-map-size sm2))
 
 ; 4. Delete
-(≔ sm3 (⋔ (⟨⟩ :a #1) (⟨⟩ :b #2) (⟨⟩ :c #3)))
-(⋔⊖ sm3 :b)
-(⊨ (⌜ :smap-del-size) #2 (⋔# sm3))
-(⊨ (⌜ :smap-del-missing) ∅ (⋔→ sm3 :b))
-(⊨ (⌜ :smap-del-other-intact) #1 (⋔→ sm3 :a))
+(define sm3 (sorted-map (cons :a #1) (cons :b #2) (cons :c #3)))
+(sorted-map-del sm3 :b)
+(test-case (quote :smap-del-size) #2 (sorted-map-size sm3))
+(test-case (quote :smap-del-missing) nil (sorted-map-get sm3 :b))
+(test-case (quote :smap-del-other-intact) #1 (sorted-map-get sm3 :a))
 
 ; 5. Type predicate
-(⊨ (⌜ :smap-type-yes) #t (⋔? (⋔)))
-(⊨ (⌜ :smap-type-no) #f (⋔? #42))
+(test-case (quote :smap-type-yes) #t (sorted-map? (sorted-map)))
+(test-case (quote :smap-type-no) #f (sorted-map? #42))
 
 ; 6. Keys sorted order — insert :c :a :b, verify keys returns (:a :b :c)
-(≔ sm4 (⋔ (⟨⟩ :c #3) (⟨⟩ :a #1) (⟨⟩ :b #2)))
-(≔ ks (⋔⊙ sm4))
-(⊨ (⌜ :smap-keys-first) :a (◁ ks))
-(⊨ (⌜ :smap-keys-second) :b (◁ (▷ ks)))
-(⊨ (⌜ :smap-keys-third) :c (◁ (▷ (▷ ks))))
+(define sm4 (sorted-map (cons :c #3) (cons :a #1) (cons :b #2)))
+(define ks (sorted-map-keys sm4))
+(test-case (quote :smap-keys-first) :a (car ks))
+(test-case (quote :smap-keys-second) :b (car (cdr ks)))
+(test-case (quote :smap-keys-third) :c (car (cdr (cdr ks))))
 
 ; 7. Min/max
-(≔ sm5 (⋔ (⟨⟩ #3 :three) (⟨⟩ #1 :one) (⟨⟩ #5 :five)))
-(⊨ (⌜ :smap-min-key) #1 (◁ (⋔◁ sm5)))
-(⊨ (⌜ :smap-min-val) :one (▷ (⋔◁ sm5)))
-(⊨ (⌜ :smap-max-key) #5 (◁ (⋔▷ sm5)))
-(⊨ (⌜ :smap-max-val) :five (▷ (⋔▷ sm5)))
+(define sm5 (sorted-map (cons #3 :three) (cons #1 :one) (cons #5 :five)))
+(test-case (quote :smap-min-key) #1 (car (sorted-map-min sm5)))
+(test-case (quote :smap-min-val) :one (cdr (sorted-map-min sm5)))
+(test-case (quote :smap-max-key) #5 (car (sorted-map-max sm5)))
+(test-case (quote :smap-max-val) :five (cdr (sorted-map-max sm5)))
 
 ; 8. Range query — {1,2,3,4,5} range [2,4]
-(≔ sm6 (⋔ (⟨⟩ #1 :a) (⟨⟩ #2 :b) (⟨⟩ #3 :c) (⟨⟩ #4 :d) (⟨⟩ #5 :e)))
-(≔ rng (⋔⊂ sm6 #2 #4))
-(⊨ (⌜ :smap-range-first-key) #2 (◁ (◁ rng)))
-(⊨ (⌜ :smap-range-last-key) #4 (◁ (◁ (▷ (▷ rng)))))
+(define sm6 (sorted-map (cons #1 :a) (cons #2 :b) (cons #3 :c) (cons #4 :d) (cons #5 :e)))
+(define rng (sorted-map-range sm6 #2 #4))
+(test-case (quote :smap-range-first-key) #2 (car (car rng)))
+(test-case (quote :smap-range-last-key) #4 (car (car (cdr (cdr rng)))))
 
 ; 9. Floor/ceiling — {10, 20, 30}, query 25
-(≔ sm7 (⋔ (⟨⟩ #10 :ten) (⟨⟩ #20 :twenty) (⟨⟩ #30 :thirty)))
-(⊨ (⌜ :smap-floor-25) #20 (◁ (⋔≤ sm7 #25)))
-(⊨ (⌜ :smap-ceiling-25) #30 (◁ (⋔≥ sm7 #25)))
+(define sm7 (sorted-map (cons #10 :ten) (cons #20 :twenty) (cons #30 :thirty)))
+(test-case (quote :smap-floor-25) #20 (car (sorted-map-floor sm7 #25)))
+(test-case (quote :smap-ceiling-25) #30 (car (sorted-map-ceiling sm7 #25)))
 
 ; 10. Merge — m2 wins on conflict
-(≔ sma (⋔ (⟨⟩ :a #1) (⟨⟩ :b #2)))
-(≔ smb (⋔ (⟨⟩ :b #99) (⟨⟩ :c #3)))
-(≔ smm (⋔⊕ sma smb))
-(⊨ (⌜ :smap-merge-size) #3 (⋔# smm))
-(⊨ (⌜ :smap-merge-conflict) #99 (⋔→ smm :b))
-(⊨ (⌜ :smap-merge-a) #1 (⋔→ smm :a))
-(⊨ (⌜ :smap-merge-c) #3 (⋔→ smm :c))
+(define sma (sorted-map (cons :a #1) (cons :b #2)))
+(define smb (sorted-map (cons :b #99) (cons :c #3)))
+(define smm (sorted-map-merge sma smb))
+(test-case (quote :smap-merge-size) #3 (sorted-map-size smm))
+(test-case (quote :smap-merge-conflict) #99 (sorted-map-get smm :b))
+(test-case (quote :smap-merge-a) #1 (sorted-map-get smm :a))
+(test-case (quote :smap-merge-c) #3 (sorted-map-get smm :c))

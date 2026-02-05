@@ -1,56 +1,56 @@
-; Test: Buffer (◈) — Cache-line aligned raw byte buffer
+; Test: Buffer (bytebuf) — Cache-line aligned raw byte buffer
 ; Day 113
 
 ; 1. Empty creation + size
-(⊨ (⌜ :buf-empty) #0 (◈# (◈)))
+(test-case (quote :buf-empty) #0 (bytebuf-size (bytebuf)))
 
 ; 2. Create from byte values
-(≔ b1 (◈ #65 #66 #67))
-(⊨ (⌜ :buf-create-values) #3 (◈# b1))
+(define b1 (bytebuf #65 #66 #67))
+(test-case (quote :buf-create-values) #3 (bytebuf-size b1))
 
 ; 3. Get byte at index
-(⊨ (⌜ :buf-get-byte) #66 (◈← b1 #1))
+(test-case (quote :buf-get-byte) #66 (bytebuf-get b1 #1))
 
 ; 4. Set byte at index (mutation)
-(≔ b2 (◈ #10 #20 #30))
-(◈→ b2 #1 #99)
-(⊨ (⌜ :buf-set-byte) #99 (◈← b2 #1))
+(define b2 (bytebuf #10 #20 #30))
+(bytebuf-set b2 #1 #99)
+(test-case (quote :buf-set-byte) #99 (bytebuf-get b2 #1))
 
 ; 5. Append (growth)
-(≔ b3 (◈))
-(◈⊕ b3 #1)
-(◈⊕ b3 #2)
-(◈⊕ b3 #3)
-(⊨ (⌜ :buf-append) #3 (◈# b3))
+(define b3 (bytebuf))
+(bytebuf-append b3 #1)
+(bytebuf-append b3 #2)
+(bytebuf-append b3 #3)
+(test-case (quote :buf-append) #3 (bytebuf-size b3))
 
 ; 6. Concat two buffers (new, no mutation)
-(≔ b4 (◈ #1 #2))
-(≔ b5 (◈ #3 #4))
-(≔ b6 (◈⊕⊕ b4 b5))
-(⊨ (⌜ :buf-concat-size) #4 (◈# b6))
-(⊨ (⌜ :buf-concat-val) #3 (◈← b6 #2))
+(define b4 (bytebuf #1 #2))
+(define b5 (bytebuf #3 #4))
+(define b6 (bytebuf-concat b4 b5))
+(test-case (quote :buf-concat-size) #4 (bytebuf-size b6))
+(test-case (quote :buf-concat-val) #3 (bytebuf-get b6 #2))
 
 ; 7. Slice extraction
-(≔ b7 (◈ #10 #20 #30 #40 #50))
-(≔ b8 (◈⊂ b7 #1 #4))
-(⊨ (⌜ :buf-slice-size) #3 (◈# b8))
-(⊨ (⌜ :buf-slice-val) #20 (◈← b8 #0))
+(define b7 (bytebuf #10 #20 #30 #40 #50))
+(define b8 (bytebuf-slice b7 #1 #4))
+(test-case (quote :buf-slice-size) #3 (bytebuf-size b8))
+(test-case (quote :buf-slice-val) #20 (bytebuf-get b8 #0))
 
 ; 8. To-list conversion
-(≔ b9 (◈ #1 #2 #3))
-(⊨ (⌜ :buf-to-list) #1 (◁ (◈⊙ b9)))
+(define b9 (bytebuf #1 #2 #3))
+(test-case (quote :buf-to-list) #1 (car (bytebuf-to-list b9)))
 
 ; 9. Type predicate
-(⊨ (⌜ :buf-type-pred-yes) #t (◈? (◈)))
-(⊨ (⌜ :buf-type-pred-no) #f (◈? #42))
+(test-case (quote :buf-type-pred-yes) #t (bytebuf? (bytebuf)))
+(test-case (quote :buf-type-pred-no) #f (bytebuf? #42))
 
 ; 10. Bounds check errors
-(⊨ (⌜ :buf-oob-get) #t (⚠? (◈← (◈) #0)))
-(⊨ (⌜ :buf-oob-range) #t (⚠? (◈ #256)))
+(test-case (quote :buf-oob-get) #t (error? (bytebuf-get (bytebuf) #0)))
+(test-case (quote :buf-oob-range) #t (error? (bytebuf #256)))
 
-; 11. String round-trip (≈◈ / ◈≈)
-(≔ b10 (≈◈ "hello"))
-(⊨ (⌜ :buf-string-roundtrip) "hello" (◈≈ b10))
+; 11. String round-trip (string->bytebuf / bytebuf->string)
+(define b10 (string->bytebuf "hello"))
+(test-case (quote :buf-string-roundtrip) "hello" (bytebuf->string b10))
 
 ; 12. Buffer equality (structural memcmp)
-(⊨ (⌜ :buf-equality) #t (≡ (◈ #1 #2 #3) (◈ #1 #2 #3)))
+(test-case (quote :buf-equality) #t (equal? (bytebuf #1 #2 #3) (bytebuf #1 #2 #3)))

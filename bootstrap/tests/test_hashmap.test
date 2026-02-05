@@ -1,31 +1,31 @@
-; Test: HashMap (⊞) — Swiss Table with SIMD
+; Test: HashMap (hashmap) — Swiss Table with SIMD
 ; Day 109
 
-(⊨ (⌜ :hm-create-empty) #0 (⊞# (⊞)))
+(test-case (quote :hm-create-empty) #0 (hashmap-size (hashmap)))
 
-(≔ m1 (⊞ (⟨⟩ :a #1) (⟨⟩ :b #2) (⟨⟩ :c #3)))
-(⊨ (⌜ :hm-create-pairs) #3 (⊞# m1))
+(define m1 (hashmap (cons :a #1) (cons :b #2) (cons :c #3)))
+(test-case (quote :hm-create-pairs) #3 (hashmap-size m1))
 
-(⊨ (⌜ :hm-get-exists) #2 (⊞→ m1 :b))
+(test-case (quote :hm-get-exists) #2 (hashmap-get m1 :b))
 
-(⊨ (⌜ :hm-get-missing) #t (∅? (⊞→ m1 :z)))
+(test-case (quote :hm-get-missing) #t (null? (hashmap-get m1 :z)))
 
-(≔ m2 (⊞))
-(⊞← m2 :x #99)
-(⊨ (⌜ :hm-put-new) #99 (⊞→ m2 :x))
+(define m2 (hashmap))
+(hashmap-put m2 :x #99)
+(test-case (quote :hm-put-new) #99 (hashmap-get m2 :x))
 
-(≔ m3 (⊞ (⟨⟩ :k #10)))
-(⊨ (⌜ :hm-put-overwrite) #10 (⊞← m3 :k #20))
+(define m3 (hashmap (cons :k #10)))
+(test-case (quote :hm-put-overwrite) #10 (hashmap-put m3 :k #20))
 
-(≔ m4 (⊞ (⟨⟩ :del #42)))
-(⊨ (⌜ :hm-delete-old) #42 (⊞⊖ m4 :del))
+(define m4 (hashmap (cons :del #42)))
+(test-case (quote :hm-delete-old) #42 (hashmap-del m4 :del))
 
-(≔ m5 (⊞ (⟨⟩ :yes #1)))
-(⊨ (⌜ :hm-has-key) #t (∧ (⊞∋ m5 :yes) (¬ (⊞∋ m5 :no))))
+(define m5 (hashmap (cons :yes #1)))
+(test-case (quote :hm-has-key) #t (and (hashmap-has? m5 :yes) (not (hashmap-has? m5 :no))))
 
-(≔ ma (⊞ (⟨⟩ :a #1) (⟨⟩ :b #2)))
-(≔ mb (⊞ (⟨⟩ :b #9) (⟨⟩ :c #3)))
-(≔ mc (⊞⊕ ma mb))
-(⊨ (⌜ :hm-merge) #t (∧ (≡ (⊞# mc) #3) (≡ (⊞→ mc :b) #9)))
+(define ma (hashmap (cons :a #1) (cons :b #2)))
+(define mb (hashmap (cons :b #9) (cons :c #3)))
+(define mc (hashmap-merge ma mb))
+(test-case (quote :hm-merge) #t (and (equal? (hashmap-size mc) #3) (equal? (hashmap-get mc :b) #9)))
 
-(⊨ (⌜ :hm-type-pred) #t (∧ (⊞? (⊞)) (¬ (⊞? #42))))
+(test-case (quote :hm-type-pred) #t (and (hashmap? (hashmap)) (not (hashmap? #42))))

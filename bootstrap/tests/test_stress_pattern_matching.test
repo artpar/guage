@@ -3,140 +3,140 @@
 
 ;;; --- ADT definitions ---
 
-(⊚≔ :Shape
-  (⌜ (:Circle :radius))
-  (⌜ (:Point))
-  (⌜ (:Line :length)))
+(adt-define :Shape
+  (quote (:Circle :radius))
+  (quote (:Point))
+  (quote (:Line :length)))
 
-(⊚≔ :Color
-  (⌜ (:Red))
-  (⌜ (:Green))
-  (⌜ (:Blue))
-  (⌜ (:Yellow))
-  (⌜ (:Black)))
+(adt-define :Color
+  (quote (:Red))
+  (quote (:Green))
+  (quote (:Blue))
+  (quote (:Yellow))
+  (quote (:Black)))
 
 ;;; --- 1. Match against multi-variant ADT, all arms, 1,000 iterations ---
 
-(≔ classify-shape (λ (s)
-  (∇ s (⌜ (
-    ((⊚ :Shape :Circle r)   :circle)
-    ((⊚ :Shape :Point)      :point)
-    ((⊚ :Shape :Line l)     :line))))))
+(define classify-shape (lambda (s)
+  (match s (quote (
+    ((adt-create :Shape :Circle r)   :circle)
+    ((adt-create :Shape :Point)      :point)
+    ((adt-create :Shape :Line l)     :line))))))
 
-(≔ shape-loop (λ (i acc)
-  (? (≡ i #0) acc
-     (⪢
-       (≔ s (? (≡ (% i #3) #0) (⊚ :Shape :Circle #10)
-              (? (≡ (% i #3) #1) (⊚ :Shape :Point)
-                 (⊚ :Shape :Line #7))))
-       (shape-loop (⊖ i #1) (⊕ acc #1))))))
+(define shape-loop (lambda (i acc)
+  (if (equal? i #0) acc
+     (begin
+       (define s (if (equal? (% i #3) #0) (adt-create :Shape :Circle #10)
+              (if (equal? (% i #3) #1) (adt-create :Shape :Point)
+                 (adt-create :Shape :Line #7))))
+       (shape-loop (- i #1) (+ acc #1))))))
 
-(⊨ :pattern-adt-1k #1000 (shape-loop #1000 #0))
+(test-case :pattern-adt-1k #1000 (shape-loop #1000 #0))
 
 ;;; --- 2. Nested ADT destructuring ---
 
-(⊚≔ :Tree (⌜ (:Leaf :val)) (⌜ (:Node :left :right)))
+(adt-define :Tree (quote (:Leaf :val)) (quote (:Node :left :right)))
 
-(≔ tree-sum (λ (t)
-  (∇ t (⌜ (
-    ((⊚ :Tree :Leaf v)    v)
-    ((⊚ :Tree :Node l r)  (⊕ (tree-sum l) (tree-sum r))))))))
+(define tree-sum (lambda (t)
+  (match t (quote (
+    ((adt-create :Tree :Leaf v)    v)
+    ((adt-create :Tree :Node l r)  (+ (tree-sum l) (tree-sum r))))))))
 
 ;; Build a balanced tree of depth 8 (256 leaves)
-(≔ build-tree (λ (depth)
-  (? (≡ depth #0) (⊚ :Tree :Leaf #1)
-     (⊚ :Tree :Node (build-tree (⊖ depth #1)) (build-tree (⊖ depth #1))))))
+(define build-tree (lambda (depth)
+  (if (equal? depth #0) (adt-create :Tree :Leaf #1)
+     (adt-create :Tree :Node (build-tree (- depth #1)) (build-tree (- depth #1))))))
 
-(≔ big-tree (build-tree #8))
-(⊨ :pattern-tree-sum #256 (tree-sum big-tree))
+(define big-tree (build-tree #8))
+(test-case :pattern-tree-sum #256 (tree-sum big-tree))
 
 ;;; --- 3. Guard evaluation stress: 1,000 iterations ---
 
-(≔ classify-num (λ (n)
-  (∇ n (⌜ (
+(define classify-num (lambda (n)
+  (match n (quote (
     ((x | (> x #100)) :big)
     ((x | (> x #50))  :medium)
     ((x | (> x #0))   :small)
     (x                 :zero-or-neg))))))
 
-(≔ guard-loop (λ (i acc)
-  (? (≡ i #0) acc
-     (⪢
-       (≔ cls (classify-num i))
-       (guard-loop (⊖ i #1) (⊕ acc (? (≡ cls :big) #1 #0)))))))
+(define guard-loop (lambda (i acc)
+  (if (equal? i #0) acc
+     (begin
+       (define cls (classify-num i))
+       (guard-loop (- i #1) (+ acc (if (equal? cls :big) #1 #0)))))))
 
 ;; Numbers 101..1000 are :big = 900
-(⊨ :pattern-guard-1k #900 (guard-loop #1000 #0))
+(test-case :pattern-guard-1k #900 (guard-loop #1000 #0))
 
 ;;; --- 4. Or-pattern with multiple alternatives, 1,000 iterations ---
 
-(≔ is-primary (λ (c)
-  (∇ c (⌜ (
-    ((⊚ :Color :Red)    #t)
-    ((⊚ :Color :Green)  #t)
-    ((⊚ :Color :Blue)   #t)
+(define is-primary (lambda (c)
+  (match c (quote (
+    ((adt-create :Color :Red)    #t)
+    ((adt-create :Color :Green)  #t)
+    ((adt-create :Color :Blue)   #t)
     (_                   #f))))))
 
-(≔ color-loop (λ (i acc)
-  (? (≡ i #0) acc
-     (⪢
-       (≔ c (? (≡ (% i #5) #0) (⊚ :Color :Red)
-              (? (≡ (% i #5) #1) (⊚ :Color :Green)
-                 (? (≡ (% i #5) #2) (⊚ :Color :Blue)
-                    (? (≡ (% i #5) #3) (⊚ :Color :Yellow)
-                       (⊚ :Color :Black))))))
-       (color-loop (⊖ i #1) (⊕ acc (? (is-primary c) #1 #0)))))))
+(define color-loop (lambda (i acc)
+  (if (equal? i #0) acc
+     (begin
+       (define c (if (equal? (% i #5) #0) (adt-create :Color :Red)
+              (if (equal? (% i #5) #1) (adt-create :Color :Green)
+                 (if (equal? (% i #5) #2) (adt-create :Color :Blue)
+                    (if (equal? (% i #5) #3) (adt-create :Color :Yellow)
+                       (adt-create :Color :Black))))))
+       (color-loop (- i #1) (+ acc (if (is-primary c) #1 #0)))))))
 
 ;; 3 out of every 5 are primary -> 1000 * 3/5 = 600
-(⊨ :pattern-or-1k #600 (color-loop #1000 #0))
+(test-case :pattern-or-1k #600 (color-loop #1000 #0))
 
 ;;; --- 5. As-pattern capturing at nesting levels, 500 iterations ---
 
-(⊚≔ :Wrapper (⌜ (:Wrap :inner)))
+(adt-define :Wrapper (quote (:Wrap :inner)))
 
-(≔ unwrap-count (λ (w)
-  (∇ w (⌜ (
-    ((⊚ :Wrapper :Wrap (⊚ :Wrapper :Wrap x)) (⊕ #2 x))
-    ((⊚ :Wrapper :Wrap x) (⊕ #1 x))
+(define unwrap-count (lambda (w)
+  (match w (quote (
+    ((adt-create :Wrapper :Wrap (adt-create :Wrapper :Wrap x)) (+ #2 x))
+    ((adt-create :Wrapper :Wrap x) (+ #1 x))
     (x x))))))
 
-(≔ as-loop (λ (i acc)
-  (? (≡ i #0) acc
-     (as-loop (⊖ i #1)
-       (⊕ acc (unwrap-count (⊚ :Wrapper :Wrap (⊚ :Wrapper :Wrap #1))))))))
+(define as-loop (lambda (i acc)
+  (if (equal? i #0) acc
+     (as-loop (- i #1)
+       (+ acc (unwrap-count (adt-create :Wrapper :Wrap (adt-create :Wrapper :Wrap #1))))))))
 
 ;; Each iteration: 2 + 1 = 3; 500 * 3 = 1500
-(⊨ :pattern-as-500 #1500 (as-loop #500 #0))
+(test-case :pattern-as-500 #1500 (as-loop #500 #0))
 
 ;;; --- 6. Pattern match inside recursive function processing list ---
 
-(⊚≔ :Item (⌜ (:Val :n)) (⌜ (:Skip)))
+(adt-define :Item (quote (:Val :n)) (quote (:Skip)))
 
-(≔ sum-items (λ (lst)
-  (? (∅? lst) #0
-     (⊕ (∇ (◁ lst) (⌜ (
-           ((⊚ :Item :Val n) n)
-           ((⊚ :Item :Skip) #0))))
-        (sum-items (▷ lst))))))
+(define sum-items (lambda (lst)
+  (if (null? lst) #0
+     (+ (match (car lst) (quote (
+           ((adt-create :Item :Val n) n)
+           ((adt-create :Item :Skip) #0))))
+        (sum-items (cdr lst))))))
 
 ;; Build list of 1,000 items alternating Val/Skip
-(≔ build-items (λ (i acc)
-  (? (≡ i #0) acc
-     (build-items (⊖ i #1)
-       (⟨⟩ (? (≡ (% i #2) #0) (⊚ :Item :Val i) (⊚ :Item :Skip)) acc)))))
+(define build-items (lambda (i acc)
+  (if (equal? i #0) acc
+     (build-items (- i #1)
+       (cons (if (equal? (% i #2) #0) (adt-create :Item :Val i) (adt-create :Item :Skip)) acc)))))
 
-(≔ item-list (build-items #1000 ∅))
-(≔ item-sum (sum-items item-list))
-(⊨ :pattern-list-sum-positive #t (> item-sum #0))
+(define item-list (build-items #1000 nil))
+(define item-sum (sum-items item-list))
+(test-case :pattern-list-sum-positive #t (> item-sum #0))
 
 ;;; --- 7. Wildcard match on simple ADT ---
 
-(≔ wildcard-loop (λ (i acc)
-  (? (≡ i #0) acc
-     (⪢
-       (≔ m (⊚ :Wrapper :Wrap i))
-       (≔ v (∇ m (⌜ (((⊚ :Wrapper :Wrap x) x) (_ #0)))))
-       (wildcard-loop (⊖ i #1) (⊕ acc v))))))
+(define wildcard-loop (lambda (i acc)
+  (if (equal? i #0) acc
+     (begin
+       (define m (adt-create :Wrapper :Wrap i))
+       (define v (match m (quote (((adt-create :Wrapper :Wrap x) x) (_ #0)))))
+       (wildcard-loop (- i #1) (+ acc v))))))
 
 ;; sum of 1..1000 = 500500
-(⊨ :pattern-wildcard-1k #500500 (wildcard-loop #1000 #0))
+(test-case :pattern-wildcard-1k #500500 (wildcard-loop #1000 #0))

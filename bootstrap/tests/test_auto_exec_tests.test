@@ -1,5 +1,5 @@
 ;;;
-;;; Tests for Auto-Execute Generated Tests (⌂⊨!)
+;;; Tests for Auto-Execute Generated Tests (doc-tests-run)
 ;;;
 
 ;;; ===================================================================
@@ -7,109 +7,109 @@
 ;;; ===================================================================
 
 ; Define simple function
-(≔ double (λ (x) (⊗ x #2)))
+(define double (lambda (x) (* x #2)))
 
 ; Run auto-generated tests
-(≔ results (⌂⊨! :double))
+(define results (doc-tests-run :double))
 
 ; Should return a list (passed failed total)
-(⊨ :auto-exec-returns-list
+(test-case :auto-exec-returns-list
    #t
-   (⟨⟩? results))
+   (pair? results))
 
 ; Should have 3 elements
-(⊨ :auto-exec-has-three-elements
+(test-case :auto-exec-has-three-elements
    #t
-   (⟨⟩? (▷ (▷ results))))
+   (pair? (cdr (cdr results))))
 
 ; Extract counts
-(≔ passed (◁ results))
-(≔ failed (◁ (▷ results)))
-(≔ total (◁ (▷ (▷ results))))
+(define passed (car results))
+(define failed (car (cdr results)))
+(define total (car (cdr (cdr results))))
 
 ; All should be numbers
-(⊨ :auto-exec-passed-is-number
+(test-case :auto-exec-passed-is-number
    #t
-   (ℕ? passed))
+   (number? passed))
 
-(⊨ :auto-exec-failed-is-number
+(test-case :auto-exec-failed-is-number
    #t
-   (ℕ? failed))
+   (number? failed))
 
-(⊨ :auto-exec-total-is-number
+(test-case :auto-exec-total-is-number
    #t
-   (ℕ? total))
+   (number? total))
 
 ; Total should equal passed + failed
-(⊨ :auto-exec-total-correct
+(test-case :auto-exec-total-correct
    #t
-   (≡ total (⊕ passed failed)))
+   (equal? total (+ passed failed)))
 
 ;;; ===================================================================
 ;;; Test 2: Execute tests for factorial
 ;;; ===================================================================
 
 ; Define factorial
-(≔ ! (λ (n) (? (≡ n #0) #1 (⊗ n (! (⊖ n #1))))))
+(define ! (lambda (n) (if (equal? n #0) #1 (* n (! (- n #1))))))
 
 ; Run tests
-(≔ fac-results (⌂⊨! :!))
+(define fac-results (doc-tests-run :!))
 
 ; Extract counts
-(≔ fac-passed (◁ fac-results))
-(≔ fac-failed (◁ (▷ fac-results)))
-(≔ fac-total (◁ (▷ (▷ fac-results))))
+(define fac-passed (car fac-results))
+(define fac-failed (car (cdr fac-results)))
+(define fac-total (car (cdr (cdr fac-results))))
 
 ; Should have multiple tests (factorial has conditionals and recursion)
-(⊨ :auto-exec-factorial-has-tests
+(test-case :auto-exec-factorial-has-tests
    #t
    (> fac-total #0))
 
 ; Total should be correct
-(⊨ :auto-exec-factorial-total-correct
+(test-case :auto-exec-factorial-total-correct
    #t
-   (≡ fac-total (⊕ fac-passed fac-failed)))
+   (equal? fac-total (+ fac-passed fac-failed)))
 
 ; Display results for manual verification
-(≋ "")
-(≋ "Factorial test results:")
-(≋ fac-results)
+(print "")
+(print "Factorial test results:")
+(print fac-results)
 
 ;;; ===================================================================
 ;;; Test 3: Error handling - nonexistent function
 ;;; ===================================================================
 
 ; Should return error for nonexistent function
-(≔ bad-result (⌂⊨! :nonexistent))
+(define bad-result (doc-tests-run :nonexistent))
 
 ; Should be an error
-(⊨ :auto-exec-error-on-missing
+(test-case :auto-exec-error-on-missing
    #t
-   (⚠? bad-result))
+   (error? bad-result))
 
 ;;; ===================================================================
 ;;; Test 4: Function with no auto-generated tests
 ;;; ===================================================================
 
 ; Define function that might not generate tests
-(≔ identity (λ (x) x))
+(define identity (lambda (x) x))
 
 ; Run tests
-(≔ id-results (⌂⊨! :identity))
+(define id-results (doc-tests-run :identity))
 
 ; Should still return valid structure even if no tests
-(⊨ :auto-exec-handles-empty
+(test-case :auto-exec-handles-empty
    #t
-   (⟨⟩? id-results))
+   (pair? id-results))
 
 ;;; ===================================================================
 ;;; Test 5: Verify all tests pass
 ;;; ===================================================================
 
 ; For a correct function, failed count should be 0
-(⊨ :auto-exec-all-pass
+(test-case :auto-exec-all-pass
    #t
-   (≡ fac-failed #0))
+   (equal? fac-failed #0))
 
-(≋ "")
-(≋ "Auto-execute tests complete!")
+(print "")
+(print "Auto-execute tests complete!")

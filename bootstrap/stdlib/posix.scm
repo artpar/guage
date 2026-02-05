@@ -3,66 +3,66 @@
 
 ; --- File Info Predicates ---
 ; Check if value is a file-info struct
-(≔ ≋⊙? (λ (x) (⊙? x :file-info)))
+(define ≋⊙? (lambda (x) (struct? x :file-info)))
 
 ; File type predicates (check mode bits from stat)
 ; S_IFMT = 0xF000, S_IFDIR = 0x4000, S_IFREG = 0x8000
 ; S_IFLNK = 0xA000, S_IFIFO = 0x1000, S_IFSOCK = 0xC000
 ; S_IFBLK = 0x6000, S_IFCHR = 0x2000
 
-(≔ ≋⊙⊙? (λ (fi) (≡ (∧ (⊙→ fi :mode) #61440) #16384)))  ; directory?
-(≔ ≋⊙≋? (λ (fi) (≡ (∧ (⊙→ fi :mode) #61440) #32768)))  ; regular?
-(≔ ≋⊙→? (λ (fi) (≡ (∧ (⊙→ fi :mode) #61440) #40960)))  ; symlink?
-(≔ ≋⊙⊞? (λ (fi) (≡ (∧ (⊙→ fi :mode) #61440) #4096)))   ; fifo?
-(≔ ≋⊙⊟? (λ (fi) (≡ (∧ (⊙→ fi :mode) #61440) #49152)))  ; socket?
-(≔ ≋⊙◈? (λ (fi) (∨ (≡ (∧ (⊙→ fi :mode) #61440) #24576)   ; block device?
-                     (≡ (∧ (⊙→ fi :mode) #61440) #8192)))) ; char device?
+(define ≋⊙⊙? (lambda (fi) (equal? (and (struct-get fi :mode) #61440) #16384)))  ; directory?
+(define ≋⊙≋? (lambda (fi) (equal? (and (struct-get fi :mode) #61440) #32768)))  ; regular?
+(define ≋⊙→? (lambda (fi) (equal? (and (struct-get fi :mode) #61440) #40960)))  ; symlink?
+(define ≋⊙⊞? (lambda (fi) (equal? (and (struct-get fi :mode) #61440) #4096)))   ; fifo?
+(define ≋⊙⊟? (lambda (fi) (equal? (and (struct-get fi :mode) #61440) #49152)))  ; socket?
+(define ≋⊙◈? (lambda (fi) (or (equal? (and (struct-get fi :mode) #61440) #24576)   ; block device?
+                     (equal? (and (struct-get fi :mode) #61440) #8192)))) ; char device?
 
 ; --- File Info Accessors ---
-(≔ ≋⊙:device  (λ (fi) (⊙→ fi :device)))
-(≔ ≋⊙:inode   (λ (fi) (⊙→ fi :inode)))
-(≔ ≋⊙:mode    (λ (fi) (⊙→ fi :mode)))
-(≔ ≋⊙:nlinks  (λ (fi) (⊙→ fi :nlinks)))
-(≔ ≋⊙:uid     (λ (fi) (⊙→ fi :uid)))
-(≔ ≋⊙:gid     (λ (fi) (⊙→ fi :gid)))
-(≔ ≋⊙:rdev    (λ (fi) (⊙→ fi :rdev)))
-(≔ ≋⊙:size    (λ (fi) (⊙→ fi :size)))
-(≔ ≋⊙:blksize (λ (fi) (⊙→ fi :blksize)))
-(≔ ≋⊙:blocks  (λ (fi) (⊙→ fi :blocks)))
-(≔ ≋⊙:atime   (λ (fi) (⊙→ fi :atime)))
-(≔ ≋⊙:mtime   (λ (fi) (⊙→ fi :mtime)))
-(≔ ≋⊙:ctime   (λ (fi) (⊙→ fi :ctime)))
+(define ≋⊙:device  (lambda (fi) (struct-get fi :device)))
+(define ≋⊙:inode   (lambda (fi) (struct-get fi :inode)))
+(define ≋⊙:mode    (lambda (fi) (struct-get fi :mode)))
+(define ≋⊙:nlinks  (lambda (fi) (struct-get fi :nlinks)))
+(define ≋⊙:uid     (lambda (fi) (struct-get fi :uid)))
+(define ≋⊙:gid     (lambda (fi) (struct-get fi :gid)))
+(define ≋⊙:rdev    (lambda (fi) (struct-get fi :rdev)))
+(define ≋⊙:size    (lambda (fi) (struct-get fi :size)))
+(define ≋⊙:blksize (lambda (fi) (struct-get fi :blksize)))
+(define ≋⊙:blocks  (lambda (fi) (struct-get fi :blocks)))
+(define ≋⊙:atime   (lambda (fi) (struct-get fi :atime)))
+(define ≋⊙:mtime   (lambda (fi) (struct-get fi :mtime)))
+(define ≋⊙:ctime   (lambda (fi) (struct-get fi :ctime)))
 
 ; --- User Info Accessors ---
-(≔ ⊙⌂⊕⊙:name  (λ (ui) (⊙→ ui :name)))
-(≔ ⊙⌂⊕⊙:uid   (λ (ui) (⊙→ ui :uid)))
-(≔ ⊙⌂⊕⊙:gid   (λ (ui) (⊙→ ui :gid)))
-(≔ ⊙⌂⊕⊙:home  (λ (ui) (⊙→ ui :home)))
-(≔ ⊙⌂⊕⊙:shell (λ (ui) (⊙→ ui :shell)))
+(define ⊙⌂⊕⊙:name  (lambda (ui) (struct-get ui :name)))
+(define ⊙⌂⊕⊙:uid   (lambda (ui) (struct-get ui :uid)))
+(define ⊙⌂⊕⊙:gid   (lambda (ui) (struct-get ui :gid)))
+(define ⊙⌂⊕⊙:home  (lambda (ui) (struct-get ui :home)))
+(define ⊙⌂⊕⊙:shell (lambda (ui) (struct-get ui :shell)))
 
 ; --- Group Info Accessors ---
-(≔ ⊙⌂⊕⊕⊙:name    (λ (gi) (⊙→ gi :name)))
-(≔ ⊙⌂⊕⊕⊙:gid     (λ (gi) (⊙→ gi :gid)))
-(≔ ⊙⌂⊕⊕⊙:members (λ (gi) (⊙→ gi :members)))
+(define ⊙⌂⊕⊕⊙:name    (lambda (gi) (struct-get gi :name)))
+(define ⊙⌂⊕⊕⊙:gid     (lambda (gi) (struct-get gi :gid)))
+(define ⊙⌂⊕⊕⊙:members (lambda (gi) (struct-get gi :members)))
 
 ; --- Time Accessors ---
-(≔ ⊙⏱:seconds     (λ (t) (⊙→ t :seconds)))
-(≔ ⊙⏱:nanoseconds (λ (t) (⊙→ t :nanoseconds)))
+(define ⊙⏱:seconds     (lambda (t) (struct-get t :seconds)))
+(define ⊙⏱:nanoseconds (lambda (t) (struct-get t :nanoseconds)))
 
 ; --- File Space Accessors ---
-(≔ ≋⊙#:total     (λ (fs) (⊙→ fs :total)))
-(≔ ≋⊙#:free      (λ (fs) (⊙→ fs :free)))
-(≔ ≋⊙#:available (λ (fs) (⊙→ fs :available)))
+(define ≋⊙#:total     (lambda (fs) (struct-get fs :total)))
+(define ≋⊙#:free      (lambda (fs) (struct-get fs :free)))
+(define ≋⊙#:available (lambda (fs) (struct-get fs :available)))
 
 ; --- Temp File Prefix (parameter/global) ---
-(≔ ≋⊙⏱≈ "/tmp/guage-")
+(define ≋⊙⏱≈ "/tmp/guage-")
 
 ; --- call-with-temporary-filename ---
-(≔ ≋⊙⏱λ (λ (prefix fn)
-  (≔ result (≋⊙⏱ prefix))
-  (≔ port (◁ result))
-  (≔ path (▷ result))
-  (≔ val (fn path port))
-  (⊞× port)
-  (≋⊖ path)
+(define ≋⊙⏱λ (lambda (prefix fn)
+  (define result (create-temp-file prefix))
+  (define port (car result))
+  (define path (cdr result))
+  (define val (fn path port))
+  (port-close port)
+  (delete-file path)
   val))

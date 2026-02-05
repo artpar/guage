@@ -1,47 +1,47 @@
 ; Test: String Interning — HFT-grade intern table with symbol IDs
 ; Day 112
 
-; 1. Symbol identity (same symbol ≡ same symbol)
-(⊨ (⌜ :intern-symbol-identity) #t (≡ :foo :foo))
+; 1. Symbol identity (same symbol equal? same symbol)
+(test-case (quote :intern-symbol-identity) #t (equal? :foo :foo))
 
-; 2. Symbol inequality (different symbols ≢)
-(⊨ (⌜ :intern-symbol-inequality) #t (≢ :foo :bar))
+; 2. Symbol inequality (different symbols not-equal?)
+(test-case (quote :intern-symbol-inequality) #t (not-equal? :foo :bar))
 
 ; 3. Define still works
-(≔ intern-test-val #42)
-(⊨ (⌜ :intern-define-works) #42 intern-test-val)
+(define intern-test-val #42)
+(test-case (quote :intern-define-works) #42 intern-test-val)
 
 ; 4. Lambda still works
-(≔ intern-add (λ (a b) (⊕ a b)))
-(⊨ (⌜ :intern-lambda-works) #7 (intern-add #3 #4))
+(define intern-add (lambda (a b) (+ a b)))
+(test-case (quote :intern-lambda-works) #7 (intern-add #3 #4))
 
 ; 5. Conditional still works
-(⊨ (⌜ :intern-conditional-works) #1 (? #t #1 #2))
+(test-case (quote :intern-conditional-works) #1 (if #t #1 #2))
 
 ; 6. Quote still works
-(⊨ (⌜ :intern-quote-works) :hello (⌜ :hello))
+(test-case (quote :intern-quote-works) :hello (quote :hello))
 
 ; 7. HashMap with symbol keys
-(≔ intern-map (⊞ (⟨⟩ :x #10) (⟨⟩ :y #20)))
-(⊨ (⌜ :intern-hashmap-symbol-keys) #10 (⊞→ intern-map :x))
+(define intern-map (hashmap (cons :x #10) (cons :y #20)))
+(test-case (quote :intern-hashmap-symbol-keys) #10 (hashmap-get intern-map :x))
 
 ; 8. Strings NOT interned (independent of symbols)
-(⊨ (⌜ :intern-string-independent) #t (≡ "hello" "hello"))
+(test-case (quote :intern-string-independent) #t (equal? "hello" "hello"))
 
 ; 9. Recursion still works
-(≔ intern-fact (λ (n) (? (≡ n #0) #1 (⊗ n (intern-fact (⊖ n #1))))))
-(⊨ (⌜ :intern-recursion-works) #120 (intern-fact #5))
+(define intern-fact (lambda (n) (if (equal? n #0) #1 (* n (intern-fact (- n #1))))))
+(test-case (quote :intern-recursion-works) #120 (intern-fact #5))
 
 ; 10. Sequence still works
-(⊨ (⌜ :intern-sequence-works) #3 (⪢ #1 #2 #3))
+(test-case (quote :intern-sequence-works) #3 (begin #1 #2 #3))
 
 ; 11. Effects/handlers still work
-(⟪ :InternEff :get)
-(⊨ (⌜ :intern-effects-work) #42
-  (⟪↺⟫ (↯ :InternEff :get)
+(effect-def :InternEff :get)
+(test-case (quote :intern-effects-work) #42
+  (handle-resume (perform :InternEff :get)
     (:InternEff
-      (:get (λ (k) (k #42))))))
+      (:get (lambda (k) (k #42))))))
 
 ; 12. Delimited continuation still works
-(⊨ (⌜ :intern-delcont-works) #12
-  (⟪⊸⟫ (⊕ (⊸ (λ (k) (k #10))) #2)))
+(test-case (quote :intern-delcont-works) #12
+  (handle-linear (+ (consume (lambda (k) (k #10))) #2)))

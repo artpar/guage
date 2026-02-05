@@ -2,24 +2,24 @@
 ;;; Test passing quotes to different targets
 ;;;
 
-;;; Test 1: Quote to primitive ◁ (works)
-(≋ :to-car-primitive)
-(≋ (◁ (⌜ (a b c))))
+;;; Test 1: Quote to primitive car (works)
+(print :to-car-primitive)
+(print (car (quote (a b c))))
 
-;;; Test 2: Quote to primitive ⊙ (type-of)
-(≋ :to-type-of)
-(≋ (⊙ (⌜ (d e f))))
+;;; Test 2: Quote to primitive struct-create (type-of)
+(print :to-type-of)
+(print (struct-create (quote (d e f))))
 
-;;; Test 3: Quote to primitive ≟ (deep-equal)
-(≋ :to-deep-equal)
-(≋ (≟ (⌜ (g h)) (⌜ (g h))))
+;;; Test 3: Quote to primitive deep-equal? (deep-equal)
+(print :to-deep-equal)
+(print (deep-equal? (quote (g h)) (quote (g h))))
 
 ;;; Test 4: Define closure and pass quote
-(≋ :to-closure)
-(≔ f (λ (x) x))
-(≋ (f (⌜ (i j k))))
+(print :to-closure)
+(define f (lambda (x) x))
+(print (f (quote (i j k))))
 
 ;;; Test 5: Nested closure
-(≋ :to-nested-closure)
-(≔ g (λ (y) (λ (z) z)))
-(≋ ((g #1) (⌜ (l m n))))
+(print :to-nested-closure)
+(define g (lambda (y) (lambda (z) z)))
+(print ((g #1) (quote (l m n))))

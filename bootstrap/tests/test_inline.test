@@ -2,22 +2,22 @@
 ;;; Test inline vs variable quoted values
 ;;;
 
-(≔ id (λ (x) x))
+(define id (lambda (x) x))
 
 ;;; Test 1: Inline quoted value
-(≋ :inline-quoted)
-(≋ (id (⌜ (a b c))))
+(print :inline-quoted)
+(print (id (quote (a b c))))
 
 ;;; Test 2: Variable quoted value
-(≔ my-quoted (⌜ (d e f)))
-(≋ :variable-quoted)
-(≋ (id my-quoted))
+(define my-quoted (quote (d e f)))
+(print :variable-quoted)
+(print (id my-quoted))
 
 ;;; Test 3: Inline non-quoted list
-(≋ :inline-list)
-(≋ (id (⟨⟩ #1 #2)))
+(print :inline-list)
+(print (id (cons #1 #2)))
 
 ;;; Test 4: Variable non-quoted list
-(≔ my-list (⟨⟩ #3 #4))
-(≋ :variable-list)
-(≋ (id my-list))
+(define my-list (cons #3 #4))
+(print :variable-list)
+(print (id my-list))

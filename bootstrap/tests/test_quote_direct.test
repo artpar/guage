@@ -3,23 +3,23 @@
 ;;;
 
 ;;; Test 1: Quote returns correct value
-(≋ :quote-result)
-(≋ (⌜ (a b c)))
+(print :quote-result)
+(print (quote (a b c)))
 
 ;;; Test 2: Assign quote result to variable
-(≔ v (⌜ (d e f)))
-(≋ :variable-value)
-(≋ v)
+(define v (quote (d e f)))
+(print :variable-value)
+(print v)
 
 ;;; Test 3: Pass quote result to primitive
-(≋ :quote-to-primitive)
-(≋ (◁ (⌜ (g h i))))
+(print :quote-to-primitive)
+(print (car (quote (g h i))))
 
 ;;; Test 4: Build list containing quote result
-(≋ :list-with-quote)
-(≋ (⟨⟩ (⌜ (j k l)) #42))
+(print :list-with-quote)
+(print (cons (quote (j k l)) #42))
 
 ;;; Test 5: Pass that list to closure
-(≔ id (λ (x) x))
-(≋ :list-through-closure)
-(≋ (id (⟨⟩ (⌜ (m n o)) #99)))
+(define id (lambda (x) x))
+(print :list-through-closure)
+(print (id (cons (quote (m n o)) #99)))

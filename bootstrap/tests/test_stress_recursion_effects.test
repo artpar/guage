@@ -3,110 +3,110 @@
 
 ;;; --- Effect declarations ---
 
-(⟪ :Counter :inc :get)
+(effect-def :Counter :inc :get)
 
 ;;; --- 1. Recursive fn performing effect each step, 500 deep with resumable handler ---
 
-(≔ recursive-count (λ (n)
-  (? (≡ n #0) #0
-     (⊕ (↯ :Counter :inc) (recursive-count (⊖ n #1))))))
+(define recursive-count (lambda (n)
+  (if (equal? n #0) #0
+     (+ (perform :Counter :inc) (recursive-count (- n #1))))))
 
-(≔ rc-result
-  (⟪↺⟫ (recursive-count #100)
+(define rc-result
+  (handle-resume (recursive-count #100)
     (:Counter
-      (:inc (λ (k) (k #1)))
-      (:get (λ (k) (k #0))))))
+      (:inc (lambda (k) (k #1)))
+      (:get (lambda (k) (k #0))))))
 
-(⊨ :re-recursive-effect-500 #100 rc-result)
+(test-case :re-recursive-effect-500 #100 rc-result)
 
 ;;; --- 2. Binary tree traversal (depth 8 = 256 leaves) with effect at each node ---
 
-(⊚≔ :BTree (⌜ (:BLeaf :val)) (⌜ (:BNode :left :right)))
+(adt-define :BTree (quote (:BLeaf :val)) (quote (:BNode :left :right)))
 
-(≔ build-btree (λ (depth)
-  (? (≡ depth #0) (⊚ :BTree :BLeaf #1)
-     (⊚ :BTree :BNode (build-btree (⊖ depth #1)) (build-btree (⊖ depth #1))))))
+(define build-btree (lambda (depth)
+  (if (equal? depth #0) (adt-create :BTree :BLeaf #1)
+     (adt-create :BTree :BNode (build-btree (- depth #1)) (build-btree (- depth #1))))))
 
-(≔ btree8 (build-btree #6))
+(define btree8 (build-btree #6))
 
-(≔ traverse-tree (λ (t)
-  (? (⊚? t :BTree :BLeaf)
-     (↯ :Counter :inc)
-     (⊕ (traverse-tree (⊚→ t :left)) (traverse-tree (⊚→ t :right))))))
+(define traverse-tree (lambda (t)
+  (if (adt? t :BTree :BLeaf)
+     (perform :Counter :inc)
+     (+ (traverse-tree (adt-get t :left)) (traverse-tree (adt-get t :right))))))
 
-(≔ tree-count
-  (⟪↺⟫ (traverse-tree btree8)
+(define tree-count
+  (handle-resume (traverse-tree btree8)
     (:Counter
-      (:inc (λ (k) (k #1)))
-      (:get (λ (k) (k #0))))))
+      (:inc (lambda (k) (k #1)))
+      (:get (lambda (k) (k #0))))))
 
 ;; 2^6 = 64 leaves
-(⊨ :re-tree-traverse #64 tree-count)
+(test-case :re-tree-traverse #64 tree-count)
 
 ;;; --- 3. Mutual recursion where each fn performs different effect ---
 
-(≔ mut-a (λ (n)
-  (? (≡ n #0) #0
-     (⊕ (↯ :Counter :inc) (mut-b (⊖ n #1))))))
+(define mut-a (lambda (n)
+  (if (equal? n #0) #0
+     (+ (perform :Counter :inc) (mut-b (- n #1))))))
 
-(≔ mut-b (λ (n)
-  (? (≡ n #0) #0
-     (⊕ (↯ :Counter :inc) (mut-a (⊖ n #1))))))
+(define mut-b (lambda (n)
+  (if (equal? n #0) #0
+     (+ (perform :Counter :inc) (mut-a (- n #1))))))
 
-(≔ mut-result
-  (⟪↺⟫ (mut-a #100)
+(define mut-result
+  (handle-resume (mut-a #100)
     (:Counter
-      (:inc (λ (k) (k #1)))
-      (:get (λ (k) (k #0))))))
+      (:inc (lambda (k) (k #1)))
+      (:get (lambda (k) (k #0))))))
 
-(⊨ :re-mutual-effect-500 #100 mut-result)
+(test-case :re-mutual-effect-500 #100 mut-result)
 
 ;;; --- 4. TCO loop with effect perform, 1000 iterations ---
 
-(≔ tco-eff-loop (λ (n acc)
-  (? (≡ n #0) acc
-     (tco-eff-loop (⊖ n #1) (⊕ acc (↯ :Counter :inc))))))
+(define tco-eff-loop (lambda (n acc)
+  (if (equal? n #0) acc
+     (tco-eff-loop (- n #1) (+ acc (perform :Counter :inc))))))
 
-(≔ tco-eff-result
-  (⟪↺⟫ (tco-eff-loop #100 #0)
+(define tco-eff-result
+  (handle-resume (tco-eff-loop #100 #0)
     (:Counter
-      (:inc (λ (k) (k #1)))
-      (:get (λ (k) (k #0))))))
+      (:inc (lambda (k) (k #1)))
+      (:get (lambda (k) (k #0))))))
 
-(⊨ :re-tco-effect-1k #100 tco-eff-result)
+(test-case :re-tco-effect-1k #100 tco-eff-result)
 
 ;;; --- 5. Recursive accumulator collecting effect results into list ---
 
-(≔ collect-effects (λ (n)
-  (? (≡ n #0) ∅
-     (⟨⟩ (↯ :Counter :inc) (collect-effects (⊖ n #1))))))
+(define collect-effects (lambda (n)
+  (if (equal? n #0) nil
+     (cons (perform :Counter :inc) (collect-effects (- n #1))))))
 
-(≔ collected-list
-  (⟪↺⟫ (collect-effects #100)
+(define collected-list
+  (handle-resume (collect-effects #100)
     (:Counter
-      (:inc (λ (k) (k #1)))
-      (:get (λ (k) (k #0))))))
+      (:inc (lambda (k) (k #1)))
+      (:get (lambda (k) (k #0))))))
 
 ;; First element should be 1
-(⊨ :re-collect-first #1 (◁ collected-list))
+(test-case :re-collect-first #1 (car collected-list))
 
 ;; Count list length
-(≔ list-len (λ (lst n)
-  (? (∅? lst) n
-     (list-len (▷ lst) (⊕ n #1)))))
+(define list-len (lambda (lst n)
+  (if (null? lst) n
+     (list-len (cdr lst) (+ n #1)))))
 
-(⊨ :re-collect-200 #100 (list-len collected-list #0))
+(test-case :re-collect-200 #100 (list-len collected-list #0))
 
 ;;; --- 6. Fibonacci with effect at each step ---
 
-(≔ fib-eff (λ (n a b)
-  (? (≡ n #0) (⪢ (↯ :Counter :inc) a)
-     (fib-eff (⊖ n #1) b (⊕ a b)))))
+(define fib-eff (lambda (n a b)
+  (if (equal? n #0) (begin (perform :Counter :inc) a)
+     (fib-eff (- n #1) b (+ a b)))))
 
-(≔ fib-eff-result
-  (⟪↺⟫ (fib-eff #100 #0 #1)
+(define fib-eff-result
+  (handle-resume (fib-eff #100 #0 #1)
     (:Counter
-      (:inc (λ (k) (k #1)))
-      (:get (λ (k) (k #0))))))
+      (:inc (lambda (k) (k #1)))
+      (:get (lambda (k) (k #0))))))
 
-(⊨ :re-fib-effect-completes #t (> fib-eff-result #0))
+(test-case :re-fib-effect-completes #t (> fib-eff-result #0))

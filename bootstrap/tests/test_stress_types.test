@@ -2,94 +2,94 @@
 ;;; Tier 1 — Type annotations, validation, inference at scale
 
 ;;; --- 1. Validate bindings of different types in loop ---
-;;; ∈✓ validates a named binding against its declared type
+;;; type-validate validates a named binding against its declared type
 
-(≔ validate-loop (λ (i acc)
-  (? (≡ i #0) acc
-     (⪢
-       (≔ tmp-val i)
-       (∈ tmp-val (ℤ))
-       (validate-loop (⊖ i #1)
-         (⊕ acc (? (∈✓ tmp-val) #1 #0)))))))
+(define validate-loop (lambda (i acc)
+  (if (equal? i #0) acc
+     (begin
+       (define tmp-val i)
+       (type-decl tmp-val (Int))
+       (validate-loop (- i #1)
+         (+ acc (if (type-validate tmp-val) #1 #0)))))))
 
-(⊨ :type-validate-500 #500 (validate-loop #500 #0))
+(test-case :type-validate-500 #500 (validate-loop #500 #0))
 
 ;;; --- 2. Type inference on expressions ---
-;;; ∈⍜ returns a type object; compare structurally
+;;; type-infer returns a type object; compare structurally
 
-(≔ infer-loop (λ (i acc)
-  (? (≡ i #0) acc
-     (infer-loop (⊖ i #1)
-       (⊕ acc (? (≡ (∈⍜ (⊕ #1 #2)) (∈⍜ #42)) #1 #0))))))
+(define infer-loop (lambda (i acc)
+  (if (equal? i #0) acc
+     (infer-loop (- i #1)
+       (+ acc (if (equal? (type-infer (+ #1 #2)) (type-infer #42)) #1 #0))))))
 
-(⊨ :type-infer-200 #200 (infer-loop #200 #0))
+(test-case :type-infer-200 #200 (infer-loop #200 #0))
 
 ;;; --- 3. Function type annotations, validate all ---
 
-(≔ typed-add (λ (x y) (⊕ x y)))
-(∈ typed-add (→ ℤ (→ ℤ ℤ)))
+(define typed-add (lambda (x y) (+ x y)))
+(type-decl typed-add (-> Int (-> Int Int)))
 
-(≔ fn-type-loop (λ (i acc)
-  (? (≡ i #0) acc
-     (⪢
-       (≔ fn-result (typed-add i #1))
-       (∈ fn-result (ℤ))
-       (fn-type-loop (⊖ i #1)
-         (⊕ acc (? (∈✓ fn-result) #1 #0)))))))
+(define fn-type-loop (lambda (i acc)
+  (if (equal? i #0) acc
+     (begin
+       (define fn-result (typed-add i #1))
+       (type-decl fn-result (Int))
+       (fn-type-loop (- i #1)
+         (+ acc (if (type-validate fn-result) #1 #0)))))))
 
-(⊨ :type-fn-100 #100 (fn-type-loop #100 #0))
+(test-case :type-fn-100 #100 (fn-type-loop #100 #0))
 
 ;;; --- 4. Union type validation on mixed values ---
-;;; Check that ∈⍜ consistently returns types for different value kinds
+;;; Check that type-infer consistently returns types for different value kinds
 
-(≔ mixed-validate (λ (i acc)
-  (? (≡ i #0) acc
-     (⪢
-       (≔ val (? (≡ (% i #3) #0) i
-                 (? (≡ (% i #3) #1) "str"
+(define mixed-validate (lambda (i acc)
+  (if (equal? i #0) acc
+     (begin
+       (define val (if (equal? (% i #3) #0) i
+                 (if (equal? (% i #3) #1) "str"
                     :sym)))
        ;; Just verify inference works without error
-       (≔ inferred (∈⍜ val))
-       (mixed-validate (⊖ i #1)
-         (⊕ acc (? (¬ (⚠? inferred)) #1 #0)))))))
+       (define inferred (type-infer val))
+       (mixed-validate (- i #1)
+         (+ acc (if (not (error? inferred)) #1 #0)))))))
 
-(⊨ :type-union-1k #1000 (mixed-validate #1000 #0))
+(test-case :type-union-1k #1000 (mixed-validate #1000 #0))
 
 ;;; --- 5. Type mismatch detection ---
 
-(≔ mismatch-loop (λ (i acc)
-  (? (≡ i #0) acc
-     (⪢
-       (≔ bad-int "string")
-       (∈ bad-int (ℤ))
-       (mismatch-loop (⊖ i #1)
-         (⊕ acc (? (⚠? (∈✓ bad-int)) #1 #0)))))))
+(define mismatch-loop (lambda (i acc)
+  (if (equal? i #0) acc
+     (begin
+       (define bad-int "string")
+       (type-decl bad-int (Int))
+       (mismatch-loop (- i #1)
+         (+ acc (if (error? (type-validate bad-int)) #1 #0)))))))
 
-(⊨ :type-mismatch-200 #200 (mismatch-loop #200 #0))
+(test-case :type-mismatch-200 #200 (mismatch-loop #200 #0))
 
 ;;; --- 6. Type checking in recursive function ---
 
-(≔ type-recurse (λ (n acc)
-  (? (≡ n #0) acc
-     (⪢
-       (≔ typed-n n)
-       (∈ typed-n (ℤ))
-       (⊢ (∈✓ typed-n) :not-integer)
-       (type-recurse (⊖ n #1) (⊕ acc #1))))))
+(define type-recurse (lambda (n acc)
+  (if (equal? n #0) acc
+     (begin
+       (define typed-n n)
+       (type-decl typed-n (Int))
+       (assert (type-validate typed-n) :not-integer)
+       (type-recurse (- n #1) (+ acc #1))))))
 
-(⊨ :type-recursive-10k #10000 (type-recurse #10000 #0))
+(test-case :type-recursive-10k #10000 (type-recurse #10000 #0))
 
 ;;; --- 7. Nested type validation: pairs of typed values ---
 
-(≔ pair-type-loop (λ (i acc)
-  (? (≡ i #0) acc
-     (⪢
-       (≔ p (⟨⟩ i "hello"))
-       (≔ fst-val (◁ p))
-       (∈ fst-val (ℤ))
-       (≔ snd-val (▷ p))
-       (∈ snd-val (𝕊))
-       (pair-type-loop (⊖ i #1)
-         (⊕ acc (? (∧ (∈✓ fst-val) (∈✓ snd-val)) #1 #0)))))))
+(define pair-type-loop (lambda (i acc)
+  (if (equal? i #0) acc
+     (begin
+       (define p (cons i "hello"))
+       (define fst-val (car p))
+       (type-decl fst-val (Int))
+       (define snd-val (cdr p))
+       (type-decl snd-val (String))
+       (pair-type-loop (- i #1)
+         (+ acc (if (and (type-validate fst-val) (type-validate snd-val)) #1 #0)))))))
 
-(⊨ :type-nested-100 #100 (pair-type-loop #100 #0))
+(test-case :type-nested-100 #100 (pair-type-loop #100 #0))

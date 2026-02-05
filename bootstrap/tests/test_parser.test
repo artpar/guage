@@ -3,102 +3,102 @@
 ; ═══════════════════════════════════════════════════════════════
 
 ; Load dependencies
-(⋘ "bootstrap/stdlib/macros.scm")
-(⋘ "bootstrap/stdlib/parser.scm")
+(load "bootstrap/stdlib/macros.scm")
+(load "bootstrap/stdlib/parser.scm")
 
 ; ───────────────────────────────────────────────────────────────
 ; Test Tokenization
 ; ───────────────────────────────────────────────────────────────
 
 ; Test 1: Tokenize simple number
-(⊨ (⌜ :tokenize-number)
+(test-case (quote :tokenize-number)
     #t
-    (∧… (¬ (∅? (≈⊙tokenize "42")))
-        (≡ (≈⊙token-type (◁ (≈⊙tokenize "42"))) (⌜ :number))))
+    (and-all (not (null? (≈⊙tokenize "42")))
+        (equal? (≈⊙token-type (car (≈⊙tokenize "42"))) (quote :number))))
 
 ; Test 2: Tokenize simple symbol
-(⊨ (⌜ :tokenize-symbol)
+(test-case (quote :tokenize-symbol)
     #t
-    (∧… (¬ (∅? (≈⊙tokenize "foo")))
-        (≡ (≈⊙token-type (◁ (≈⊙tokenize "foo"))) (⌜ :symbol))))
+    (and-all (not (null? (≈⊙tokenize "foo")))
+        (equal? (≈⊙token-type (car (≈⊙tokenize "foo"))) (quote :symbol))))
 
 ; Test 3: Tokenize list
-(⊨ (⌜ :tokenize-list)
+(test-case (quote :tokenize-list)
     #t
-    (∧… (¬ (∅? (≈⊙tokenize "(foo)")))
-        (≡ (≈⊙token-type (◁ (≈⊙tokenize "(foo)"))) (⌜ :lparen))))
+    (and-all (not (null? (≈⊙tokenize "(foo)")))
+        (equal? (≈⊙token-type (car (≈⊙tokenize "(foo)"))) (quote :lparen))))
 
 ; Test 4: Skip whitespace
-(⊨ (⌜ :skip-whitespace)
+(test-case (quote :skip-whitespace)
     #t
-    (∧… (¬ (∅? (≈⊙tokenize "  foo")))
-        (≡ (≈⊙token-type (◁ (≈⊙tokenize "  foo"))) (⌜ :symbol))))
+    (and-all (not (null? (≈⊙tokenize "  foo")))
+        (equal? (≈⊙token-type (car (≈⊙tokenize "  foo"))) (quote :symbol))))
 
 ; Test 5: Skip comment
-(⊨ (⌜ :skip-comment)
+(test-case (quote :skip-comment)
     #t
-    (∧… (¬ (∅? (≈⊙tokenize "; comment\nfoo")))
-        (≡ (≈⊙token-type (◁ (≈⊙tokenize "; comment\nfoo"))) (⌜ :symbol))))
+    (and-all (not (null? (≈⊙tokenize "; comment\nfoo")))
+        (equal? (≈⊙token-type (car (≈⊙tokenize "; comment\nfoo"))) (quote :symbol))))
 
 ; ───────────────────────────────────────────────────────────────
 ; Test Parsing
 ; ───────────────────────────────────────────────────────────────
 
 ; Test 6: Parse simple number
-(⊨ (⌜ :parse-number)
+(test-case (quote :parse-number)
     #t
-    (≈? (≈⊙parse "42")))
+    (string? (≈⊙parse "42")))
 
 ; Test 7: Parse simple symbol
-(⊨ (⌜ :parse-symbol)
+(test-case (quote :parse-symbol)
     #t
-    (≈? (≈⊙parse "foo")))
+    (string? (≈⊙parse "foo")))
 
 ; Test 8: Parse empty list
-(⊨ (⌜ :parse-empty-list)
+(test-case (quote :parse-empty-list)
     #t
-    (∅? (≈⊙parse "()")))
+    (null? (≈⊙parse "()")))
 
 ; Test 9: Parse single-element list
-(⊨ (⌜ :parse-single-list)
+(test-case (quote :parse-single-list)
     #t
-    (∧… (¬ (∅? (≈⊙parse "(foo)")))
-        (≈? (◁ (≈⊙parse "(foo)")))))
+    (and-all (not (null? (≈⊙parse "(foo)")))
+        (string? (car (≈⊙parse "(foo)")))))
 
 ; Test 10: Parse two-element list
-(⊨ (⌜ :parse-two-list)
+(test-case (quote :parse-two-list)
     #t
-    (∧… (¬ (∅? (≈⊙parse "(foo bar)")))
-        (¬ (∅? (▷ (≈⊙parse "(foo bar)"))))))
+    (and-all (not (null? (≈⊙parse "(foo bar)")))
+        (not (null? (cdr (≈⊙parse "(foo bar)"))))))
 
 ; ───────────────────────────────────────────────────────────────
 ; Integration Tests
 ; ───────────────────────────────────────────────────────────────
 
 ; Test 11: Parse nested list
-(⊨ (⌜ :parse-nested)
+(test-case (quote :parse-nested)
     #t
-    (¬ (∅? (≈⊙parse "((foo))"))))
+    (not (null? (≈⊙parse "((foo))"))))
 
 ; Test 12: Parse arithmetic expression
-(⊨ (⌜ :parse-arithmetic)
+(test-case (quote :parse-arithmetic)
     #t
-    (¬ (∅? (≈⊙parse "(+ 1 2)"))))
+    (not (null? (≈⊙parse "(+ 1 2)"))))
 
 ; Test 13: Error on unclosed list
-(⊨ (⌜ :error-unclosed)
+(test-case (quote :error-unclosed)
     #t
-    (⚠? (≈⊙parse "(foo")))
+    (error? (≈⊙parse "(foo")))
 
 ; Test 14: Error on unexpected rparen
-(⊨ (⌜ :error-extra-rparen)
+(test-case (quote :error-extra-rparen)
     #t
-    (⚠? (≈⊙parse ")")))
+    (error? (≈⊙parse ")")))
 
 ; Test 15: Parse string literal
-(⊨ (⌜ :parse-string)
+(test-case (quote :parse-string)
     #t
-    (≈? (≈⊙parse "\"hello\"")))
+    (string? (≈⊙parse "\"hello\"")))
 
 ; ═══════════════════════════════════════════════════════════════
 ; End of Tests

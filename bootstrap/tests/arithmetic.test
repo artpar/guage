@@ -1,19 +1,19 @@
 ; Arithmetic Tests
 
 ; Addition
-(⊨ (⌜ :add-basic) #5 (⊕ #2 #3))
-(⊨ (⌜ :add-zero) #42 (⊕ #0 #42))
-(⊨ (⌜ :add-negative) #5 (⊕ #10 #-5))
+(test-case (quote :add-basic) #5 (+ #2 #3))
+(test-case (quote :add-zero) #42 (+ #0 #42))
+(test-case (quote :add-negative) #5 (+ #10 #-5))
 
 ; Subtraction
-(⊨ (⌜ :sub-basic) #7 (⊖ #10 #3))
-(⊨ (⌜ :sub-zero) #42 (⊖ #42 #0))
+(test-case (quote :sub-basic) #7 (- #10 #3))
+(test-case (quote :sub-zero) #42 (- #42 #0))
 
 ; Multiplication
-(⊨ (⌜ :mul-basic) #42 (⊗ #6 #7))
-(⊨ (⌜ :mul-zero) #0 (⊗ #100 #0))
-(⊨ (⌜ :mul-one) #42 (⊗ #42 #1))
+(test-case (quote :mul-basic) #42 (* #6 #7))
+(test-case (quote :mul-zero) #0 (* #100 #0))
+(test-case (quote :mul-one) #42 (* #42 #1))
 
 ; Division
-(⊨ (⌜ :div-basic) #42 (⊘ #84 #2))
-(⊨ (⌜ :div-one) #42 (⊘ #42 #1))
+(test-case (quote :div-basic) #42 (/ #84 #2))
+(test-case (quote :div-one) #42 (/ #42 #1))

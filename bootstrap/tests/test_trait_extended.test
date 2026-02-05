@@ -3,105 +3,105 @@
 ; Mappable, Foldable, Semigroup, Monoid, Filterable, Hashable
 ; ═══════════════════════════════════════════════════════════════
 
-(⋘ "bootstrap/stdlib/list.scm")
-(⋘ "bootstrap/stdlib/sort.scm")
-(⋘ "bootstrap/stdlib/traits.scm")
+(load "bootstrap/stdlib/list.scm")
+(load "bootstrap/stdlib/sort.scm")
+(load "bootstrap/stdlib/traits.scm")
 
-(≋ "Testing Extended Trait Protocols...")
+(print "Testing Extended Trait Protocols...")
 
 ; Helper: list equality
-(≔ list= (λ (a) (λ (b)
-  (? (∅? a) (∅? b)
-     (? (∅? b) #f
-        (? (≡ (◁ a) (◁ b))
-           ((list= (▷ a)) (▷ b))
+(define list= (lambda (a) (lambda (b)
+  (if (null? a) (null? b)
+     (if (null? b) #f
+        (if (equal? (car a) (car b))
+           ((list= (cdr a)) (cdr b))
            #f))))))
 
 ; Helper
-(≔ double (λ (x) (⊗ x #2)))
-(≔ even? (λ (x) (≡ (% x #2) #0)))
+(define double (lambda (x) (* x #2)))
+(define even? (lambda (x) (equal? (% x #2) #0)))
 
 ; ────────────────────────────────────────────────────────────────
 ; :Mappable
 ; ────────────────────────────────────────────────────────────────
 
-(⊨ :map-list
+(test-case :map-list
    #t
-   ((list= ((⊧↦ double) (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅)))))
-           (⟨⟩ #2 (⟨⟩ #4 (⟨⟩ #6 ∅)))))
+   ((list= ((⊧↦ double) (cons #1 (cons #2 (cons #3 nil)))))
+           (cons #2 (cons #4 (cons #6 nil)))))
 
-(⊨ :map-nil  #t  (∅? ((⊧↦ double) ∅)))
+(test-case :map-nil  #t  (null? ((⊧↦ double) nil)))
 
 ; ────────────────────────────────────────────────────────────────
 ; :Foldable
 ; ────────────────────────────────────────────────────────────────
 
-(⊨ :fold-left-sum
+(test-case :fold-left-sum
    #6
-   (((⊧⊕← (λ (acc) (λ (x) (⊕ acc x)))) #0) (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅)))))
+   (((⊧⊕← (lambda (acc) (lambda (x) (+ acc x)))) #0) (cons #1 (cons #2 (cons #3 nil)))))
 
-(⊨ :fold-left-nil
+(test-case :fold-left-nil
    #0
-   (((⊧⊕← (λ (acc) (λ (x) (⊕ acc x)))) #0) ∅))
+   (((⊧⊕← (lambda (acc) (lambda (x) (+ acc x)))) #0) nil))
 
-(⊨ :fold-right-cons
+(test-case :fold-right-cons
    #t
-   ((list= (((⊧⊕→ (λ (x) (λ (acc) (⟨⟩ x acc)))) (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅)))) ∅))
-           (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅)))))
+   ((list= (((⊧⊕→ (lambda (x) (lambda (acc) (cons x acc)))) (cons #1 (cons #2 (cons #3 nil)))) nil))
+           (cons #1 (cons #2 (cons #3 nil)))))
 
 ; ────────────────────────────────────────────────────────────────
 ; :Semigroup
 ; ────────────────────────────────────────────────────────────────
 
-(⊨ :combine-numbers  #7     ((⊧⊕⊕ #3) #4))
-(⊨ :combine-strings  "abcd" ((⊧⊕⊕ "ab") "cd"))
-(⊨ :combine-lists
+(test-case :combine-numbers  #7     ((⊧⊕⊕ #3) #4))
+(test-case :combine-strings  "abcd" ((⊧⊕⊕ "ab") "cd"))
+(test-case :combine-lists
    #t
-   ((list= ((⊧⊕⊕ (⟨⟩ #1 (⟨⟩ #2 ∅))) (⟨⟩ #3 (⟨⟩ #4 ∅))))
-           (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 (⟨⟩ #4 ∅))))))
+   ((list= ((⊧⊕⊕ (cons #1 (cons #2 nil))) (cons #3 (cons #4 nil))))
+           (cons #1 (cons #2 (cons #3 (cons #4 nil))))))
 
 ; ────────────────────────────────────────────────────────────────
 ; :Monoid
 ; ────────────────────────────────────────────────────────────────
 
-(⊨ :empty-number  #0  (⊧∅ #42))
-(⊨ :empty-string  ""  (⊧∅ "hello"))
+(test-case :empty-number  #0  (⊧∅ #42))
+(test-case :empty-string  ""  (⊧∅ "hello"))
 
-(⊨ :mconcat-numbers  #6  (⊧mconcat (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅)))))
+(test-case :mconcat-numbers  #6  (⊧mconcat (cons #1 (cons #2 (cons #3 nil)))))
 
 ; ────────────────────────────────────────────────────────────────
 ; :Filterable
 ; ────────────────────────────────────────────────────────────────
 
-(⊨ :filter-evens
+(test-case :filter-evens
    #t
-   ((list= ((⊧⊲ even?) (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 (⟨⟩ #4 ∅))))))
-           (⟨⟩ #2 (⟨⟩ #4 ∅))))
+   ((list= ((⊧⊲ even?) (cons #1 (cons #2 (cons #3 (cons #4 nil))))))
+           (cons #2 (cons #4 nil))))
 
-(⊨ :filter-nil  #t  (∅? ((⊧⊲ even?) ∅)))
+(test-case :filter-nil  #t  (null? ((⊧⊲ even?) nil)))
 
 ; ────────────────────────────────────────────────────────────────
 ; :Hashable
 ; ────────────────────────────────────────────────────────────────
 
-(⊨ :hash-number  #42  ((⊧→! #42 :Hashable :hash) #42))
+(test-case :hash-number  #42  ((trait-dispatch-fast #42 :Hashable :hash) #42))
 
-(≔ str-hash ((⊧→! "hello" :Hashable :hash) "hello"))
-(⊨ :hash-string-is-number  #t  (≡ (⊧∈ str-hash) :Number))
+(define str-hash ((trait-dispatch-fast "hello" :Hashable :hash) "hello"))
+(test-case :hash-string-is-number  #t  (equal? (runtime-type-of str-hash) :Number))
 
-(≔ sym-hash ((⊧→! :foo :Hashable :hash) :foo))
-(⊨ :hash-symbol-is-number  #t  (≡ (⊧∈ sym-hash) :Number))
+(define sym-hash ((trait-dispatch-fast :foo :Hashable :hash) :foo))
+(test-case :hash-symbol-is-number  #t  (equal? (runtime-type-of sym-hash) :Number))
 
 ; ────────────────────────────────────────────────────────────────
-; Trait checks (⊧?)
+; Trait checks (trait?)
 ; ────────────────────────────────────────────────────────────────
 
-(⊨ :check-mappable-pair    #t  (⊧? :Pair :Mappable))
-(⊨ :check-mappable-nil     #t  (⊧? :Nil :Mappable))
-(⊨ :check-foldable-pair    #t  (⊧? :Pair :Foldable))
-(⊨ :check-foldable-number  #f  (⊧? :Number :Foldable))
-(⊨ :check-semigroup-num    #t  (⊧? :Number :Semigroup))
-(⊨ :check-monoid-string    #t  (⊧? :String :Monoid))
-(⊨ :check-hashable-number  #t  (⊧? :Number :Hashable))
+(test-case :check-mappable-pair    #t  (trait? :Pair :Mappable))
+(test-case :check-mappable-nil     #t  (trait? :Nil :Mappable))
+(test-case :check-foldable-pair    #t  (trait? :Pair :Foldable))
+(test-case :check-foldable-number  #f  (trait? :Number :Foldable))
+(test-case :check-semigroup-num    #t  (trait? :Number :Semigroup))
+(test-case :check-monoid-string    #t  (trait? :String :Monoid))
+(test-case :check-hashable-number  #t  (trait? :Number :Hashable))
 
-(≋ "\nExtended trait protocol tests complete.")
+(print "\nExtended trait protocol tests complete.")

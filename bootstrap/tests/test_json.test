@@ -3,145 +3,145 @@
 ;;; Day 147
 ;;;
 
-(⋘ "bootstrap/stdlib/json.scm")
+(load "bootstrap/stdlib/json.scm")
 
 ; ============================================================================
 ; Serialization: Primitives
 ; ============================================================================
 
-(⊨ :ser-null "null" (json-serialize ∅))
-(⊨ :ser-true "true" (json-serialize #t))
-(⊨ :ser-false "false" (json-serialize #f))
-(⊨ :ser-int "42" (json-serialize #42))
-(⊨ :ser-neg "-7" (json-serialize #-7))
-(⊨ :ser-zero "0" (json-serialize #0))
-(⊨ :ser-string "\"hello\"" (json-serialize "hello"))
-(⊨ :ser-empty-str "\"\"" (json-serialize ""))
+(test-case :ser-null "null" (json-serialize nil))
+(test-case :ser-true "true" (json-serialize #t))
+(test-case :ser-false "false" (json-serialize #f))
+(test-case :ser-int "42" (json-serialize #42))
+(test-case :ser-neg "-7" (json-serialize #-7))
+(test-case :ser-zero "0" (json-serialize #0))
+(test-case :ser-string "\"hello\"" (json-serialize "hello"))
+(test-case :ser-empty-str "\"\"" (json-serialize ""))
 
 ; ============================================================================
 ; Serialization: Escape Characters
 ; ============================================================================
 
-(⊨ :ser-escape-quote "\"a\\\"b\"" (json-serialize "a\"b"))
-(⊨ :ser-escape-backslash "\"a\\\\b\"" (json-serialize "a\\b"))
-(⊨ :ser-escape-newline "\"a\\nb\"" (json-serialize "a\nb"))
-(⊨ :ser-escape-tab "\"a\\tb\"" (json-serialize "a\tb"))
+(test-case :ser-escape-quote "\"a\\\"b\"" (json-serialize "a\"b"))
+(test-case :ser-escape-backslash "\"a\\\\b\"" (json-serialize "a\\b"))
+(test-case :ser-escape-newline "\"a\\nb\"" (json-serialize "a\nb"))
+(test-case :ser-escape-tab "\"a\\tb\"" (json-serialize "a\tb"))
 
 ; ============================================================================
 ; Serialization: Collections
 ; ============================================================================
 
-; List → JSON array
-(⊨ :ser-list "[1,2,3]"
-  (json-serialize (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅)))))
+; List -> JSON array
+(test-case :ser-list "[1,2,3]"
+  (json-serialize (cons #1 (cons #2 (cons #3 nil)))))
 
 ; Empty list
-(⊨ :ser-empty-list "null" (json-serialize ∅))
+(test-case :ser-empty-list "null" (json-serialize nil))
 
-; Vector → JSON array
-(≔ v (⟦⟧ #10 #20 #30))
-(⊨ :ser-vector "[10,20,30]" (json-serialize v))
+; Vector -> JSON array
+(define v (vector #10 #20 #30))
+(test-case :ser-vector "[10,20,30]" (json-serialize v))
 
 ; Empty vector
-(⊨ :ser-empty-vector "[]" (json-serialize (⟦⟧)))
+(test-case :ser-empty-vector "[]" (json-serialize (vector)))
 
 ; ============================================================================
 ; Serialization: Objects (HashMap)
 ; ============================================================================
 
 ; Single key
-(≔ m1 (⊞ (⟨⟩ "x" #1)))
-(⊨ :ser-object-single "{\"x\":1}" (json-serialize m1))
+(define m1 (hashmap (cons "x" #1)))
+(test-case :ser-object-single "{\"x\":1}" (json-serialize m1))
 
 ; ============================================================================
 ; Parsing: Primitives
 ; ============================================================================
 
-(⊨ :parse-null ∅ (json-parse "null"))
-(⊨ :parse-true #t (json-parse "true"))
-(⊨ :parse-false #f (json-parse "false"))
-(⊨ :parse-int #42 (json-parse "42"))
-(⊨ :parse-neg #-7 (json-parse "-7"))
-(⊨ :parse-zero #0 (json-parse "0"))
-(⊨ :parse-float #3.14 (json-parse "3.14"))
-(⊨ :parse-string "hello" (json-parse "\"hello\""))
-(⊨ :parse-empty-str "" (json-parse "\"\""))
+(test-case :parse-null nil (json-parse "null"))
+(test-case :parse-true #t (json-parse "true"))
+(test-case :parse-false #f (json-parse "false"))
+(test-case :parse-int #42 (json-parse "42"))
+(test-case :parse-neg #-7 (json-parse "-7"))
+(test-case :parse-zero #0 (json-parse "0"))
+(test-case :parse-float #3.14 (json-parse "3.14"))
+(test-case :parse-string "hello" (json-parse "\"hello\""))
+(test-case :parse-empty-str "" (json-parse "\"\""))
 
 ; ============================================================================
 ; Parsing: Escape Characters
 ; ============================================================================
 
-(⊨ :parse-escape-quote "a\"b" (json-parse "\"a\\\"b\""))
-(⊨ :parse-escape-backslash "a\\b" (json-parse "\"a\\\\b\""))
-(⊨ :parse-escape-newline "a\nb" (json-parse "\"a\\nb\""))
-(⊨ :parse-escape-tab "a\tb" (json-parse "\"a\\tb\""))
-(⊨ :parse-escape-slash "a/b" (json-parse "\"a\\/b\""))
+(test-case :parse-escape-quote "a\"b" (json-parse "\"a\\\"b\""))
+(test-case :parse-escape-backslash "a\\b" (json-parse "\"a\\\\b\""))
+(test-case :parse-escape-newline "a\nb" (json-parse "\"a\\nb\""))
+(test-case :parse-escape-tab "a\tb" (json-parse "\"a\\tb\""))
+(test-case :parse-escape-slash "a/b" (json-parse "\"a\\/b\""))
 
 ; ============================================================================
-; Parsing: Arrays (→ Vector)
+; Parsing: Arrays (-> Vector)
 ; ============================================================================
 
-(≔ arr (json-parse "[1, 2, 3]"))
-(⊨ :parse-array-type #t (⟦? arr))
-(⊨ :parse-array-len #3 (⟦# arr))
-(⊨ :parse-array-0 #1 (⟦→ arr #0))
-(⊨ :parse-array-1 #2 (⟦→ arr #1))
-(⊨ :parse-array-2 #3 (⟦→ arr #2))
+(define arr (json-parse "[1, 2, 3]"))
+(test-case :parse-array-type #t (vector? arr))
+(test-case :parse-array-len #3 (vector-length arr))
+(test-case :parse-array-0 #1 (vector-ref arr #0))
+(test-case :parse-array-1 #2 (vector-ref arr #1))
+(test-case :parse-array-2 #3 (vector-ref arr #2))
 
 ; Empty array
-(≔ earr (json-parse "[]"))
-(⊨ :parse-empty-array #t (⟦? earr))
-(⊨ :parse-empty-array-len #0 (⟦# earr))
+(define earr (json-parse "[]"))
+(test-case :parse-empty-array #t (vector? earr))
+(test-case :parse-empty-array-len #0 (vector-length earr))
 
 ; Nested array
-(≔ nested (json-parse "[[1,2],[3]]"))
-(⊨ :parse-nested-array-len #2 (⟦# nested))
-(⊨ :parse-nested-inner-0 #1 (⟦→ (⟦→ nested #0) #0))
+(define nested (json-parse "[[1,2],[3]]"))
+(test-case :parse-nested-array-len #2 (vector-length nested))
+(test-case :parse-nested-inner-0 #1 (vector-ref (vector-ref nested #0) #0))
 
 ; ============================================================================
-; Parsing: Objects (→ HashMap)
+; Parsing: Objects (-> HashMap)
 ; ============================================================================
 
-(≔ obj (json-parse "{\"name\": \"guage\", \"version\": 1}"))
-(⊨ :parse-obj-type #t (⊞? obj))
-(⊨ :parse-obj-name "guage" (⊞→ obj "name"))
-(⊨ :parse-obj-version #1 (⊞→ obj "version"))
+(define obj (json-parse "{\"name\": \"guage\", \"version\": 1}"))
+(test-case :parse-obj-type #t (hashmap? obj))
+(test-case :parse-obj-name "guage" (hashmap-get obj "name"))
+(test-case :parse-obj-version #1 (hashmap-get obj "version"))
 
 ; Empty object
-(≔ eobj (json-parse "{}"))
-(⊨ :parse-empty-obj #t (⊞? eobj))
-(⊨ :parse-empty-obj-size #0 (⊞# eobj))
+(define eobj (json-parse "{}"))
+(test-case :parse-empty-obj #t (hashmap? eobj))
+(test-case :parse-empty-obj-size #0 (hashmap-size eobj))
 
 ; ============================================================================
 ; Parsing: Whitespace tolerance
 ; ============================================================================
 
-(⊨ :parse-ws-number #42 (json-parse "  42  "))
-(⊨ :parse-ws-string "hi" (json-parse "  \"hi\"  "))
+(test-case :parse-ws-number #42 (json-parse "  42  "))
+(test-case :parse-ws-string "hi" (json-parse "  \"hi\"  "))
 
 ; ============================================================================
 ; Parsing: Error cases
 ; ============================================================================
 
-(⊨ :parse-error-empty #t (⚠? (json-parse "")))
-(⊨ :parse-error-bad-token #t (⚠? (json-parse "undefined")))
-(⊨ :parse-error-unclosed-str #t (⚠? (json-parse "\"hello")))
+(test-case :parse-error-empty #t (error? (json-parse "")))
+(test-case :parse-error-bad-token #t (error? (json-parse "undefined")))
+(test-case :parse-error-unclosed-str #t (error? (json-parse "\"hello")))
 
 ; ============================================================================
 ; Round-trip: parse then serialize
 ; ============================================================================
 
-(⊨ :roundtrip-null "null" (json-serialize (json-parse "null")))
-(⊨ :roundtrip-number "42" (json-serialize (json-parse "42")))
-(⊨ :roundtrip-string "\"hello\"" (json-serialize (json-parse "\"hello\"")))
-(⊨ :roundtrip-bool "true" (json-serialize (json-parse "true")))
+(test-case :roundtrip-null "null" (json-serialize (json-parse "null")))
+(test-case :roundtrip-number "42" (json-serialize (json-parse "42")))
+(test-case :roundtrip-string "\"hello\"" (json-serialize (json-parse "\"hello\"")))
+(test-case :roundtrip-bool "true" (json-serialize (json-parse "true")))
 
 ; ============================================================================
 ; Symbolic aliases
 ; ============================================================================
 
-(⊨ :alias-parse #42 (⊞⊳json "42"))
-(⊨ :alias-serialize "42" (⊞→json #42))
+(test-case :alias-parse #42 (⊞⊳json "42"))
+(test-case :alias-serialize "42" (⊞→json #42))
 
 ; ============================================================================
 ; Tests complete

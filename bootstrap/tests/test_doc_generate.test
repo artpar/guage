@@ -7,153 +7,153 @@
 ;;; ===================================================================
 
 ; Create a simple test module
-(≋⊲ "/tmp/test_doc_module.scm" "(≔ double (λ (n) (⊗ n #2))) (≔ square (λ (n) (⊗ n n)))")
+(write-file "/tmp/test_doc_module.scm" "(define double (lambda (n) (* n #2))) (define square (lambda (n) (* n n)))")
 
 ; Load the module
-(⋘ "/tmp/test_doc_module.scm")
+(load "/tmp/test_doc_module.scm")
 
 ; Generate documentation
-(≔ doc (📖 "/tmp/test_doc_module.scm"))
+(define doc (doc-generate "/tmp/test_doc_module.scm"))
 
 ; Verify it's a string
-(⊨ :doc-generate-returns-string
+(test-case :doc-generate-returns-string
    #t
-   (≈? doc))
+   (string? doc))
 
 ; Verify it's not empty
-(⊨ :doc-is-not-empty
+(test-case :doc-is-not-empty
    #f
-   (≈∅? doc))
+   (string-empty? doc))
 
 ; Verify length is reasonable (should be > 50 chars for header + content)
-(⊨ :doc-has-reasonable-length
+(test-case :doc-has-reasonable-length
    #t
-   (> (≈# doc) #50))
+   (> (string-length doc) #50))
 
 ; Print for manual verification
-(≋ "Generated documentation for test_doc_module.scm:")
-(≋ doc)
+(print "Generated documentation for test_doc_module.scm:")
+(print doc)
 
 ;;; ===================================================================
 ;;; Test 2: Error handling
 ;;; ===================================================================
 
 ; Module not loaded
-(≔ result-not-loaded (📖 "/tmp/nonexistent.scm"))
-(⊨ :doc-unloaded-module-error
+(define result-not-loaded (doc-generate "/tmp/nonexistent.scm"))
+(test-case :doc-unloaded-module-error
    #t
-   (⚠? result-not-loaded))
+   (error? result-not-loaded))
 
 ; Wrong argument type
-(≔ result-wrong-type (📖 #42))
-(⊨ :doc-wrong-type-error
+(define result-wrong-type (doc-generate #42))
+(test-case :doc-wrong-type-error
    #t
-   (⚠? result-wrong-type))
+   (error? result-wrong-type))
 
 ;;; ===================================================================
 ;;; Test 3: Empty module
 ;;; ===================================================================
 
 ; Create empty module
-(≋⊲ "/tmp/test_empty_module.scm" "")
+(write-file "/tmp/test_empty_module.scm" "")
 
 ; Load the empty module
-(⋘ "/tmp/test_empty_module.scm")
+(load "/tmp/test_empty_module.scm")
 
 ; Generate docs for empty module
-(≔ empty-doc (📖 "/tmp/test_empty_module.scm"))
+(define empty-doc (doc-generate "/tmp/test_empty_module.scm"))
 
 ; Should return string (even if empty)
-(⊨ :empty-doc-is-string
+(test-case :empty-doc-is-string
    #t
-   (≈? empty-doc))
+   (string? empty-doc))
 
 ;;; ===================================================================
 ;;; Test 4: Module with dependencies
 ;;; ===================================================================
 
 ; Create module with dependencies
-(≋⊲ "/tmp/test_base_module.scm" "(≔ inc (λ (n) (⊕ n #1)))")
-(≋⊲ "/tmp/test_derived_module.scm" "(⋘ \"/tmp/test_base_module.scm\") (≔ inc2 (λ (n) (inc (inc n))))")
+(write-file "/tmp/test_base_module.scm" "(define inc (lambda (n) (+ n #1)))")
+(write-file "/tmp/test_derived_module.scm" "(load \"/tmp/test_base_module.scm\") (define inc2 (lambda (n) (inc (inc n))))")
 
 ; Load derived module
-(⋘ "/tmp/test_derived_module.scm")
+(load "/tmp/test_derived_module.scm")
 
 ; Generate docs
-(≔ derived-doc (📖 "/tmp/test_derived_module.scm"))
+(define derived-doc (doc-generate "/tmp/test_derived_module.scm"))
 
 ; Should be a string
-(⊨ :derived-doc-is-string
+(test-case :derived-doc-is-string
    #t
-   (≈? derived-doc))
+   (string? derived-doc))
 
 ; Print for manual verification
-(≋ "Generated documentation for test_derived_module.scm (with dependencies):")
-(≋ derived-doc)
+(print "Generated documentation for test_derived_module.scm (with dependencies):")
+(print derived-doc)
 
 ;;; ===================================================================
 ;;; Test 5: Real stdlib module
 ;;; ===================================================================
 
 ; Load a real stdlib module
-(⋘ "bootstrap/stdlib/option.scm")
+(load "bootstrap/stdlib/option.scm")
 
 ; Generate documentation
-(≔ option-doc (📖 "bootstrap/stdlib/option.scm"))
+(define option-doc (doc-generate "bootstrap/stdlib/option.scm"))
 
 ; Should be a string
-(⊨ :stdlib-doc-is-string
+(test-case :stdlib-doc-is-string
    #t
-   (≈? option-doc))
+   (string? option-doc))
 
 ; Should have substantial content (option.scm has multiple functions)
-(⊨ :stdlib-doc-has-content
+(test-case :stdlib-doc-has-content
    #t
-   (> (≈# option-doc) #200))
+   (> (string-length option-doc) #200))
 
 ; Print documentation for visual inspection
-(≋ "")
-(≋ "========================================")
-(≋ "Generated documentation for option.scm:")
-(≋ "========================================")
-(≋ option-doc)
+(print "")
+(print "========================================")
+(print "Generated documentation for option.scm:")
+(print "========================================")
+(print option-doc)
 
 ;;; ===================================================================
 ;;; Test 6: Export documentation to file
 ;;; ===================================================================
 
 ; Export simple module docs to file
-(≔ export-result (📖→ "/tmp/test_doc_module.scm" "/tmp/test_doc_module.md"))
+(define export-result (doc-export "/tmp/test_doc_module.scm" "/tmp/test_doc_module.md"))
 
 ; Should return the output path
-(⊨ :doc-export-returns-path
+(test-case :doc-export-returns-path
    "/tmp/test_doc_module.md"
    export-result)
 
 ; Verify file exists
-(⊨ :doc-export-creates-file
+(test-case :doc-export-creates-file
    #t
-   (≋? "/tmp/test_doc_module.md"))
+   (file-exists? "/tmp/test_doc_module.md"))
 
 ; Read the file and verify it's not empty
-(≔ exported-content (≋⊳ "/tmp/test_doc_module.md"))
-(⊨ :doc-export-file-not-empty
+(define exported-content (read-file "/tmp/test_doc_module.md"))
+(test-case :doc-export-file-not-empty
    #f
-   (≈∅? exported-content))
+   (string-empty? exported-content))
 
 ; Should match generated docs
-(⊨ :doc-export-matches-generate
+(test-case :doc-export-matches-generate
    doc
    exported-content)
 
 ; Export option.scm to file
-(≔ option-export (📖→ "bootstrap/stdlib/option.scm" "/tmp/option.md"))
+(define option-export (doc-export "bootstrap/stdlib/option.scm" "/tmp/option.md"))
 
-(⊨ :option-export-success
+(test-case :option-export-success
    "/tmp/option.md"
    option-export)
 
-(≋ "")
-(≋ "Documentation exported to files:")
-(≋ "  /tmp/test_doc_module.md")
-(≋ "  /tmp/option.md")
+(print "")
+(print "Documentation exported to files:")
+(print "  /tmp/test_doc_module.md")
+(print "  /tmp/option.md")

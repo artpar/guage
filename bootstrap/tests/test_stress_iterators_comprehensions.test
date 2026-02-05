@@ -4,115 +4,115 @@
 ;;; --- 1. Range, map, filter, collect over elements ---
 
 ;; Build range as list
-(≔ range (λ (start end acc)
-  (? (> start end) acc
-     (range start (⊖ end #1) (⟨⟩ end acc)))))
+(define range (lambda (start end acc)
+  (if (> start end) acc
+     (range start (- end #1) (cons end acc)))))
 
 ;; Map function
-(≔ map-list (λ (f lst)
-  (? (∅? lst) ∅
-     (⟨⟩ (f (◁ lst)) (map-list f (▷ lst))))))
+(define map-list (lambda (f lst)
+  (if (null? lst) nil
+     (cons (f (car lst)) (map-list f (cdr lst))))))
 
 ;; Filter function
-(≔ filter-list (λ (pred lst)
-  (? (∅? lst) ∅
-     (? (pred (◁ lst))
-        (⟨⟩ (◁ lst) (filter-list pred (▷ lst)))
-        (filter-list pred (▷ lst))))))
+(define filter-list (lambda (pred lst)
+  (if (null? lst) nil
+     (if (pred (car lst))
+        (cons (car lst) (filter-list pred (cdr lst)))
+        (filter-list pred (cdr lst))))))
 
 ;; List length
-(≔ list-len (λ (lst n)
-  (? (∅? lst) n
-     (list-len (▷ lst) (⊕ n #1)))))
+(define list-len (lambda (lst n)
+  (if (null? lst) n
+     (list-len (cdr lst) (+ n #1)))))
 
 ;; Fold
-(≔ fold-list (λ (f init lst)
-  (? (∅? lst) init
-     (fold-list f (f init (◁ lst)) (▷ lst)))))
+(define fold-list (lambda (f init lst)
+  (if (null? lst) init
+     (fold-list f (f init (car lst)) (cdr lst)))))
 
 ;; Build range of 5,000
-(≔ big-range (range #1 #5000 ∅))
+(define big-range (range #1 #5000 nil))
 
 ;; Double each element
-(≔ doubled (map-list (λ (x) (⊗ x #2)) big-range))
+(define doubled (map-list (lambda (x) (* x #2)) big-range))
 
 ;; Filter even (all are even after doubling)
-(≔ evens (filter-list (λ (x) (≡ (% x #2) #0)) doubled))
+(define evens (filter-list (lambda (x) (equal? (% x #2) #0)) doubled))
 
-(⊨ :iter-map-filter-5k #5000 (list-len evens #0))
+(test-case :iter-map-filter-5k #5000 (list-len evens #0))
 
 ;;; --- 2. Iterator-based fold over large list ---
 
 ;; Sum of 1..5000 = 12502500
-(⊨ :iter-fold-5k #12502500 (fold-list (λ (acc x) (⊕ acc x)) #0 big-range))
+(test-case :iter-fold-5k #12502500 (fold-list (lambda (acc x) (+ acc x)) #0 big-range))
 
 ;;; --- 3. Chained transforms: map -> filter -> map -> filter ---
 
-(≔ range-1k (range #1 #1000 ∅))
+(define range-1k (range #1 #1000 nil))
 
-(≔ chain-result
-  (fold-list (λ (acc x) (⊕ acc x)) #0
-    (filter-list (λ (x) (> x #100))
-      (map-list (λ (x) (⊖ x #50))
-        (filter-list (λ (x) (≡ (% x #2) #0))
-          (map-list (λ (x) (⊗ x #3)) range-1k))))))
+(define chain-result
+  (fold-list (lambda (acc x) (+ acc x)) #0
+    (filter-list (lambda (x) (> x #100))
+      (map-list (lambda (x) (- x #50))
+        (filter-list (lambda (x) (equal? (% x #2) #0))
+          (map-list (lambda (x) (* x #3)) range-1k))))))
 
-(⊨ :iter-chained-positive #t (> chain-result #0))
+(test-case :iter-chained-positive #t (> chain-result #0))
 
 ;;; --- 4. Collect into HashMap: frequency counting ---
 
-(≔ freq-map (⊞))
+(define freq-map (hashmap))
 
-(≔ count-freq (λ (lst)
-  (? (∅? lst) freq-map
-     (⪢
-       (≔ k (% (◁ lst) #20))
-       (≔ cur (⊞→ freq-map k))
-       (⊞← freq-map k (? (∅? cur) #1 (⊕ cur #1)))
-       (count-freq (▷ lst))))))
+(define count-freq (lambda (lst)
+  (if (null? lst) freq-map
+     (begin
+       (define k (% (car lst) #20))
+       (define cur (hashmap-get freq-map k))
+       (hashmap-put freq-map k (if (null? cur) #1 (+ cur #1)))
+       (count-freq (cdr lst))))))
 
 (count-freq big-range)
 
 ;; 20 buckets for mod 20
-(⊨ :iter-freq-buckets #20 (⊞# freq-map))
+(test-case :iter-freq-buckets #20 (hashmap-size freq-map))
 
 ;;; --- 5. Nested iteration: 50 lists of 50 elements, collect all ---
 
-(≔ nested-sum (λ (outer-n acc)
-  (? (≡ outer-n #0) acc
-     (⪢
-       (≔ inner-list (range #1 #50 ∅))
-       (≔ inner-sum (fold-list (λ (a x) (⊕ a x)) #0 inner-list))
-       (nested-sum (⊖ outer-n #1) (⊕ acc inner-sum))))))
+(define nested-sum (lambda (outer-n acc)
+  (if (equal? outer-n #0) acc
+     (begin
+       (define inner-list (range #1 #50 nil))
+       (define inner-sum (fold-list (lambda (a x) (+ a x)) #0 inner-list))
+       (nested-sum (- outer-n #1) (+ acc inner-sum))))))
 
 ;; 50 * sum(1..50) = 50 * 1275 = 63750
-(⊨ :iter-nested-50x50 #63750 (nested-sum #50 #0))
+(test-case :iter-nested-50x50 #63750 (nested-sum #50 #0))
 
 ;;; --- 6. Build Vector from list via iteration ---
 
-(≔ vec-from-list (⟦⟧))
+(define vec-from-list (vector))
 
-(≔ list-to-vec (λ (lst)
-  (? (∅? lst) :done
-     (⪢ (⟦⊕ vec-from-list (◁ lst))
-         (list-to-vec (▷ lst))))))
+(define list-to-vec (lambda (lst)
+  (if (null? lst) :done
+     (begin (vector-push! vec-from-list (car lst))
+         (list-to-vec (cdr lst))))))
 
-(≔ range-1k2 (range #1 #1000 ∅))
+(define range-1k2 (range #1 #1000 nil))
 (list-to-vec range-1k2)
 
-(⊨ :iter-list-to-vec #1000 (⟦# vec-from-list))
-(⊨ :iter-vec-first #1 (⟦→ vec-from-list #0))
-(⊨ :iter-vec-last #1000 (⟦→ vec-from-list #999))
+(test-case :iter-list-to-vec #1000 (vector-length vec-from-list))
+(test-case :iter-vec-first #1 (vector-ref vec-from-list #0))
+(test-case :iter-vec-last #1000 (vector-ref vec-from-list #999))
 
 ;;; --- 7. Zip two lists via parallel iteration ---
 
-(≔ zip-lists (λ (a b)
-  (? (∨ (∅? a) (∅? b)) ∅
-     (⟨⟩ (⟨⟩ (◁ a) (◁ b)) (zip-lists (▷ a) (▷ b))))))
+(define zip-lists (lambda (a b)
+  (if (or (null? a) (null? b)) nil
+     (cons (cons (car a) (car b)) (zip-lists (cdr a) (cdr b))))))
 
-(≔ list-a (range #1 #1000 ∅))
-(≔ list-b (range #1001 #2000 ∅))
-(≔ zipped (zip-lists list-a list-b))
+(define list-a (range #1 #1000 nil))
+(define list-b (range #1001 #2000 nil))
+(define zipped (zip-lists list-a list-b))
 
-(⊨ :iter-zip-len #1000 (list-len zipped #0))
-(⊨ :iter-zip-first-pair (⟨⟩ #1 #1001) (◁ zipped))
+(test-case :iter-zip-len #1000 (list-len zipped #0))
+(test-case :iter-zip-first-pair (cons #1 #1001) (car zipped))

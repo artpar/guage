@@ -1,108 +1,108 @@
 ;;; Stress: Actors + Channels
 ;;; Tier 2 — Two-feature combination stress test
 
-(⟳∅)
-(⟿∅)
+(actor-reset)
+(chan-reset)
 
 ;;; --- 1. 10 actors each send 1 value to shared channel ---
 
-(≔ shared-ch (⟿⊚))
+(define shared-ch (chan-create))
 
-(≔ spawn-senders (λ (n)
-  (? (≡ n #0) :done
-     (⪢ (⟳ (λ (self) (⟿→ shared-ch n)))
-         (spawn-senders (⊖ n #1))))))
+(define spawn-senders (lambda (n)
+  (if (equal? n #0) :done
+     (begin (actor-spawn (lambda (self) (chan-send shared-ch n)))
+         (spawn-senders (- n #1))))))
 
 (spawn-senders #10)
 
 ;; Collector reads 10 values
-(≔ col-loop (λ (n total)
-  (? (≡ n #0) total
-     (≫ (⟿← shared-ch) (λ (v)
-       (col-loop (⊖ n #1) (⊕ total v)))))))
+(define col-loop (lambda (n total)
+  (if (equal? n #0) total
+     (bind (chan-recv shared-ch) (lambda (v)
+       (col-loop (- n #1) (+ total v)))))))
 
-(≔ collector (⟳ (λ (self) (col-loop #10 #0))))
+(define collector (actor-spawn (lambda (self) (col-loop #10 #0))))
 
-(⟳! #10000)
+(actor-run #10000)
 
 ;; Sum of 1..10 = 55
-(⊨ :ac-10-senders #55 (⟳→ collector))
+(test-case :ac-10-senders #55 (actor-result collector))
 
 ;;; --- 2. Simple 2-stage pipeline ---
 
-(⟳∅)
-(⟿∅)
+(actor-reset)
+(chan-reset)
 
-(≔ ch-a (⟿⊚))
-(≔ ch-b (⟿⊚))
+(define ch-a (chan-create))
+(define ch-b (chan-create))
 
-(≔ stage-loop (λ (in out n)
-  (? (≡ n #0) :done
-     (≫ (⟿← in) (λ (v)
-       (≫ (⟿→ out (⊕ v #10)) (λ (_)
-         (stage-loop in out (⊖ n #1)))))))))
+(define stage-loop (lambda (in out n)
+  (if (equal? n #0) :done
+     (bind (chan-recv in) (lambda (v)
+       (bind (chan-send out (+ v #10)) (lambda (_)
+         (stage-loop in out (- n #1)))))))))
 
-(≔ stager (⟳ (λ (self) (stage-loop ch-a ch-b #20))))
+(define stager (actor-spawn (lambda (self) (stage-loop ch-a ch-b #20))))
 
 ;; Inject 20 values synchronously
-(≔ inject (λ (i)
-  (? (≡ i #0) :done
-     (⪢ (⟿→ ch-a i) (inject (⊖ i #1))))))
+(define inject (lambda (i)
+  (if (equal? i #0) :done
+     (begin (chan-send ch-a i) (inject (- i #1))))))
 
 (inject #20)
-(⟳! #30000)
+(actor-run #30000)
 
 ;; First injected is 20, becomes 30
-(⊨ :ac-pipeline-2stage #30 (⟿← ch-b))
+(test-case :ac-pipeline-2stage #30 (chan-recv ch-b))
 
 ;;; --- 3. Barrier: 20 actors signal via channel ---
 
-(⟳∅)
-(⟿∅)
+(actor-reset)
+(chan-reset)
 
-(≔ barrier-ch (⟿⊚))
+(define barrier-ch (chan-create))
 
-(≔ spawn-barrier (λ (n)
-  (? (≡ n #0) :done
-     (⪢ (⟳ (λ (self) (⟿→ barrier-ch :signal)))
-         (spawn-barrier (⊖ n #1))))))
+(define spawn-barrier (lambda (n)
+  (if (equal? n #0) :done
+     (begin (actor-spawn (lambda (self) (chan-send barrier-ch :signal)))
+         (spawn-barrier (- n #1))))))
 
 (spawn-barrier #20)
 
-(≔ wait-loop (λ (n)
-  (? (≡ n #0) :all-done
-     (≫ (⟿← barrier-ch) (λ (_) (wait-loop (⊖ n #1)))))))
+(define wait-loop (lambda (n)
+  (if (equal? n #0) :all-done
+     (bind (chan-recv barrier-ch) (lambda (_) (wait-loop (- n #1)))))))
 
-(≔ waiter (⟳ (λ (self) (wait-loop #20))))
+(define waiter (actor-spawn (lambda (self) (wait-loop #20))))
 
-(⟳! #20000)
+(actor-run #20000)
 
-(⊨ :ac-barrier-20 :all-done (⟳→ waiter))
+(test-case :ac-barrier-20 :all-done (actor-result waiter))
 
 ;;; --- 4. Actor reads from channel, sends result to another ---
 
-(⟳∅)
-(⟿∅)
+(actor-reset)
+(chan-reset)
 
-(≔ input-ch (⟿⊚))
-(≔ output-ch (⟿⊚))
+(define input-ch (chan-create))
+(define output-ch (chan-create))
 
-(≔ transform-loop (λ (n)
-  (? (≡ n #0) :done
-     (≫ (⟿← input-ch) (λ (v)
-       (≫ (⟿→ output-ch (⊗ v v)) (λ (_)
-         (transform-loop (⊖ n #1)))))))))
+(define transform-loop (lambda (n)
+  (if (equal? n #0) :done
+     (bind (chan-recv input-ch) (lambda (v)
+       (bind (chan-send output-ch (* v v)) (lambda (_)
+         (transform-loop (- n #1)))))))))
 
-(≔ transformer (⟳ (λ (self) (transform-loop #5))))
+(define transformer (actor-spawn (lambda (self) (transform-loop #5))))
 
 ;; Send 5 values synchronously
-(⪢ (⟿→ input-ch #3)
-    (⟿→ input-ch #4)
-    (⟿→ input-ch #5)
-    (⟿→ input-ch #6)
-    (⟿→ input-ch #7))
+(begin (chan-send input-ch #3)
+    (chan-send input-ch #4)
+    (chan-send input-ch #5)
+    (chan-send input-ch #6)
+    (chan-send input-ch #7))
 
-(⟳! #20000)
+(actor-run #20000)
 
 ;; First result: 3*3 = 9
-(⊨ :ac-transform-first #9 (⟿← output-ch))
+(test-case :ac-transform-first #9 (chan-recv output-ch))

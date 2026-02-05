@@ -1,32 +1,32 @@
-; Test: HashSet (⊍) — Boost-style groups-of-15 + overflow Bloom byte
+; Test: HashSet (set) — Boost-style groups-of-15 + overflow Bloom byte
 ; Day 110
 
-(⊨ (⌜ :set-create-empty) #0 (⊍# (⊍)))
+(test-case (quote :set-create-empty) #0 (set-size (set)))
 
-(⊨ (⌜ :set-create-values) #3 (⊍# (⊍ #1 #2 #3)))
+(test-case (quote :set-create-values) #3 (set-size (set #1 #2 #3)))
 
-(≔ s1 (⊍ :a :b :c))
-(⊨ (⌜ :set-has-member) #t (∧ (⊍∋ s1 :a) (¬ (⊍∋ s1 :z))))
+(define s1 (set :a :b :c))
+(test-case (quote :set-has-member) #t (and (set-has? s1 :a) (not (set-has? s1 :z))))
 
-(≔ s2 (⊍))
-(⊍⊕ s2 :x)
-(⊨ (⌜ :set-add-new) #t (⊍∋ s2 :x))
+(define s2 (set))
+(set-add s2 :x)
+(test-case (quote :set-add-new) #t (set-has? s2 :x))
 
-(≔ s3 (⊍ :d))
-(⊍⊕ s3 :d)
-(⊨ (⌜ :set-add-duplicate) #1 (⊍# s3))
+(define s3 (set :d))
+(set-add s3 :d)
+(test-case (quote :set-add-duplicate) #1 (set-size s3))
 
-(≔ s4 (⊍ :r :s))
-(⊍⊖ s4 :r)
-(⊨ (⌜ :set-remove) #t (∧ (¬ (⊍∋ s4 :r)) (⊍∋ s4 :s)))
+(define s4 (set :r :s))
+(set-remove s4 :r)
+(test-case (quote :set-remove) #t (and (not (set-has? s4 :r)) (set-has? s4 :s)))
 
-(≔ su (⊍∪ (⊍ #1 #2) (⊍ #2 #3)))
-(⊨ (⌜ :set-union) #3 (⊍# su))
+(define su (set-union (set #1 #2) (set #2 #3)))
+(test-case (quote :set-union) #3 (set-size su))
 
-(≔ si (⊍∩ (⊍ #1 #2 #3) (⊍ #2 #3 #4)))
-(⊨ (⌜ :set-intersection) #2 (⊍# si))
+(define si (set-intersection (set #1 #2 #3) (set #2 #3 #4)))
+(test-case (quote :set-intersection) #2 (set-size si))
 
-(≔ sd (⊍∖ (⊍ #1 #2 #3) (⊍ #2)))
-(⊨ (⌜ :set-difference) #2 (⊍# sd))
+(define sd (set-difference (set #1 #2 #3) (set #2)))
+(test-case (quote :set-difference) #2 (set-size sd))
 
-(⊨ (⌜ :set-type-pred) #t (∧ (⊍? (⊍)) (¬ (⊍? #42))))
+(test-case (quote :set-type-pred) #t (and (set? (set)) (not (set? #42))))

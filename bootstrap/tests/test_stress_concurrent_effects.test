@@ -1,217 +1,217 @@
 ;;; Stress: Concurrent Effects
 ;;; Tier 3 — Actors + Effects + Channels + Supervision + ETS
 
-(⟳∅)
-(⟿∅)
+(actor-reset)
+(chan-reset)
 
 ;;; --- Effect declarations ---
 
-(⟪ :Compute :calc)
-(⟪ :State :get :put)
-(⟪ :Counter :inc)
+(effect-def :Compute :calc)
+(effect-def :State :get :put)
+(effect-def :Counter :inc)
 
 ;;; --- 1. 10 actors each running own effect handler, results via channels ---
 
-(≔ result-ch (⟿⊚))
+(define result-ch (chan-create))
 
-(≔ eff-actor (λ (val)
-  (⟳ (λ (self)
-    (⪢
-      (≔ result
-        (⟪⟫ (↯ :Compute :calc val)
-          (:Compute (:calc (λ (x) (⊗ x #3))))))
-      (⟿→ result-ch result))))))
+(define eff-actor (lambda (val)
+  (actor-spawn (lambda (self)
+    (begin
+      (define result
+        (handle (perform :Compute :calc val)
+          (:Compute (:calc (lambda (x) (* x #3))))))
+      (chan-send result-ch result))))))
 
-(≔ spawn-eff-actors (λ (n)
-  (? (≡ n #0) :done
-     (⪢ (eff-actor n)
-         (spawn-eff-actors (⊖ n #1))))))
+(define spawn-eff-actors (lambda (n)
+  (if (equal? n #0) :done
+     (begin (eff-actor n)
+         (spawn-eff-actors (- n #1))))))
 
 (spawn-eff-actors #10)
 
 ;; Collector reads 10 results
-(≔ eff-collector (⟳ (λ (self)
-  (⪢
-    (≔ col (λ (n total)
-      (? (≡ n #0) total
-         (≫ (⟿← result-ch) (λ (v)
-           (col (⊖ n #1) (⊕ total v)))))))
+(define eff-collector (actor-spawn (lambda (self)
+  (begin
+    (define col (lambda (n total)
+      (if (equal? n #0) total
+         (bind (chan-recv result-ch) (lambda (v)
+           (col (- n #1) (+ total v)))))))
     (col #10 #0)))))
 
-(⟳! #10000)
+(actor-run #10000)
 
 ;; Sum of 3*i for i=1..10 = 3 * 55 = 165
-(⊨ :ce-100-actors-effects #165 (⟳→ eff-collector))
+(test-case :ce-100-actors-effects #165 (actor-result eff-collector))
 
 ;;; --- 2. Supervised actor uses effects, crashes and restarts ---
 
-(⟳∅)
-(⟿∅)
+(actor-reset)
+(chan-reset)
 
-(⟳⊞⊕ :crash-ets)
-(⟳⊞⊙ :crash-ets :restarts #0)
+(ets-new :crash-ets)
+(ets-insert :crash-ets :restarts #0)
 
-(≔ crashing-eff-worker (λ (self)
-  (⪢
-    (≔ cur (⟳⊞? :crash-ets :restarts))
-    (⟳⊞⊙ :crash-ets :restarts (⊕ cur #1))
-    (≔ result
-      (⟪⟫ (↯ :Compute :calc cur)
-        (:Compute (:calc (λ (x) (⊕ x #1))))))
+(define crashing-eff-worker (lambda (self)
+  (begin
+    (define cur (ets-lookup :crash-ets :restarts))
+    (ets-insert :crash-ets :restarts (+ cur #1))
+    (define result
+      (handle (perform :Compute :calc cur)
+        (:Compute (:calc (lambda (x) (+ x #1))))))
     ;; Crash on first 5 starts
-    (? (< cur #5) (⚠ :crash result)
-       (≫ (←?) (λ (msg) result))))))
+    (if (< cur #5) (error :crash result)
+       (bind (actor-receive) (lambda (msg) result))))))
 
-(≔ eff-sup (⟳⊛ :one-for-one (⟨⟩ crashing-eff-worker ∅)))
-(⟳! #10000)
+(define eff-sup (sup-start :one-for-one (cons crashing-eff-worker nil)))
+(actor-run #10000)
 
-(⊨ :ce-crash-restart-ets #t (> (⟳⊞? :crash-ets :restarts) #5))
+(test-case :ce-crash-restart-ets #t (> (ets-lookup :crash-ets :restarts) #5))
 
 ;;; --- 3. Box shared via message: actor A→B, B mutates, A reads ---
 
-(⟳∅)
-(⟿∅)
+(actor-reset)
+(chan-reset)
 
-(≔ shared-box (□ #0))
-(≔ done-ch (⟿⊚))
+(define shared-box (box #0))
+(define done-ch (chan-create))
 
-(≔ mutator (⟳ (λ (self)
-  (≫ (←?) (λ (box)
-    (⪢
-      (≔ mut-loop (λ (i)
-        (? (≡ i #0) :done
-           (⪢ (□← box (⊕ (□→ box) #1))
-               (mut-loop (⊖ i #1))))))
+(define mutator (actor-spawn (lambda (self)
+  (bind (actor-receive) (lambda (box)
+    (begin
+      (define mut-loop (lambda (i)
+        (if (equal? i #0) :done
+           (begin (box-set! box (+ (unbox box) #1))
+               (mut-loop (- i #1))))))
       (mut-loop #1000)
-      (⟿→ done-ch :mutated)))))))
+      (chan-send done-ch :mutated)))))))
 
-(≔ reader (⟳ (λ (self)
-  (⪢
-    (→! mutator shared-box)
-    (≫ (⟿← done-ch) (λ (_)
-      (□→ shared-box)))))))
+(define reader (actor-spawn (lambda (self)
+  (begin
+    (actor-send mutator shared-box)
+    (bind (chan-recv done-ch) (lambda (_)
+      (unbox shared-box)))))))
 
-(⟳! #50000)
+(actor-run #50000)
 
-(⊨ :ce-shared-box #1000 (⟳→ reader))
+(test-case :ce-shared-box #1000 (actor-result reader))
 
 ;;; --- 4. Pipeline of actors where each stage uses effect handler ---
 
-(⟳∅)
-(⟿∅)
+(actor-reset)
+(chan-reset)
 
 ;; Simpler: just verify effect + actor + channel combo works
-(≔ pipe-ch-in (⟿⊚))
-(≔ pipe-ch-out (⟿⊚))
+(define pipe-ch-in (chan-create))
+(define pipe-ch-out (chan-create))
 
-(≔ pipe-stage (⟳ (λ (self)
-  (⪢
-    (≔ stage-loop (λ (i)
-      (? (≡ i #0) :done
-         (≫ (⟿← pipe-ch-in) (λ (v)
-           (⪢
-             (≔ result
-               (⟪⟫ (↯ :Compute :calc v)
-                 (:Compute (:calc (λ (x) (⊕ x #10))))))
-             (⟿→ pipe-ch-out result)
-             (stage-loop (⊖ i #1))))))))
+(define pipe-stage (actor-spawn (lambda (self)
+  (begin
+    (define stage-loop (lambda (i)
+      (if (equal? i #0) :done
+         (bind (chan-recv pipe-ch-in) (lambda (v)
+           (begin
+             (define result
+               (handle (perform :Compute :calc v)
+                 (:Compute (:calc (lambda (x) (+ x #10))))))
+             (chan-send pipe-ch-out result)
+             (stage-loop (- i #1))))))))
     (stage-loop #10)))))
 
 ;; Send 10 values through
-(≔ pipe-sender (⟳ (λ (self)
-  (⪢
-    (≔ ps (λ (n)
-      (? (≡ n #0) :done
-         (⪢ (⟿→ pipe-ch-in n)
-             (ps (⊖ n #1))))))
+(define pipe-sender (actor-spawn (lambda (self)
+  (begin
+    (define ps (lambda (n)
+      (if (equal? n #0) :done
+         (begin (chan-send pipe-ch-in n)
+             (ps (- n #1))))))
     (ps #10)))))
 
-(≔ pipe-receiver (⟳ (λ (self)
-  (⪢
-    (≔ pr (λ (n total)
-      (? (≡ n #0) total
-         (≫ (⟿← pipe-ch-out) (λ (v)
-           (pr (⊖ n #1) (⊕ total v)))))))
+(define pipe-receiver (actor-spawn (lambda (self)
+  (begin
+    (define pr (lambda (n total)
+      (if (equal? n #0) total
+         (bind (chan-recv pipe-ch-out) (lambda (v)
+           (pr (- n #1) (+ total v)))))))
     (pr #10 #0)))))
 
-(⟳! #50000)
+(actor-run #50000)
 
 ;; Sum of (i+10) for i=1..10 = 55 + 100 = 155
-(⊨ :ce-eff-pipeline-completes #155 (⟳→ pipe-receiver))
+(test-case :ce-eff-pipeline-completes #155 (actor-result pipe-receiver))
 
 ;;; --- 5. Concurrent counter: 5 actors × 100 ETS increments each ---
 
-(⟳∅)
-(⟿∅)
+(actor-reset)
+(chan-reset)
 
-(⟳⊞⊕ :counter-ets)
-(⟳⊞⊙ :counter-ets :val #0)
+(ets-new :counter-ets)
+(ets-insert :counter-ets :val #0)
 
-(≔ counter-barrier (⟿⊚))
+(define counter-barrier (chan-create))
 
-(≔ counter-actor (λ (n)
-  (⟳ (λ (self)
-    (⪢
-      (≔ ca-loop (λ (i)
-        (? (≡ i #0) (⟿→ counter-barrier :done)
-           (⪢
-             (≔ cur (⟳⊞? :counter-ets :val))
-             (⟳⊞⊙ :counter-ets :val (⊕ cur #1))
-             (ca-loop (⊖ i #1))))))
+(define counter-actor (lambda (n)
+  (actor-spawn (lambda (self)
+    (begin
+      (define ca-loop (lambda (i)
+        (if (equal? i #0) (chan-send counter-barrier :done)
+           (begin
+             (define cur (ets-lookup :counter-ets :val))
+             (ets-insert :counter-ets :val (+ cur #1))
+             (ca-loop (- i #1))))))
       (ca-loop n))))))
 
-(≔ spawn-counters (λ (n)
-  (? (≡ n #0) :done
-     (⪢ (counter-actor #100)
-         (spawn-counters (⊖ n #1))))))
+(define spawn-counters (lambda (n)
+  (if (equal? n #0) :done
+     (begin (counter-actor #100)
+         (spawn-counters (- n #1))))))
 
 (spawn-counters #5)
 
 ;; Wait for all 5 to finish
-(≔ counter-waiter (⟳ (λ (self)
-  (⪢
-    (≔ wait (λ (n)
-      (? (≡ n #0) (⟳⊞? :counter-ets :val)
-         (≫ (⟿← counter-barrier) (λ (_)
-           (wait (⊖ n #1)))))))
+(define counter-waiter (actor-spawn (lambda (self)
+  (begin
+    (define wait (lambda (n)
+      (if (equal? n #0) (ets-lookup :counter-ets :val)
+         (bind (chan-recv counter-barrier) (lambda (_)
+           (wait (- n #1)))))))
     (wait #5)))))
 
-(⟳! #100000)
+(actor-run #100000)
 
 ;; Due to race conditions, value >= something
-(⊨ :ce-concurrent-counter #t (> (⟳→ counter-waiter) #0))
+(test-case :ce-concurrent-counter #t (> (actor-result counter-waiter) #0))
 
 ;;; --- 6. Actor performs effect that returns value, chain of 10 actors ---
 
-(⟳∅)
-(⟿∅)
+(actor-reset)
+(chan-reset)
 
-(≔ chain-ch (⟿⊚))
+(define chain-ch (chan-create))
 
-(≔ eff-chain-actor (λ (n result-ch)
-  (⟳ (λ (self)
-    (⪢
-      (≔ result
-        (⟪⟫ (↯ :Compute :calc n)
-          (:Compute (:calc (λ (x) (⊕ x #1))))))
-      (⟿→ result-ch result))))))
+(define eff-chain-actor (lambda (n result-ch)
+  (actor-spawn (lambda (self)
+    (begin
+      (define result
+        (handle (perform :Compute :calc n)
+          (:Compute (:calc (lambda (x) (+ x #1))))))
+      (chan-send result-ch result))))))
 
-(≔ spawn-chain (λ (n)
-  (? (≡ n #0) :done
-     (⪢ (eff-chain-actor n chain-ch)
-         (spawn-chain (⊖ n #1))))))
+(define spawn-chain (lambda (n)
+  (if (equal? n #0) :done
+     (begin (eff-chain-actor n chain-ch)
+         (spawn-chain (- n #1))))))
 
 (spawn-chain #10)
 
-(≔ chain-collector (⟳ (λ (self)
-  (⪢
-    (≔ cc (λ (n total)
-      (? (≡ n #0) total
-         (≫ (⟿← chain-ch) (λ (v)
-           (cc (⊖ n #1) (⊕ total v)))))))
+(define chain-collector (actor-spawn (lambda (self)
+  (begin
+    (define cc (lambda (n total)
+      (if (equal? n #0) total
+         (bind (chan-recv chain-ch) (lambda (v)
+           (cc (- n #1) (+ total v)))))))
     (cc #10 #0)))))
 
-(⟳! #10000)
+(actor-run #10000)
 
 ;; Sum of (i+1) for i=1..10 = sum of 2..11 = 65
-(⊨ :ce-chain-50 #65 (⟳→ chain-collector))
+(test-case :ce-chain-50 #65 (actor-result chain-collector))

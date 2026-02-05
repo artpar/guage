@@ -5,9 +5,9 @@
 ; ═══════════════════════════════════════════════════════════════
 
 ; Test 1: Simple unless macro with ASCII names
-(⧉ unless (c b) (⌞̃ (? (~ c) ∅ (~ b))))
+(macro unless (c b) (quasiquote-tilde (if (~ c) nil (~ b))))
 
 ; Test 2: Simple let macro with ASCII names
-(⧉ mylet (v val body) (⌞̃ ((λ (v) (~ body)) (~ val))))
+(macro mylet (v val body) (quasiquote-tilde ((lambda (v) (~ body)) (~ val))))
 
 "✓ Macros loaded"

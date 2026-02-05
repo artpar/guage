@@ -1,79 +1,79 @@
 ; Day 105: Flow — Lazy computation pipelines
-; Primitives: ⟳⊸, ⟳⊸↦, ⟳⊸⊲, ⟳⊸⊕, ⟳⊸⊙, ⟳⊸!
+; Primitives: ⟳⊸, ⟳⊸↦, ⟳⊸⊲, ⟳⊸⊕, ⟳⊸⊙, flow-run
 
 ;;; Test 1: flow-from-list — create flow from a list
-(≔ f1 (⟳⊸ (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅)))))
-(⊨ (⌜ :flow-from-list)
-  (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅)))
-  (⟳⊸! f1))
+(define f1 (flow-from (cons #1 (cons #2 (cons #3 nil)))))
+(test-case (quote :flow-from-list)
+  (cons #1 (cons #2 (cons #3 nil)))
+  (flow-run f1))
 
 ;;; Test 2: flow-map-basic — map doubles each element
-(≔ f2 (⟳⊸ (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅)))))
-(⟳⊸↦ f2 (λ (x) (⊗ x #2)))
-(⊨ (⌜ :flow-map-basic)
-  (⟨⟩ #2 (⟨⟩ #4 (⟨⟩ #6 ∅)))
-  (⟳⊸! f2))
+(define f2 (flow-from (cons #1 (cons #2 (cons #3 nil)))))
+(flow-map f2 (lambda (x) (* x #2)))
+(test-case (quote :flow-map-basic)
+  (cons #2 (cons #4 (cons #6 nil)))
+  (flow-run f2))
 
 ;;; Test 3: flow-filter-basic — filter even numbers
-(≔ f3 (⟳⊸ (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 (⟨⟩ #4 ∅)))))
-(⟳⊸⊲ f3 (λ (x) (≡ (⊖ x (⊗ (⊘ x #2) #2)) #0)))
-(⊨ (⌜ :flow-filter-basic)
-  (⟨⟩ #2 (⟨⟩ #4 ∅))
-  (⟳⊸! f3))
+(define f3 (flow-from (cons #1 (cons #2 (cons #3 (cons #4 nil)))))
+(flow-filter f3 (lambda (x) (equal? (- x (* (/ x #2) #2)) #0)))
+(test-case (quote :flow-filter-basic)
+  (cons #2 (cons #4 nil))
+  (flow-run f3))
 
 ;;; Test 4: flow-map-filter-chain — chain map then filter
-(≔ f4 (⟳⊸ (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 (⟨⟩ #4 ∅)))))
-(⟳⊸↦ f4 (λ (x) (⊗ x #10)))
-(⟳⊸⊲ f4 (λ (x) (> x #25)))
-(⊨ (⌜ :flow-map-filter-chain)
-  (⟨⟩ #30 (⟨⟩ #40 ∅))
-  (⟳⊸! f4))
+(define f4 (flow-from (cons #1 (cons #2 (cons #3 (cons #4 nil)))))
+(flow-map f4 (lambda (x) (* x #10)))
+(flow-filter f4 (lambda (x) (> x #25)))
+(test-case (quote :flow-map-filter-chain)
+  (cons #30 (cons #40 nil))
+  (flow-run f4))
 
 ;;; Test 5: flow-reduce-sum — reduce to sum
-(≔ f5 (⟳⊸ (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 (⟨⟩ #4 ∅)))))
-(⟳⊸⊕ f5 #0 (λ (acc x) (⊕ acc x)))
-(⊨ (⌜ :flow-reduce-sum)
+(define f5 (flow-from (cons #1 (cons #2 (cons #3 (cons #4 nil)))))
+(flow-reduce f5 #0 (lambda (acc x) (+ acc x)))
+(test-case (quote :flow-reduce-sum)
   #10
-  (⟳⊸! f5))
+  (flow-run f5))
 
 ;;; Test 6: flow-each-basic — side-effect collects via agent
-(⟳∅)
-(≔ ag (⟳⊶ (λ () ∅)))
-(≔ f6 (⟳⊸ (⟨⟩ #10 (⟨⟩ #20 (⟨⟩ #30 ∅)))))
-(⟳⊸⊙ f6 (λ (x) (⟳⊶! ag (λ (s) (⟨⟩ x s)))))
-(≔ r6 (⟳⊸! f6))
-(⊨ (⌜ :flow-each-basic)
+(actor-reset)
+(define ag (agent-start (lambda () nil)))
+(define f6 (flow-from (cons #10 (cons #20 (cons #30 nil)))))
+(flow-each f6 (lambda (x) (agent-update ag (lambda (s) (cons x s)))))
+(define r6 (flow-run f6))
+(test-case (quote :flow-each-basic)
   #t
-  (∧ (≡ r6 ∅)
-      (≡ (⟳⊶? ag (λ (s) s)) (⟨⟩ #30 (⟨⟩ #20 (⟨⟩ #10 ∅))))))
+  (and (equal? r6 nil)
+      (equal? (agent-get ag (lambda (s) s)) (cons #30 (cons #20 (cons #10 nil))))))
 
 ;;; Test 7: flow-empty-list — flow from empty list
-(≔ f7 (⟳⊸ ∅))
-(⟳⊸↦ f7 (λ (x) (⊗ x #2)))
-(⊨ (⌜ :flow-empty-list)
-  ∅
-  (⟳⊸! f7))
+(define f7 (flow-from nil))
+(flow-map f7 (lambda (x) (* x #2)))
+(test-case (quote :flow-empty-list)
+  nil
+  (flow-run f7))
 
 ;;; Test 8: flow-map-filter-reduce — full pipeline
-(≔ f8 (⟳⊸ (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 (⟨⟩ #4 (⟨⟩ #5 ∅))))))
-(⟳⊸↦ f8 (λ (x) (⊗ x #3)))
-(⟳⊸⊲ f8 (λ (x) (> x #6)))
-(⟳⊸⊕ f8 #0 (λ (acc x) (⊕ acc x)))
-(⊨ (⌜ :flow-map-filter-reduce)
+(define f8 (flow-from (cons #1 (cons #2 (cons #3 (cons #4 (cons #5 nil))))))
+(flow-map f8 (lambda (x) (* x #3)))
+(flow-filter f8 (lambda (x) (> x #6)))
+(flow-reduce f8 #0 (lambda (acc x) (+ acc x)))
+(test-case (quote :flow-map-filter-reduce)
   #36
-  (⟳⊸! f8))
+  (flow-run f8))
 
 ;;; Test 9: flow-multiple-maps — chain multiple maps
-(≔ f9 (⟳⊸ (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅))))
-(⟳⊸↦ f9 (λ (x) (⊕ x #10)))
-(⟳⊸↦ f9 (λ (x) (⊗ x #2)))
-(⊨ (⌜ :flow-multiple-maps)
-  (⟨⟩ #22 (⟨⟩ #24 (⟨⟩ #26 ∅)))
-  (⟳⊸! f9))
+(define f9 (flow-from (cons #1 (cons #2 (cons #3 nil))))
+(flow-map f9 (lambda (x) (+ x #10)))
+(flow-map f9 (lambda (x) (* x #2)))
+(test-case (quote :flow-multiple-maps)
+  (cons #22 (cons #24 (cons #26 nil)))
+  (flow-run f9))
 
 ;;; Test 10: flow-filter-none-match — filter removes all
-(≔ f10 (⟳⊸ (⟨⟩ #1 (⟨⟩ #2 (⟨⟩ #3 ∅))))
-(⟳⊸⊲ f10 (λ (x) (> x #100)))
-(⊨ (⌜ :flow-filter-none-match)
-  ∅
-  (⟳⊸! f10))
+(define f10 (flow-from (cons #1 (cons #2 (cons #3 nil))))
+(flow-filter f10 (lambda (x) (> x #100)))
+(test-case (quote :flow-filter-none-match)
+  nil
+  (flow-run f10))

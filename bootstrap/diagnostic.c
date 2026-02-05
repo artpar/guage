@@ -127,7 +127,7 @@ void diag_render(SourceMap* map, Diagnostic* diag, FILE* out) {
 
     /* Header: ⚠ E0017: undefined-variable ── app.scm */
     fprintf(out, "\n%s%s", level_color(diag->level, color),
-            (diag->level == DIAG_ERROR) ? "⚠ " : "");
+            (diag->level == DIAG_ERROR) ? "error " : "");
 
     if (diag->error_code) {
         fprintf(out, "%s: ", diag->error_code);
@@ -248,7 +248,7 @@ void diag_render_error(SourceMap* map, Cell* error, FILE* out) {
     Span espan = cell_error_span(error);
 
     /* Header */
-    fprintf(out, "\n%s⚠ %s%s", color ? ANSI_RED : "", msg, color ? ANSI_RESET : "");
+    fprintf(out, "\n%serror %s%s", color ? ANSI_RED : "", msg, color ? ANSI_RESET : "");
 
     /* Error data */
     Cell* data = cell_error_data(error);
@@ -302,7 +302,7 @@ void diag_render_error(SourceMap* map, Cell* error, FILE* out) {
             uint32_t idx = (i - 1) % ERROR_TRACE_CAP;
             ResolvedPos rp = srcmap_resolve(map, trace[idx]);
             if (rp.line > 0) {
-                fprintf(out, "  → %s:%u:%u\n", rp.filename, rp.line, rp.column);
+                fprintf(out, "  -> %s:%u:%u\n", rp.filename, rp.line, rp.column);
             }
         }
     }
