@@ -1,0 +1,23 @@
+; Test hex literal parsing — #xFF, #0xFF, #0xFFC8C8C8
+; Ensures C-style #0x... prefix works alongside existing #x... prefix
+
+; Basic hex with #x prefix (existing)
+(test-case (quote :hex-xff) #255 #xFF)
+(test-case (quote :hex-x0) #0 #x0)
+(test-case (quote :hex-xA) #10 #xA)
+(test-case (quote :hex-xab) #171 #xAB)
+
+; C-style hex with #0x prefix (new)
+(test-case (quote :hex-0xff) #255 #0xFF)
+(test-case (quote :hex-0x0) #0 #0x0)
+(test-case (quote :hex-0xA) #10 #0xA)
+(test-case (quote :hex-0xAB) #171 #0xAB)
+
+; Large hex values (RGBA colors)
+(test-case (quote :hex-color-white) #4294967295 #0xFFFFFFFF)
+(test-case (quote :hex-color-gray) #4291348680 #0xFFC8C8C8)
+(test-case (quote :hex-color-red) #4294901760 #0xFFFF0000)
+
+; Hex in arithmetic
+(test-case (quote :hex-add) #256 (+ #0xFF #1))
+(test-case (quote :hex-eq) #t (equal? #xFF #0xFF))

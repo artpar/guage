@@ -1,0 +1,16 @@
+; Test FFI type aliases and unknown type error reporting
+; Note: These tests check type parsing through dlopen/bind,
+; which requires a real library. We test error paths instead.
+
+; Unknown type produces error (not silent FFI_VOID)
+(define dummy-handle (ffi-dlopen "libc"))
+(test-case (quote :ffi-unknown-ret-type) #t
+  (error? (ffi-bind dummy-handle "strlen" (quote ()) :bogus_type)))
+
+(test-case (quote :ffi-unknown-arg-type) #t
+  (error? (ffi-bind dummy-handle "strlen" (quote (:bogus_type)) :ulong)))
+
+; Known type aliases work (int32, uint32, etc.)
+; Bind strlen with :uint64 alias for size_t return
+(test-case (quote :ffi-alias-uint64) #t
+  (not (error? (ffi-bind dummy-handle "strlen" (quote (:char*)) :uint64))))

@@ -1,0 +1,27 @@
+; Test lambda implicit sequencing (multi-body -> implicit begin)
+
+; Single-body lambda unchanged
+(test-case (quote :single-body) #42 ((lambda (x) x) #42))
+
+; Multi-body lambda returns last expression
+(test-case (quote :multi-body-last) #3 ((lambda () #1 #2 #3)))
+
+; Multi-body with side effects via mutable ref
+(define counter (box #0))
+(define bump (lambda () (box-set! counter (+ (unbox counter) #1)) (unbox counter)))
+(test-case (quote :multi-body-effects) #1 (bump))
+(test-case (quote :multi-body-effects2) #2 (bump))
+
+; Multi-body with params
+(test-case (quote :multi-body-params) #10 ((lambda (x y) (+ x #0) (+ x y)) #3 #7))
+
+; Nested multi-body lambdas
+(test-case (quote :nested-multi) #5
+  ((lambda (x)
+     (define a (+ x #1))
+     (define b (+ x #2))
+     (+ a b))   ; not reachable if only first body taken
+   #1))
+
+; Two-body lambda
+(test-case (quote :two-body) #2 ((lambda () #1 #2)))

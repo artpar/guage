@@ -88,16 +88,23 @@ FFICType ffi_parse_type_symbol(const char* sym) {
     if (strcmp(sym, "void") == 0)   return FFI_VOID;
     if (strcmp(sym, "double") == 0) return FFI_DOUBLE;
     if (strcmp(sym, "int") == 0)    return FFI_INT32;
+    if (strcmp(sym, "int32") == 0)  return FFI_INT32;
     if (strcmp(sym, "long") == 0)   return FFI_INT64;
+    if (strcmp(sym, "int64") == 0)  return FFI_INT64;
     if (strcmp(sym, "uint") == 0)   return FFI_UINT32;
+    if (strcmp(sym, "uint32") == 0) return FFI_UINT32;
     if (strcmp(sym, "ulong") == 0)  return FFI_UINT64;
+    if (strcmp(sym, "uint64") == 0) return FFI_UINT64;
     if (strcmp(sym, "float") == 0)  return FFI_FLOAT;
     if (strcmp(sym, "char*") == 0)  return FFI_CSTRING;
+    if (strcmp(sym, "string") == 0) return FFI_CSTRING;
     if (strcmp(sym, "void*") == 0)  return FFI_PTR;
+    if (strcmp(sym, "ptr") == 0)    return FFI_PTR;
     if (strcmp(sym, "bool") == 0)   return FFI_BOOL;
     if (strcmp(sym, "size_t") == 0) return FFI_SIZE_T;
     if (strcmp(sym, "buffer") == 0) return FFI_BUFFER;
-    return FFI_VOID; /* fallback */
+    if (strcmp(sym, "uint8") == 0)  return FFI_BOOL;  /* uint8 stored as bool (1 byte) */
+    return FFI_UNKNOWN; /* Unknown type - causes error */
 }
 
 /* === FFI Struct Layout (Step 4) === */

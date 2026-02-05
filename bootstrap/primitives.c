@@ -12490,13 +12490,16 @@ Cell* prim_ffi_dlclose(Cell* args) {
 }
 
 /* Parse a Guage cons-list of type symbols into FFISig arg types */
+/* Returns -1 if non-symbol found, -2 if unknown type found */
 static int parse_arg_types(Cell* type_list, FFICType* out, int max) {
     int n = 0;
     Cell* cur = type_list;
     while (cell_is_pair(cur) && n < max) {
         Cell* sym = cell_car(cur);
         if (!cell_is_symbol(sym)) return -1;
-        out[n++] = ffi_parse_type_symbol(cell_get_symbol(sym));
+        FFICType t = ffi_parse_type_symbol(cell_get_symbol(sym));
+        if (t == FFI_UNKNOWN) return -2;  /* Unknown type */
+        out[n++] = t;
         cur = cell_cdr(cur);
     }
     return n;
@@ -12534,7 +12537,13 @@ Cell* prim_ffi_bind(Cell* args) {
     FFISig sig;
     sig.fn_ptr = fn_ptr;
     sig.ret_type = ffi_parse_type_symbol(cell_get_symbol(ret_type_cell));
+    if (sig.ret_type == FFI_UNKNOWN) {
+        return cell_error("ffi-bind: unknown return type", ret_type_cell);
+    }
     sig.n_args = parse_arg_types(arg_types_cell, sig.arg_types, FFI_MAX_ARGS);
+    if (sig.n_args == -2) {
+        return cell_error("ffi-bind: unknown arg type", arg_types_cell);
+    }
     if (sig.n_args < 0) {
         return cell_error("ffi-bind: invalid arg type list", arg_types_cell);
     }

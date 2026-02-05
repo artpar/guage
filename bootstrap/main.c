@@ -328,6 +328,15 @@ static Cell* parse_expr(Parser* p) {
             c->span = span_new(lo, parser_pos(p));
             return c;
         }
+        /* C-style hex: #0xFF or #0XFF */
+        else if (p->input[p->pos] == '0' &&
+                 (p->input[p->pos + 1] == 'x' || p->input[p->pos + 1] == 'X')) {
+            p->pos += 2;  /* Skip '0x' */
+            p->column += 2;
+            Cell* c = parse_hex_integer(p);
+            c->span = span_new(lo, parser_pos(p));
+            return c;
+        }
         /* Number with # prefix — lo already captured before '#' */
         else if ((p->input[p->pos] >= '0' && p->input[p->pos] <= '9') ||
                  (p->input[p->pos] == '-' && p->input[p->pos + 1] >= '0' && p->input[p->pos + 1] <= '9')) {

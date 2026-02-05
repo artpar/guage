@@ -2425,9 +2425,21 @@ tail_call:  /* TCO: loop back here instead of recursive call */
 
             /* λ - lambda */
             if (id == SYM_ID_LAMBDA) {
-                /* Parse: (λ (param1 param2 ...) body) */
+                /* Parse: (λ (param1 param2 ...) body1 body2 ...) */
                 Cell* params = cell_car(rest);
-                Cell* body_expr = cell_car(cell_cdr(rest));
+                Cell* body_rest = cell_cdr(rest);  /* List of body expressions */
+
+                /* Check for multi-body lambda */
+                Cell* body_expr;
+                if (cell_is_pair(body_rest) && cell_is_pair(cell_cdr(body_rest))) {
+                    /* Multiple body expressions -> wrap in (begin ...) */
+                    Cell* begin_sym = cell_symbol("begin");
+                    body_expr = cell_cons(begin_sym, body_rest);
+                    cell_release(begin_sym);  /* cons retains it */
+                } else {
+                    /* Single body expression */
+                    body_expr = cell_car(body_rest);
+                }
 
                 /* Expand macros in body BEFORE De Bruijn conversion */
                 /* This ensures macro templates with lambdas work correctly */

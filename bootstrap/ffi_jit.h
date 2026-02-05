@@ -19,7 +19,8 @@ typedef enum {
     FFI_BOOL,
     FFI_SIZE_T,
     FFI_FLOAT,
-    FFI_BUFFER      /* uint8_t* — zero-copy from Guage buffer */
+    FFI_BUFFER,     /* uint8_t* — zero-copy from Guage buffer */
+    FFI_UNKNOWN     /* Unknown/invalid type — causes error */
 } FFICType;
 
 #define FFI_MAX_ARGS 8
