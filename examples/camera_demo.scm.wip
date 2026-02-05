@@ -1,0 +1,93 @@
+; ============================================================================
+; Camera 2D Demo — pan with arrow keys, zoom with mouse wheel
+; Draws a grid world with colored shapes that you can navigate
+; Auto-screenshots after 30 frames.
+; ============================================================================
+
+(load "bootstrap/stdlib/raylib.scm")
+
+; --- State: camera params ---
+(define cam-tx (box #0))
+(define cam-ty (box #0))
+(define cam-zoom (box #1.0))
+(define cam-rot (box #0.0))
+
+; --- Draw the world (in world-space) ---
+(define draw-grid-line (lambda (i)
+  (if (>= i #20) nil
+     (begin
+       ; Vertical line
+       (◰weak-ref (* i #100) (- #0 #1000) (* i #100) #1000 (◰:fade ◰:lightgray #0.4))
+       ; Horizontal line
+       (◰weak-ref (- #0 #1000) (* i #100) #1000 (* i #100) (◰:fade ◰:lightgray #0.4))
+       ; Negative vertical
+       (◰weak-ref (- #0 (* i #100)) (- #0 #1000) (- #0 (* i #100)) #1000 (◰:fade ◰:lightgray #0.4))
+       ; Negative horizontal
+       (◰weak-ref (- #0 #1000) (- #0 (* i #100)) #1000 (- #0 (* i #100)) (◰:fade ◰:lightgray #0.4))
+       (draw-grid-line (+ i #1))))))
+
+(define draw-world (lambda ()
+  (begin
+    ; Grid
+    (draw-grid-line #0)
+
+    ; Axes
+    (◰weak-ref:ex (cons #-1000 #0) (cons #1000 #0) #2 ◰:red)
+    (◰weak-ref:ex (cons #0 #-1000) (cons #0 #1000) #2 ◰:green)
+
+    ; Scattered shapes
+    (◰○:v (cons #200 #200) #50 ◰:red)
+    (◰box:rec (◰:rect #-300 #-200 #150 #100) ◰:blue)
+    (◰box:rnd (◰:rect #300 #-100 #120 #80) #0.3 #6 ◰:purple)
+    (◰heap:raw (cons #-100 #300) (cons #-50 #200) (cons #-150 #200) ◰:green)
+    (◰source:raw (cons #-400 #100) #6 #60 #0 ◰:gold)
+    (◰source:raw (cons #400 #300) #5 #50 #0 ◰:orange)
+    (◰⬮ #0 #-300 #80 #40 ◰:magenta)
+    (◰struct-create:ring (cons #-300 #400) #30 #50 #0 #270 #12 ◰:skyblue)
+    (◰○:sec (cons #500 #-300) #60 #0 #180 #12 ◰:lime)
+
+    ; Labels at landmarks
+    (◰string "ORIGIN" #5 #5 #20 ◰:white)
+    (◰string "NE" #205 #155 #16 ◰:white)
+    (◰string "SW" #-295 #-195 #16 ◰:white))))
+
+; --- HUD (screen-space) ---
+(define draw-hud (lambda ()
+  (begin
+    (◰:draw-fps #10 #10)
+    (◰string "Camera 2D Demo" #250 #10 #28 ◰:raywhite)
+    (◰string "Arrow keys: pan abs Mouse wheel: zoom abs R: rotate abs ESC: exit" #150 #45 #14 ◰:lightgray)
+    (define zstr (string-append "Zoom: " (string (unbox cam-zoom))))
+    (◰string zstr #10 #70 #16 ◰:yellow)
+    (define rstr (string-append "Rotation: " (string (unbox cam-rot))))
+    (◰string rstr #10 #90 #16 ◰:yellow))))
+
+; --- Input ---
+(define handle-input (lambda ()
+  (begin
+    ; Pan with arrow keys (scaled by zoom)
+    (if (◰←⌨? ◰:KEY-RIGHT) (box-set! cam-tx (+ (unbox cam-tx) #5)) nil)
+    (if (◰←⌨? ◰:KEY-LEFT)  (box-set! cam-tx (- (unbox cam-tx) #5)) nil)
+    (if (◰←⌨? ◰:KEY-DOWN)  (box-set! cam-ty (+ (unbox cam-ty) #5)) nil)
+    (if (◰←⌨? ◰:KEY-UP)    (box-set! cam-ty (- (unbox cam-ty) #5)) nil)
+    ; Zoom with mouse wheel
+    (define wheel (◰←struct-createsource))
+    (if (equal? wheel #0) nil
+       (begin (define new-zoom (+ (unbox cam-zoom) (* wheel #0.1)))
+           (box-set! cam-zoom (if (<= new-zoom #0.1) #0.1 new-zoom))))
+    ; Rotate with R
+    (if (◰←⌨? ◰:KEY-R) (box-set! cam-rot (+ (unbox cam-rot) #1)) nil))))
+
+; --- Main ---
+(◰:init #820 #580 "Camera 2D Demo")
+(◰:loop-state #0 (lambda (n)
+  (begin
+    (handle-input)
+    (◰:draw (lambda ()
+      (begin (◰doc (◰:rgb #20 #20 #30))
+          (◰:cam2d-mode
+            (◰:cam2d #410 #290 (unbox cam-tx) (unbox cam-ty) (unbox cam-rot) (unbox cam-zoom))
+            draw-world)
+          (draw-hud))))
+    (if (equal? n #30) (◰:screenshot "camera_demo.png") nil)
+    (+ n #1))))

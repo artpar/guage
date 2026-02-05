@@ -1,0 +1,105 @@
+; ============================================================================
+; Scissor + Blend + Color Demo — exercises scissor mode, blend modes,
+; color constants, color manipulation
+; ============================================================================
+
+(load "bootstrap/stdlib/raylib.scm")
+
+; --- Draw color palette ---
+(define draw-palette (lambda ()
+  (begin
+    (◰string "Color Palette" #30 #10 #20 ◰:white)
+    ; Row 1 — original
+    (◰box #30  #40 #50 #50 ◰:red)
+    (◰box #90  #40 #50 #50 ◰:green)
+    (◰box #150 #40 #50 #50 ◰:blue)
+    (◰box #210 #40 #50 #50 ◰:yellow)
+    (◰box #270 #40 #50 #50 ◰:orange)
+    (◰box #330 #40 #50 #50 ◰:purple)
+    ; Row 2 — new colors
+    (◰box #30  #100 #50 #50 ◰:pink)
+    (◰box #90  #100 #50 #50 ◰:maroon)
+    (◰box #150 #100 #50 #50 ◰:gold)
+    (◰box #210 #100 #50 #50 ◰:lime)
+    (◰box #270 #100 #50 #50 ◰:skyblue)
+    (◰box #330 #100 #50 #50 ◰:violet)
+    ; Row 3 — more new colors
+    (◰box #30  #160 #50 #50 ◰:beige)
+    (◰box #90  #160 #50 #50 ◰:brown)
+    (◰box #150 #160 #50 #50 ◰:darkgreen)
+    (◰box #210 #160 #50 #50 ◰:darkblue)
+    (◰box #270 #160 #50 #50 ◰:darkpurple)
+    (◰box #330 #160 #50 #50 ◰:magenta))))
+
+; --- Draw scissor demo ---
+(define draw-scissor-demo (lambda ()
+  (begin
+    (◰string "Scissor Mode" #420 #10 #20 ◰:white)
+    (◰boxweak-ref #419 #39 #362 #182 ◰:yellow)
+    (◰generic-param:scissor #420 #40 #360 #180)
+    (◰○ #500 #100 #120 ◰:red)
+    (◰box #420 #60 #200 #200 (◰:fade ◰:blue #0.5))
+    (◰heap:raw (cons #600 #30) (cons #780 #220) (cons #550 #180) ◰:green)
+    (◰⊲:scissor))))
+
+; --- Draw gradient demo ---
+(define draw-gradients (lambda ()
+  (begin
+    (◰string "Gradients" #30 #230 #20 ◰:white)
+    (◰box↕ #30  #260 #170 #100 ◰:red ◰:blue)
+    (◰box↕ #210 #260 #170 #100 ◰:lime ◰:purple)
+    (◰box↔ #30  #370 #170 #100 ◰:skyblue ◰:pink)
+    (◰box↔ #210 #370 #170 #100 ◰:gold ◰:darkgreen))))
+
+; --- Draw fade + blend demo ---
+(define draw-fade-blend (lambda ()
+  (begin
+    (◰string "Fade + Blend" #420 #230 #20 ◰:white)
+    ; Fade ramp on white background
+    (◰box #420 #260 #360 #60 ◰:raywhite)
+    (◰box #420 #260 #55 #60 (◰:fade ◰:red #1.0))
+    (◰box #480 #260 #55 #60 (◰:fade ◰:red #0.8))
+    (◰box #540 #260 #55 #60 (◰:fade ◰:red #0.6))
+    (◰box #600 #260 #55 #60 (◰:fade ◰:red #0.4))
+    (◰box #660 #260 #55 #60 (◰:fade ◰:red #0.2))
+    (◰box #720 #260 #55 #60 (◰:fade ◰:red #0.05))
+    (◰string "100%" #425 #325 #12 ◰:lightgray)
+    (◰string "80%"  #490 #325 #12 ◰:lightgray)
+    (◰string "60%"  #550 #325 #12 ◰:lightgray)
+    (◰string "40%"  #610 #325 #12 ◰:lightgray)
+    (◰string "20%"  #670 #325 #12 ◰:lightgray)
+    (◰string "5%"   #730 #325 #12 ◰:lightgray)
+
+    ; Blend modes
+    (◰string "Blend Modes" #420 #360 #16 ◰:white)
+    ; Normal
+    (◰box #420 #385 #80 #50 ◰:red)
+    (◰box #450 #395 #80 #50 ◰:blue)
+    (◰string "Normal" #430 #440 #12 ◰:lightgray)
+    ; Additive
+    (◰generic-param:blend ◰:BLEND-ADDITIVE)
+    (◰box #560 #385 #80 #50 ◰:red)
+    (◰box #590 #395 #80 #50 ◰:blue)
+    (◰⊲:blend)
+    (◰string "Additive" #565 #440 #12 ◰:lightgray)
+    ; Multiplied
+    (◰generic-param:blend ◰:BLEND-MULTIPLIED)
+    (◰box #700 #385 #80 #50 ◰:red)
+    (◰box #730 #395 #80 #50 ◰:blue)
+    (◰⊲:blend)
+    (◰string "Multiply" #705 #440 #12 ◰:lightgray))))
+
+; --- Main ---
+(◰:init #820 #490 "Scissor + Blend + Color Demo")
+(◰:loop-state #0 (lambda (n)
+  (begin
+    (◰:draw (lambda ()
+      (begin (◰doc (◰:rgb #30 #30 #40))
+          (draw-palette)
+          (draw-scissor-demo)
+          (draw-gradients)
+          (draw-fade-blend)
+          (◰:draw-fps #750 #465)
+          (◰string "ESC to exit" #350 #465 #14 ◰:darkgray))))
+    (if (equal? n #30) (◰:screenshot "scissor_blend_demo.png") nil)
+    (+ n #1))))
