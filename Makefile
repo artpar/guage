@@ -26,7 +26,8 @@ endif
 SOURCES = cell.c intern.c span.c primitives.c debruijn.c debug.c eval.c cfg.c dfg.c \
           pattern.c pattern_check.c type.c testgen.c module.c macro.c \
           fiber.c actor.c channel.c scheduler.c park.c linenoise.c diagnostic.c \
-          ffi_jit.c ffi_emit_x64.c ffi_emit_a64.c ring.c signal_handler.c main.c
+          ffi_jit.c ffi_emit_x64.c ffi_emit_a64.c ring.c signal_handler.c \
+          jit.c jit_stencils_x64.c jit_stencils_a64.c main.c
 
 # Platform-specific assembly (fcontext context switch)
 UNAME_M := $(shell uname -m 2>/dev/null || echo unknown)
@@ -339,3 +340,8 @@ $(BOOTSTRAP_DIR)/main.o: $(BOOTSTRAP_DIR)/main.c $(BOOTSTRAP_DIR)/cell.h \
                           $(BOOTSTRAP_DIR)/eval.h $(BOOTSTRAP_DIR)/debug.h \
                           $(BOOTSTRAP_DIR)/module.h $(BOOTSTRAP_DIR)/linenoise.h \
                           $(BOOTSTRAP_DIR)/scheduler.h
+$(BOOTSTRAP_DIR)/jit.o: $(BOOTSTRAP_DIR)/jit.c $(BOOTSTRAP_DIR)/jit.h \
+                         $(BOOTSTRAP_DIR)/cell.h $(BOOTSTRAP_DIR)/eval.h \
+                         $(BOOTSTRAP_DIR)/ffi_jit.h $(BOOTSTRAP_DIR)/intern.h
+$(BOOTSTRAP_DIR)/jit_stencils_x64.o: $(BOOTSTRAP_DIR)/jit_stencils_x64.c $(BOOTSTRAP_DIR)/jit.h
+$(BOOTSTRAP_DIR)/jit_stencils_a64.o: $(BOOTSTRAP_DIR)/jit_stencils_a64.c $(BOOTSTRAP_DIR)/jit.h

@@ -6,6 +6,7 @@
 #include "module.h"
 #include "macro.h"
 #include "scheduler.h"
+#include "jit.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -3484,6 +3485,33 @@ tail_call:  /* TCO: loop back here instead of recursive call */
 
         if (fn->type == CELL_LAMBDA) {
             if (UNLIKELY(g_profile_enabled)) g_prof_lambda_calls++;
+
+            /* JIT hot tracking - record call for potential compilation */
+            if (jit_is_enabled()) {
+                jit_record_call(fn);
+
+                /* Check for JIT trace and execute if available */
+                JITTrace* trace = jit_get_trace(fn);
+                if (trace && trace->native_code) {
+                    /* Build environment with args for JIT execution */
+                    Cell* closure_env = fn->data.lambda.env;
+                    Cell* new_env = extend_env(closure_env, args);
+
+                    /* Execute JIT'd code */
+                    Cell* result = jit_execute(trace, new_env);
+
+                    cell_release(new_env);
+                    cell_release(fn);
+                    cell_release(args);
+
+                    /* If JIT returned NULL, we need to deopt - fall through */
+                    if (result) {
+                        return result;
+                    }
+                    /* Fall through to interpreter on deopt */
+                }
+            }
+
             /* Extract lambda components */
             Cell* closure_env = fn->data.lambda.env;
             Cell* body = fn->data.lambda.body;

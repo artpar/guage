@@ -13,6 +13,7 @@
 #include "actor.h"
 #include "channel.h"
 #include "scheduler.h"
+#include "jit.h"
 #include "log.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -249,6 +250,12 @@ void test_emit_and_exit(const char* filename, int had_toplevel_error,
 
     /* Profile counters (when GUAGE_PROFILE=1) */
     if (g_profile_enabled) profile_emit(stderr);
+
+    /* JIT statistics (when GUAGE_JIT=1) */
+    if (jit_is_enabled()) {
+        jit_print_stats();
+        jit_shutdown();
+    }
 
     /* Summary line */
     fprintf(stderr, "{\"t\":\"summary\",\"file\":");

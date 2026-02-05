@@ -22,6 +22,7 @@
 #include "linenoise.h"
 #include "diagnostic.h"
 #include "scheduler.h"
+#include "jit.h"
 #include <time.h>
 #include <math.h>
 
@@ -1248,6 +1249,11 @@ int main(int argc, char** argv) {
     }
     sched_init(sched_count_init);
 
+    /* Initialize JIT compiler (disabled by default, enable via env or flag) */
+    if (getenv("GUAGE_JIT")) {
+        jit_init();
+    }
+
     if (load_test_file) {
 #ifndef _WIN32
         int sched_per_worker = sched_override > 0 ? sched_override : 1;
@@ -1263,6 +1269,12 @@ int main(int argc, char** argv) {
         run_test_file(test_file);
     } else {
         repl();
+    }
+
+    /* Print JIT statistics if enabled */
+    if (jit_is_enabled()) {
+        jit_print_stats();
+        jit_shutdown();
     }
 
     sched_shutdown();
