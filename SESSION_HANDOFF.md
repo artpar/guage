@@ -1,13 +1,47 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-02-05 (Day 150 — Feature Fixes)
+Updated: 2026-02-05 (Day 150 — JIT Compiler)
 Purpose: Current project status and progress
 ---
 
 # Session Handoff: Day 150
 
-## Latest: Feature Fixes (178/178 tests passing)
+## Latest: Copy-and-Patch JIT Compiler (178/178 tests passing)
+
+### JIT Compiler Implementation
+- **250x speedup** over interpreter for tail-recursive functions
+- **Within 2-3x of native C** (-O2) performance
+- Copy-and-Patch architecture with native code emission
+- Tail-recursive loop detection and compilation to native loops
+- Inline arithmetic (ADD, SUB, MUL, DIV) with direct FPU instructions
+- Inline ENV_LOAD (~4 instructions vs ~25 for helper call)
+- ARM64 + x86-64 backends
+
+### Benchmark Harness
+New `benchmark/` directory with systematic comparison:
+```bash
+./benchmark/run_benchmarks.sh -n 10 -o results.json
+```
+
+**Sample Results (N=50000 sum-squares):**
+| Implementation | Mean (μs) | vs C |
+|----------------|-----------|------|
+| C (-O2)        | 66        | 1x   |
+| Guage JIT      | 189       | 2.9x |
+| Interpreter    | 46,520    | 705x |
+
+**JIT speedup: 246x** over interpreter
+
+### Files Added
+- `bootstrap/jit.c` — JIT compiler (tail-loop detection, native emission)
+- `benchmark/run_benchmarks.sh` — Benchmark runner script
+- `benchmark/baseline.c` — C baseline implementations
+- `benchmark/sum_squares.scm`, `benchmark/sum_to.scm` — Guage benchmarks
+
+---
+
+## Earlier: Feature Fixes (Day 150)
 
 ### Hex Literal Parsing
 - Added C-style `#0xFF` hex literal support alongside existing `#xFF`
@@ -129,6 +163,7 @@ bootstrap/tests/            # Test suite (178 files)
 
 **Last Updated:** 2026-02-05
 **Latest Commits:**
+- `c134252` feat: Add systematic benchmarking harness with C baselines
+- `df4e836` feat: JIT tail-recursive loop compiler achieves 250x speedup
+- `29033eb` feat: Add Copy-and-Patch JIT compiler with native code execution
 - `2fa294f` feat: Fix 3 test failures + add new test files (178/178 passing)
-- `dc7518b` docs: Update and compact SESSION_HANDOFF.md
-- `3b07e81` feat: Convert syntax from Unicode symbols to English/Scheme-like names

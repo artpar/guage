@@ -1,7 +1,7 @@
 ---
 Status: CURRENT
 Created: 2025-12-01
-Updated: 2026-01-31
+Updated: 2026-02-05
 Purpose: Project overview and quick start
 ---
 
@@ -11,10 +11,11 @@ Purpose: Project overview and quick start
 
 ## Current Status
 
-- **540 primitives** — all working
-- **175/175 test files passing** (100%)
+- **558 primitives** — all working
+- **178/178 test files passing** (100%)
 - **Turing complete** — lambda calculus with De Bruijn indices + TCO
-- **Day 148+ complete** — all stress tests passing (actors, GenServer, supervisors, ETS, effects)
+- **JIT compiler** — Copy-and-Patch architecture, 250x speedup over interpreter, within 2-3x of native C
+- **Day 150 complete** — all stress tests passing (actors, GenServer, supervisors, ETS, effects)
 - **~40K lines of C** across 61 source files
 - See [`SESSION_HANDOFF.md`](SESSION_HANDOFF.md) for detailed progress
 
@@ -75,12 +76,16 @@ Purpose: Project overview and quick start
 
 ```bash
 make              # Build (O2 optimized, 32MB stack)
-make test         # Run full test suite (175 test files, exit-code driven)
+make test         # Run full test suite (178 test files, exit-code driven)
 make test-one TEST=bootstrap/tests/basic.test  # Single file (--test mode, JSON Lines on stderr)
 make test-json    # Run tests, write JSON results to test-results.jsonl
 make repl         # Start interactive REPL
 make clean        # Clean build artifacts
 make rebuild      # Clean + rebuild
+
+# Benchmarking
+./benchmark/run_benchmarks.sh              # Run C vs JIT vs interpreter comparison
+./benchmark/run_benchmarks.sh -n 10 -o results.json  # 10 iterations, JSON output
 ```
 
 ## Examples
@@ -194,14 +199,18 @@ N:M multi-scheduler built on assembly `fcontext` context switching (~4-20ns on A
 guage/
 ├── Makefile              # Build system (from root)
 ├── README.md             # This file
-├── SPEC.md               # Language specification (540 primitives)
+├── SPEC.md               # Language specification (558 primitives)
 ├── CLAUDE.md             # Philosophy and principles
 ├── SESSION_HANDOFF.md    # Current progress and status
+├── benchmark/            # Performance benchmarking
+│   ├── run_benchmarks.sh   # Benchmark runner (C vs JIT vs interp)
+│   ├── baseline.c          # C baseline implementations
+│   └── *.scm               # Guage benchmark programs
 ├── bootstrap/            # C implementation (~40K lines)
 │   ├── cell.{c,h}       # Core data structures + biased refcounting
 │   ├── eval.{c,h}       # Evaluator + special forms + reduction counting
 │   ├── debruijn.{c,h}   # De Bruijn index conversion
-│   ├── primitives.{c,h} # All 540 primitive operations
+│   ├── primitives.{c,h} # All 558 primitive operations
 │   ├── debug.{c,h}      # Stack traces
 │   ├── macro.{c,h}      # Pattern-based macro system
 │   ├── pattern.{c,h}    # Pattern matching engine
@@ -216,6 +225,7 @@ guage/
 │   ├── fcontext_arm64.S  # ARM64 asm context switch (192B, FPCR saved)
 │   ├── fcontext_x86_64.S # x86-64 asm context switch (64B, MXCSR saved)
 │   ├── park.{c,h}       # Platform-adaptive thread parking
+│   ├── jit.c             # Copy-and-Patch JIT compiler (250x speedup)
 │   ├── ffi_jit.{c,h}    # FFI JIT stub compiler
 │   ├── ffi_emit_a64.c   # ARM64 JIT code emitter
 │   ├── ffi_emit_x64.c   # x86-64 JIT code emitter
@@ -225,7 +235,7 @@ guage/
 │   ├── diagnostic.{c,h} # Error diagnostics
 │   ├── main.c            # Parser, REPL with history/completion
 │   ├── stdlib/           # Standard library (Guage code)
-│   ├── tests/            # Test suite (148 test files)
+│   ├── tests/            # Test suite (178 test files)
 │   └── run_tests.sh      # Test runner (exit-code driven, JSON Lines)
 └── docs/                 # Documentation
     ├── INDEX.md           # Navigation hub
