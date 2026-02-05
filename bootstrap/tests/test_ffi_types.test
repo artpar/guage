@@ -14,3 +14,13 @@
 ; Bind strlen with :uint64 alias for size_t return
 (test-case (quote :ffi-alias-uint64) #t
   (not (error? (ffi-bind dummy-handle "strlen" (quote (:char*)) :uint64))))
+
+; Test other type aliases
+(test-case (quote :ffi-alias-int32) #t
+  (not (error? (ffi-bind dummy-handle "abs" (quote (:int32)) :int32))))
+
+(test-case (quote :ffi-alias-string) #t
+  (not (error? (ffi-bind dummy-handle "strlen" (quote (:string)) :ulong))))
+
+(test-case (quote :ffi-alias-ptr) #t
+  (not (error? (ffi-bind dummy-handle "malloc" (quote (:ulong)) :ptr))))

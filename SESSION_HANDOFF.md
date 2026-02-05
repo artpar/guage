@@ -1,21 +1,39 @@
 ---
 Status: CURRENT
 Created: 2026-01-27
-Updated: 2026-02-05 (Day 150 — English Syntax Conversion)
+Updated: 2026-02-05 (Day 150 — Feature Fixes)
 Purpose: Current project status and progress
 ---
 
-# Session Handoff: Day 150 — English Syntax Conversion
+# Session Handoff: Day 150
 
-## Day 150 — Unicode→English Syntax Conversion (COMPLETE)
+## Latest: Feature Fixes (178/178 tests passing)
 
-**STATUS:** 175/175 tracked tests passing (4 untracked tests for WIP features)
+### Hex Literal Parsing
+- Added C-style `#0xFF` hex literal support alongside existing `#xFF`
+- Parser now checks for `#0x` prefix before decimal number branch
+- Test: `test_hex_literals.test` (13 tests)
 
-### What Was Done
+### Multi-Body Lambda
+- Lambda now wraps multiple body expressions in implicit `(begin ...)`
+- `(lambda () e1 e2 e3)` correctly returns `e3`
+- Test: `test_lambda_multibody.test` (7 tests)
 
-**BREAKING CHANGE:** Converted entire codebase from Unicode symbols to English/Scheme-like syntax. This makes Guage more accessible and easier for AI assistants to write correct code.
+### FFI Type Validation
+- Added `FFI_UNKNOWN` enum for unrecognized types
+- `ffi-bind` returns error for unknown arg/return types (was silent)
+- Added type aliases: `int32`, `uint32`, `int64`, `uint64`, `ptr`, `string`, `uint8`
+- Test: `test_ffi_types.test` (6 tests)
 
-### Key Conversions
+### FFI Struct-by-Value (WIP)
+- Feature incomplete — requires ABI-specific struct passing
+- Test renamed to `.wip` extension for future implementation
+
+---
+
+## Unicode→English Conversion (Day 150)
+
+**BREAKING CHANGE:** Converted codebase from Unicode symbols to English/Scheme-like syntax.
 
 | Unicode | English | Category |
 |---------|---------|----------|
@@ -27,33 +45,10 @@ Purpose: Current project status and progress
 | `⟨⟩ ◁ ▷ ∅` | `cons car cdr nil` | Lists |
 | `⚠ ⚠?` | `error error?` | Errors |
 | `∇` | `match` | Pattern matching |
-| `≫` | `bind` | Effects |
 | `□ □→ □←` | `box unbox box-set!` | State |
 | `⊨ ⊢` | `test-case assert` | Testing |
 
-**558 primitives** and **34 special forms** converted total.
-
-### Files Changed
-
-- **230 files** modified
-- **C source:** `intern.c`, `primitives.c`, `eval.c`, `cell.c`, etc.
-- **Stdlib:** All 34 `.scm` files
-- **Tests:** All 175 `.test` files
-- **Docs:** `CLAUDE.md` completely updated
-
-### Bug Fixes During Conversion
-
-1. **`structures.test`:** Variable `nil` was shadowing built-in `nil` — renamed to `empty-list`
-2. **`macros_exception.scm`:** Parameter `error-type` shadowing primitive — renamed to `expected-type`
-3. **`eval.scm`:** `(quote ?)` not converted to `(quote if)` — fixed manually
-4. **Stdlib macros:** `arity` incorrectly used instead of `macro` — fixed with sed
-
-### New Tool
-
-`bootstrap/rename_symbols.py` — Automated conversion script with:
-- Complete mapping of all 600+ symbols
-- Token-based replacement (preserves user-defined names)
-- Length-sorted replacements (avoids partial matches)
+**558 primitives** and **34 special forms** converted.
 
 ---
 
@@ -61,12 +56,13 @@ Purpose: Current project status and progress
 
 **System State:**
 - **Primitives:** 558 total
-- **Special Forms:** 34 (including `try`, `bind`, `and`, `or`)
-- **Tests:** 175/175 passing (4 WIP tests untracked)
-- **Syntax:** English/Scheme-like (no Unicode required)
+- **Special Forms:** 34
+- **Tests:** 178/178 passing
+- **Syntax:** English/Scheme-like
 
 **Core Capabilities:**
 - Lambda calculus with De Bruijn indices + TCO
+- Multi-body lambda with implicit begin
 - Algebraic effects with resumable handlers
 - Actor model with supervision (BEAM-style)
 - Channels, GenServer, ETS tables
@@ -82,11 +78,11 @@ Purpose: Current project status and progress
 ### Build & Test
 ```bash
 make              # Build
-make test         # Run test suite (175 files)
+make test         # Run test suite (178 files)
 make repl         # Start REPL
 ```
 
-### Example Code (New Syntax)
+### Example Code
 ```scheme
 ; Factorial
 (define factorial (lambda (n)
@@ -94,17 +90,14 @@ make repl         # Start REPL
      #1
      (* n (factorial (- n #1))))))
 
-; Map over list
-(define my-map (lambda (f lst)
-  (if (null? lst)
-     nil
-     (cons (f (car lst)) (my-map f (cdr lst))))))
+; Multi-body lambda (new!)
+(define bump (lambda ()
+  (box-set! counter (+ (unbox counter) #1))
+  (unbox counter)))
 
-; Error handling
-(define safe-div (lambda (x y)
-  (if (equal? y #0)
-     (error :div-by-zero y)
-     (/ x y))))
+; Hex literals (both forms work)
+(define white #0xFFFFFFFF)
+(define red #xFF0000)
 
 ; Test case
 (test-case (quote :factorial-5) #120 (factorial #5))
@@ -112,21 +105,12 @@ make repl         # Start REPL
 
 ### Key Files
 ```
-bootstrap/intern.c          # Special form names (34)
-bootstrap/primitives.c      # Primitive table (558)
-bootstrap/eval.c            # Evaluator
-bootstrap/stdlib/           # Standard library
-bootstrap/tests/            # Test suite
-bootstrap/rename_symbols.py # Conversion tool
+bootstrap/main.c            # Parser (hex literals)
+bootstrap/eval.c            # Evaluator (multi-body lambda)
+bootstrap/ffi_jit.c         # FFI type parsing
+bootstrap/primitives.c      # FFI binding
+bootstrap/tests/            # Test suite (178 files)
 ```
-
----
-
-## Archived History
-
-Previous session details (Unicode era) archived to:
-- `docs/archive/2026-02/sessions/` — Recent sessions
-- `docs/archive/2026-01/sessions/` — Earlier history
 
 ---
 
@@ -134,15 +118,17 @@ Previous session details (Unicode era) archived to:
 
 **Starting a new session:**
 1. Read this file
-2. Run `make test` to verify (175/175 should pass)
+2. Run `make test` to verify (178/178 should pass)
 3. Check `git log --oneline -5`
 
 **Ending a session:**
 1. Update this file
 2. Commit changes
-3. Archive detailed notes if needed
 
 ---
 
-**Last Updated:** 2026-02-05 (Day 150 — English Syntax)
-**Commit:** `3b07e81` feat: Convert syntax from Unicode symbols to English/Scheme-like names
+**Last Updated:** 2026-02-05
+**Latest Commits:**
+- `2fa294f` feat: Fix 3 test failures + add new test files (178/178 passing)
+- `dc7518b` docs: Update and compact SESSION_HANDOFF.md
+- `3b07e81` feat: Convert syntax from Unicode symbols to English/Scheme-like names
