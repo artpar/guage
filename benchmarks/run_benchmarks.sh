@@ -137,7 +137,7 @@ for entry in $BENCHMARKS; do
     cbin="$TMPDIR/bench_${key}"
 
     # Get results for correctness check
-    g_raw=$("$GUAGE" "$scm" 2>/dev/null | grep '^⟳' | tail -1 | sed 's/^⟳ #//')
+    g_raw=$("$GUAGE" "$scm" 2>/dev/null | grep '^actor-spawn' | tail -1 | sed 's/^actor-spawn #//')
     c_raw=$("$cbin")
 
     check=$(perl -e '
