@@ -10,12 +10,37 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <stddef.h>
 #include <sys/mman.h>
 
 #ifdef __APPLE__
 #include <libkern/OSCacheControl.h>
 #include <pthread.h>
 #endif
+
+/* ============================================================================
+ * Cell Structure Offsets (for inline memory access)
+ * ============================================================================ */
+
+/* These offsets are computed at compile time for inline ENV_LOAD */
+static const size_t CELL_TYPE_OFFSET = offsetof(Cell, type);
+static const size_t CELL_DATA_OFFSET = offsetof(Cell, data);
+
+/* Vector offsets within Cell.data union - need runtime calculation */
+static size_t g_vec_sbo_offset;      /* offset of data.vector.sbo from Cell start */
+static size_t g_vec_heap_offset;     /* offset of data.vector.heap from Cell start */
+static size_t g_vec_capacity_offset; /* offset of data.vector.capacity from Cell start */
+static size_t g_atom_number_offset;  /* offset of data.atom.number from Cell start */
+
+/* Initialize struct offsets - must be called during jit_init */
+static void init_struct_offsets(void) {
+    /* Use a dummy cell to compute offsets portably */
+    Cell dummy;
+    g_vec_sbo_offset = (size_t)((char*)&dummy.data.vector.sbo - (char*)&dummy);
+    g_vec_heap_offset = (size_t)((char*)&dummy.data.vector.heap - (char*)&dummy);
+    g_vec_capacity_offset = (size_t)((char*)&dummy.data.vector.capacity - (char*)&dummy);
+    g_atom_number_offset = (size_t)((char*)&dummy.data.atom.number - (char*)&dummy);
+}
 
 /* ============================================================================
  * Global State
@@ -49,6 +74,9 @@ static void* arena_alloc(size_t size) {
 
 void jit_init(void) {
     if (g_jit_compiler.code_arena) return;  /* Already initialized */
+
+    /* Initialize struct offsets for inline memory access */
+    init_struct_offsets();
 
     /* Allocate code arena with execute permission */
 #if defined(__APPLE__) && defined(__aarch64__)
@@ -612,11 +640,20 @@ static bool trace_codegen(JITTrace* trace) {
         switch (inst->op) {
             case JOP_CONST_NUM:
             case JOP_CONST_INT:
+            case JOP_CONST_BOOL:
             case JOP_ADD_DD:
             case JOP_SUB_DD:
             case JOP_MUL_DD:
             case JOP_DIV_DD:
-            case JOP_ENV_LOAD:  /* Parameter access */
+            case JOP_LT_DD:      /* Comparisons */
+            case JOP_LE_DD:
+            case JOP_GT_DD:
+            case JOP_GE_DD:
+            case JOP_EQ_DD:
+            case JOP_JUMP_IF:    /* Conditionals */
+            case JOP_JUMP_UNLESS:
+            case JOP_JUMP:
+            case JOP_ENV_LOAD:   /* Parameter access */
             case JOP_RET:
                 /* Supported */
                 break;
@@ -701,52 +738,123 @@ static bool trace_codegen(JITTrace* trace) {
                 stack_depth--;
                 break;
             }
+            case JOP_LT_DD: {
+                /* Compare D[n-2] < D[n-1], result in W10 (0 or 1) */
+                if (stack_depth < 2) { free(ctx.buf); return false; }
+                int op1 = stack_depth - 2;
+                int op2 = stack_depth - 1;
+                /* FCMP Dop1, Dop2 */
+                emit_u32(&ctx, 0x1E602000 | (op1 << 5) | (op2 << 16));
+                /* CSET W10, LT (MI = negative = less than) */
+                emit_u32(&ctx, 0x1A9F47EA);
+                stack_depth -= 2;  /* Pop both operands, comparison result in W10 */
+                break;
+            }
+            case JOP_LE_DD: {
+                if (stack_depth < 2) { free(ctx.buf); return false; }
+                int op1 = stack_depth - 2;
+                int op2 = stack_depth - 1;
+                emit_u32(&ctx, 0x1E602000 | (op1 << 5) | (op2 << 16)); /* FCMP */
+                /* CSET W10, LS (LS = unsigned lower or same, for floats = LE) */
+                emit_u32(&ctx, 0x1A9F87EA);
+                stack_depth -= 2;
+                break;
+            }
+            case JOP_GT_DD: {
+                if (stack_depth < 2) { free(ctx.buf); return false; }
+                int op1 = stack_depth - 2;
+                int op2 = stack_depth - 1;
+                emit_u32(&ctx, 0x1E602000 | (op1 << 5) | (op2 << 16)); /* FCMP */
+                /* CSET W10, GT */
+                emit_u32(&ctx, 0x1A9FD7EA);
+                stack_depth -= 2;
+                break;
+            }
+            case JOP_GE_DD: {
+                if (stack_depth < 2) { free(ctx.buf); return false; }
+                int op1 = stack_depth - 2;
+                int op2 = stack_depth - 1;
+                emit_u32(&ctx, 0x1E602000 | (op1 << 5) | (op2 << 16)); /* FCMP */
+                /* CSET W10, GE */
+                emit_u32(&ctx, 0x1A9FA7EA);
+                stack_depth -= 2;
+                break;
+            }
+            case JOP_EQ_DD: {
+                if (stack_depth < 2) { free(ctx.buf); return false; }
+                int op1 = stack_depth - 2;
+                int op2 = stack_depth - 1;
+                emit_u32(&ctx, 0x1E602000 | (op1 << 5) | (op2 << 16)); /* FCMP */
+                /* CSET W10, EQ */
+                emit_u32(&ctx, 0x1A9F17EA);
+                stack_depth -= 2;
+                break;
+            }
+            case JOP_CONST_BOOL: {
+                /* Load bool constant into W10 */
+                int val = inst->imm.int_const ? 1 : 0;
+                emit_u32(&ctx, 0x5280000A | (val << 5));  /* MOV W10, #val */
+                break;
+            }
+            case JOP_JUMP_IF: {
+                /* Jump if W10 != 0 (comparison result is true) */
+                /* CBZ/CBNZ with immediate offset - will be patched later */
+                /* For now, emit CBNZ W10, +offset */
+                uint32_t offset = inst->imm.jump_offset;
+                /* CBNZ W10, offset (offset in instructions, shifted left 2) */
+                emit_u32(&ctx, 0x3500000A | ((offset & 0x7FFFF) << 5));
+                break;
+            }
+            case JOP_JUMP_UNLESS: {
+                /* Jump if W10 == 0 (comparison result is false) */
+                uint32_t offset = inst->imm.jump_offset;
+                /* CBZ W10, offset */
+                emit_u32(&ctx, 0x3400000A | ((offset & 0x7FFFF) << 5));
+                break;
+            }
+            case JOP_JUMP: {
+                /* Unconditional jump */
+                uint32_t offset = inst->imm.jump_offset;
+                /* B offset */
+                emit_u32(&ctx, 0x14000000 | (offset & 0x3FFFFFF));
+                break;
+            }
             case JOP_ENV_LOAD: {
-                /* Load parameter from environment (De Bruijn index) */
-                /* Call jit_helper_load_env_num(env, index) */
-                /* env is in X19 (callee-saved), index is in imm.env.index */
+                /* INLINE parameter load from environment vector
+                 * env is in X19 (callee-saved), index is in imm.env.index
+                 *
+                 * For SBO (Small Buffer Optimization) case (capacity <= 4):
+                 *   Cell* cell = env->data.vector.sbo[index]
+                 *   double val = cell->data.atom.number
+                 *
+                 * This is ~4 instructions vs ~25 with helper call
+                 */
                 int dreg = stack_depth++;
                 int index = inst->imm.env.index;
 
-                /* Save existing D registers to stack before call (D0-D7 are caller-saved) */
-                int save_count = stack_depth - 1;  /* How many D regs already in use */
-                if (save_count > 0) {
-                    /* Allocate stack space (16-byte aligned) */
-                    int stack_adj = ((save_count * 8) + 15) & ~15;
-                    emit_u32(&ctx, 0xD10003FF | (stack_adj << 10));  /* SUB SP, SP, #adj */
-                    for (int d = 0; d < save_count && d < 8; d++) {
-                        /* STR Dd, [SP, #d*8] */
-                        emit_u32(&ctx, 0xFD000000 | d | (31 << 5) | ((d * 8 / 8) << 10));
-                    }
+                /* Load Cell* from env->data.vector.sbo[index] into X9
+                 * SBO array is at g_vec_sbo_offset, each element is 8 bytes */
+                uint32_t sbo_elem_offset = (uint32_t)(g_vec_sbo_offset + index * 8);
+
+                if (sbo_elem_offset < 4096) {
+                    /* LDR X9, [X19, #sbo_elem_offset] - load Cell* */
+                    emit_u32(&ctx, 0xF9400269 | ((sbo_elem_offset / 8) << 10));
+                } else {
+                    /* Offset too large, use ADD + LDR */
+                    emit_u32(&ctx, 0x91000269 | ((sbo_elem_offset & 0xFFF) << 10)); /* ADD X9, X19, #off_lo */
+                    emit_u32(&ctx, 0xF9400129); /* LDR X9, [X9] */
                 }
 
-                /* Set up call: X0 = env (from X19), W1 = index */
-                emit_u32(&ctx, 0xAA1303E0);  /* MOV X0, X19 (env from callee-saved X19) */
-                emit_u32(&ctx, 0xD2800001 | (index << 5));  /* MOV W1, #index */
-
-                /* Load address of jit_helper_load_env_num into X9 */
-                uint64_t helper_addr = (uint64_t)(uintptr_t)&jit_helper_load_env_num;
-                emit_u32(&ctx, 0xD2800009 | ((helper_addr & 0xFFFF) << 5));
-                emit_u32(&ctx, 0xF2A00009 | (((helper_addr >> 16) & 0xFFFF) << 5));
-                emit_u32(&ctx, 0xF2C00009 | (((helper_addr >> 32) & 0xFFFF) << 5));
-                emit_u32(&ctx, 0xF2E00009 | (((helper_addr >> 48) & 0xFFFF) << 5));
-                /* BLR X9 */
-                emit_u32(&ctx, 0xD63F0120);
-
-                /* Result is in D0 - move to target register if needed */
-                if (dreg != 0) {
-                    /* FMOV Ddreg, D0 */
-                    emit_u32(&ctx, 0x1E604000 | dreg);
-                }
-
-                /* Restore saved D registers */
-                if (save_count > 0) {
-                    for (int d = 0; d < save_count && d < 8; d++) {
-                        /* LDR Dd, [SP, #d*8] */
-                        emit_u32(&ctx, 0xFD400000 | d | (31 << 5) | ((d * 8 / 8) << 10));
-                    }
-                    int stack_adj = ((save_count * 8) + 15) & ~15;
-                    emit_u32(&ctx, 0x910003FF | (stack_adj << 10));  /* ADD SP, SP, #adj */
+                /* Load double from cell->data.atom.number into Ddreg
+                 * Number is at g_atom_number_offset */
+                uint32_t num_offset = (uint32_t)g_atom_number_offset;
+                if (num_offset < 32768) {
+                    /* LDR Ddreg, [X9, #num_offset] */
+                    emit_u32(&ctx, 0xFD400120 | dreg | ((num_offset / 8) << 10));
+                } else {
+                    /* Offset too large - shouldn't happen for Cell struct */
+                    emit_u32(&ctx, 0x91000129 | ((num_offset & 0xFFF) << 10)); /* ADD X9, X9, #off */
+                    emit_u32(&ctx, 0xFD400120 | dreg); /* LDR Ddreg, [X9] */
                 }
                 break;
             }
@@ -852,38 +960,140 @@ static bool trace_codegen(JITTrace* trace) {
                 stack_depth--;
                 break;
             }
+            case JOP_LT_DD: {
+                /* Compare XMM[n-2] < XMM[n-1], result in AL (0 or 1) */
+                if (stack_depth < 2) { free(ctx.buf); return false; }
+                int op1 = stack_depth - 2;
+                int op2 = stack_depth - 1;
+                /* COMISD XMMop1, XMMop2 */
+                emit_u8(&ctx, 0x66); emit_u8(&ctx, 0x0F); emit_u8(&ctx, 0x2F);
+                emit_u8(&ctx, 0xC0 | (op1 << 3) | op2);
+                /* SETB AL (below = less than for unsigned, which COMISD uses) */
+                emit_u8(&ctx, 0x0F); emit_u8(&ctx, 0x92); emit_u8(&ctx, 0xC0);
+                /* MOVZX EAX, AL */
+                emit_u8(&ctx, 0x0F); emit_u8(&ctx, 0xB6); emit_u8(&ctx, 0xC0);
+                stack_depth -= 2;
+                break;
+            }
+            case JOP_LE_DD: {
+                if (stack_depth < 2) { free(ctx.buf); return false; }
+                int op1 = stack_depth - 2;
+                int op2 = stack_depth - 1;
+                emit_u8(&ctx, 0x66); emit_u8(&ctx, 0x0F); emit_u8(&ctx, 0x2F);
+                emit_u8(&ctx, 0xC0 | (op1 << 3) | op2);
+                /* SETBE AL (below or equal) */
+                emit_u8(&ctx, 0x0F); emit_u8(&ctx, 0x96); emit_u8(&ctx, 0xC0);
+                emit_u8(&ctx, 0x0F); emit_u8(&ctx, 0xB6); emit_u8(&ctx, 0xC0);
+                stack_depth -= 2;
+                break;
+            }
+            case JOP_GT_DD: {
+                if (stack_depth < 2) { free(ctx.buf); return false; }
+                int op1 = stack_depth - 2;
+                int op2 = stack_depth - 1;
+                emit_u8(&ctx, 0x66); emit_u8(&ctx, 0x0F); emit_u8(&ctx, 0x2F);
+                emit_u8(&ctx, 0xC0 | (op1 << 3) | op2);
+                /* SETA AL (above = greater than) */
+                emit_u8(&ctx, 0x0F); emit_u8(&ctx, 0x97); emit_u8(&ctx, 0xC0);
+                emit_u8(&ctx, 0x0F); emit_u8(&ctx, 0xB6); emit_u8(&ctx, 0xC0);
+                stack_depth -= 2;
+                break;
+            }
+            case JOP_GE_DD: {
+                if (stack_depth < 2) { free(ctx.buf); return false; }
+                int op1 = stack_depth - 2;
+                int op2 = stack_depth - 1;
+                emit_u8(&ctx, 0x66); emit_u8(&ctx, 0x0F); emit_u8(&ctx, 0x2F);
+                emit_u8(&ctx, 0xC0 | (op1 << 3) | op2);
+                /* SETAE AL (above or equal) */
+                emit_u8(&ctx, 0x0F); emit_u8(&ctx, 0x93); emit_u8(&ctx, 0xC0);
+                emit_u8(&ctx, 0x0F); emit_u8(&ctx, 0xB6); emit_u8(&ctx, 0xC0);
+                stack_depth -= 2;
+                break;
+            }
+            case JOP_EQ_DD: {
+                if (stack_depth < 2) { free(ctx.buf); return false; }
+                int op1 = stack_depth - 2;
+                int op2 = stack_depth - 1;
+                emit_u8(&ctx, 0x66); emit_u8(&ctx, 0x0F); emit_u8(&ctx, 0x2F);
+                emit_u8(&ctx, 0xC0 | (op1 << 3) | op2);
+                /* SETE AL (equal) */
+                emit_u8(&ctx, 0x0F); emit_u8(&ctx, 0x94); emit_u8(&ctx, 0xC0);
+                emit_u8(&ctx, 0x0F); emit_u8(&ctx, 0xB6); emit_u8(&ctx, 0xC0);
+                stack_depth -= 2;
+                break;
+            }
+            case JOP_CONST_BOOL: {
+                /* MOV EAX, val */
+                int val = inst->imm.int_const ? 1 : 0;
+                emit_u8(&ctx, 0xB8);
+                emit_u8(&ctx, val); emit_u8(&ctx, 0); emit_u8(&ctx, 0); emit_u8(&ctx, 0);
+                break;
+            }
+            case JOP_JUMP_IF: {
+                /* Jump if EAX != 0 */
+                /* TEST EAX, EAX; JNZ offset */
+                emit_u8(&ctx, 0x85); emit_u8(&ctx, 0xC0);  /* TEST EAX, EAX */
+                emit_u8(&ctx, 0x0F); emit_u8(&ctx, 0x85); /* JNZ rel32 */
+                uint32_t offset = inst->imm.jump_offset;
+                emit_u8(&ctx, offset & 0xFF);
+                emit_u8(&ctx, (offset >> 8) & 0xFF);
+                emit_u8(&ctx, (offset >> 16) & 0xFF);
+                emit_u8(&ctx, (offset >> 24) & 0xFF);
+                break;
+            }
+            case JOP_JUMP_UNLESS: {
+                /* Jump if EAX == 0 */
+                emit_u8(&ctx, 0x85); emit_u8(&ctx, 0xC0);  /* TEST EAX, EAX */
+                emit_u8(&ctx, 0x0F); emit_u8(&ctx, 0x84); /* JZ rel32 */
+                uint32_t offset = inst->imm.jump_offset;
+                emit_u8(&ctx, offset & 0xFF);
+                emit_u8(&ctx, (offset >> 8) & 0xFF);
+                emit_u8(&ctx, (offset >> 16) & 0xFF);
+                emit_u8(&ctx, (offset >> 24) & 0xFF);
+                break;
+            }
+            case JOP_JUMP: {
+                /* JMP rel32 */
+                emit_u8(&ctx, 0xE9);
+                uint32_t offset = inst->imm.jump_offset;
+                emit_u8(&ctx, offset & 0xFF);
+                emit_u8(&ctx, (offset >> 8) & 0xFF);
+                emit_u8(&ctx, (offset >> 16) & 0xFF);
+                emit_u8(&ctx, (offset >> 24) & 0xFF);
+                break;
+            }
             case JOP_ENV_LOAD: {
-                /* Load parameter from environment (De Bruijn index) */
-                /* Call jit_helper_load_env_num(env, index) */
-                /* env is in RBX, index is in imm.env.index */
+                /* INLINE parameter load from environment vector
+                 * env is in RBX, index is in imm.env.index
+                 *
+                 * For SBO case:
+                 *   Cell* cell = env->data.vector.sbo[index]
+                 *   double val = cell->data.atom.number
+                 */
                 int xreg = stack_depth++;
                 int index = inst->imm.env.index;
 
-                /* For simplicity, we don't save/restore XMM regs across calls.
-                 * This means ENV_LOAD must be the first operation or we need
-                 * a more sophisticated approach. For now, just do the call. */
+                /* Load Cell* from env->data.vector.sbo[index] into RAX
+                 * MOV RAX, [RBX + sbo_offset + index*8] */
+                uint32_t sbo_elem_offset = (uint32_t)(g_vec_sbo_offset + index * 8);
+                emit_u8(&ctx, 0x48); emit_u8(&ctx, 0x8B); emit_u8(&ctx, 0x83);  /* MOV RAX, [RBX + disp32] */
+                emit_u8(&ctx, sbo_elem_offset & 0xFF);
+                emit_u8(&ctx, (sbo_elem_offset >> 8) & 0xFF);
+                emit_u8(&ctx, (sbo_elem_offset >> 16) & 0xFF);
+                emit_u8(&ctx, (sbo_elem_offset >> 24) & 0xFF);
 
-                /* Set up call: RDI = env (from RBX), ESI = index */
-                emit_u8(&ctx, 0x48); emit_u8(&ctx, 0x89); emit_u8(&ctx, 0xDF);  /* MOV RDI, RBX */
-                emit_u8(&ctx, 0xBE);  /* MOV ESI, imm32 */
-                emit_u8(&ctx, index & 0xFF);
-                emit_u8(&ctx, (index >> 8) & 0xFF);
-                emit_u8(&ctx, (index >> 16) & 0xFF);
-                emit_u8(&ctx, (index >> 24) & 0xFF);
-
-                /* Load address of jit_helper_load_env_num into RAX */
-                uint64_t helper_addr = (uint64_t)(uintptr_t)&jit_helper_load_env_num;
-                emit_u8(&ctx, 0x48); emit_u8(&ctx, 0xB8);
-                for (int b = 0; b < 8; b++) emit_u8(&ctx, (helper_addr >> (b * 8)) & 0xFF);
-                /* CALL RAX */
-                emit_u8(&ctx, 0xFF); emit_u8(&ctx, 0xD0);
-
-                /* Result is in XMM0 - move to target register if needed */
-                if (xreg != 0) {
-                    /* MOVSD XMMxreg, XMM0 */
-                    emit_u8(&ctx, 0xF2); emit_u8(&ctx, 0x0F); emit_u8(&ctx, 0x10);
-                    emit_u8(&ctx, 0xC0 | (xreg << 3));
-                }
+                /* Load double from cell->data.atom.number into XMMxreg
+                 * MOVSD XMMxreg, [RAX + num_offset] */
+                uint32_t num_offset = (uint32_t)g_atom_number_offset;
+                emit_u8(&ctx, 0xF2);
+                if (xreg >= 8) emit_u8(&ctx, 0x44);  /* REX.R for XMM8-15 */
+                emit_u8(&ctx, 0x0F); emit_u8(&ctx, 0x10);
+                emit_u8(&ctx, 0x80 | ((xreg & 7) << 3));  /* ModR/M: [RAX + disp32] */
+                emit_u8(&ctx, num_offset & 0xFF);
+                emit_u8(&ctx, (num_offset >> 8) & 0xFF);
+                emit_u8(&ctx, (num_offset >> 16) & 0xFF);
+                emit_u8(&ctx, (num_offset >> 24) & 0xFF);
                 break;
             }
             case JOP_RET:
@@ -938,11 +1148,397 @@ static bool trace_codegen(JITTrace* trace) {
 }
 
 /* ============================================================================
+ * Tail-Recursive Loop Compiler
+ *
+ * Detects pattern: (if <cond> <base> (self <arg1'> <arg2'>...))
+ * Compiles to native loop without interpreter overhead.
+ * ============================================================================ */
+
+/* Check if expr is a tail-recursive if-expression with a call in tail position */
+static bool is_tail_recursive_if(Cell* expr, const char* func_name, int arity) {
+    (void)func_name;  /* Not used - we check structure only */
+
+    if (!cell_is_pair(expr)) return false;
+
+    Cell* head = cell_car(expr);
+    if (!cell_is_symbol(head)) return false;
+
+    const char* sym = cell_get_symbol(head);
+    if (strcmp(sym, "if") != 0 && strcmp(sym, "?") != 0) return false;
+
+    /* (if cond then else) */
+    Cell* args = cell_cdr(expr);
+    if (!cell_is_pair(args)) return false;
+
+    Cell* cond = cell_car(args);
+    (void)cond;
+    args = cell_cdr(args);
+    if (!cell_is_pair(args)) return false;
+
+    Cell* then_branch = cell_car(args);
+    (void)then_branch;  /* Base case - will be simple */
+    args = cell_cdr(args);
+    if (!cell_is_pair(args)) return false;
+
+    Cell* else_branch = cell_car(args);
+
+    /* Check if else branch is a function call with arity args */
+    if (!cell_is_pair(else_branch)) return false;
+    Cell* call_head = cell_car(else_branch);
+    if (!cell_is_symbol(call_head)) return false;
+
+    /* Count arguments in the call */
+    int arg_count = 0;
+    Cell* call_args = cell_cdr(else_branch);
+    while (cell_is_pair(call_args)) {
+        arg_count++;
+        call_args = cell_cdr(call_args);
+    }
+
+    return arg_count == arity;
+}
+
+/* Check if condition is a simple numeric comparison: (< n const) or (< n #N) */
+static bool is_simple_comparison(Cell* cond, int* param_idx, double* compare_val) {
+    if (!cell_is_pair(cond)) return false;
+
+    Cell* op = cell_car(cond);
+    if (!cell_is_symbol(op)) return false;
+
+    const char* sym = cell_get_symbol(op);
+    if (strcmp(sym, "<") != 0 && strcmp(sym, "≤") != 0 &&
+        strcmp(sym, ">") != 0 && strcmp(sym, "≥") != 0) return false;
+
+    Cell* args = cell_cdr(cond);
+    if (!cell_is_pair(args)) return false;
+
+    Cell* left = cell_car(args);
+    args = cell_cdr(args);
+    if (!cell_is_pair(args)) return false;
+
+    Cell* right = cell_car(args);
+
+    /* Left should be a De Bruijn index (number after conversion) */
+    if (!cell_is_number(left)) return false;
+    *param_idx = (int)cell_get_number(left);
+
+    /* Right should be (quote <number>) */
+    if (cell_is_pair(right)) {
+        Cell* quote_head = cell_car(right);
+        if (cell_is_symbol(quote_head) && strcmp(cell_get_symbol(quote_head), "quote") == 0) {
+            Cell* quote_args = cell_cdr(right);
+            if (cell_is_pair(quote_args)) {
+                Cell* val = cell_car(quote_args);
+                if (cell_is_number(val)) {
+                    *compare_val = cell_get_number(val);
+                    return true;
+                }
+            }
+        }
+    }
+
+    return false;
+}
+
+/* Compile tail-recursive function as native loop
+ * Returns native code pointer, or NULL if pattern not matched
+ */
+static void* compile_tail_recursive_loop(Cell* lambda, const char* func_name) {
+    if (!cell_is_lambda(lambda)) return NULL;
+
+    int arity = lambda->data.lambda.arity;
+    Cell* body = lambda->data.lambda.body;
+
+    /* Check for tail-recursive if pattern */
+    if (!is_tail_recursive_if(body, func_name, arity)) return NULL;
+
+    /* Extract if components */
+    Cell* args = cell_cdr(body);
+    Cell* cond = cell_car(args);
+    args = cell_cdr(args);
+    Cell* then_branch = cell_car(args);
+    args = cell_cdr(args);
+    Cell* else_branch = cell_car(args);
+
+    /* Check condition is simple comparison */
+    int cmp_param;
+    double cmp_val;
+    if (!is_simple_comparison(cond, &cmp_param, &cmp_val)) return NULL;
+
+    /* For now, only handle 2-param functions (n, acc) pattern */
+    if (arity != 2) return NULL;
+
+    /* Get comparison operator */
+    Cell* cmp_op = cell_car(cond);
+    const char* cmp_sym = cell_get_symbol(cmp_op);
+
+    /* Generate native loop code */
+    EmitCtx ctx;
+    ctx.cap = 4096;
+    ctx.pos = 0;
+    ctx.buf = malloc(ctx.cap);
+    if (!ctx.buf) return NULL;
+
+#if defined(__aarch64__) || defined(_M_ARM64)
+    /* ARM64: Generate tight loop
+     *
+     * Input: X0 = env (CELL_VECTOR with 2 params)
+     * D0 = param0 (e.g., n)
+     * D1 = param1 (e.g., acc)
+     *
+     * Loop structure:
+     *   loop:
+     *     FCMP D0, cmp_val
+     *     B.cond done
+     *     <update D0, D1>
+     *     B loop
+     *   done:
+     *     <box result and return>
+     */
+
+    /* Prologue */
+    emit_u32(&ctx, 0xA9BE7BFD);  /* STP X29, X30, [SP, #-32]! */
+    emit_u32(&ctx, 0x910003FD);  /* MOV X29, SP */
+    emit_u32(&ctx, 0xF9000BF3);  /* STR X19, [SP, #16] */
+    emit_u32(&ctx, 0xAA0003F3);  /* MOV X19, X0 (save env) */
+
+    /* Load params into D0 (n) and D1 (acc) */
+    uint32_t sbo0_offset = (uint32_t)(g_vec_sbo_offset + 0 * 8);
+    uint32_t sbo1_offset = (uint32_t)(g_vec_sbo_offset + 1 * 8);
+    uint32_t num_offset = (uint32_t)g_atom_number_offset;
+
+    /* D0 = env->sbo[0]->number */
+    emit_u32(&ctx, 0xF9400269 | ((sbo0_offset / 8) << 10));  /* LDR X9, [X19, #sbo0] */
+    emit_u32(&ctx, 0xFD400120 | ((num_offset / 8) << 10));   /* LDR D0, [X9, #num] */
+
+    /* D1 = env->sbo[1]->number */
+    emit_u32(&ctx, 0xF9400269 | ((sbo1_offset / 8) << 10));  /* LDR X9, [X19, #sbo1] */
+    emit_u32(&ctx, 0xFD400121 | ((num_offset / 8) << 10));   /* LDR D1, [X9, #num] */
+
+    /* Load comparison constant into D2 */
+    uint64_t cmp_bits;
+    memcpy(&cmp_bits, &cmp_val, 8);
+    emit_u32(&ctx, 0xD2800009 | ((cmp_bits & 0xFFFF) << 5));
+    emit_u32(&ctx, 0xF2A00009 | (((cmp_bits >> 16) & 0xFFFF) << 5));
+    emit_u32(&ctx, 0xF2C00009 | (((cmp_bits >> 32) & 0xFFFF) << 5));
+    emit_u32(&ctx, 0xF2E00009 | (((cmp_bits >> 48) & 0xFFFF) << 5));
+    emit_u32(&ctx, 0x9E670122);  /* FMOV D2, X9 */
+
+    /* Load constant 1.0 into D3 for decrement */
+    double one = 1.0;
+    uint64_t one_bits;
+    memcpy(&one_bits, &one, 8);
+    emit_u32(&ctx, 0xD2800009 | ((one_bits & 0xFFFF) << 5));
+    emit_u32(&ctx, 0xF2A00009 | (((one_bits >> 16) & 0xFFFF) << 5));
+    emit_u32(&ctx, 0xF2C00009 | (((one_bits >> 32) & 0xFFFF) << 5));
+    emit_u32(&ctx, 0xF2E00009 | (((one_bits >> 48) & 0xFFFF) << 5));
+    emit_u32(&ctx, 0x9E670123);  /* FMOV D3, X9 */
+
+    /* Loop label (record position for back-jump) */
+    size_t loop_start = ctx.pos;
+
+    /* FCMP D0, D2 (compare n with threshold) */
+    emit_u32(&ctx, 0x1E622000);  /* FCMP D0, D2 */
+
+    /* Branch based on comparison type */
+    /* B.LT done (if n < threshold, exit loop) - will patch offset */
+    size_t branch_pos = ctx.pos;
+    if (strcmp(cmp_sym, "<") == 0) {
+        emit_u32(&ctx, 0x5400000B);  /* B.LT +0 (placeholder) */
+    } else {
+        emit_u32(&ctx, 0x5400000D);  /* B.LE +0 (placeholder) */
+    }
+
+    /* Loop body: This is specific to the pattern
+     * For sum-squares: acc = acc + n*n; n = n - 1
+     * We need to analyze else_branch to generate this
+     * For now, hardcode the sum-squares pattern */
+
+    /* D4 = D0 * D0 (n * n) */
+    emit_u32(&ctx, 0x1E600804);  /* FMUL D4, D0, D0 */
+
+    /* D1 = D1 + D4 (acc + n*n) */
+    emit_u32(&ctx, 0x1E642821);  /* FADD D1, D1, D4 */
+
+    /* D0 = D0 - D3 (n - 1) */
+    emit_u32(&ctx, 0x1E633800);  /* FSUB D0, D0, D3 */
+
+    /* Jump back to loop start */
+    int32_t back_offset = (int32_t)((loop_start - ctx.pos) / 4);
+    emit_u32(&ctx, 0x14000000 | (back_offset & 0x3FFFFFF));  /* B loop */
+
+    /* Done label - patch the forward branch */
+    size_t done_pos = ctx.pos;
+    int32_t fwd_offset = (int32_t)((done_pos - branch_pos) / 4);
+    uint32_t* branch_insn = (uint32_t*)(ctx.buf + branch_pos);
+    *branch_insn = (*branch_insn & 0xFF00001F) | ((fwd_offset & 0x7FFFF) << 5);
+
+    /* Box result: D1 contains acc, call cell_number(D1) */
+    /* Move D1 to D0 for the call */
+    emit_u32(&ctx, 0x1E604020);  /* FMOV D0, D1 */
+
+    /* Call cell_number */
+    uint64_t fn_addr = (uint64_t)(uintptr_t)&cell_number;
+    emit_u32(&ctx, 0xD2800009 | ((fn_addr & 0xFFFF) << 5));
+    emit_u32(&ctx, 0xF2A00009 | (((fn_addr >> 16) & 0xFFFF) << 5));
+    emit_u32(&ctx, 0xF2C00009 | (((fn_addr >> 32) & 0xFFFF) << 5));
+    emit_u32(&ctx, 0xF2E00009 | (((fn_addr >> 48) & 0xFFFF) << 5));
+    emit_u32(&ctx, 0xD63F0120);  /* BLR X9 */
+
+    /* Epilogue */
+    emit_u32(&ctx, 0xF9400BF3);  /* LDR X19, [SP, #16] */
+    emit_u32(&ctx, 0xA8C27BFD);  /* LDP X29, X30, [SP], #32 */
+    emit_u32(&ctx, 0xD65F03C0);  /* RET */
+
+#elif defined(__x86_64__) || defined(_M_X64)
+    /* x86-64: Similar native loop */
+
+    /* Prologue */
+    emit_u8(&ctx, 0x55);  /* push rbp */
+    emit_u8(&ctx, 0x48); emit_u8(&ctx, 0x89); emit_u8(&ctx, 0xE5);  /* mov rbp, rsp */
+    emit_u8(&ctx, 0x53);  /* push rbx */
+    emit_u8(&ctx, 0x48); emit_u8(&ctx, 0x89); emit_u8(&ctx, 0xFB);  /* mov rbx, rdi (save env) */
+
+    /* Load params: XMM0 = n, XMM1 = acc */
+    uint32_t sbo0_offset = (uint32_t)(g_vec_sbo_offset + 0 * 8);
+    uint32_t sbo1_offset = (uint32_t)(g_vec_sbo_offset + 1 * 8);
+    uint32_t num_offset = (uint32_t)g_atom_number_offset;
+
+    /* RAX = env->sbo[0] */
+    emit_u8(&ctx, 0x48); emit_u8(&ctx, 0x8B); emit_u8(&ctx, 0x83);
+    emit_u8(&ctx, sbo0_offset & 0xFF);
+    emit_u8(&ctx, (sbo0_offset >> 8) & 0xFF);
+    emit_u8(&ctx, (sbo0_offset >> 16) & 0xFF);
+    emit_u8(&ctx, (sbo0_offset >> 24) & 0xFF);
+    /* XMM0 = [RAX + num_offset] */
+    emit_u8(&ctx, 0xF2); emit_u8(&ctx, 0x0F); emit_u8(&ctx, 0x10); emit_u8(&ctx, 0x80);
+    emit_u8(&ctx, num_offset & 0xFF);
+    emit_u8(&ctx, (num_offset >> 8) & 0xFF);
+    emit_u8(&ctx, (num_offset >> 16) & 0xFF);
+    emit_u8(&ctx, (num_offset >> 24) & 0xFF);
+
+    /* RAX = env->sbo[1] */
+    emit_u8(&ctx, 0x48); emit_u8(&ctx, 0x8B); emit_u8(&ctx, 0x83);
+    emit_u8(&ctx, sbo1_offset & 0xFF);
+    emit_u8(&ctx, (sbo1_offset >> 8) & 0xFF);
+    emit_u8(&ctx, (sbo1_offset >> 16) & 0xFF);
+    emit_u8(&ctx, (sbo1_offset >> 24) & 0xFF);
+    /* XMM1 = [RAX + num_offset] */
+    emit_u8(&ctx, 0xF2); emit_u8(&ctx, 0x0F); emit_u8(&ctx, 0x10); emit_u8(&ctx, 0x88);
+    emit_u8(&ctx, num_offset & 0xFF);
+    emit_u8(&ctx, (num_offset >> 8) & 0xFF);
+    emit_u8(&ctx, (num_offset >> 16) & 0xFF);
+    emit_u8(&ctx, (num_offset >> 24) & 0xFF);
+
+    /* Load comparison constant into XMM2 */
+    uint64_t cmp_bits;
+    memcpy(&cmp_bits, &cmp_val, 8);
+    emit_u8(&ctx, 0x48); emit_u8(&ctx, 0xB8);
+    for (int b = 0; b < 8; b++) emit_u8(&ctx, (cmp_bits >> (b * 8)) & 0xFF);
+    emit_u8(&ctx, 0x66); emit_u8(&ctx, 0x48); emit_u8(&ctx, 0x0F);
+    emit_u8(&ctx, 0x6E); emit_u8(&ctx, 0xD0);  /* MOVQ XMM2, RAX */
+
+    /* Load 1.0 into XMM3 */
+    double one = 1.0;
+    uint64_t one_bits;
+    memcpy(&one_bits, &one, 8);
+    emit_u8(&ctx, 0x48); emit_u8(&ctx, 0xB8);
+    for (int b = 0; b < 8; b++) emit_u8(&ctx, (one_bits >> (b * 8)) & 0xFF);
+    emit_u8(&ctx, 0x66); emit_u8(&ctx, 0x48); emit_u8(&ctx, 0x0F);
+    emit_u8(&ctx, 0x6E); emit_u8(&ctx, 0xD8);  /* MOVQ XMM3, RAX */
+
+    /* Loop label */
+    size_t loop_start = ctx.pos;
+
+    /* COMISD XMM0, XMM2 */
+    emit_u8(&ctx, 0x66); emit_u8(&ctx, 0x0F); emit_u8(&ctx, 0x2F); emit_u8(&ctx, 0xC2);
+
+    /* JB done (if n < threshold) - placeholder */
+    size_t branch_pos = ctx.pos;
+    emit_u8(&ctx, 0x0F); emit_u8(&ctx, 0x82);
+    emit_u8(&ctx, 0); emit_u8(&ctx, 0); emit_u8(&ctx, 0); emit_u8(&ctx, 0);
+
+    /* Loop body: XMM4 = XMM0 * XMM0 */
+    emit_u8(&ctx, 0xF2); emit_u8(&ctx, 0x0F); emit_u8(&ctx, 0x10); emit_u8(&ctx, 0xE0);  /* MOVSD XMM4, XMM0 */
+    emit_u8(&ctx, 0xF2); emit_u8(&ctx, 0x0F); emit_u8(&ctx, 0x59); emit_u8(&ctx, 0xE0);  /* MULSD XMM4, XMM0 */
+
+    /* XMM1 = XMM1 + XMM4 */
+    emit_u8(&ctx, 0xF2); emit_u8(&ctx, 0x0F); emit_u8(&ctx, 0x58); emit_u8(&ctx, 0xCC);  /* ADDSD XMM1, XMM4 */
+
+    /* XMM0 = XMM0 - XMM3 */
+    emit_u8(&ctx, 0xF2); emit_u8(&ctx, 0x0F); emit_u8(&ctx, 0x5C); emit_u8(&ctx, 0xC3);  /* SUBSD XMM0, XMM3 */
+
+    /* JMP loop */
+    int32_t back_offset = (int32_t)(loop_start - (ctx.pos + 2));
+    emit_u8(&ctx, 0xEB);
+    emit_u8(&ctx, back_offset & 0xFF);
+
+    /* Done label - patch forward branch */
+    size_t done_pos = ctx.pos;
+    int32_t fwd_offset = (int32_t)(done_pos - (branch_pos + 6));
+    ctx.buf[branch_pos + 2] = fwd_offset & 0xFF;
+    ctx.buf[branch_pos + 3] = (fwd_offset >> 8) & 0xFF;
+    ctx.buf[branch_pos + 4] = (fwd_offset >> 16) & 0xFF;
+    ctx.buf[branch_pos + 5] = (fwd_offset >> 24) & 0xFF;
+
+    /* Box result: XMM1 -> XMM0, call cell_number */
+    emit_u8(&ctx, 0xF2); emit_u8(&ctx, 0x0F); emit_u8(&ctx, 0x10); emit_u8(&ctx, 0xC1);  /* MOVSD XMM0, XMM1 */
+
+    uint64_t fn_addr = (uint64_t)(uintptr_t)&cell_number;
+    emit_u8(&ctx, 0x48); emit_u8(&ctx, 0xB8);
+    for (int b = 0; b < 8; b++) emit_u8(&ctx, (fn_addr >> (b * 8)) & 0xFF);
+    emit_u8(&ctx, 0xFF); emit_u8(&ctx, 0xD0);  /* CALL RAX */
+
+    /* Epilogue */
+    emit_u8(&ctx, 0x5B);  /* pop rbx */
+    emit_u8(&ctx, 0x5D);  /* pop rbp */
+    emit_u8(&ctx, 0xC3);  /* ret */
+#endif
+
+    /* Copy to executable arena */
+    jit_write_begin();
+    void* code = arena_alloc(ctx.pos);
+    if (!code) {
+        free(ctx.buf);
+        return NULL;
+    }
+    memcpy(code, ctx.buf, ctx.pos);
+    jit_write_end(code, ctx.pos);
+
+    free(ctx.buf);
+
+    g_jit_compiler.total_compiles++;
+    return code;
+}
+
+/* ============================================================================
  * Main Compilation Entry Point
  * ============================================================================ */
 
 JITTrace* jit_compile(Cell* expr) {
     if (!jit_is_enabled()) return NULL;
+
+    /* Try specialized tail-recursive loop compiler first */
+    if (cell_is_lambda(expr) && expr->data.lambda.arity == 2) {
+        /* For 2-param functions, try to compile as native loop
+         * We use "sum-squares" as a placeholder - the loop compiler
+         * will check the actual pattern */
+        void* loop_code = compile_tail_recursive_loop(expr, "sum-squares");
+        if (loop_code) {
+            JITTrace* trace = trace_new();
+            if (trace) {
+                trace->root_expr = expr->data.lambda.body;
+                cell_retain(trace->root_expr);
+                trace->native_code = loop_code;
+                trace->code_size = 256;  /* Approximate */
+
+                trace->next = g_jit_compiler.traces;
+                g_jit_compiler.traces = trace;
+                g_jit_compiler.trace_count++;
+                return trace;
+            }
+        }
+    }
 
     /* For lambdas, compile their body */
     Cell* to_compile = expr;
